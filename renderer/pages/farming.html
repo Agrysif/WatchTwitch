@@ -1,0 +1,603 @@
+<div class="farming-page">
+  <div class="page-header">
+    <h1 class="page-title" data-i18n="farming.title">Фарминг дропсов</h1>
+    <p class="page-subtitle" data-i18n="farming.subtitle">Автоматический сбор дропсов на Twitch</p>
+  </div>
+
+  <!-- Current Stream Info -->
+  <div class="card">
+    <!-- Header with Session Timer -->
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+      <div class="card-title" data-i18n="farming.currentStream">Текущий стрим</div>
+      <div id="session-timer-display" style="display: none; padding: 8px 16px; background: linear-gradient(135deg, rgba(145, 71, 255, 0.15), rgba(0, 229, 122, 0.15)); border: 1px solid rgba(145, 71, 255, 0.3); border-radius: 20px; font-size: 13px; font-weight: 600; color: var(--text-primary); font-family: 'Courier New', monospace; box-shadow: 0 2px 8px rgba(145, 71, 255, 0.2);">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right: 6px; vertical-align: middle; opacity: 0.8;">
+          <circle cx="12" cy="12" r="10"/>
+          <path d="M12 6v6l4 2"/>
+        </svg>
+        <span id="session-time-value">00:00:00</span>
+      </div>
+    </div>
+    
+    <div id="current-stream-info">
+      <div class="no-stream">
+        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="opacity: 0.3;">
+          <rect x="2" y="2" width="20" height="20" rx="2" stroke-width="2"/>
+          <path d="M2 8h20M8 2v20" stroke-width="2"/>
+        </svg>
+        <p style="color: var(--text-secondary); margin-top: 16px;" data-i18n="farming.idle">Ожидание</p>
+      </div>
+    </div>
+    
+    <!-- Twitch Player -->
+    <div id="twitch-player-container" style="display: none;">
+      <div id="player-chat-grid" style="display: grid; grid-template-columns: 1fr; gap: 12px; transition: grid-template-columns 0.3s ease;">
+        <!-- Player 16:9 -->
+        <div style="position: relative; width: 100%; padding-bottom: 56.25%; background: #000; border-radius: 8px; overflow: hidden;">
+          <webview id="twitch-player" 
+                   style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #000;"
+                   partition="persist:twitch"
+                   allowpopups="false"
+                   disablewebsecurity></webview>
+        </div>
+        
+        <!-- Chat -->
+        <div id="twitch-chat-container" style="display: none; background: var(--bg-secondary); border-radius: 8px; overflow: hidden; border: 1px solid var(--border-color); opacity: 0; transform: translateX(20px); transition: opacity 0.3s ease, transform 0.3s ease;">
+          <webview id="twitch-chat"
+                   style="width: 100%; height: 450px; background: #18181b;"
+                   partition="persist:twitch"
+                   allowpopups="false"></webview>
+        </div>
+      </div>
+      
+      <!-- Hidden WebView for drops data extraction -->
+      <webview id="drops-data-extractor"
+               style="display: none; width: 1px; height: 1px; position: absolute; left: -9999px;"
+               partition="persist:twitch"></webview>
+      
+      <!-- Compact Stream Info with Top Categories -->
+      <div style="display: flex; gap: 12px; margin-top: 10px;">
+        <!-- Stream Details - full width -->
+        <div id="stream-details" style="flex: 1; padding: 12px 16px; background: var(--bg-secondary); border-radius: 8px; border: 1px solid var(--border-color); display: flex; gap: 12px; align-items: center;">
+          <!-- Game Cover -->
+          <img id="stream-game-cover" src="" alt="Game" style="width: 48px; height: 64px; border-radius: 4px; object-fit: cover; flex-shrink: 0;">
+          
+          <!-- Info -->
+          <div style="flex: 1; min-width: 0;">
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+              <div style="width: 6px; height: 6px; background: #00f593; border-radius: 50%; animation: pulse 2s infinite;"></div>
+              <span id="stream-channel" style="font-size: 14px; font-weight: 600; color: var(--text-primary);"></span>
+            </div>
+            <div id="stream-game" style="font-size: 11px; color: var(--text-secondary); margin-bottom: 3px;"></div>
+            <div id="stream-title" style="font-size: 11px; color: var(--text-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></div>
+          </div>
+          
+          <!-- Mini Stats -->
+          <div style="display: flex; gap: 12px; flex-shrink: 0; margin-right: 8px;">
+            <div style="text-align: center;">
+              <div style="font-size: 9px; color: var(--text-tertiary); text-transform: uppercase; margin-bottom: 2px;">Зрители</div>
+              <div id="stream-viewers" style="font-size: 12px; font-weight: 600; color: var(--text-primary);">-</div>
+            </div>
+            <div style="text-align: center;">
+              <div style="font-size: 9px; color: var(--text-tertiary); text-transform: uppercase; margin-bottom: 2px;">Uptime</div>
+              <div id="stream-uptime" style="font-size: 12px; font-weight: 600; color: var(--text-primary);">-</div>
+            </div>
+          </div>
+          
+          <!-- Chat Toggle -->
+          <button class="btn btn-secondary" id="toggle-chat-btn" style="height: 32px; width: 32px; padding: 0; display: flex; align-items: center; justify-content: center; flex-shrink: 0;" title="Показать/скрыть чат">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Quick Actions Bar - Redesigned -->
+      <div style="display: flex; gap: 8px; margin-top: 8px;">
+        <button class="btn btn-secondary" id="prev-category-btn" style="flex: 1; height: 42px; font-size: 13px; display: flex; align-items: center; justify-content: center; gap: 8px; background: linear-gradient(135deg, var(--bg-secondary), rgba(145, 71, 255, 0.05)); border: 1px solid var(--border-color); transition: all 0.2s ease;" title="Предыдущая категория">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M15 18l-6-6 6-6"/>
+          </svg>
+          <span style="font-weight: 500;">Назад</span>
+        </button>
+        <button class="btn btn-primary" id="next-stream-btn" style="flex: 2; height: 42px; font-size: 13px; display: flex; align-items: center; justify-content: center; gap: 8px; background: linear-gradient(135deg, #9147ff, #772ce8); border: none; box-shadow: 0 2px 8px rgba(145, 71, 255, 0.3); transition: all 0.2s ease;" title="Следующий стрим">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M5 3l14 9-14 9V3z"/>
+          </svg>
+          <span style="font-weight: 600;">Другой стрим</span>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M13 17l5-5-5-5v10z"/>
+            <path d="M6 17l5-5-5-5v10z"/>
+          </svg>
+        </button>
+        <button class="btn btn-secondary" id="next-category-btn" style="flex: 1; height: 42px; font-size: 13px; display: flex; align-items: center; justify-content: center; gap: 8px; background: linear-gradient(135deg, var(--bg-secondary), rgba(0, 229, 122, 0.05)); border: 1px solid var(--border-color); transition: all 0.2s ease;" title="Следующая категория">
+          <span style="font-weight: 500;">Вперед</span>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M9 18l6-6-6-6"/>
+          </svg>
+        </button>
+      </div>
+      
+      <!-- Canvas for viewers chart -->
+      <canvas id="viewers-chart" width="300" height="180" style="position: fixed; display: none; pointer-events: none; z-index: 10000; background: rgba(14, 14, 16, 0.98); border: 1px solid var(--border-color); border-radius: 8px; box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);"></canvas>
+    </div>
+    
+    <!-- Drops Progress Horizontal Block -->
+    <div id="drops-progress-horizontal" style="display: none; margin-top: 12px; padding: 16px; background: linear-gradient(135deg, rgba(145, 71, 255, 0.08) 0%, rgba(0, 229, 122, 0.08) 100%); border-radius: 12px; border: 1px solid rgba(145, 71, 255, 0.25); box-shadow: 0 4px 16px rgba(145, 71, 255, 0.1);">
+      <!-- Контент генерируется динамически в updateDropsHorizontalProgress() -->
+    </div>
+    
+    <!-- Channel Points Stats - показывается только во время фарминга -->
+    <div id="channel-points-card" class="card" style="margin-top: 12px; display: none;">
+      <div class="card-title" style="display: flex; align-items: center; gap: 8px;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/>
+          <path d="M12 6v6l4 2"/>
+        </svg>
+        Баллы канала
+      </div>
+      
+      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 16px;">
+        <!-- Всего баллов -->
+        <div style="padding: 14px; background: var(--bg-secondary); border-radius: 8px; border: 1px solid var(--border-color);">
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <text x="12" y="16" font-size="12" fill="var(--text-secondary)" text-anchor="middle" font-weight="bold">$</text>
+            </svg>
+            <div style="font-size: 11px; color: var(--text-tertiary); text-transform: uppercase;">Всего баллов</div>
+          </div>
+          <div id="channel-points-total" style="font-size: 20px; font-weight: 700; color: var(--text-primary); margin-bottom: 4px;">-</div>
+          <div id="channel-points-earned" style="font-size: 12px; color: #00f593; font-weight: 600;">-</div>
+        </div>
+        
+        <!-- Сундучки -->
+        <div style="padding: 14px; background: var(--bg-secondary); border-radius: 8px; border: 1px solid var(--border-color);">
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2">
+              <rect x="3" y="8" width="18" height="12" rx="2"/>
+              <path d="M3 11h18M12 8V4M8 8V6M16 8V6"/>
+            </svg>
+            <div style="font-size: 11px; color: var(--text-tertiary); text-transform: uppercase;">Сундучки</div>
+          </div>
+          <div id="bonus-chests-count" style="font-size: 20px; font-weight: 700; color: var(--text-primary); margin-bottom: 4px;">-</div>
+          <div id="bonus-chests-points" style="font-size: 12px; color: var(--text-secondary);">-</div>
+        </div>
+        
+        <!-- За просмотр -->
+        <div style="padding: 14px; background: var(--bg-secondary); border-radius: 8px; border: 1px solid var(--border-color);">
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2">
+              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+            </svg>
+            <div style="font-size: 11px; color: var(--text-tertiary); text-transform: uppercase;">За просмотр</div>
+          </div>
+          <div id="passive-points-earned" style="font-size: 20px; font-weight: 700; color: var(--text-primary);">-</div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Drops Progress -->
+    <div id="drops-progress-container" style="display: none; margin-top: 16px; padding: 16px; background: var(--bg-secondary); border-radius: 8px; border: 1px solid var(--border-color);">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+        <h3 style="margin: 0; font-size: 16px; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M8 2L10 6H14L11 9L12 13L8 10.5L4 13L5 9L2 6H6L8 2Z"/>
+          </svg>
+          Прогресс дропсов
+        </h3>
+        <div id="drops-overall-progress" style="font-size: 14px; color: var(--text-secondary);"></div>
+      </div>
+      
+      <div id="drops-campaigns-list"></div>
+      
+      <div id="drops-time-remaining" style="margin-top: 12px; padding: 12px; background: rgba(145, 71, 255, 0.1); border-radius: 6px; border: 1px solid rgba(145, 71, 255, 0.3); font-size: 13px; color: var(--text-secondary); text-align: center; display: none;"></div>
+    </div>
+  </div>
+
+  <!-- Categories List -->
+  <div class="card">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <div class="card-title" style="margin: 0;" data-i18n="farming.selectCategories">Выберите категории</div>
+        <button class="btn btn-secondary" id="drops-filter-btn" style="padding: 8px 14px; font-size: 13px; display: flex; align-items: center; gap: 6px; height: 36px;">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+            <circle cx="6" cy="6" r="6"/>
+          </svg>
+          <span>Drops сверху</span>
+        </button>
+      </div>
+      <div style="display: flex; gap: 8px;">
+        <button class="btn btn-primary" id="add-all-drops-btn" style="height: 36px; background: linear-gradient(135deg, #9147ff, #772ce8); border: none;">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M8 2L10 6H14L11 9L12 13L8 10.5L4 13L5 9L2 6H6L8 2Z"/>
+          </svg>
+          <span>Фарм всех дропсов</span>
+        </button>
+        <button class="btn btn-secondary" id="add-category-btn" style="height: 36px;">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M8 2v12M2 8h12" stroke="currentColor" stroke-width="2"/>
+          </svg>
+          <span data-i18n="farming.addCategory">Добавить категорию</span>
+        </button>
+      </div>
+    </div>
+
+    <div id="categories-list">
+      <div class="no-categories" style="text-align: center; padding: 40px; color: var(--text-secondary);">
+        <p data-i18n="farming.noCategories">Нет выбранных категорий</p>
+        <p style="font-size: 14px; margin-top: 8px;" data-i18n="farming.dragToReorder">Перетащите для изменения порядка</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Active Drops Progress -->
+  <div class="card">
+    <div class="card-title" data-i18n="farming.progress">Прогресс</div>
+    <div id="drops-progress">
+      <p style="color: var(--text-secondary);">No active drops</p>
+    </div>
+  </div>
+
+
+</div>
+
+<style>
+  .no-stream {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 20px;
+  }
+
+  .stream-card {
+    padding: 16px;
+    background: var(--bg-secondary);
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+  }
+
+  .stream-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+
+  .status-indicator {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+  }
+
+  .stream-name {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .stream-preview {
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  .stream-preview img {
+    width: 100%;
+    height: auto;
+    display: block;
+  }
+
+  .category-item {
+    padding: 16px;
+    background: var(--bg-secondary);
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    margin-bottom: 12px;
+    cursor: grab;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    transition: all 0.2s;
+    min-height: 90px;
+  }
+
+  .category-item.ending-soon {
+    border-color: #f97316;
+    background: rgba(249, 115, 22, 0.05);
+  }
+
+  .category-item.ended {
+    opacity: 0.5;
+  }
+
+  .category-item:hover {
+    background: rgba(145, 71, 255, 0.05);
+  }
+
+  .category-item.drops-completed {
+    border-color: rgba(0, 229, 122, 0.3);
+    background: rgba(0, 229, 122, 0.05);
+  }
+
+  .category-item.drops-completed .category-status {
+    color: #00e57a;
+  }
+
+  .category-drag-handle {
+    color: var(--text-secondary);
+    cursor: grab;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+  }
+
+  .category-item.dragging {
+    opacity: 0.5;
+    cursor: grabbing;
+  }
+
+  .category-image {
+    width: 50px;
+    height: 70px;
+    border-radius: 4px;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+
+  .category-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .category-info {
+    flex: 1;
+  }
+
+  .category-name {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+  }
+
+  .category-status {
+    font-size: 13px;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .time-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: var(--bg-primary);
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  .time-badge.ending-soon {
+    background: rgba(249, 115, 22, 0.2);
+    color: #f97316;
+  }
+
+  .time-badge.ended {
+    background: rgba(239, 68, 68, 0.2);
+    color: #ef4444;
+  }
+
+  .time-badge svg {
+    flex-shrink: 0;
+  }
+
+  .category-priority {
+    background: var(--accent-color);
+    color: white;
+    padding: 6px 12px;
+    border-radius: 12px;
+    font-size: 13px;
+    font-weight: 600;
+    flex-shrink: 0;
+    min-width: 40px;
+    text-align: center;
+  }
+
+  .category-remove {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 8px;
+    border-radius: 4px;
+    transition: all 0.2s;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .category-play-btn {
+    background: rgba(145, 71, 255, 0.1);
+    border: 1px solid rgba(145, 71, 255, 0.3);
+    color: #9147ff;
+    cursor: pointer;
+    padding: 8px 12px;
+    border-radius: 6px;
+    transition: all 0.2s;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 600;
+    gap: 6px;
+  }
+
+  .category-play-btn:hover {
+    background: rgba(145, 71, 255, 0.2);
+    border-color: rgba(145, 71, 255, 0.5);
+    transform: scale(1.05);
+  }
+
+  .category-drops-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+  }
+
+  .category-drops-status.active {
+    background: rgba(145, 71, 255, 0.15);
+    color: #9147ff;
+  }
+
+  .category-drops-status.completed {
+    background: rgba(0, 229, 122, 0.15);
+    color: #00e57a;
+  }
+
+  .category-remove:hover {
+    background: var(--error-color);
+    color: white;
+  }
+
+  .drop-progress-item {
+    padding: 20px;
+    background: var(--bg-secondary);
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    margin-bottom: 12px;
+  }
+
+  .drop-progress-item.drop-completed {
+    border-color: var(--success-color);
+    background: rgba(0, 245, 147, 0.05);
+  }
+
+  .drop-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+
+  .drop-name {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .drop-percentage {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--accent-color);
+  }
+
+  .drop-completed .drop-percentage {
+    color: var(--success-color);
+  }
+
+  .drop-progress-bar {
+    position: relative;
+    height: 32px;
+    background: var(--progress-bg);
+    border-radius: 16px;
+    overflow: visible;
+    margin-top: 8px;
+  }
+
+  .drop-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent-color), var(--accent-hover));
+    border-radius: 16px;
+    transition: width 0.5s ease;
+    position: relative;
+  }
+
+  .drop-completed .drop-progress-fill {
+    background: linear-gradient(90deg, var(--success-color), #00d67d);
+  }
+
+  .drop-checkpoints {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 100%;
+    display: flex;
+    justify-content: space-between;
+    padding: 0 16px;
+    align-items: center;
+    pointer-events: none;
+  }
+
+  .checkpoint {
+    width: 16px;
+    height: 16px;
+    background: var(--card-bg);
+    border: 3px solid var(--progress-bg);
+    border-radius: 50%;
+    transition: all 0.3s;
+  }
+
+  .checkpoint.completed {
+    border-color: var(--success-color);
+    background: var(--success-color);
+  }
+
+  /* Drops info styles */
+  #stream-drops-info {
+    animation: slideInUp 0.3s ease-out;
+  }
+
+  @keyframes slideInUp {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  #stream-drops-list > div {
+    transition: all 0.2s ease;
+  }
+
+  #stream-drops-list > div:hover {
+    background: rgba(255, 255, 255, 0.04) !important;
+    border-color: rgba(145, 71, 255, 0.4) !important;
+  }
+
+  /* Drops items animation */
+  #stream-drops-list [style*="margin-bottom: 6px"] {
+    transition: all 0.2s ease;
+  }
+
+  #stream-drops-list [style*="margin-bottom: 6px"]:hover {
+    background: rgba(255, 255, 255, 0.05) !important;
+    transform: translateX(2px);
+  }
+
+    border-color: var(--success-color);
+    background: var(--success-color);
+  }
+
+  .checkpoint.active {
+    border-color: var(--accent-color);
+    animation: checkpointPulse 1.5s infinite;
+  }
+</style>
+

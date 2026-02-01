@@ -1,0 +1,398 @@
+<div class="settings-page">
+  <div class="page-header">
+    <h1 class="page-title" data-i18n="settings.title">Настройки</h1>
+    <p class="page-subtitle" data-i18n="settings.subtitle">Конфигурация приложения</p>
+  </div>
+
+  <!-- General Settings -->
+  <div class="card">
+    <h3 class="settings-section-title">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px; display: inline-block; vertical-align: -4px;">
+        <line x1="12" y1="5" x2="12" y2="19"></line>
+        <line x1="5" y1="12" x2="19" y2="12"></line>
+      </svg>
+      <span data-i18n="settings.general">Общие</span>
+    </h3>
+    
+    <div class="setting-item">
+      <div class="setting-info">
+        <div class="setting-label">Язык</div>
+        <div class="setting-description">Choose your preferred language</div>
+      </div>
+      <div style="flex-shrink: 0; margin-left: auto;">
+        <select class="input-field" id="language-select" style="width: 200px;">
+          <option value="ru">Русский</option>
+          <option value="en">English</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="setting-item">
+      <div class="setting-info">
+        <div class="setting-label">Тема</div>
+        <div class="setting-description">Switch between dark and light theme</div>
+      </div>
+      <div style="flex-shrink: 0; margin-left: auto;">
+        <select class="input-field" id="theme-select" style="width: 200px;">
+          <option value="dark">Темная</option>
+          <option value="light">Светлая</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="setting-item">
+      <div class="setting-info">
+        <div class="setting-label" data-i18n="settings.autostart">Автозапуск при старте Windows</div>
+        <div class="setting-description">Launch WatchTwitch when Windows starts</div>
+      </div>
+      <div style="flex-shrink: 0; margin-left: auto;">
+        <div class="toggle-switch" id="autostart-toggle">
+          <div class="toggle-slider"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Notifications Settings -->
+  <div class="card">
+    <h3 class="settings-section-title">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px; display: inline-block; vertical-align: -4px;">
+        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+        <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+      </svg>
+      <span data-i18n="settings.notifications">Уведомления</span>
+    </h3>
+    
+    <div class="setting-item">
+      <div class="setting-info">
+        <div class="setting-label" data-i18n="settings.enableNotifications">Включить уведомления</div>
+        <div class="setting-description">Show notifications for drops and events</div>
+      </div>
+      <div style="flex-shrink: 0; margin-left: auto;">
+        <div class="toggle-switch active" id="notifications-toggle">
+          <div class="toggle-slider"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="setting-item">
+      <div class="setting-info">
+        <div class="setting-label" data-i18n="settings.soundAlerts">Звуковые уведомления</div>
+        <div class="setting-description">Play sound when drops are completed</div>
+      </div>
+      <div style="flex-shrink: 0; margin-left: auto;">
+        <div class="toggle-switch active" id="sound-toggle">
+          <div class="toggle-slider"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Farming Settings -->
+  <div class="card">
+    <h3 class="settings-section-title">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px; display: inline-block; vertical-align: -4px;">
+        <circle cx="12" cy="12" r="3"></circle>
+        <path d="M12.22 2.03a1 1 0 0 0-1.56 0l-.87 1.18A1 1 0 0 1 9 3.5H7.59a1 1 0 0 0-.84.53l-.65 1.13a1 1 0 0 1-1.55.02l-.9-1.16a1 1 0 0 0-1.56 0l-.87 1.18A1 1 0 0 1 .5 6v1.5a1 1 0 0 0 .53.84l1.13.65a1 1 0 0 1 .02 1.55l-1.16.9a1 1 0 0 0 0 1.56l1.18.87a1 1 0 0 1 .53.84V15h1.5a1 1 0 0 0 .84-.53l.65-1.13a1 1 0 0 1 1.55-.02l.9 1.16a1 1 0 0 0 1.56 0l.87-1.18a1 1 0 0 1 .84-.53h1.5v-1.5a1 1 0 0 0-.53-.84l-1.13-.65a1 1 0 0 1-.02-1.55l1.16-.9a1 1 0 0 0 0-1.56l-1.18-.87a1 1 0 0 1-.53-.84V6h-1.5a1 1 0 0 0-.84.53l-.65 1.13a1 1 0 0 1-1.55.02l-.9-1.16z"></path>
+      </svg>
+      <span data-i18n="settings.farming">Фарминг</span>
+    </h3>
+    
+    <div class="setting-item">
+      <div class="setting-info">
+        <div class="setting-label" data-i18n="settings.streamQuality">Качество стрима</div>
+        <div class="setting-description">Lower quality uses less bandwidth</div>
+      </div>
+      <div style="flex-shrink: 0; margin-left: auto;">
+        <select class="input-field" id="quality-select" style="width: 200px;">
+          <option value="lowest" data-i18n="settings.lowest">Минимальное</option>
+          <option value="160p">160p</option>
+          <option value="360p">360p</option>
+          <option value="480p">480p</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="setting-item">
+      <div class="setting-info">
+        <div class="setting-label" data-i18n="settings.checkInterval">Интервал проверки (минуты)</div>
+        <div class="setting-description">How often to check drop progress</div>
+      </div>
+      <div style="flex-shrink: 0; margin-left: auto;">
+        <input type="number" class="input-field" id="interval-input" min="1" max="10" value="1" style="width: 100px;">
+      </div>
+    </div>
+
+    <div class="setting-item">
+      <div class="setting-info">
+        <div class="setting-label" data-i18n="settings.preferredLanguage">Предпочитаемый язык стримов</div>
+        <div class="setting-description">Prioritize streamers by language</div>
+      </div>
+      <div style="flex-shrink: 0; margin-left: auto;">
+        <select class="input-field" id="stream-language-select" style="width: 200px;">
+          <option value="russian" data-i18n="settings.russian">Русский</option>
+          <option value="english" data-i18n="settings.english">Английский</option>
+          <option value="any" data-i18n="settings.any">Любой</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- Shutdown Settings -->
+  <div class="card">
+    <h3 class="settings-section-title">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px; display: inline-block; vertical-align: -4px;">
+        <path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path>
+        <line x1="12" y1="2" x2="12" y2="12"></line>
+      </svg>
+      <span data-i18n="settings.shutdown">Выключение</span>
+    </h3>
+    
+    <div class="setting-item">
+      <div class="setting-info">
+        <div class="setting-label" data-i18n="settings.enableShutdown">Включить автовыключение</div>
+        <div class="setting-description">Automatically shutdown after all drops are collected</div>
+      </div>
+      <div style="flex-shrink: 0; margin-left: auto;">
+        <div class="toggle-switch" id="shutdown-toggle">
+          <div class="toggle-slider"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="setting-item" id="shutdown-action-setting" style="display: none;">
+      <div class="setting-info">
+        <div class="setting-label" data-i18n="settings.shutdownAction">Действие после завершения</div>
+        <div class="setting-description">Choose what happens when farming completes</div>
+      </div>
+      <div style="flex-shrink: 0; margin-left: auto;">
+        <select class="input-field" id="shutdown-action-select" style="width: 200px;">
+          <option value="shutdown" data-i18n="settings.shutdownPC">Выключить компьютер</option>
+          <option value="sleep" data-i18n="settings.sleep">Спящий режим</option>
+          <option value="hibernate" data-i18n="settings.hibernate">Гибернация</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- Advanced Settings -->
+  <div class="card">
+    <h3 class="settings-section-title">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px; display: inline-block; vertical-align: -4px;">
+        <circle cx="12" cy="12" r="3"></circle>
+        <path d="M12.22 2.03a1 1 0 0 0-1.56 0l-.87 1.18A1 1 0 0 1 9 3.5H7.59a1 1 0 0 0-.84.53l-.65 1.13a1 1 0 0 1-1.55.02l-.9-1.16a1 1 0 0 0-1.56 0l-.87 1.18A1 1 0 0 1 .5 6v1.5a1 1 0 0 0 .53.84l1.13.65a1 1 0 0 1 .02 1.55l-1.16.9a1 1 0 0 0 0 1.56l1.18.87a1 1 0 0 1 .53.84V15h1.5a1 1 0 0 0 .84-.53l.65-1.13a1 1 0 0 1 1.55-.02l.9 1.16a1 1 0 0 0 1.56 0l.87-1.18a1 1 0 0 1 .84-.53h1.5v-1.5a1 1 0 0 0-.53-.84l-1.13-.65a1 1 0 0 1-.02-1.55l1.16-.9a1 1 0 0 0 0-1.56l-1.18-.87a1 1 0 0 1-.53-.84V6h-1.5a1 1 0 0 0-.84.53l-.65 1.13a1 1 0 0 1-1.55.02l-.9-1.16z"></path>
+      </svg>
+      <span data-i18n="settings.advanced">Расширенные</span>
+    </h3>
+    
+    <div class="setting-item">
+      <div class="setting-info">
+        <div class="setting-label" data-i18n="settings.enableLogging">Включить логирование</div>
+        <div class="setting-description">Save logs for debugging</div>
+      </div>
+      <div style="flex-shrink: 0; margin-left: auto;">
+        <div class="toggle-switch" id="logging-toggle">
+          <div class="toggle-slider"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="setting-item">
+      <div class="setting-info">
+        <div class="setting-label" data-i18n="settings.clearCache">Очистить кэш</div>
+        <div class="setting-description">Clear all cached data and temporary files</div>
+      </div>
+      <button class="btn btn-secondary" id="clear-cache-btn">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+          <path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14z" stroke-width="2"/>
+        </svg>
+        Clear Cache
+      </button>
+    </div>
+  </div>
+
+  <!-- Save Button -->
+  <div style="display: flex; justify-content: flex-end; margin-top: 24px;">
+    <button class="btn btn-primary" id="save-settings-btn">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+        <path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z" stroke-width="2"/>
+        <path d="M17 21v-8H7v8M7 3v5h8" stroke-width="2"/>
+      </svg>
+      <span data-i18n="settings.save">Сохранить</span>
+    </button>
+  </div>
+</div>
+
+<style>
+  .settings-section-title {
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 20px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  .setting-item {
+    display: flex;
+    align-items: center;
+    padding: 20px 0;
+    border-bottom: 1px solid var(--border-color);
+    gap: 20px;
+  }
+
+  .setting-item:last-child {
+    border-bottom: none;
+  }
+
+  .setting-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+
+  .setting-item > div[style*="flex-shrink"] {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+  }
+
+  .setting-label {
+    font-size: 16px;
+    font-weight: 500;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+  }
+
+  .setting-description {
+    font-size: 14px;
+    color: var(--text-secondary);
+  }
+</style>
+
+<script>
+  class SettingsPage {
+    constructor() {
+      this.settings = null;
+      this.init();
+    }
+
+    async init() {
+      await this.loadSettings();
+      this.setupEventListeners();
+      this.applySettings();
+    }
+
+    async loadSettings() {
+      this.settings = await Storage.getSettings();
+    }
+
+    applySettings() {
+      // Language
+      document.getElementById('language-select').value = this.settings.language;
+      
+      // Theme
+      document.getElementById('theme-select').value = this.settings.theme;
+      
+      // Toggles
+      this.setToggle('autostart-toggle', this.settings.autostart);
+      this.setToggle('notifications-toggle', this.settings.notifications);
+      this.setToggle('sound-toggle', this.settings.soundAlerts);
+      this.setToggle('shutdown-toggle', this.settings.enableShutdown);
+      this.setToggle('logging-toggle', this.settings.enableLogging);
+      
+      // Other fields
+      document.getElementById('quality-select').value = this.settings.streamQuality;
+      document.getElementById('interval-input').value = this.settings.checkInterval;
+      document.getElementById('stream-language-select').value = this.settings.preferredLanguage;
+      document.getElementById('shutdown-action-select').value = this.settings.shutdownAction;
+
+      // Show/hide shutdown action
+      if (this.settings.enableShutdown) {
+        document.getElementById('shutdown-action-setting').style.display = 'flex';
+      }
+    }
+
+    setToggle(id, active) {
+      const toggle = document.getElementById(id);
+      if (active) {
+        toggle.classList.add('active');
+      } else {
+        toggle.classList.remove('active');
+      }
+    }
+
+    setupEventListeners() {
+      // Toggles
+      const toggles = ['autostart-toggle', 'notifications-toggle', 'sound-toggle', 
+                       'shutdown-toggle', 'logging-toggle'];
+      
+      toggles.forEach(id => {
+        document.getElementById(id).addEventListener('click', (e) => {
+          e.currentTarget.classList.toggle('active');
+          
+          if (id === 'shutdown-toggle') {
+            const isActive = e.currentTarget.classList.contains('active');
+            document.getElementById('shutdown-action-setting').style.display = 
+              isActive ? 'flex' : 'none';
+          }
+        });
+      });
+
+      // Theme change
+      document.getElementById('theme-select').addEventListener('change', (e) => {
+        document.body.className = `theme-${e.target.value}`;
+      });
+
+      // Language change
+      document.getElementById('language-select').addEventListener('change', (e) => {
+        i18n.setLanguage(e.target.value);
+      });
+
+      // Save button
+      document.getElementById('save-settings-btn').addEventListener('click', () => {
+        this.saveSettings();
+      });
+
+      // Clear cache
+      document.getElementById('clear-cache-btn').addEventListener('click', () => {
+        this.clearCache();
+      });
+    }
+
+    async saveSettings() {
+      this.settings = {
+        language: document.getElementById('language-select').value,
+        theme: document.getElementById('theme-select').value,
+        autostart: document.getElementById('autostart-toggle').classList.contains('active'),
+        notifications: document.getElementById('notifications-toggle').classList.contains('active'),
+        soundAlerts: document.getElementById('sound-toggle').classList.contains('active'),
+        streamQuality: document.getElementById('quality-select').value,
+        checkInterval: parseInt(document.getElementById('interval-input').value),
+        preferredLanguage: document.getElementById('stream-language-select').value,
+        enableShutdown: document.getElementById('shutdown-toggle').classList.contains('active'),
+        shutdownAction: document.getElementById('shutdown-action-select').value,
+        enableLogging: document.getElementById('logging-toggle').classList.contains('active')
+      };
+
+      await Storage.saveSettings(this.settings);
+      
+      // Apply autostart
+      window.electronAPI.setAutostart(this.settings.autostart);
+
+      window.utils.showToast('Settings saved successfully!', 'success');
+    }
+
+    async clearCache() {
+      if (confirm('Are you sure you want to clear all cache data?')) {
+        // Clear specific cache items
+        // This is a placeholder - implement actual cache clearing
+        window.utils.showToast('Cache cleared', 'success');
+      }
+    }
+  }
+
+  window.SettingsPage = SettingsPage;
+</script>

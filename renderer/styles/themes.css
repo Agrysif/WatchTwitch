@@ -1,0 +1,113 @@
+/* Dark Theme (Twitch Style) */
+.theme-dark {
+  --bg-primary: #0e0e10;
+  --bg-secondary: #18181b;
+  --sidebar-bg: #1f1f23;
+  --card-bg: #18181b;
+  --titlebar-bg: #18181b;
+  
+  --text-primary: #efeff1;
+  --text-secondary: #adadb8;
+  --text-tertiary: #6c6c77;
+  
+  --accent-color: #9147ff;
+  --accent-hover: #772ce8;
+  --accent-shadow: rgba(145, 71, 255, 0.2);
+  
+  --border-color: #2e2e35;
+  --hover-bg: rgba(255, 255, 255, 0.06);
+  
+  --button-secondary-bg: #2e2e35;
+  --button-secondary-hover: #3a3a44;
+  
+  --input-bg: #18181b;
+  --progress-bg: #2e2e35;
+  
+  --toggle-bg: #53535f;
+  
+  --scrollbar-track: #18181b;
+  --scrollbar-thumb: #464649;
+  --scrollbar-thumb-hover: #5c5c62;
+  
+  --success-color: #00f593;
+  --warning-color: #ffb31a;
+  --error-color: #e81123;
+}
+
+/* Light Theme */
+.theme-light {
+  --bg-primary: #f7f7f8;
+  --bg-secondary: #ffffff;
+  --sidebar-bg: #ffffff;
+  --card-bg: #ffffff;
+  --titlebar-bg: #ffffff;
+  
+  --text-primary: #0e0e10;
+  --text-secondary: #53535f;
+  --text-tertiary: #adadb8;
+  
+  --accent-color: #9147ff;
+  --accent-hover: #772ce8;
+  --accent-shadow: rgba(145, 71, 255, 0.2);
+  
+  --border-color: #e5e5e8;
+  --hover-bg: rgba(0, 0, 0, 0.04);
+  
+  --button-secondary-bg: #f7f7f8;
+  --button-secondary-hover: #e5e5e8;
+  
+  --input-bg: #ffffff;
+  --progress-bg: #e5e5e8;
+  
+  --toggle-bg: #dadada;
+  
+  --scrollbar-track: #f7f7f8;
+  --scrollbar-thumb: #bfbfc4;
+  --scrollbar-thumb-hover: #9e9ea6;
+  
+  --success-color: #00a86b;
+  --warning-color: #ff8c00;
+  --error-color: #c70000;
+}
+
+/* Status Colors */
+.status-online {
+  color: var(--success-color);
+}
+
+.status-offline {
+  color: var(--text-tertiary);
+}
+
+.status-farming {
+  color: var(--accent-color);
+}
+
+/* Badge */
+.badge {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.badge-success {
+  background: rgba(0, 245, 147, 0.15);
+  color: var(--success-color);
+}
+
+.badge-warning {
+  background: rgba(255, 179, 26, 0.15);
+  color: var(--warning-color);
+}
+
+.badge-error {
+  background: rgba(232, 17, 35, 0.15);
+  color: var(--error-color);
+}
+
+.badge-info {
+  background: rgba(145, 71, 255, 0.15);
+  color: var(--accent-color);
+}

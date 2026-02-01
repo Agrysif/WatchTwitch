@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WatchTwitch</title>
+  <link rel="stylesheet" href="styles/main.css">
+  <link rel="stylesheet" href="styles/themes.css">
+  <link rel="stylesheet" href="styles/animations.css">
+</head>
+<body class="theme-dark">
+  <!-- Custom Title Bar -->
+  <div class="titlebar">
+    <div class="titlebar-drag">
+      <img src="../assets/logo.svg" alt="Logo" class="titlebar-logo">
+      <span class="titlebar-title">WatchTwitch</span>
+    </div>
+    <div class="titlebar-controls">
+      <button class="titlebar-button" id="minimize-btn">
+        <svg width="12" height="2" viewBox="0 0 12 2">
+          <rect width="12" height="2" fill="currentColor"/>
+        </svg>
+      </button>
+      <button class="titlebar-button" id="maximize-btn">
+        <svg width="12" height="12" viewBox="0 0 12 12">
+          <rect width="12" height="12" fill="none" stroke="currentColor" stroke-width="1"/>
+        </svg>
+      </button>
+      <button class="titlebar-button close" id="close-btn">
+        <svg width="12" height="12" viewBox="0 0 12 12">
+          <path d="M1 1L11 11M11 1L1 11" stroke="currentColor" stroke-width="1.5"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <div class="app-container">
+    <!-- Sidebar Navigation -->
+    <nav class="sidebar">
+      <div class="sidebar-top">
+        <button class="nav-item active" data-page="farming">
+          <svg class="nav-icon" width="20" height="20" viewBox="0 0 20 20">
+            <path fill="currentColor" d="M10 2L2 7v11h6v-6h4v6h6V7l-8-5z"/>
+          </svg>
+          <span class="nav-text" data-i18n="nav.farming">Фарминг</span>
+        </button>
+        
+        <button class="nav-item" data-page="accounts">
+          <svg class="nav-icon" width="20" height="20" viewBox="0 0 20 20">
+            <path fill="currentColor" d="M10 2a4 4 0 100 8 4 4 0 000-8zm-7 12a7 7 0 1114 0v2H3v-2z"/>
+          </svg>
+          <span class="nav-text" data-i18n="nav.accounts">Аккаунты</span>
+        </button>
+        
+        <button class="nav-item" data-page="drops">
+          <svg class="nav-icon" width="20" height="20" viewBox="0 0 20 20">
+            <path fill="currentColor" d="M10 1l3.09 6.26L20 8.27l-5 4.87 1.18 6.88L10 16.77l-6.18 3.25L5 13.14 0 8.27l6.91-1.01L10 1z"/>
+          </svg>
+          <span class="nav-text">Дропсы</span>
+        </button>
+        
+        <button class="nav-item" data-page="statistics">
+          <svg class="nav-icon" width="20" height="20" viewBox="0 0 20 20">
+            <path fill="currentColor" d="M2 2h4v16H2V2zm6 4h4v12H8V6zm6 6h4v6h-4v-6z"/>
+          </svg>
+          <span class="nav-text" data-i18n="nav.statistics">Статистика</span>
+        </button>
+        
+        <button class="nav-item" data-page="settings">
+          <svg class="nav-icon" width="20" height="20" viewBox="0 0 20 20">
+            <path fill="currentColor" d="M10 6a4 4 0 100 8 4 4 0 000-8zm8 3h-2.051A6.978 6.978 0 0014 5.051V3h-2v2.051A6.978 6.978 0 008.051 7H6v2h2.051A6.978 6.978 0 0010 12.949V15h2v-2.051A6.978 6.978 0 0015.949 11H18V9z"/>
+          </svg>
+          <span class="nav-text" data-i18n="nav.settings">Настройки</span>
+        </button>
+      </div>
+
+      <!-- Farming Controls -->
+      <div class="sidebar-farming">
+        <!-- Mini Twitch Player (16:9) - показывается когда активна сессия и не на странице фарминга -->
+        <div id="sidebar-mini-player-container" style="display: none; margin-bottom: 12px; border-radius: 8px; overflow: hidden; border: 1px solid var(--border-color); opacity: 0; transform: translateY(-10px); transition: opacity 0.3s ease, transform 0.3s ease;">
+          <div style="position: relative; width: 100%; padding-bottom: 56.25%; background: #000;">
+            <webview id="sidebar-mini-player"
+                    style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #000; border: none;"
+                    partition="persist:twitch"
+                    preload=""></webview>
+          </div>
+        </div>
+        
+        <!-- Mini Drops Progress -->
+        <div id="sidebar-drops-progress" style="display: none; padding: 12px 14px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; margin-bottom: 8px; opacity: 0; transform: translateY(-10px); transition: all 0.3s ease;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="#9147ff">
+                <path d="M8 2L10 6H14L11 9L12 13L8 10.5L4 13L5 9L2 6H6L8 2Z"/>
+              </svg>
+              <span style="font-size: 11px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;">Дропсы</span>
+            </div>
+            <span id="sidebar-drops-percent" style="font-size: 16px; font-weight: 700; color: var(--text-primary);">0%</span>
+          </div>
+          <div style="background: rgba(145, 71, 255, 0.1); height: 6px; border-radius: 3px; overflow: hidden;">
+            <div id="sidebar-drops-bar" style="height: 100%; background: #9147ff; width: 0%; transition: width 0.5s ease;"></div>
+          </div>
+        </div>
+        
+        <div id="farming-session-info" style="display: none; padding: 16px; background: var(--bg-secondary); border-radius: 8px; margin-bottom: 12px; border: 1px solid var(--border-color); opacity: 0; transform: translateY(-10px); transition: opacity 0.3s ease, transform 0.3s ease;">
+          <div style="font-size: 11px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 8px; letter-spacing: 0.5px;">Сессия</div>
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <div style="width: 6px; height: 6px; background: #00f593; border-radius: 50%; animation: pulse 2s infinite;"></div>
+              <span class="session-status" style="font-size: 12px; color: var(--text-secondary);">Активна</span>
+              <span class="session-auto-badge" style="display: none; padding: 2px 6px; background: rgba(255, 152, 0, 0.15); color: #ff9800; border-radius: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase;">Авто</span>
+            </div>
+            <div style="font-size: 13px; color: var(--text-primary); font-weight: 600;" id="session-duration">00:00:00</div>
+            <div style="font-size: 11px; color: var(--text-secondary); display: flex; align-items: center; gap: 4px;">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+              </svg>
+              <span id="session-bandwidth">0 KB</span>
+            </div>
+          </div>
+        </div>
+        
+        <div id="farming-session-info" style="display: none; padding: 16px; background: var(--bg-secondary); border-radius: 8px; margin-bottom: 12px; border: 1px solid var(--border-color); opacity: 0; transform: translateY(-10px); transition: opacity 0.3s ease, transform 0.3s ease;">
+          <div style="font-size: 11px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 8px; letter-spacing: 0.5px;">Сессия</div>
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <div style="width: 6px; height: 6px; background: #00f593; border-radius: 50%; animation: pulse 2s infinite;"></div>
+              <span class="session-status" style="font-size: 12px; color: var(--text-secondary);">Активна</span>
+              <span class="session-auto-badge" style="display: none; padding: 2px 6px; background: rgba(255, 152, 0, 0.15); color: #ff9800; border-radius: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase;">Авто</span>
+            </div>
+            <div style="font-size: 13px; color: var(--text-primary); font-weight: 600;" id="session-duration">00:00:00</div>
+            <div style="font-size: 11px; color: var(--text-secondary); display: flex; align-items: center; gap: 4px;">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+              </svg>
+              <span id="session-bandwidth">0 KB</span>
+            </div>
+          </div>
+        </div>
+
+        <button class="btn btn-primary" id="sidebar-start-farming-btn" style="width: 100%; justify-content: center; opacity: 1; transform: scale(1); transition: opacity 0.2s ease, transform 0.2s ease;">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M3 2l10 6-10 6V2z"/>
+          </svg>
+          <span data-i18n="farming.startFarming">Начать фарминг</span>
+        </button>
+        <button class="btn btn-danger" id="sidebar-stop-farming-btn" style="width: 100%; justify-content: center; display: none; opacity: 0; transform: scale(0.95); transition: opacity 0.2s ease, transform 0.2s ease;">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+            <rect x="3" y="3" width="10" height="10"/>
+          </svg>
+          <span data-i18n="farming.stopFarming">Остановить</span>
+        </button>
+      </div>
+    </nav>
+
+    <!-- Main Content Area -->
+    <main class="content">
+      <!-- Pages will be loaded here -->
+      <div id="page-container"></div>
+    </main>
+  </div>
+
+  <!-- Hidden background Twitch player to keep stream running across tabs -->
+  <webview id="background-twitch-player"
+           style="position: fixed; width: 1px; height: 1px; left: -9999px; bottom: -9999px; opacity: 0; pointer-events: none;"
+           partition="persist:twitch"
+           allowpopups="false"
+           disablewebsecurity></webview>
+
+  <!-- Scripts -->
+  <!-- Core modules - загружаем первыми -->
+  <script src="js/core/api-client.js"></script>
+  <script src="js/core/notification-service.js"></script>
+  <script src="js/core/settings-manager.js"></script>
+  <script src="js/core/tooltip-service.js"></script>
+  <script src="js/core/title-manager.js"></script>
+  
+  <!-- Utils - утилиты -->
+  <script src="js/utils/date-helpers.js"></script>
+  <script src="js/utils/dom-helpers.js"></script>
+  
+  <!-- Features - функционал -->
+  <script src="js/features/drops/drops-manager.js"></script>
+  <script src="js/features/drops/claim-service.js"></script>
+  <script src="js/features/farming/channel-points.js"></script>
+  
+  <!-- Legacy modules -->
+  <script src="js/i18n.js"></script>
+  <script src="js/storage.js"></script>
+  <script src="js/auth.js"></script>
+  <!-- <script src="js/drops.js"></script> -->
+  <script src="js/streaming.js"></script>
+  
+  <!-- Pages -->
+  <script src="js/pages/accounts-page.js"></script>
+  <script src="js/pages/farming-page.js"></script>
+  <script src="js/pages/settings-page.js"></script>
+  <script src="js/pages/statistics-page.js"></script>
+  
+  <!-- Auto Updater -->
+  <script src="js/updater.js"></script>
+  
+  <!-- Twitch Embed API for better player support -->
+  <script src="https://embed.twitch.tv/embed/v1.js"></script>
+  
+  <!-- Router & App -->
+  <script src="js/router.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
