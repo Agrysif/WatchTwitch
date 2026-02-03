@@ -59,17 +59,37 @@
   .account-card {
     display: flex;
     align-items: center;
-    gap: 16px;
+    gap: 12px;
     padding: 20px;
     background: var(--bg-secondary);
     border-radius: 8px;
     border: 1px solid var(--border-color);
     margin-bottom: 12px;
     transition: all 0.2s;
+    user-select: none;
   }
 
   .account-card:hover {
     border-color: var(--accent-color);
+  }
+
+  .account-card.dragging {
+    opacity: 0.5;
+    transform: rotate(2deg);
+  }
+
+  .drag-handle {
+    cursor: grab;
+    transition: all 0.2s;
+  }
+
+  .drag-handle:hover {
+    opacity: 1 !important;
+    color: var(--accent-color);
+  }
+
+  .drag-handle:active {
+    cursor: grabbing;
   }
 
   .account-avatar {
@@ -105,7 +125,7 @@
   .account-status {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     padding: 6px 12px;
     border-radius: 16px;
     font-size: 13px;
@@ -116,10 +136,23 @@
     background: rgba(0, 245, 147, 0.15);
     color: var(--success-color);
   }
+  
+  .account-status.warning {
+    background: rgba(255, 145, 71, 0.15);
+    color: #ff9147;
+  }
 
   .account-status.disconnected {
     background: rgba(232, 17, 35, 0.15);
     color: var(--error-color);
+  }
+  
+  .inactive-account {
+    border-color: rgba(255, 145, 71, 0.3);
+  }
+  
+  .inactive-account:hover {
+    border-color: rgba(255, 145, 71, 0.6);
   }
 
   .account-actions {
@@ -143,6 +176,26 @@
   .account-btn:hover {
     border-color: var(--accent-color);
     color: var(--accent-color);
+  }
+  
+  .account-btn.activate {
+    border-color: rgba(0, 245, 147, 0.3);
+  }
+  
+  .account-btn.activate:hover {
+    border-color: var(--success-color);
+    color: var(--success-color);
+    background: rgba(0, 245, 147, 0.1);
+  }
+  
+  .account-btn.login-twitch {
+    border-color: rgba(145, 71, 255, 0.4);
+  }
+  
+  .account-btn.login-twitch:hover {
+    border-color: var(--accent-color);
+    color: var(--accent-color);
+    background: rgba(145, 71, 255, 0.1);
   }
 
   .account-btn.delete:hover {

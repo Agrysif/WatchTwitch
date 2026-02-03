@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Loading...</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #0e0e10 0%, #1a1a2e 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      overflow: hidden;
+      color: #efeff1;
+    }
+
+    .splash-container {
+      text-align: center;
+      animation: fadeIn 0.5s ease-in-out;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .logo-container {
+      position: relative;
+      margin-bottom: 32px;
+    }
+
+    .logo {
+      width: 120px;
+      height: 120px;
+      background: linear-gradient(135deg, #9147ff 0%, #772ce8 100%);
+      border-radius: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto;
+      box-shadow: 0 20px 60px rgba(145, 71, 255, 0.4);
+      position: relative;
+      z-index: 2;
+    }
+
+    .logo svg {
+      width: 64px;
+      height: 64px;
+      fill: white;
+    }
+
+    .logo-glow {
+      position: absolute;
+      width: 140px;
+      height: 140px;
+      background: radial-gradient(circle, rgba(145, 71, 255, 0.3) 0%, transparent 70%);
+      border-radius: 50%;
+      animation: pulse 2s ease-in-out infinite;
+      z-index: 1;
+    }
+
+    @keyframes pulse {
+      0%, 100% {
+        transform: scale(1);
+        opacity: 1;
+      }
+      50% {
+        transform: scale(1.2);
+        opacity: 0.5;
+      }
+    }
+
+    .app-name {
+      font-size: 32px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      background: linear-gradient(135deg, #9147ff 0%, #00e57a 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .app-tagline {
+      font-size: 14px;
+      color: #adadb8;
+      margin-bottom: 48px;
+      letter-spacing: 0.5px;
+    }
+
+    .loading-bar {
+      width: 240px;
+      height: 4px;
+      background: rgba(145, 71, 255, 0.2);
+      border-radius: 2px;
+      margin: 0 auto;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .loading-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #9147ff 0%, #00e57a 100%);
+      border-radius: 2px;
+      animation: loading 1.5s ease-in-out infinite;
+    }
+
+    @keyframes loading {
+      0% {
+        width: 0%;
+        margin-left: 0%;
+      }
+      50% {
+        width: 60%;
+        margin-left: 20%;
+      }
+      100% {
+        width: 0%;
+        margin-left: 100%;
+      }
+    }
+
+    .loading-text {
+      margin-top: 16px;
+      font-size: 13px;
+      color: #adadb8;
+      animation: fadeInOut 2s ease-in-out infinite;
+    }
+
+    @keyframes fadeInOut {
+      0%, 100% {
+        opacity: 0.5;
+      }
+      50% {
+        opacity: 1;
+      }
+    }
+
+    .particles {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      top: 0;
+      left: 0;
+      overflow: hidden;
+      z-index: 0;
+    }
+
+    .particle {
+      position: absolute;
+      width: 4px;
+      height: 4px;
+      background: rgba(145, 71, 255, 0.3);
+      border-radius: 50%;
+      animation: float linear infinite;
+    }
+
+    @keyframes float {
+      0% {
+        transform: translateY(100vh) translateX(0);
+        opacity: 0;
+      }
+      10% {
+        opacity: 1;
+      }
+      90% {
+        opacity: 1;
+      }
+      100% {
+        transform: translateY(-10vh) translateX(100px);
+        opacity: 0;
+      }
+    }
+
+    /* Generate particles */
+    .particle:nth-child(1) { left: 10%; animation-duration: 8s; animation-delay: 0s; }
+    .particle:nth-child(2) { left: 20%; animation-duration: 10s; animation-delay: 1s; }
+    .particle:nth-child(3) { left: 30%; animation-duration: 7s; animation-delay: 2s; }
+    .particle:nth-child(4) { left: 40%; animation-duration: 9s; animation-delay: 0.5s; }
+    .particle:nth-child(5) { left: 50%; animation-duration: 11s; animation-delay: 1.5s; }
+    .particle:nth-child(6) { left: 60%; animation-duration: 8s; animation-delay: 3s; }
+    .particle:nth-child(7) { left: 70%; animation-duration: 10s; animation-delay: 2.5s; }
+    .particle:nth-child(8) { left: 80%; animation-duration: 9s; animation-delay: 1s; }
+    .particle:nth-child(9) { left: 90%; animation-duration: 7s; animation-delay: 0s; }
+  </style>
+</head>
+<body>
+  <div class="particles">
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+  </div>
+
+  <div class="splash-container">
+    <div class="logo-container">
+      <div class="logo-glow"></div>
+      <div class="logo">
+        <svg viewBox="0 0 24 24" fill="currentColor">
+          <path d="M11.571 4.714h1.715v5.143H11.57zm4.715 0H18v5.143h-1.714zM6 0L1.714 4.286v15.428h5.143V24l4.286-4.286h3.428L22.286 12V0zm14.571 11.143l-3.428 3.428h-3.429l-3 3v-3H6.857V1.714h13.714Z"/>
+        </svg>
+      </div>
+    </div>
+
+    <div class="app-name">WatchTwitch</div>
+    <div class="app-tagline">Автоматический фарминг дропсов</div>
+
+    <div class="loading-bar">
+      <div class="loading-bar-fill"></div>
+    </div>
+    <div class="loading-text">Загрузка приложения...</div>
+  </div>
+</body>
+</html>

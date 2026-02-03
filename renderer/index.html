@@ -71,6 +71,11 @@
             <path fill="currentColor" d="M10 6a4 4 0 100 8 4 4 0 000-8zm8 3h-2.051A6.978 6.978 0 0014 5.051V3h-2v2.051A6.978 6.978 0 008.051 7H6v2h2.051A6.978 6.978 0 0010 12.949V15h2v-2.051A6.978 6.978 0 0015.949 11H18V9z"/>
           </svg>
           <span class="nav-text" data-i18n="nav.settings">Настройки</span>
+          <div id="update-notification-badge" class="update-notification-badge" style="display: none;" title="Обновление готово к установке">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+            </svg>
+          </div>
         </button>
       </div>
 
@@ -99,24 +104,6 @@
           </div>
           <div style="background: rgba(145, 71, 255, 0.1); height: 6px; border-radius: 3px; overflow: hidden;">
             <div id="sidebar-drops-bar" style="height: 100%; background: #9147ff; width: 0%; transition: width 0.5s ease;"></div>
-          </div>
-        </div>
-        
-        <div id="farming-session-info" style="display: none; padding: 16px; background: var(--bg-secondary); border-radius: 8px; margin-bottom: 12px; border: 1px solid var(--border-color); opacity: 0; transform: translateY(-10px); transition: opacity 0.3s ease, transform 0.3s ease;">
-          <div style="font-size: 11px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 8px; letter-spacing: 0.5px;">Сессия</div>
-          <div style="display: flex; flex-direction: column; gap: 6px;">
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <div style="width: 6px; height: 6px; background: #00f593; border-radius: 50%; animation: pulse 2s infinite;"></div>
-              <span class="session-status" style="font-size: 12px; color: var(--text-secondary);">Активна</span>
-              <span class="session-auto-badge" style="display: none; padding: 2px 6px; background: rgba(255, 152, 0, 0.15); color: #ff9800; border-radius: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase;">Авто</span>
-            </div>
-            <div style="font-size: 13px; color: var(--text-primary); font-weight: 600;" id="session-duration">00:00:00</div>
-            <div style="font-size: 11px; color: var(--text-secondary); display: flex; align-items: center; gap: 4px;">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
-              </svg>
-              <span id="session-bandwidth">0 KB</span>
-            </div>
           </div>
         </div>
         
@@ -195,10 +182,46 @@
   <script src="js/pages/accounts-page.js"></script>
   <script src="js/pages/farming-page.js"></script>
   <script src="js/pages/settings-page.js"></script>
-  <script src="js/pages/statistics-page.js"></script>
-  
-  <!-- Auto Updater -->
-  <script src="js/updater.js"></script>
+  <!-- Update Notification Overlay -->
+  <div id="update-overlay" class="update-overlay" style="display: none;">
+    <div class="update-modal">
+      <div class="update-header">
+        <div class="update-title">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+          </svg>
+          <span>Доступно обновление</span>
+        </div>
+        <div id="update-version" class="update-version"></div>
+      </div>
+
+      <div class="update-content">
+        <div id="update-info" class="update-info"></div>
+
+        <div id="update-progress-container" class="update-progress-container" style="display: none;">
+          <div class="progress-bar-bg">
+            <div id="update-progress-bar" class="progress-bar-fill"></div>
+          </div>
+          <div class="progress-info">
+            <span id="update-percent">0%</span>
+            <span id="update-speed">0 MB/s</span>
+          </div>
+        </div>
+
+        <div id="update-actions" class="update-actions">
+          <button id="update-install-btn" class="btn btn-primary" style="display: none;">
+            Установить обновление
+          </button>
+          <button id="update-download-btn" class="btn btn-primary">
+            Скачать обновление
+          </button>
+          <button id="update-later-btn" class="btn btn-secondary">
+            Позже
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
   
   <!-- Twitch Embed API for better player support -->
   <script src="https://embed.twitch.tv/embed/v1.js"></script>

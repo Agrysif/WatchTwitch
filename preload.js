@@ -49,5 +49,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
   fetchDropsInventory: () => ipcRenderer.invoke('fetch-drops-inventory'),
   claimAllDrops: () => ipcRenderer.invoke('claim-all-drops'),
   claimDrop: (dropInstanceID) => ipcRenderer.invoke('claim-drop', dropInstanceID),
-  getChannelPoints: (channelId, userId) => ipcRenderer.invoke('get-channel-points', channelId, userId)
+  getChannelPoints: (channelId, userId) => ipcRenderer.invoke('get-channel-points', channelId, userId),
+  
+  // Обработчик закрытия приложения
+  onAppClosing: (callback) => ipcRenderer.on('app-closing', callback),
+
+  // Auto updater
+  checkForUpdates: () => ipcRenderer.send('check-for-updates'),
+  downloadUpdate: () => ipcRenderer.send('download-update'),
+  installUpdate: () => ipcRenderer.send('install-update'),
+  onUpdateAvailable: (callback) => ipcRenderer.on('update-available', callback),
+  onUpdateProgress: (callback) => ipcRenderer.on('update-download-progress', callback),
+  onUpdateDownloaded: (callback) => ipcRenderer.on('update-downloaded', callback),
+  onUpdateError: (callback) => ipcRenderer.on('update-error', callback),
+  getAppVersion: () => ipcRenderer.invoke('get-app-version')
 });

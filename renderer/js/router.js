@@ -21,8 +21,41 @@ class Router {
       });
     });
 
+    // Global toggle handler (delegated)
+    this.installToggleDelegation();
+
     // Load initial page
     this.navigate('farming');
+  }
+
+  installToggleDelegation() {
+    if (this._toggleDelegationInstalled) return;
+    this._toggleDelegationInstalled = true;
+
+    document.addEventListener('click', (event) => {
+      if (this.currentPage !== 'settings') return;
+      const toggle = event.target.closest('.toggle-switch');
+      if (!toggle) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      const isActive = toggle.classList.contains('active');
+      if (isActive) {
+        toggle.classList.remove('active');
+        toggle.style.setProperty('background', '#4a4a4a', 'important');
+      } else {
+        toggle.classList.add('active');
+        toggle.style.setProperty('background', '#9147FF', 'important');
+      }
+
+      toggle.setAttribute('aria-pressed', (!isActive).toString());
+
+      if (toggle.id === 'shutdown-toggle') {
+        const shutdownSetting = document.getElementById('shutdown-action-setting');
+        if (shutdownSetting) shutdownSetting.style.display = !isActive ? 'flex' : 'none';
+      }
+    });
   }
 
   async navigate(page) {

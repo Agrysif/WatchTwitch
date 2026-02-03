@@ -9,8 +9,9 @@ const { autoUpdater } = require('electron-updater');
 const store = new Store();
 
 // Конфигурация автообновления
-autoUpdater.checkForUpdatesAndNotify();
 autoUpdater.allowDowngrade = false;
+autoUpdater.autoDownload = false;
+autoUpdater.autoInstallOnAppQuit = true;
 
 // OAuth конфигурация
 const TWITCH_CLIENT_ID = 'bi12b5gk5g141jl2yqkng1wj2k9a8s';
@@ -66,6 +67,7 @@ const SCOPES = [
   'whispers:edit'
 ];
 let mainWindow;
+let splashWindow;
 let powerSaveBlockerId;
 let tray = null;
 
@@ -125,8 +127,19 @@ ipcMain.on('check-for-updates', async () => {
 
 ipcMain.on('install-update', () => {
   console.log('[IPC] Установка обновления...');
-  autoUpdater.quitAndInstall();
+  autoUpdater.quitAndInstall(true, true);
 });
+
+ipcMain.on('download-update', async () => {
+  console.log('[IPC] Загрузка обновления...');
+  try {
+    await autoUpdater.downloadUpdate();
+  } catch (error) {
+    console.error('[Updater] Ошибка загрузки обновления:', error);
+  }
+});
+
+ipcMain.handle('get-app-version', () => app.getVersion());
 
 // Read local file content for renderer
 ipcMain.handle('read-file', async (event, relativePath) => {
@@ -163,6 +176,26 @@ app.setLoginItemSettings({
   openAtLogin: store.get('settings.autostart', false)
 });
 
+function createSplashWindow() {
+  splashWindow = new BrowserWindow({
+    width: 500,
+    height: 400,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    resizable: false,
+    movable: false,
+    backgroundColor: '#00000000',
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true
+    }
+  });
+
+  splashWindow.loadFile('splash.html');
+  splashWindow.center();
+}
+
 function createMainWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
@@ -180,10 +213,23 @@ function createMainWindow() {
       backgroundThrottling: false // Отключаем throttling в фоне
     },
     frame: false,
-    icon: path.join(__dirname, 'assets', 'icon.png')
+    icon: path.join(__dirname, 'assets', 'icon.png'),
+    show: false // Не показываем окно сразу
   });
 
   mainWindow.loadFile('renderer/index.html');
+
+  // Показываем главное окно после загрузки и закрываем splash
+  mainWindow.once('ready-to-show', () => {
+    setTimeout(() => {
+      if (splashWindow) {
+        splashWindow.close();
+        splashWindow = null;
+      }
+      mainWindow.show();
+      mainWindow.focus();
+    }, 1500); // Минимум 1.5 секунды splash screen
+  });
 
   // Открыть DevTools в режиме разработки
   // mainWindow.webContents.openDevTools(); // Временно для отладки
@@ -204,6 +250,9 @@ function createMainWindow() {
     if (!app.isQuitting && store.get('settings.minimizeToTray', false)) {
       event.preventDefault();
       mainWindow.hide();
+    } else {
+      // Сигнализируем renderer процессу о закрытии
+      mainWindow.webContents.send('app-closing');
     }
   });
 
@@ -498,25 +547,19 @@ function startAuthServer() {
       <img src="${user.profile_image_url}" alt="Avatar">
       <span>${user.display_name}</span>
     </div>
-    <div class="countdown">Окно закроется через <span id="timer">5</span> секунд</div>
+    <div class="countdown">Можете закрыть эту вкладку</div>
   </div>
-  <script>
-    let seconds = 5;
-    const timer = document.getElementById('timer');
-    const interval = setInterval(() => {
-      seconds--;
-      timer.textContent = seconds;
-      if (seconds <= 0) {
-        clearInterval(interval);
-        window.close();
-      }
-    }, 1000);
-  </script>
 </body>
 </html>`);
               
-              authServer.close();
-              authServer = null;
+              // Закрываем сервер через 2 секунды, чтобы браузер успел загрузить страницу
+              setTimeout(() => {
+                if (authServer) {
+                  authServer.close();
+                  authServer = null;
+                }
+              }, 2000);
+              
               resolve(tokenData);
             } else {
               throw new Error('Не удалось получить access token');
@@ -666,8 +709,16 @@ async function createStreamView(url, account = null) {
 
   console.log('Opening stream:', url);
   
-  // Устанавливаем cookies перед загрузкой
-  if (account && account.cookies) {
+  // Устанавливаем OAuth токен или cookies
+  const oauth = store.get('oauth');
+  if (oauth && oauth.accessToken) {
+    console.log('Setting OAuth cookies for authenticated session');
+    await setOAuthCookies(oauth.accessToken);
+  } else if (account && account.webviewCookies) {
+    // Используем куки из webview если есть
+    console.log('Setting webview cookies for account:', account.username);
+    await setStreamCookies(account.webviewCookies);
+  } else if (account && account.cookies) {
     await setStreamCookies(account.cookies);
     console.log('Cookies set for account:', account.username);
   }
@@ -678,7 +729,54 @@ async function createStreamView(url, account = null) {
   // Настраиваем качество после загрузки страницы
   streamView.webContents.once('did-finish-load', () => {
     console.log('Stream loaded, setting up quality...');
-    setupStreamQuality();
+    
+    // Если есть OAuth токен, инжектим его в localStorage
+    const oauth = store.get('oauth');
+    if (oauth && oauth.accessToken) {
+      streamView.webContents.executeJavaScript(`
+        (function() {
+          try {
+            // Устанавливаем токен в localStorage (как это делает Twitch)
+            localStorage.setItem('auth-token', '${oauth.accessToken}');
+            localStorage.setItem('login-token', '${oauth.accessToken}');
+            
+            // Также устанавливаем информацию о пользователе если есть
+            if ('${oauth.user?.login}') {
+              localStorage.setItem('login-username', '${oauth.user.login}');
+              localStorage.setItem('twilight.user', JSON.stringify({
+                id: '${oauth.user.id}',
+                login: '${oauth.user.login}',
+                displayName: '${oauth.user.displayName}'
+              }));
+            }
+            
+            console.log('✅ OAuth tokens injected into localStorage');
+            
+            // Перезагружаем страницу чтобы применить авторизацию
+            setTimeout(() => location.reload(), 100);
+          } catch (e) {
+            console.error('❌ Error injecting OAuth tokens:', e);
+          }
+        })();
+      `).then(() => {
+        console.log('OAuth injection script executed');
+      }).catch(err => {
+        console.error('Failed to inject OAuth:', err);
+      });
+    } else {
+      setupStreamQuality();
+    }
+  });
+  
+  // Обрабатываем повторную загрузку (после применения OAuth)
+  streamView.webContents.on('did-finish-load', () => {
+    // Проверяем был ли уже инжектирован OAuth (чтобы не зацикливаться)
+    streamView.webContents.executeJavaScript(`localStorage.getItem('auth-token')`).then(authToken => {
+      if (authToken) {
+        console.log('OAuth already injected, setting up quality');
+        setupStreamQuality();
+      }
+    });
   });
   
   // Логируем ошибки
@@ -698,6 +796,31 @@ async function createStreamView(url, account = null) {
       });
     }
   });
+}
+
+// Установка OAuth куки для авторизованной сессии
+async function setOAuthCookies(accessToken) {
+  if (!streamView || !accessToken) return;
+  
+  const session = streamView.webContents.session;
+  
+  try {
+    // Устанавливаем auth-token cookie
+    await session.cookies.set({
+      url: 'https://www.twitch.tv',
+      name: 'auth-token',
+      value: accessToken,
+      domain: '.twitch.tv',
+      path: '/',
+      secure: true,
+      httpOnly: false,
+      sameSite: 'no_restriction'
+    });
+    
+    console.log('OAuth auth-token cookie set successfully');
+  } catch (error) {
+    console.error('Error setting OAuth cookies:', error);
+  }
 }
 
 async function setStreamCookies(cookies) {
@@ -1082,11 +1205,22 @@ function calculateTotalProgress(campaigns) {
 }
 
 app.whenReady().then(() => {
-  createMainWindow();
-  createTray();
+  createSplashWindow();
+  
+  // Создаем главное окно через небольшую задержку
+  setTimeout(() => {
+    createMainWindow();
+    createTray();
 
-  // Блокировать режим сна во время фарминга
-  powerSaveBlockerId = powerSaveBlocker.start('prevent-display-sleep');
+    if (app.isPackaged) {
+      autoUpdater.checkForUpdatesAndNotify();
+    } else {
+      console.log('[Updater] Skipping update check in dev mode');
+    }
+
+    // Блокировать режим сна во время фарминга
+    powerSaveBlockerId = powerSaveBlocker.start('prevent-display-sleep');
+  }, 500);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -1301,7 +1435,8 @@ ipcMain.handle('store-delete', (event, key) => {
 // Открытие стрима
 ipcMain.handle('open-stream', async (event, url, account = null) => {
   console.log('Stream requested:', url);
-  // Возвращаем данные для отображения
+  // Просто возвращаем данные для отображения в webview
+  // BrowserView не используется - webview в HTML обрабатывает отображение
   return { success: true, url, account };
 });
 
@@ -2353,25 +2488,36 @@ ipcMain.handle('claim-drop', async (event, dropInstanceID) => {
   return new Promise(async (resolve) => {
     console.log('Claiming drop:', dropInstanceID);
     
-    const { session } = require('electron');
-    const twitchSession = session.fromPartition('persist:twitch');
-    
     let authToken = null;
-    try {
-      const cookies = await twitchSession.cookies.get({ 
-        url: 'https://www.twitch.tv',
-        name: 'auth-token'
-      });
+    
+    // Сначала пробуем получить OAuth токен
+    const oauth = store.get('oauth');
+    if (oauth && oauth.accessToken) {
+      authToken = oauth.accessToken;
+      console.log('Using OAuth token for claim');
+    } else {
+      // Если нет OAuth, пробуем куки
+      const { session } = require('electron');
+      const twitchSession = session.fromPartition('persist:twitch');
       
-      if (cookies && cookies.length > 0) {
-        authToken = cookies[0].value;
+      try {
+        const cookies = await twitchSession.cookies.get({ 
+          url: 'https://www.twitch.tv',
+          name: 'auth-token'
+        });
+        
+        if (cookies && cookies.length > 0) {
+          authToken = cookies[0].value;
+          console.log('Using cookie token for claim');
+        }
+      } catch (e) {
+        console.error('Error getting cookie token:', e.message);
       }
-    } catch (e) {
-      console.error('Error getting cookie token:', e.message);
     }
     
     if (!authToken) {
-      resolve({ success: false, error: 'Требуется авторизация' });
+      console.error('No auth token found');
+      resolve({ success: false, error: 'Требуется авторизация в Twitch' });
       return;
     }
     

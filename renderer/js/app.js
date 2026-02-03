@@ -13,6 +13,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.electronAPI.closeWindow();
   });
 
+  // Обработчик закрытия приложения - останавливаем сессию
+  window.electronAPI.onAppClosing(() => {
+    console.log('[App] Application closing, stopping farming session...');
+    if (window.farmingPage) {
+      window.farmingPage.stopFarming();
+    }
+  });
+
   // Initialize router
   window.router = new Router();
 

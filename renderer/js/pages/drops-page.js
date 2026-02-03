@@ -17,6 +17,7 @@
       this.inventoryPageSize = 20;
       this.inventoryFilter = 'all'; // all, game, time
       this.inventoryGameFilter = null;
+      this.showAllGames = false; // Новое свойство для управления показом всех игр
       this.initialized = false;
       this.init();
     }
@@ -684,7 +685,7 @@
       
       // Создаем фильтры
       const filtersSection = document.createElement('div');
-      filtersSection.style.cssText = 'display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px;';
+      filtersSection.style.cssText = 'display: flex; gap: 8px; flex-wrap: nowrap; margin-bottom: 15px; overflow-x: auto; padding-bottom: 5px;';
       
       // Кнопка "Все"
       const allFilterBtn = document.createElement('button');
@@ -699,8 +700,13 @@
       };
       filtersSection.appendChild(allFilterBtn);
       
+      // Ограничиваем количество показываемых игр
+      const maxVisibleGames = 8;
+      const gamesToShow = this.showAllGames ? uniqueGames : uniqueGames.slice(0, maxVisibleGames);
+      const hasMoreGames = uniqueGames.length > maxVisibleGames;
+      
       // Кнопки для каждой игры
-      uniqueGames.forEach(game => {
+      gamesToShow.forEach(game => {
         const gameBtn = document.createElement('button');
         gameBtn.textContent = game;
         gameBtn.className = 'btn btn-secondary';
@@ -714,6 +720,62 @@
         };
         filtersSection.appendChild(gameBtn);
       });
+      
+      // Кнопка "Показать ещё" / "Скрыть" для игр
+      if (hasMoreGames) {
+        const toggleGamesBtn = document.createElement('button');
+        toggleGamesBtn.style.cssText = `
+          font-size: 12px; 
+          padding: 6px 12px; 
+          display: inline-flex; 
+          align-items: center; 
+          gap: 6px;
+          background: rgba(145,71,255,0.12);
+          border: 1px solid rgba(145,71,255,0.25);
+          color: var(--accent-color);
+          font-weight: 500;
+          cursor: pointer;
+          border-radius: 6px;
+          transition: all 0.2s;
+        `;
+        
+        const updateToggleGamesBtn = () => {
+          if (this.showAllGames) {
+            toggleGamesBtn.innerHTML = `
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="transform: rotate(180deg);">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+              <span>Скрыть</span>
+            `;
+          } else {
+            toggleGamesBtn.innerHTML = `
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+              <span>+${uniqueGames.length - maxVisibleGames}</span>
+            `;
+          }
+        };
+        
+        updateToggleGamesBtn();
+        
+        toggleGamesBtn.onmouseenter = () => {
+          toggleGamesBtn.style.background = 'rgba(145,71,255,0.2)';
+          toggleGamesBtn.style.borderColor = 'rgba(145,71,255,0.4)';
+        };
+        
+        toggleGamesBtn.onmouseleave = () => {
+          toggleGamesBtn.style.background = 'rgba(145,71,255,0.12)';
+          toggleGamesBtn.style.borderColor = 'rgba(145,71,255,0.25)';
+        };
+        
+        toggleGamesBtn.onclick = () => {
+          this.showAllGames = !this.showAllGames;
+          this.renderInventory(this.claimedDrops);
+        };
+        
+        filtersSection.appendChild(toggleGamesBtn);
+      }
       
       container.appendChild(filtersSection);
       
@@ -740,12 +802,42 @@
       
       container.appendChild(grid);
       
-      // Кнопка "Показать еще"
+      // Кнопка "Показать еще" для дропсов
       if (hasMore) {
         const loadMoreBtn = document.createElement('button');
-        loadMoreBtn.textContent = 'Показать ещё';
-        loadMoreBtn.className = 'btn btn-secondary';
-        loadMoreBtn.style.cssText = 'width: 200px; margin: 20px auto 0;';
+        loadMoreBtn.textContent = 'Показать ещё дропсы';
+        loadMoreBtn.style.cssText = `
+          width: 100%;
+          font-size: 14px; 
+          padding: 12px 16px; 
+          display: flex; 
+          align-items: center; 
+          justify-content: center;
+          gap: 8px;
+          background: rgba(145,71,255,0.08);
+          border: 1px solid rgba(145,71,255,0.2);
+          color: var(--accent-color);
+          font-weight: 600;
+          cursor: pointer;
+          border-radius: 8px;
+          transition: all 0.25s ease;
+          margin-top: 30px;
+        `;
+        
+        loadMoreBtn.onmouseenter = () => {
+          loadMoreBtn.style.background = 'rgba(145,71,255,0.15)';
+          loadMoreBtn.style.borderColor = 'rgba(145,71,255,0.4)';
+          loadMoreBtn.style.transform = 'translateY(-2px)';
+          loadMoreBtn.style.boxShadow = '0 4px 12px rgba(145,71,255,0.2)';
+        };
+        
+        loadMoreBtn.onmouseleave = () => {
+          loadMoreBtn.style.background = 'rgba(145,71,255,0.08)';
+          loadMoreBtn.style.borderColor = 'rgba(145,71,255,0.2)';
+          loadMoreBtn.style.transform = 'translateY(0)';
+          loadMoreBtn.style.boxShadow = 'none';
+        };
+        
         loadMoreBtn.onclick = () => {
           this.inventoryPage++;
           this.renderInventory(this.claimedDrops);
@@ -806,23 +898,36 @@
       const now = new Date();
       const past = new Date(dateString);
       const diffMs = now - past;
+      const diffMinutes = Math.floor(diffMs / (1000 * 60));
+      const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
       const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+      const diffWeeks = Math.floor(diffDays / 7);
       const diffMonths = Math.floor(diffDays / 30);
       const diffYears = Math.floor(diffDays / 365);
       
-      if (diffYears > 0) {
-        return diffYears === 1 ? '1 год назад' : `${diffYears} ${this.getPluralForm(diffYears, 'год', 'года', 'лет')} назад`;
-      } else if (diffMonths > 0) {
-        return diffMonths === 1 ? '1 месяц назад' : `${diffMonths} ${this.getPluralForm(diffMonths, 'месяц', 'месяца', 'месяцев')} назад`;
-      } else if (diffDays > 0) {
+      // До 2 часов - показываем как "Недавно"
+      if (diffMinutes < 120) {
+        return 'Недавно';
+      }
+      // До 48 часов - показываем часы
+      else if (diffHours < 48) {
+        return diffHours === 1 ? '1 час назад' : `${diffHours} ${this.getPluralForm(diffHours, 'час', 'часа', 'часов')} назад`;
+      }
+      // До недели - показываем дни
+      else if (diffDays < 7) {
         return diffDays === 1 ? '1 день назад' : `${diffDays} ${this.getPluralForm(diffDays, 'день', 'дня', 'дней')} назад`;
-      } else {
-        const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-        if (diffHours > 0) {
-          return diffHours === 1 ? '1 час назад' : `${diffHours} ${this.getPluralForm(diffHours, 'час', 'часа', 'часов')} назад`;
-        } else {
-          return 'Недавно';
-        }
+      }
+      // До месяца - показываем недели
+      else if (diffWeeks < 4) {
+        return diffWeeks === 1 ? '1 неделю назад' : `${diffWeeks} ${this.getPluralForm(diffWeeks, 'неделю', 'недели', 'недель')} назад`;
+      }
+      // До года - показываем месяцы
+      else if (diffMonths < 12) {
+        return diffMonths === 1 ? '1 месяц назад' : `${diffMonths} ${this.getPluralForm(diffMonths, 'месяц', 'месяца', 'месяцев')} назад`;
+      }
+      // Больше года - показываем годы
+      else {
+        return diffYears === 1 ? '1 год назад' : `${diffYears} ${this.getPluralForm(diffYears, 'год', 'года', 'лет')} назад`;
       }
     }
 

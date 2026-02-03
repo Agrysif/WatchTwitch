@@ -289,10 +289,17 @@ class FarmingPage {
       this.showFarmingState();
 
       this.updateSessionInfo();
-      if (this.sessionInterval) clearInterval(this.sessionInterval);
+      
+      // Очищаем старый интервал если он существует
+      if (this.sessionInterval) {
+        clearInterval(this.sessionInterval);
+        this.sessionInterval = null;
+      }
+      
       this.sessionInterval = setInterval(() => this.updateSessionInfo(), 1000);
 
       // Запускаем сборщик бонусов и проверку здоровья стрима
+      this.resetChannelPointsTracking();
       this.startBackgroundBonusCollector(stream.login);
       this.startStreamHealthCheck();
 
@@ -849,12 +856,21 @@ class FarmingPage {
       sessionInfo.style.display = 'block';
     }
     
+    // Очищаем старый интервал если он существует
+    if (this.sessionInterval) {
+      clearInterval(this.sessionInterval);
+      this.sessionInterval = null;
+    }
+    
     // Запускаем трекинг
     this.sessionStartTime = Date.now();
     this.updateSessionInfo();
     this.sessionInterval = setInterval(() => {
       this.updateSessionInfo();
     }, 1000);
+
+    // Сбрасываем трекинг баллов для нового стрима
+    this.resetChannelPointsTracking();
 
     // Сохраняем активную сессию
     await this.saveActiveSession(stream, category);
@@ -989,12 +1005,12 @@ class FarmingPage {
         const streams = await window.electronAPI.getStreamsWithDrops(nextCategory.name);
         
         if (!streams || streams.length === 0) {
-          console.warn('No streams found for category:', nextCategory.name, '- removing and trying next');
-          // Удаляем категорию без стримов из списка
-          this.categories = this.categories.filter(cat => cat.id !== nextCategory.id);
+          console.warn('No streams found for category:', nextCategory.name, '- disabling instead of removing');
+          // Отключаем категорию без стримов вместо удаления
+          nextCategory.enabled = false;
           await Storage.saveCategories(this.categories);
           this.renderCategories();
-          window.utils.showToast(`${nextCategory.name} удалена (нет стримов)`, 'info');
+          window.utils.showToast(`${nextCategory.name} отключена (нет стримов)`, 'info');
           continue; // Пробуем следующую категорию
         }
         
@@ -1014,6 +1030,7 @@ class FarmingPage {
         this.currentCategory = nextCategory;
         this.currentStream = stream;
         this.dropsMissingChecks = 0; // Сбрасываем счетчик проверок
+        this.resetChannelPointsTracking();
         this.updateCurrentStreamUI(stream, nextCategory);
         await this.saveActiveSession(stream, nextCategory);
         
@@ -1022,8 +1039,8 @@ class FarmingPage {
         return true;
       } catch (error) {
         console.error('Error switching to category:', nextCategory.name, error);
-        // Удаляем проблемную категорию и пробуем следующую
-        this.categories = this.categories.filter(cat => cat.id !== nextCategory.id);
+        // Отключаем проблемную категорию вместо удаления
+        nextCategory.enabled = false;
         await Storage.saveCategories(this.categories);
         this.renderCategories();
         window.utils.showToast(`${nextCategory.name} удалена (ошибка переключения)`, 'error');
@@ -1133,6 +1150,118 @@ class FarmingPage {
     const accounts = await Storage.getAccounts();
     if (accounts.length === 0) {
       window.utils.showToast('Добавьте хотя бы один аккаунт', 'warning');
+      if (window.router) {
+        window.router.navigate('accounts');
+      }
+      return;
+    }
+    
+    // Проверяем, есть ли хотя бы один активный аккаунт (OAuth)
+    const activeAccounts = accounts.filter(acc => acc.loginMethod === 'oauth');
+    if (activeAccounts.length === 0) {
+      window.utils.showToast('Для работы требуется OAuth авторизация', 'error');
+      
+      // Показываем модальное окно с инструкцией
+      const modal = document.createElement('div');
+      modal.className = 'auth-modal';
+      modal.innerHTML = `
+        <div class="auth-modal-overlay"></div>
+        <div class="auth-modal-content" style="width: 500px;">
+          <div class="auth-modal-header">
+            <h3>⚠️ Требуется OAuth авторизация</h3>
+          </div>
+          <div class="auth-modal-body">
+            <p style="color: var(--text-secondary); margin-bottom: 16px;">
+              Для корректной работы фарминга необходимо авторизоваться через Twitch OAuth.
+            </p>
+            <div style="background: rgba(145, 71, 255, 0.1); border: 1px solid rgba(145, 71, 255, 0.3); border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+              <div style="font-weight: 600; margin-bottom: 8px; color: var(--text-primary);">Что нужно сделать:</div>
+              <ol style="margin: 0; padding-left: 20px; color: var(--text-secondary); font-size: 14px;">
+                <li style="margin-bottom: 6px;">Перейдите на вкладку "Аккаунты"</li>
+                <li style="margin-bottom: 6px;">Нажмите "Войти через Twitch"</li>
+                <li style="margin-bottom: 6px;">Авторизуйтесь в браузере</li>
+                <li>Вернитесь в приложение и запустите фарминг</li>
+              </ol>
+            </div>
+            <div style="display: flex; gap: 12px;">
+              <button class="btn btn-primary" id="go-to-accounts" style="flex: 1;">Перейти к аккаунтам</button>
+              <button class="btn btn-secondary" id="close-modal" style="flex: 1;">Закрыть</button>
+            </div>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+      
+      modal.querySelector('#go-to-accounts').addEventListener('click', () => {
+        document.body.removeChild(modal);
+        if (window.router) {
+          window.router.navigate('accounts');
+        }
+      });
+      
+      modal.querySelector('#close-modal').addEventListener('click', () => {
+        document.body.removeChild(modal);
+      });
+      
+      modal.querySelector('.auth-modal-overlay').addEventListener('click', () => {
+        document.body.removeChild(modal);
+      });
+      
+      return;
+    }
+    
+    // Проверяем вход в Twitch
+    const loggedInAccounts = activeAccounts.filter(acc => acc.twitchLoggedIn);
+    if (loggedInAccounts.length === 0) {
+      window.utils.showToast('Требуется вход в Twitch', 'error');
+      
+      // Показываем модальное окно с инструкцией
+      const modal = document.createElement('div');
+      modal.className = 'auth-modal';
+      modal.innerHTML = `
+        <div class="auth-modal-overlay"></div>
+        <div class="auth-modal-content" style="width: 500px;">
+          <div class="auth-modal-header">
+            <h3>🔐 Требуется вход в Twitch</h3>
+          </div>
+          <div class="auth-modal-body">
+            <p style="color: var(--text-secondary); margin-bottom: 16px;">
+              Для фарминга дропсов и баллов канала необходимо войти в Twitch через приложение.
+            </p>
+            <div style="background: rgba(145, 71, 255, 0.1); border: 1px solid rgba(145, 71, 255, 0.3); border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+              <div style="font-weight: 600; margin-bottom: 8px; color: var(--text-primary);">Что нужно сделать:</div>
+              <ol style="margin: 0; padding-left: 20px; color: var(--text-secondary); font-size: 14px;">
+                <li style="margin-bottom: 6px;">Перейдите на вкладку "Аккаунты"</li>
+                <li style="margin-bottom: 6px;">Найдите свой аккаунт</li>
+                <li style="margin-bottom: 6px;">Нажмите кнопку "Войти в Twitch" (иконка Twitch)</li>
+                <li style="margin-bottom: 6px;">Войдите в аккаунт в открывшемся окне</li>
+                <li>Нажмите "Проверить авторизацию"</li>
+              </ol>
+            </div>
+            <div style="display: flex; gap: 12px;">
+              <button class="btn btn-primary" id="go-to-accounts" style="flex: 1;">Перейти к аккаунтам</button>
+              <button class="btn btn-secondary" id="close-modal" style="flex: 1;">Закрыть</button>
+            </div>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+      
+      modal.querySelector('#go-to-accounts').addEventListener('click', () => {
+        document.body.removeChild(modal);
+        if (window.router) {
+          window.router.navigate('accounts');
+        }
+      });
+      
+      modal.querySelector('#close-modal').addEventListener('click', () => {
+        document.body.removeChild(modal);
+      });
+      
+      modal.querySelector('.auth-modal-overlay').addEventListener('click', () => {
+        document.body.removeChild(modal);
+      });
+      
       return;
     }
 
@@ -1222,6 +1351,12 @@ class FarmingPage {
     // Mark global farming active for other modules (e.g., mini-player)
     if (window.streamingManager) {
       try { window.streamingManager.isFarming = true; } catch (e) {}
+    }
+    
+    // Очищаем старый интервал если он существует
+    if (this.sessionInterval) {
+      clearInterval(this.sessionInterval);
+      this.sessionInterval = null;
     }
     
     this.sessionInterval = setInterval(() => {
@@ -1577,6 +1712,13 @@ class FarmingPage {
             this.currentCategory = null;
             await Storage.saveCategories(this.categories);
             this.renderCategories();
+          } else {
+            // Пользовательские категории отключаем вместо удаления
+            console.log('Category completed, disabling:', this.currentCategory.name);
+            this.currentCategory.enabled = false;
+            await Storage.saveCategories(this.categories);
+            this.renderCategories();
+            this.currentCategory = null;
           }
           
           // Переключаемся на следующую категорию
@@ -1595,18 +1737,26 @@ class FarmingPage {
   async handleCategoryNoDrops() {
     if (!this.currentCategory) return;
 
-    console.warn('No drops visible for category, removing from list...', this.currentCategory.name);
+    console.warn('No drops visible for category, disabling from list...', this.currentCategory.name);
     
-    // Удаляем категорию без дропсов из списка (не только автокатегории)
+    // Отключаем категорию без дропсов (не удаляем)
     const categoryName = this.currentCategory.name;
-    this.categories = this.categories.filter(cat => cat.id !== this.currentCategory.id);
+    
+    if (this.currentCategory.autoDrops) {
+      // Авто-категории можем удалить
+      this.categories = this.categories.filter(cat => cat.id !== this.currentCategory.id);
+    } else {
+      // Пользовательские категории отключаем
+      this.currentCategory.enabled = false;
+    }
+    
     this.currentCategory = null;
     this.dropsMissingChecks = 0;
 
     await Storage.saveCategories(this.categories);
     this.renderCategories();
     
-    window.utils.showToast(`${categoryName} удалена (дропсы не найдены)`, 'warning');
+    window.utils.showToast(`${categoryName} отключена (дропсы не найдены)`, 'warning');
 
     // Переключаемся на следующую доступную категорию
     const switched = await this.switchToNextEnabledCategory();
@@ -1922,6 +2072,9 @@ class FarmingPage {
       const embedUrl = `https://player.twitch.tv/?channel=${stream.login}&parent=localhost&muted=true&quality=160p30`;
       player.src = embedUrl;
       
+      // Автоматически обрабатываем mature content warning
+      this.setupMatureContentHandler(player);
+      
       // Устанавливаем низкое качество при загрузке плеера
       player.addEventListener('dom-ready', () => {
         // Пробуем установить качество через JavaScript injection
@@ -1975,6 +2128,15 @@ class FarmingPage {
       document.getElementById('stream-channel').textContent = stream.displayName;
       document.getElementById('stream-game').textContent = `Игра: ${category.name}`;
       document.getElementById('stream-title').textContent = stream.title || 'Без названия';
+      
+// Отображаем теги если они есть
+          const categoryEl = document.getElementById('stream-category');
+          if (categoryEl && stream.tags && stream.tags.length > 0) {
+            categoryEl.textContent = stream.tags.join(' · ');
+            categoryEl.style.display = 'inline-block';
+          } else if (categoryEl) {
+            categoryEl.style.display = 'none';
+      }
       
       // Отображаем обложку игры
       const gameCover = document.getElementById('stream-game-cover');
@@ -2370,21 +2532,38 @@ class FarmingPage {
     if (!viewersEl || !canvas) return;
     
     const ctx = canvas.getContext('2d');
+    let isShowing = false;
     
-    viewersEl.addEventListener('mouseenter', () => {
+    // Расширяем область срабатывания - берём весь родительский контейнер со статистикой
+    const statsContainer = viewersEl.closest('[style*="text-align: center"]')?.parentElement;
+    const targetElement = statsContainer || viewersEl.parentElement || viewersEl;
+    
+    const showChart = () => {
+      if (isShowing) return;
+      isShowing = true;
+      
+      const rect = viewersEl.getBoundingClientRect();
+      // Позиционируем СЛЕВА от элемента
+      canvas.style.left = Math.max(10, rect.left - 420) + 'px';
+      canvas.style.top = Math.max(10, rect.top - 60) + 'px';
       canvas.style.display = 'block';
       this.drawViewersChart(ctx);
-    });
+    };
     
-    viewersEl.addEventListener('mousemove', (e) => {
-      canvas.style.left = (e.clientX + 15) + 'px';
-      canvas.style.top = (e.clientY - 60) + 'px';
-      this.drawViewersChart(ctx);
-    });
-    
-    viewersEl.addEventListener('mouseleave', () => {
+    const hideChart = () => {
+      isShowing = false;
       canvas.style.display = 'none';
+    };
+    
+    targetElement.addEventListener('mouseenter', showChart);
+    targetElement.addEventListener('mouseleave', hideChart);
+    
+    // Также следим за canvas чтобы не скрывался если мышь на нём
+    canvas.addEventListener('mouseenter', () => {
+      isShowing = true;
     });
+    
+    canvas.addEventListener('mouseleave', hideChart);
   }
   
   drawViewersChart(ctx) {
@@ -2393,7 +2572,13 @@ class FarmingPage {
     const canvas = ctx.canvas;
     const width = canvas.width;
     const height = canvas.height;
-    const padding = 30;
+    const outerPadding = 16;
+    const topArea = 34;
+    const bottomArea = 46;
+    const chartLeft = outerPadding + 8;
+    const chartRight = width - outerPadding - 8;
+    const chartTop = outerPadding + topArea;
+    const chartBottom = height - outerPadding - bottomArea;
     
     // Очищаем canvas
     ctx.clearRect(0, 0, width, height);
@@ -2406,21 +2591,32 @@ class FarmingPage {
     
     // Функция для получения координат точки
     const getPoint = (i) => {
-      const x = padding + (i / (this.viewersHistory.length - 1)) * (width - padding * 2);
-      const y = height - padding - ((this.viewersHistory[i].count - min) / range) * (height - padding * 2);
+      const x = chartLeft + (i / (this.viewersHistory.length - 1)) * (chartRight - chartLeft);
+      const y = chartBottom - ((this.viewersHistory[i].count - min) / range) * (chartBottom - chartTop);
       return { x, y };
     };
     
     // Создаем градиент для заливки
-    const gradient = ctx.createLinearGradient(0, padding, 0, height - padding);
+    const gradient = ctx.createLinearGradient(0, chartTop, 0, chartBottom);
     gradient.addColorStop(0, 'rgba(145, 71, 255, 0.35)');
     gradient.addColorStop(0.6, 'rgba(145, 71, 255, 0.15)');
     gradient.addColorStop(1, 'rgba(145, 71, 255, 0.02)');
     
+    // Сетка
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= 3; i++) {
+      const y = chartTop + (i / 3) * (chartBottom - chartTop);
+      ctx.beginPath();
+      ctx.moveTo(chartLeft, y);
+      ctx.lineTo(chartRight, y);
+      ctx.stroke();
+    }
+
     // Заливка под графиком с плавными кривыми
     ctx.fillStyle = gradient;
     ctx.beginPath();
-    ctx.moveTo(padding, height - padding);
+    ctx.moveTo(chartLeft, chartBottom);
     
     // Первая точка
     const firstPoint = getPoint(0);
@@ -2439,7 +2635,7 @@ class FarmingPage {
       ctx.bezierCurveTo(cpX, cpY1, cpX, cpY2, next.x, next.y);
     }
     
-    ctx.lineTo(width - padding, height - padding);
+    ctx.lineTo(chartRight, chartBottom);
     ctx.closePath();
     ctx.fill();
     
@@ -2470,17 +2666,65 @@ class FarmingPage {
     ctx.stroke();
     ctx.shadowBlur = 0;
     
-    // Текст с значениями
-    ctx.fillStyle = '#fff';
-    ctx.font = '12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-    ctx.textAlign = 'left';
-    ctx.fillText(`Макс: ${max.toLocaleString()}`, 12, 20);
-    ctx.fillText(`Мин: ${min.toLocaleString()}`, 12, height - 12);
-    
     // Заголовок
-    ctx.font = 'bold 14px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.font = '600 15px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('Динамика зрителей', width / 2, 20);
+    ctx.fillStyle = '#efeff1';
+    ctx.fillText('Динамика зрителей', width / 2, outerPadding + 16);
+
+    // Нижняя панель со значениями
+    const barWidth = width - outerPadding * 2;
+    const barHeight = 30;
+    const barX = outerPadding;
+    const barY = height - outerPadding - barHeight;
+    const segment = barWidth / 3;
+
+    const drawRoundRect = (x, y, w, h, r) => {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.lineTo(x + w - r, y);
+      ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+      ctx.lineTo(x + w, y + h - r);
+      ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+      ctx.lineTo(x + r, y + h);
+      ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+      ctx.lineTo(x, y + r);
+      ctx.quadraticCurveTo(x, y, x + r, y);
+      ctx.closePath();
+    };
+
+    drawRoundRect(barX, barY, barWidth, barHeight, 8);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.06)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+    ctx.stroke();
+
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(barX + segment, barY + 6);
+    ctx.lineTo(barX + segment, barY + barHeight - 6);
+    ctx.moveTo(barX + segment * 2, barY + 6);
+    ctx.lineTo(barX + segment * 2, barY + barHeight - 6);
+    ctx.stroke();
+
+    const current = this.viewersHistory[this.viewersHistory.length - 1];
+    const stats = [
+      { label: 'Макс', value: max.toLocaleString(), color: '#adadb8' },
+      { label: 'Мин', value: min.toLocaleString(), color: '#adadb8' },
+      { label: 'Сейчас', value: current.count.toLocaleString(), color: '#00e57a' }
+    ];
+
+    stats.forEach((item, i) => {
+      const cx = barX + segment * i + segment / 2;
+      ctx.textAlign = 'center';
+      ctx.font = '11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+      ctx.fillStyle = '#8f9099';
+      ctx.fillText(item.label, cx, barY + 12);
+      ctx.font = 'bold 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+      ctx.fillStyle = item.color;
+      ctx.fillText(item.value, cx, barY + 26);
+    });
   }
 
   // === Навигация между стримами и категориями ===
@@ -2563,16 +2807,16 @@ class FarmingPage {
       const stream = streams[0];
       this.currentCategory = prevCategory;
       this.currentStream = stream;
+      this.resetChannelPointsTracking();
       
       const player = document.getElementById('twitch-player');
       if (player) {
         player.src = `https://player.twitch.tv/?channel=${stream.login}&parent=localhost&muted=true`;
       }
       
-      // Обновляем чат если он открыт
-      const chatContainer = document.getElementById('twitch-chat-container');
+      // Обновляем URL чата (даже если скрыт) для корректной загрузки при открытии
       const chatWebview = document.getElementById('twitch-chat');
-      if (chatContainer && chatContainer.style.display !== 'none' && chatWebview) {
+      if (chatWebview) {
         chatWebview.src = `https://www.twitch.tv/embed/${stream.login}/chat?parent=localhost&darkpopout`;
       }
       
@@ -2629,16 +2873,16 @@ class FarmingPage {
       const stream = streams[0];
       this.currentCategory = nextCategory;
       this.currentStream = stream;
+      this.resetChannelPointsTracking();
       
       const player = document.getElementById('twitch-player');
       if (player) {
         player.src = `https://player.twitch.tv/?channel=${stream.login}&parent=localhost&muted=true`;
       }
       
-      // Обновляем чат если он открыт
-      const chatContainer = document.getElementById('twitch-chat-container');
+      // Обновляем URL чата (даже если скрыт) для корректной загрузки при открытии
       const chatWebview = document.getElementById('twitch-chat');
-      if (chatContainer && chatContainer.style.display !== 'none' && chatWebview) {
+      if (chatWebview) {
         chatWebview.src = `https://www.twitch.tv/embed/${stream.login}/chat?parent=localhost&darkpopout`;
       }
       
@@ -2653,32 +2897,44 @@ class FarmingPage {
   }
 
   toggleChat() {
-    if (!this.currentStream || !this.sessionStartTime) {
-      window.utils.showToast('Нет активного стрима', 'warning');
-      return;
-    }
-
+    // Сначала проверяем наличие необходимых элементов
+    const playerContainer = document.getElementById('twitch-player-container');
     const chatContainer = document.getElementById('twitch-chat-container');
     const chatWebview = document.getElementById('twitch-chat');
     const grid = document.getElementById('player-chat-grid');
     
-    if (!chatContainer || !chatWebview || !grid) {
+    if (!playerContainer || !chatContainer || !chatWebview || !grid) {
       window.utils.showToast('Чат не найден', 'error');
       return;
     }
 
-    const channel = this.currentStream.login;
+    // Проверяем видим ли контейнер плеера (значит стрим активен)
+    if (playerContainer.style.display === 'none') {
+      window.utils.showToast('Нет активного стрима', 'warning');
+      return;
+    }
+
+    const channel = this.currentStream?.login;
+    
+    if (!channel) {
+      window.utils.showToast('Нет активного стрима', 'warning');
+      return;
+    }
     
     // Переключаем видимость чата
     if (chatContainer.style.display === 'none') {
-      // Показываем чат с анимацией (чат уже загружен в фоне)
-      // Если src пустой, загружаем чат
-      if (!chatWebview.src) {
-        chatWebview.src = `https://www.twitch.tv/embed/${channel}/chat?parent=localhost&darkpopout`;
-      }
-      
+      // Показываем чат с анимацией
       chatContainer.style.display = 'block';
       grid.style.gridTemplateColumns = '1fr 340px'; // Плеер + Чат
+      
+      // Загружаем/перезагружаем чат если он не загружен
+      const chatUrl = `https://www.twitch.tv/embed/${channel}/chat?parent=localhost&darkpopout`;
+      if (!chatWebview.src || chatWebview.src !== chatUrl) {
+        chatWebview.src = chatUrl;
+      } else {
+        // Если URL одинаковый, перезагружаем webview
+        chatWebview.reload?.();
+      }
       
       // Запускаем анимацию появления
       setTimeout(() => {
@@ -2791,14 +3047,14 @@ class FarmingPage {
 
     // Обновляем текущий стрим
     this.currentStream = stream;
+    this.resetChannelPointsTracking();
     
     // Переключаем плеер (используем player.twitch.tv без чата)
     player.src = `https://player.twitch.tv/?channel=${stream.login}&parent=localhost&muted=true`;
     
-    // Обновляем чат если он открыт
-    const chatContainer = document.getElementById('twitch-chat-container');
+    // Обновляем URL чата (даже если скрыт) для корректной загрузки при открытии
     const chatWebview = document.getElementById('twitch-chat');
-    if (chatContainer && chatContainer.style.display !== 'none' && chatWebview) {
+    if (chatWebview) {
       chatWebview.src = `https://www.twitch.tv/embed/${stream.login}/chat?parent=localhost&darkpopout`;
     }
     
@@ -2807,6 +3063,74 @@ class FarmingPage {
     
     // Обновляем статистику
     this.startStreamStatsUpdate(stream.login);
+    
+    // Автоматически кликаем на кнопку Continue Watching если появится mature content warning
+    this.setupMatureContentHandler(player);
+  }
+  
+  setupMatureContentHandler(player) {
+    if (!player) return;
+    
+    // Ждем загрузки страницы
+    const checkMatureContent = () => {
+      player.executeJavaScript(`
+        (function() {
+          // Ищем кнопку "Continue Watching" или "Start Watching"
+          const selectors = [
+            'button[data-a-target="player-overlay-mature-accept"]',
+            'button[data-a-target="content-classification-gate-overlay-start-watching-button"]',
+            'button:has-text("Start Watching")',
+            'button:has-text("Continue Watching")',
+            'button[class*="consent-banner"] button[class*="primary"]',
+            'button[aria-label*="Start Watching"]',
+            'button[aria-label*="Continue"]'
+          ];
+          
+          for (const selector of selectors) {
+            try {
+              const button = document.querySelector(selector);
+              if (button && button.offsetParent) {
+                console.log('✅ Found mature content button, clicking...', selector);
+                button.click();
+                return true;
+              }
+            } catch (e) {}
+          }
+          
+          // Проверяем текст кнопок
+          const allButtons = document.querySelectorAll('button');
+          for (const btn of allButtons) {
+            const text = (btn.textContent || btn.innerText || '').toLowerCase();
+            if (text.includes('start watching') || 
+                text.includes('continue watching') ||
+                text.includes('i understand')) {
+              console.log('✅ Found mature content button by text, clicking...', text);
+              btn.click();
+              return true;
+            }
+          }
+          
+          return false;
+        })();
+      `).catch(e => console.log('Error checking mature content:', e));
+    };
+    
+    // Проверяем сразу после загрузки
+    player.addEventListener('dom-ready', () => {
+      setTimeout(checkMatureContent, 2000);
+      // Проверяем повторно через 5 секунд
+      setTimeout(checkMatureContent, 5000);
+    }, { once: true });
+    
+    // Также проверяем периодически в течение первой минуты
+    let checks = 0;
+    const intervalId = setInterval(() => {
+      checks++;
+      checkMatureContent();
+      if (checks >= 6) { // 6 проверок = 1 минута
+        clearInterval(intervalId);
+      }
+    }, 10000);
   }
 
   startBonusAutoCollector(chatWebview) {
@@ -3035,7 +3359,7 @@ class FarmingPage {
       // Используем новый API метод вместо парсинга DOM
       const result = await window.electronAPI.getChannelPoints(this.currentStream.login);
       
-      if (result && !result.error && result.points > 0) {
+      if (result && !result.error && typeof result.points === 'number') {
         const newTotal = result.points;
         
         // Если это первое значение, просто сохраняем
@@ -3043,6 +3367,7 @@ class FarmingPage {
           this.channelPoints.startTotal = newTotal;
           this.channelPoints.currentTotal = newTotal;
           console.log('Initial channel points:', newTotal);
+          this.updateChannelPointsUI();
         } else if (newTotal !== this.channelPoints.currentTotal) {
           // Обновляем текущее значение
           const earnedSinceStart = newTotal - this.channelPoints.startTotal;
@@ -3091,6 +3416,18 @@ class FarmingPage {
     }
   }
   
+  resetChannelPointsTracking() {
+    this.channelPoints = {
+      startTotal: 0,
+      currentTotal: 0,
+      earnedThisStream: 0,
+      passiveEarned: 0,
+      chestsCollected: 0,
+      chestsPoints: 0
+    };
+    this.updateChannelPointsUI();
+  }
+  
   // Проверка состояния трансляции
   startStreamHealthCheck() {
     // Останавливаем предыдущий интервал если есть
@@ -3101,7 +3438,7 @@ class FarmingPage {
     // Счетчик неудачных проверок
     this.streamHealthFailCount = 0;
     
-    // Проверяем каждые 15 секунд
+    // Проверяем каждые 10 секунд (более агрессивно)
     this.streamHealthCheckInterval = setInterval(async () => {
       if (!this.currentStream || !this.currentCategory) return;
       
@@ -3114,20 +3451,49 @@ class FarmingPage {
         } else {
           // Проверяем состояние загрузки webview
           try {
-            const isLoading = await player.executeJavaScript('document.readyState !== "complete"');
-            const hasError = await player.executeJavaScript(`
+            // Проверяем на ошибки, оффлайн, черный экран
+            const hasIssue = await player.executeJavaScript(`
               (function() {
+                // Проверяем ошибки
                 const errorElements = document.querySelectorAll('[class*="error"], [class*="Error"], [data-test-selector*="error"]');
-                const offlineElements = document.querySelectorAll('[class*="offline"], [class*="Offline"]');
-                return errorElements.length > 0 || offlineElements.length > 0;
+                const offlineElements = document.querySelectorAll('[class*="offline"], [class*="Offline"], [data-a-target*="offline"]');
+                
+                if (errorElements.length > 0 || offlineElements.length > 0) {
+                  console.log('❌ Stream error detected:', errorElements.length + offlineElements.length, 'elements');
+                  return true;
+                }
+                
+                // Проверяем черный экран - нет видео элемента или он не играет
+                const video = document.querySelector('video');
+                if (video) {
+                  // Проверяем что видео действительно играет
+                  const isPlaying = !video.paused && !video.ended && video.readyState > 2;
+                  const hasBlackScreen = video.videoWidth === 0 || video.videoHeight === 0;
+                  
+                  if (!isPlaying || hasBlackScreen) {
+                    console.log('❌ Video issue:', { 
+                      paused: video.paused, 
+                      ended: video.ended, 
+                      readyState: video.readyState,
+                      width: video.videoWidth,
+                      height: video.videoHeight
+                    });
+                    return true;
+                  }
+                } else {
+                  console.log('❌ No video element found');
+                  return true;
+                }
+                
+                return false;
               })()
             `);
             
-            if (hasError) {
-              console.warn('Stream error detected');
+            if (hasIssue) {
+              console.warn('Stream health issue detected');
               this.streamHealthFailCount++;
-            } else if (!isLoading) {
-              // Стрим загрузился успешно
+            } else {
+              // Стрим загрузился и играет успешно
               this.streamHealthFailCount = 0;
             }
           } catch (e) {
@@ -3136,10 +3502,10 @@ class FarmingPage {
           }
         }
         
-        // Если 3 проверки подряд провалились - переключаемся на другой стрим
-        if (this.streamHealthFailCount >= 3) {
-          console.warn('Stream health check failed 3 times, switching to another stream...');
-          window.utils.showToast('Стрим не загружается, переключение...', 'warning');
+        // Если 2 проверки подряд провалились - переключаемся на другой стрим (быстрее реакция)
+        if (this.streamHealthFailCount >= 2) {
+          console.warn('Stream health check failed 2 times, switching to another stream...');
+          window.utils.showToast('Стрим недоступен, переключение...', 'warning');
           this.streamHealthFailCount = 0;
           
           // Переключаемся на другой стрим той же категории
@@ -3148,7 +3514,7 @@ class FarmingPage {
       } catch (error) {
         console.error('Error in stream health check:', error);
       }
-    }, 15000); // Каждые 15 секунд
+    }, 10000); // Каждые 10 секунд (более частая проверка)
   }
   
   // Форматирование оставшегося времени

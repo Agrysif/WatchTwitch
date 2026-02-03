@@ -7,6 +7,7 @@ class SettingsPage {
   init() {
     this.render();
     this.setupEventListeners();
+    this.loadAppVersion();
   }
 
   render() {
@@ -145,6 +146,21 @@ class SettingsPage {
             </button>
           </div>
         </div>
+
+        <!-- Обновления -->
+        <div class="settings-section">
+          <h2 class="settings-section-title">⬆️ Обновления</h2>
+          
+          <div class="settings-item">
+            <div class="settings-item-info">
+              <div class="settings-item-label">Версия приложения</div>
+              <div class="settings-item-description" id="setting-app-version">—</div>
+            </div>
+            <button class="btn btn-secondary" id="check-updates-btn">
+              Проверить обновления
+            </button>
+          </div>
+        </div>
       </div>
     `;
   }
@@ -265,6 +281,32 @@ class SettingsPage {
         navigator.clipboard.writeText(data);
         window.utils.showToast('📋 Настройки скопированы в буфер обмена', 'success');
       });
+    }
+
+    // Проверка обновлений
+    const checkUpdatesBtn = document.getElementById('check-updates-btn');
+    if (checkUpdatesBtn) {
+      checkUpdatesBtn.addEventListener('click', () => {
+        if (window.electronAPI?.checkForUpdates) {
+          window.electronAPI.checkForUpdates();
+          window.utils.showToast('🔍 Проверяем обновления...', 'info');
+        } else {
+          window.utils.showToast('Обновления недоступны в этом режиме', 'warning');
+        }
+      });
+    }
+  }
+
+  async loadAppVersion() {
+    const versionEl = document.getElementById('setting-app-version');
+    if (!versionEl) return;
+    try {
+      if (window.electronAPI?.getAppVersion) {
+        const version = await window.electronAPI.getAppVersion();
+        versionEl.textContent = `v${version}`;
+      }
+    } catch (e) {
+      versionEl.textContent = '—';
     }
   }
 }
