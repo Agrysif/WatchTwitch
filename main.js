@@ -14,14 +14,6 @@ autoUpdater.allowDowngrade = false;
 autoUpdater.autoDownload = false;
 autoUpdater.autoInstallOnAppQuit = true;
 
-// Явно указываем источник обновлений
-autoUpdater.setFeedURL({
-  provider: 'github',
-  owner: 'Agrysif',
-  repo: 'WatchTwitch',
-  releaseType: 'release'
-});
-
 // OAuth конфигурация
 const TWITCH_CLIENT_ID = 'bi12b5gk5g141jl2yqkng1wj2k9a8s';
 const TWITCH_CLIENT_SECRET = 'nd1s075j85k1mykza17l6xvp5xc1mc';
@@ -179,12 +171,10 @@ let updateInfo = null;
 
 autoUpdater.on('checking-for-update', () => {
   console.log('[Updater] Проверка обновлений...');
-  console.log('[Updater] Текущая версия:', app.getVersion());
 });
 
 autoUpdater.on('update-available', (info) => {
   console.log('[Updater] Доступно обновление:', info.version);
-  console.log('[Updater] Релиз дата:', info.releaseDate);
   updateInfo = info;
   if (mainWindow) {
     mainWindow.webContents.send('update-available', {
@@ -197,13 +187,10 @@ autoUpdater.on('update-available', (info) => {
 
 autoUpdater.on('update-not-available', () => {
   console.log('[Updater] Обновление не требуется');
-  console.log('[Updater] Текущая версия:', app.getVersion());
 });
 
 autoUpdater.on('error', (error) => {
   console.error('[Updater] Ошибка при проверке обновлений:', error);
-  console.error('[Updater] Error message:', error.message);
-  console.error('[Updater] Error stack:', error.stack);
   if (mainWindow) {
     mainWindow.webContents.send('update-error', error.message);
   }
@@ -1338,7 +1325,7 @@ app.whenReady().then(() => {
     createTray();
 
     if (app.isPackaged) {
-      autoUpdater.checkForUpdatesAndNotify();
+      autoUpdater.checkForUpdates();
     } else {
       console.log('[Updater] Skipping update check in dev mode');
     }

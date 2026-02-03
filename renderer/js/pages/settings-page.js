@@ -378,7 +378,17 @@ class SettingsPage {
     // Проверка обновлений
     const checkUpdatesBtn = document.getElementById('check-updates-btn');
     if (checkUpdatesBtn) {
-      checkUpdatesBtn.addEventListener('click', () => {
+      checkUpdatesBtn.addEventListener('click', (event) => {
+        if (event?.shiftKey) {
+          if (window.UpdateManager?.simulateUpdate) {
+            window.UpdateManager.simulateUpdate('test');
+            window.utils.showToast('🧪 Тестовое обновление показано', 'info');
+          } else {
+            window.utils.showToast('Тест недоступен (нет UpdateManager)', 'warning');
+          }
+          return;
+        }
+
         if (window.electronAPI?.checkForUpdates) {
           window.electronAPI.checkForUpdates();
           window.utils.showToast('🔍 Проверяем обновления...', 'info');

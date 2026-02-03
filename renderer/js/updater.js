@@ -54,7 +54,7 @@ const UpdateManager = {
       });
 
       // Download progress
-      window.electronAPI.onDownloadProgress?.((data) => {
+      window.electronAPI.onUpdateProgress?.((data) => {
         this.updateDownloadProgress(data);
       });
 
@@ -129,6 +129,11 @@ const UpdateManager = {
 
     this.showOverlay();
     this.showNotificationBadge();
+  }
+
+  simulateUpdate(version = 'test') {
+    this.newVersion = version;
+    this.showUpdateAvailable();
   }
 
   updateDownloadProgress(data) {
@@ -209,6 +214,9 @@ const UpdateManager = {
     this.notificationBadge.style.display = 'none';
   }
 };
+
+// Make available for debug/test actions
+window.UpdateManager = UpdateManager;
 
 // Initialize when DOM is ready
 if (document.readyState === 'loading') {

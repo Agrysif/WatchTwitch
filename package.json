@@ -1,6 +1,6 @@
 {
   "name": "watchtwitch",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "description": "Twitch Drops farming application",
   "main": "main.js",
   "scripts": {
