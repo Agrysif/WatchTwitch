@@ -2,6 +2,11 @@
 
 Автоматическое приложение для сбора дропсов на платформе Twitch.
 
+<img width="1916" height="1033" alt="image" src="https://github.com/user-attachments/assets/5b882f2c-4ecc-4bc9-8f63-eb75d86279ac" /> <img width="1917" height="1028" alt="image" src="https://github.com/user-attachments/assets/bf8944b0-8b06-43d7-8b0f-2c3cb0e51227" />
+
+
+
+
 ## Возможности
 
 - 🎮 Автоматический фарминг дропсов с Twitch
