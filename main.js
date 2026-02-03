@@ -13,7 +13,6 @@ const store = new Store();
 autoUpdater.allowDowngrade = false;
 autoUpdater.autoDownload = false;
 autoUpdater.autoInstallOnAppQuit = true;
-autoUpdater.checkForUpdatesAndNotify = false;
 
 // Явно указываем источник обновлений
 autoUpdater.setFeedURL({
