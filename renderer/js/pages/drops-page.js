@@ -27,7 +27,8 @@
       
       // Проверяем авторизацию
       try {
-        const user = await window.electronAPI.getOAuthUser();
+        const oauthData = await window.electronAPI.getOAuthUser();
+        const user = oauthData?.user; // Извлекаем user из новой структуры
         console.log('DropsPage user:', user ? 'authorized' : 'not authorized');
         
         const authSection = document.getElementById('authSection');
@@ -92,7 +93,7 @@
           }
         }
         if (tabsContainer) {
-          tabsContainer.style.display = 'block';
+          tabsContainer.style.display = 'flex';
           console.log('Showing tabs container');
         }
         if (progressTab) {
@@ -117,12 +118,12 @@
     }
 
     setupTabs() {
-      document.querySelectorAll('.tab-button').forEach(button => {
+      document.querySelectorAll('.drops-tab-button').forEach(button => {
         button.addEventListener('click', () => {
           const tab = button.getAttribute('data-tab');
           
           // Обновляем кнопки
-          document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+          document.querySelectorAll('.drops-tab-button').forEach(btn => btn.classList.remove('active'));
           button.classList.add('active');
           
           // Показываем нужный таб
@@ -685,13 +686,13 @@
       
       // Создаем фильтры
       const filtersSection = document.createElement('div');
-      filtersSection.style.cssText = 'display: flex; gap: 8px; flex-wrap: nowrap; margin-bottom: 15px; overflow-x: auto; padding-bottom: 5px;';
+      filtersSection.style.cssText = 'display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 15px;';
       
       // Кнопка "Все"
       const allFilterBtn = document.createElement('button');
       allFilterBtn.textContent = 'Все';
       allFilterBtn.className = 'btn btn-secondary';
-      allFilterBtn.style.cssText = `font-size: 12px; padding: 6px 12px; ${this.inventoryFilter === 'all' ? 'background: rgba(145,71,255,0.5);' : ''}`;
+      allFilterBtn.style.cssText = `font-size: 12px; padding: 6px 12px; white-space: nowrap; ${this.inventoryFilter === 'all' ? 'background: rgba(145,71,255,0.5);' : ''}`;
       allFilterBtn.onclick = () => {
         this.inventoryFilter = 'all';
         this.inventoryGameFilter = null;
@@ -711,7 +712,7 @@
         gameBtn.textContent = game;
         gameBtn.className = 'btn btn-secondary';
         const isActive = this.inventoryFilter === 'game' && this.inventoryGameFilter === game;
-        gameBtn.style.cssText = `font-size: 12px; padding: 6px 12px; ${isActive ? 'background: rgba(145,71,255,0.5);' : ''}`;
+        gameBtn.style.cssText = `font-size: 12px; padding: 6px 12px; white-space: nowrap; ${isActive ? 'background: rgba(145,71,255,0.5);' : ''}`;
         gameBtn.onclick = () => {
           this.inventoryFilter = 'game';
           this.inventoryGameFilter = game;

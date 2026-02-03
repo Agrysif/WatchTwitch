@@ -5,6 +5,7 @@ class Router {
       farming: './pages/farming.html',
       accounts: './pages/accounts.html',
       drops: './pages/drops.html',
+      subscriptions: './pages/subscriptions.html',
       statistics: './pages/statistics.html',
       settings: './pages/settings.html'
     };
@@ -342,6 +343,12 @@ class Router {
         if (window.DropsPage) {
           console.log('Creating new DropsPage instance');
           window.dropsPage = new DropsPage();
+        }
+        break;
+      case 'subscriptions':
+        if (window.SubscriptionsPage) {
+          console.log('Creating new SubscriptionsPage instance');
+          window.subscriptionsPage = new SubscriptionsPage();
         }
         break;
       case 'statistics':

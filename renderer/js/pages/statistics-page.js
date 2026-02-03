@@ -2,6 +2,8 @@
 class StatisticsPage {
   constructor() {
     this.currentPeriod = 'all';
+    this.customStartDate = null;
+    this.customEndDate = null;
     this.init();
   }
 
@@ -18,14 +20,105 @@ class StatisticsPage {
         periodBtns.forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         this.currentPeriod = btn.dataset.period;
-        this.loadStatistics();
+        
+        // Показываем/скрываем календарь
+        const datePicker = document.getElementById('custom-date-picker');
+        if (this.currentPeriod === 'custom') {
+          datePicker.style.display = 'block';
+          datePicker.style.animation = 'fadeIn 0.3s ease';
+          
+          // Устанавливаем сегодняшнюю дату автоматически
+          const today = new Date();
+          const todayStr = today.toISOString().split('T')[0];
+          const startDateInput = document.getElementById('start-date');
+          const endDateInput = document.getElementById('end-date');
+          
+          if (!startDateInput.value) {
+            startDateInput.value = todayStr;
+            this.updateDateDisplay('start-date', todayStr);
+          }
+          if (!endDateInput.value) {
+            endDateInput.value = todayStr;
+            this.updateDateDisplay('end-date', todayStr);
+          }
+        } else {
+          datePicker.style.display = 'none';
+          this.loadStatistics();
+        }
       });
     });
+    
+    // Обработчики для кастомных дат
+    const startDateDisplay = document.getElementById('start-date-display');
+    const endDateDisplay = document.getElementById('end-date-display');
+    const startDateInput = document.getElementById('start-date');
+    const endDateInput = document.getElementById('end-date');
+    
+    if (startDateDisplay && startDateInput) {
+      startDateDisplay.addEventListener('click', () => {
+        startDateInput.showPicker();
+      });
+      
+      startDateInput.addEventListener('change', (e) => {
+        this.updateDateDisplay('start-date', e.target.value);
+      });
+    }
+    
+    if (endDateDisplay && endDateInput) {
+      endDateDisplay.addEventListener('click', () => {
+        endDateInput.showPicker();
+      });
+      
+      endDateInput.addEventListener('change', (e) => {
+        this.updateDateDisplay('end-date', e.target.value);
+      });
+    }
+    
+    // Кнопка применения дат
+    const applyBtn = document.getElementById('apply-date-range');
+    if (applyBtn) {
+      applyBtn.addEventListener('click', () => {
+        const startDate = document.getElementById('start-date').value;
+        const endDate = document.getElementById('end-date').value;
+        
+        if (!startDate || !endDate) {
+          window.utils.showToast('Выберите обе даты', 'warning');
+          return;
+        }
+        
+        this.customStartDate = new Date(startDate).getTime();
+        this.customEndDate = new Date(endDate).setHours(23, 59, 59, 999);
+        
+        if (this.customStartDate > this.customEndDate) {
+          window.utils.showToast('Дата начала не может быть позже даты окончания', 'error');
+          return;
+        }
+        
+        this.loadStatistics();
+      });
+    }
 
     // Export button
     const exportBtn = document.getElementById('export-stats-btn');
     if (exportBtn) {
       exportBtn.addEventListener('click', () => this.exportStatistics());
+    }
+  }
+  
+  updateDateDisplay(inputId, dateValue) {
+    if (!dateValue) return;
+    
+    const date = new Date(dateValue);
+    const formatted = date.toLocaleDateString('ru-RU', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    });
+    
+    const displayId = inputId + '-display';
+    const displayInput = document.getElementById(displayId);
+    if (displayInput) {
+      displayInput.value = formatted;
     }
   }
 
@@ -142,6 +235,15 @@ class StatisticsPage {
         const monthAgo = now - (30 * 24 * 60 * 60 * 1000);
         return sessions.filter(s => s.timestamp > monthAgo);
       
+      case 'custom':
+        if (this.customStartDate && this.customEndDate) {
+          return sessions.filter(s => 
+            s.timestamp >= this.customStartDate && 
+            s.timestamp <= this.customEndDate
+          );
+        }
+        return [];
+      
       case 'all':
       default:
         return sessions;
@@ -181,67 +283,79 @@ class StatisticsPage {
     if (!container) return;
     
     if (categories.length === 0) {
-      container.innerHTML = '<div style="color: var(--text-secondary); text-align: center; padding: 20px;">Нет данных</div>';
+      container.innerHTML = '<div style="color: var(--text-secondary); text-align: center; padding: 40px;">Нет данных</div>';
       return;
     }
 
     const topThree = categories.slice(0, 3);
-    const rest = categories.slice(3);
 
     let html = `
-      <div style="display: flex; gap: 24px; align-items: flex-start;">
-        <!-- Обложки (стопка) -->
-        <div class="categories-stack-container" style="position: relative; width: 140px; height: 180px; cursor: pointer; flex-shrink: 0;">
+      <div style="display: flex; gap: 28px; align-items: stretch;">
+        <!-- Обложки (стопка) с новым дизайном -->
+        <div class="categories-stack-wrapper">
+          <div class="categories-stack-container">
     `;
 
     // Стопка первых 3 обложек
     topThree.forEach((cat, idx) => {
-      const offset = idx * 10;
-      // Используем правильный размер 272x380 для лучшего качества
+      const offset = idx * 12;
       const gameId = this.getCategoryIdFromName(cat.name);
       const boxUrl = cat.box || `https://static-cdn.jtvnw.net/ttv-boxart/${gameId}-272x380.jpg`;
       html += `
-        <img src="${boxUrl}" 
-             alt="${cat.name}" 
-             style="position: absolute; width: 110px; height: 150px; border-radius: 10px; object-fit: cover; 
-                    left: ${offset}px; top: ${offset}px; z-index: ${10 - idx}; 
-                    box-shadow: 0 4px 12px rgba(0,0,0,0.4); transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1); cursor: pointer; background: var(--bg-secondary);"
-             class="stack-cover" 
-             data-category="${cat.name}"
-             data-game-id="${gameId}"
-             title="${cat.name}"
-             onerror="this.style.background='linear-gradient(135deg, var(--bg-secondary) 0%, rgba(145, 71, 255, 0.1) 100%)'; this.style.opacity='0.6';">`;
+        <div class="stack-cover-wrapper" style="transform: translate(${offset * 2}px, ${offset}px); z-index: ${10 - idx};">
+          <img src="${boxUrl}" 
+               alt="${cat.name}" 
+               class="stack-cover" 
+               data-category="${cat.name}"
+               data-game-id="${gameId}"
+               title="${cat.name}"
+               onerror="this.style.background='linear-gradient(135deg, rgba(145, 71, 255, 0.2), rgba(145, 71, 255, 0.05))'; this.style.opacity='0.6';">
+        </div>`;
     });
 
     html += `
+          </div>
         </div>
-        <!-- Информация -->
-        <div style="flex: 1;">
-          <div style="display: grid; gap: 12px;">
+        <!-- Информация с новым дизайном -->
+        <div style="flex: 1; min-width: 0;">
+          <div class="top-categories-list">
     `;
 
-    categories.slice(0, Math.min(5, categories.length)).forEach(cat => {
+    // Считаем общее время для процентов
+    const totalTime = categories.reduce((sum, cat) => sum + cat.time, 0);
+    
+    categories.slice(0, Math.min(5, categories.length)).forEach((cat, idx) => {
       const hours = Math.floor(cat.time / 60);
       const mins = cat.time % 60;
       const lastDate = new Date(cat.lastDate).toLocaleDateString('ru-RU', { month: 'short', day: 'numeric' });
+      
+      // Процент от общего времени
+      const percentage = totalTime > 0 ? Math.round((cat.time / totalTime) * 100) : 0;
+      
+      // Средняя длительность сессии
+      const avgSessionMins = cat.streams > 0 ? Math.round(cat.time / cat.streams) : 0;
+      const avgHours = Math.floor(avgSessionMins / 60);
+      const avgMins = avgSessionMins % 60;
+      const avgText = avgHours > 0 ? `${avgHours}ч ${avgMins}м` : `${avgMins}м`;
+      
       html += `
-        <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; 
-                    background: var(--surface-bg); border-radius: 8px; border-left: 3px solid var(--accent-color);">
-          <div style="flex: 1;">
-            <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 4px; font-size: 14px;">${cat.name}</div>
-            <div style="font-size: 12px; color: var(--text-secondary);">${cat.streams} сеанс${cat.streams % 10 === 1 && cat.streams !== 11 ? '' : 'ов'}</div>
+        <div class="category-item">
+          <div class="category-rank">#${idx + 1}</div>
+          <div class="category-info">
+            <div class="category-name">${cat.name}</div>
+            <div class="category-meta">
+              <span class="category-sessions">${cat.streams} сеанс${cat.streams % 10 === 1 && cat.streams !== 11 ? '' : 'ов'}</span>
+              <span class="category-divider">•</span>
+              <span class="category-avg">~${avgText}/сессия</span>
+            </div>
           </div>
-          <div style="text-align: right;">
-            <div style="font-weight: 700; color: var(--accent-color); font-size: 16px;">${hours}ч</div>
-            <div style="font-size: 11px; color: var(--text-secondary);">${lastDate}</div>
+          <div class="category-stats">
+            <div class="category-time">${hours}ч ${mins > 0 ? mins + 'м' : ''}</div>
+            <div class="category-percentage">${percentage}%</div>
           </div>
         </div>
       `;
     });
-
-    if (rest.length > 0) {
-      html += `<div style="text-align: center; padding: 12px; color: var(--text-secondary); font-size: 13px; border-top: 1px solid var(--border-color); margin-top: 8px;">+ ещё ${rest.length} категорий</div>`;
-    }
 
     html += `</div></div></div>`;
     
@@ -251,19 +365,18 @@ class StatisticsPage {
     const stackContainer = container.querySelector('.categories-stack-container');
     if (stackContainer) {
       stackContainer.addEventListener('mouseenter', () => {
-        const covers = stackContainer.querySelectorAll('.stack-cover');
-        covers.forEach((cover, idx) => {
-          cover.style.transform = `translateX(${idx * 115}px) scale(1.05)`;
-          cover.style.zIndex = idx + 100;
-          cover.style.boxShadow = '0 8px 24px rgba(0,0,0,0.6)';
+        const covers = stackContainer.querySelectorAll('.stack-cover-wrapper');
+        covers.forEach((wrapper, idx) => {
+          wrapper.style.transform = `translateX(${idx * 125}px) translateY(${idx * 5}px) scale(1.08)`;
+          wrapper.style.zIndex = idx + 100;
         });
       });
       stackContainer.addEventListener('mouseleave', () => {
-        const covers = stackContainer.querySelectorAll('.stack-cover');
-        covers.forEach((cover, idx) => {
-          cover.style.transform = 'translateX(0) scale(1)';
-          cover.style.zIndex = 10 - idx;
-          cover.style.boxShadow = '0 4px 12px rgba(0,0,0,0.4)';
+        const covers = stackContainer.querySelectorAll('.stack-cover-wrapper');
+        covers.forEach((wrapper, idx) => {
+          const offset = idx * 12;
+          wrapper.style.transform = `translate(${offset * 2}px, ${offset}px) scale(1)`;
+          wrapper.style.zIndex = 10 - idx;
         });
       });
     }
@@ -304,32 +417,42 @@ class StatisticsPage {
       const bandwidthHistory = session.bandwidthHistory || [];
       const dataJson = encodeURIComponent(JSON.stringify(bandwidthHistory));
       
+      // Вычисляем баллы заработанные за сессию (примерно)
+      const pointsEarned = Math.floor((session.duration || 0) / 5) * 10;
+      
       div.innerHTML = `
-        <img src="${coverUrl}" 
-             alt="${category}" 
-             style="width: 52px; height: 72px; border-radius: 6px; object-fit: cover; flex-shrink: 0; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);"
-             onerror="this.style.display='none'">
+        <div class="session-cover-wrapper">
+          <img src="${coverUrl}" 
+               alt="${category}" 
+               class="session-cover"
+               onerror="this.style.display='none'">
+        </div>
         <div class="session-info" style="flex: 1; min-width: 0;">
-          <div class="session-game" style="font-size: 16px; font-weight: 600; color: var(--text-primary); margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${category}</div>
-          <div class="session-meta" style="font-size: 13px; color: var(--text-secondary); display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-            <span style="display: flex; align-items: center; gap: 3px;">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <div class="session-game">${category}</div>
+          <div class="session-meta">
+            <span style="display: flex; align-items: center; gap: 4px;">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                 <circle cx="12" cy="12" r="10"/>
                 <path d="M12 6v6l4 2"/>
               </svg>
               ${channel}
             </span>
-            <span style="opacity: 0.5;">•</span>
+            <span class="session-divider">•</span>
             <span>${dateStr} ${timeStr}</span>
           </div>
         </div>
-        <div style="text-align: right; display: flex; flex-direction: column; gap: 3px; align-items: flex-end;">
-          <div style="font-size: 16px; font-weight: 700; color: var(--accent-color);">${duration}</div>
-          <div style="font-size: 11px; color: var(--text-secondary); display: flex; align-items: center; gap: 3px;">
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-            </svg>
-            ${bandwidth}
+        <div class="session-stats-grid">
+          <div class="session-stat">
+            <div class="session-stat-value">${duration}</div>
+            <div class="session-stat-label">Длительность</div>
+          </div>
+          <div class="session-stat">
+            <div class="session-stat-value session-points">+${pointsEarned}</div>
+            <div class="session-stat-label">Баллов</div>
+          </div>
+          <div class="session-stat">
+            <div class="session-stat-value session-bandwidth">${bandwidth}</div>
+            <div class="session-stat-label">Трафик</div>
           </div>
         </div>
         <div style="position: relative; overflow: hidden; display: none;" class="session-graph-container" data-graph-id="graph-${idx}">

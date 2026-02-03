@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const Store = require('electron-store');
 const http = require('http');
+const https = require('https');
 const url = require('url');
 const { autoUpdater } = require('electron-updater');
 
@@ -66,6 +67,100 @@ const SCOPES = [
   'whispers:read',
   'whispers:edit'
 ];
+let appAccessTokenCache = {
+  token: null,
+  expiresAt: 0
+};
+
+const getAppAccessToken = () => new Promise((resolve, reject) => {
+  const now = Date.now();
+  if (appAccessTokenCache.token && appAccessTokenCache.expiresAt > now + 60000) {
+    resolve(appAccessTokenCache.token);
+    return;
+  }
+
+  const tokenPath = `/oauth2/token?client_id=${TWITCH_CLIENT_ID}` +
+    `&client_secret=${TWITCH_CLIENT_SECRET}` +
+    `&grant_type=client_credentials`;
+
+  const req = https.request({
+    hostname: 'id.twitch.tv',
+    path: tokenPath,
+    method: 'POST'
+  }, (res) => {
+    let data = '';
+    res.on('data', chunk => data += chunk);
+    res.on('end', () => {
+      try {
+        const json = JSON.parse(data);
+        if (json?.access_token && json?.expires_in) {
+          appAccessTokenCache = {
+            token: json.access_token,
+            expiresAt: now + (json.expires_in * 1000)
+          };
+          resolve(appAccessTokenCache.token);
+        } else {
+          reject(new Error('No access_token in client credentials response'));
+        }
+      } catch (e) {
+        reject(e);
+      }
+    });
+  });
+
+  req.on('error', reject);
+  req.end();
+});
+
+const getFollowersFromDecapi = (login) => new Promise((resolve) => {
+  const req = https.request({
+    hostname: 'api.decapi.me',
+    path: `/twitch/followers/${encodeURIComponent(login)}`,
+    method: 'GET'
+  }, (res) => {
+    let data = '';
+    res.on('data', chunk => data += chunk);
+    res.on('end', () => {
+      const value = parseInt(data, 10);
+      if (Number.isFinite(value)) {
+        resolve(value);
+      } else {
+        resolve(null);
+      }
+    });
+  });
+
+  req.on('error', () => resolve(null));
+  req.end();
+});
+
+const getFollowersFromIvr = (login) => new Promise((resolve) => {
+  const req = https.request({
+    hostname: 'api.ivr.fi',
+    path: `/v2/twitch/user?login=${encodeURIComponent(login)}`,
+    method: 'GET'
+  }, (res) => {
+    let data = '';
+    res.on('data', chunk => data += chunk);
+    res.on('end', () => {
+      try {
+        const json = JSON.parse(data);
+        const user = Array.isArray(json) ? json[0] : json;
+        const value = user?.followers;
+        if (typeof value === 'number') {
+          resolve(value);
+        } else {
+          resolve(null);
+        }
+      } catch (e) {
+        resolve(null);
+      }
+    });
+  });
+
+  req.on('error', () => resolve(null));
+  req.end();
+});
 let mainWindow;
 let splashWindow;
 let powerSaveBlockerId;
@@ -149,11 +244,11 @@ ipcMain.handle('read-file', async (event, relativePath) => {
     const fullPath = path.join(__dirname, relativePath);
     console.log('[IPC] full path:', fullPath);
     const fs = require('fs');
-    
+
     // Check if path exists
     const exists = fs.existsSync(fullPath);
     console.log('[IPC] File exists:', exists);
-    
+
     if (!exists) {
       console.error('[IPC] File not found:', fullPath);
       // Try some alternative paths
@@ -161,7 +256,7 @@ ipcMain.handle('read-file', async (event, relativePath) => {
       console.log('[IPC] Trying alternative:', altPath1, 'exists:', fs.existsSync(altPath1));
       return { success: false, error: 'File not found: ' + fullPath };
     }
-    
+
     const content = fs.readFileSync(fullPath, 'utf-8');
     console.log('[IPC] read-file success, length:', content.length, 'first 100 chars:', content.substring(0, 100));
     return { success: true, content };
@@ -246,10 +341,19 @@ function createMainWindow() {
   });
 
   mainWindow.on('close', (event) => {
-    // Если нужно сворачивать в трей вместо закрытия
-    if (!app.isQuitting && store.get('settings.minimizeToTray', false)) {
+    // Сворачиваем в трей при закрытии (если включено)
+    const minimizeToTray = store.get('settings.minimizeToTray', true); // По умолчанию включено
+    if (!app.isQuitting && minimizeToTray) {
       event.preventDefault();
       mainWindow.hide();
+      // Показываем уведомление при первом сворачивании
+      if (!store.get('trayNotificationShown', false)) {
+        new Notification({
+          title: 'WatchTwitch свернут в трей',
+          body: 'Приложение продолжает работать в фоновом режиме. Кликните на иконку в трее для восстановления.'
+        }).show();
+        store.set('trayNotificationShown', true);
+      }
     } else {
       // Сигнализируем renderer процессу о закрытии
       mainWindow.webContents.send('app-closing');
@@ -277,26 +381,34 @@ function createTray() {
     tray = new Tray(iconPath);
 
     const contextMenu = Menu.buildFromTemplate([
-    {
-      label: 'Показать',
-      click: () => {
-        mainWindow.show();
+      {
+        label: 'Показать/Скрыть',
+        click: () => {
+          if (mainWindow.isVisible()) {
+            mainWindow.hide();
+          } else {
+            mainWindow.show();
+            mainWindow.focus();
+          }
+        }
+      },
+      { type: 'separator' },
+      {
+        label: 'Открыть настройки',
+        click: () => {
+          mainWindow.show();
+          mainWindow.focus();
+          mainWindow.webContents.send('navigate-to-page', 'settings');
+        }
+      },
+      { type: 'separator' },
+      {
+        label: 'Выход',
+        click: () => {
+          app.isQuitting = true;
+          app.quit();
+        }
       }
-    },
-    {
-      label: 'Скрыть',
-      click: () => {
-        mainWindow.hide();
-      }
-    },
-    { type: 'separator' },
-    {
-      label: 'Выход',
-      click: () => {
-        app.isQuitting = true;
-        app.quit();
-      }
-    }
     ]);
 
     tray.setToolTip('WatchTwitch - Фарминг дропсов');
@@ -325,7 +437,7 @@ function startAuthServer() {
 
     authServer = http.createServer(async (req, res) => {
       const parsedUrl = url.parse(req.url, true);
-      
+
       if (parsedUrl.pathname === '/auth/callback') {
         const { code, error } = parsedUrl.query;
 
@@ -551,7 +663,7 @@ function startAuthServer() {
   </div>
 </body>
 </html>`);
-              
+
               // Закрываем сервер через 2 секунды, чтобы браузер успел загрузить страницу
               setTimeout(() => {
                 if (authServer) {
@@ -559,7 +671,7 @@ function startAuthServer() {
                   authServer = null;
                 }
               }, 2000);
-              
+
               resolve(tokenData);
             } else {
               throw new Error('Не удалось получить access token');
@@ -594,7 +706,7 @@ async function openTwitchAuthWindow() {
     const serverPromise = startAuthServer();
 
     // Формируем URL авторизации
-    const authUrl = `https://id.twitch.tv/oauth2/authorize?` + 
+    const authUrl = `https://id.twitch.tv/oauth2/authorize?` +
       `client_id=${TWITCH_CLIENT_ID}&` +
       `redirect_uri=${encodeURIComponent(REDIRECT_URI)}&` +
       `response_type=code&` +
@@ -657,7 +769,7 @@ async function refreshAccessToken() {
 
 async function getValidAccessToken() {
   const oauth = store.get('oauth');
-  
+
   if (!oauth || !oauth.accessToken) {
     return null;
   }
@@ -696,7 +808,7 @@ async function createStreamView(url, account = null) {
   });
 
   mainWindow.addBrowserView(streamView);
-  
+
   // Устанавливаем размер и позицию - в области current-stream-info
   // Позиция: сверху после header, слева после sidebar
   const bounds = mainWindow.getBounds();
@@ -708,7 +820,7 @@ async function createStreamView(url, account = null) {
   });
 
   console.log('Opening stream:', url);
-  
+
   // Устанавливаем OAuth токен или cookies
   const oauth = store.get('oauth');
   if (oauth && oauth.accessToken) {
@@ -722,14 +834,14 @@ async function createStreamView(url, account = null) {
     await setStreamCookies(account.cookies);
     console.log('Cookies set for account:', account.username);
   }
-  
+
   streamView.webContents.loadURL(url);
   streamView.webContents.setAudioMuted(true);
 
   // Настраиваем качество после загрузки страницы
   streamView.webContents.once('did-finish-load', () => {
     console.log('Stream loaded, setting up quality...');
-    
+
     // Если есть OAuth токен, инжектим его в localStorage
     const oauth = store.get('oauth');
     if (oauth && oauth.accessToken) {
@@ -767,7 +879,7 @@ async function createStreamView(url, account = null) {
       setupStreamQuality();
     }
   });
-  
+
   // Обрабатываем повторную загрузку (после применения OAuth)
   streamView.webContents.on('did-finish-load', () => {
     // Проверяем был ли уже инжектирован OAuth (чтобы не зацикливаться)
@@ -778,12 +890,12 @@ async function createStreamView(url, account = null) {
       }
     });
   });
-  
+
   // Логируем ошибки
   streamView.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
     console.error('Stream failed to load:', errorCode, errorDescription);
   });
-  
+
   // Перерисовка при изменении размера окна
   mainWindow.on('resize', () => {
     if (streamView) {
@@ -801,9 +913,9 @@ async function createStreamView(url, account = null) {
 // Установка OAuth куки для авторизованной сессии
 async function setOAuthCookies(accessToken) {
   if (!streamView || !accessToken) return;
-  
+
   const session = streamView.webContents.session;
-  
+
   try {
     // Устанавливаем auth-token cookie
     await session.cookies.set({
@@ -816,7 +928,7 @@ async function setOAuthCookies(accessToken) {
       httpOnly: false,
       sameSite: 'no_restriction'
     });
-    
+
     console.log('OAuth auth-token cookie set successfully');
   } catch (error) {
     console.error('Error setting OAuth cookies:', error);
@@ -825,16 +937,16 @@ async function setOAuthCookies(accessToken) {
 
 async function setStreamCookies(cookies) {
   if (!streamView || !cookies) return;
-  
+
   const session = streamView.webContents.session;
-  
+
   // Парсим cookies и устанавливаем их
   if (typeof cookies === 'string') {
     const cookiePairs = cookies.split(';');
     for (const pair of cookiePairs) {
       const [name, ...valueParts] = pair.trim().split('=');
       const value = valueParts.join('=');
-      
+
       if (name && value) {
         try {
           await session.cookies.set({
@@ -875,9 +987,9 @@ async function setStreamCookies(cookies) {
 
 function setupStreamQuality() {
   if (!streamView) return;
-  
+
   console.log('Setting up stream quality...');
-  
+
   setTimeout(() => {
     streamView.webContents.executeJavaScript(`
       (function() {
@@ -940,7 +1052,7 @@ function setupStreamQuality() {
 // Получить статистику стрима
 ipcMain.handle('get-stream-stats', async (event, channelLogin) => {
   const https = require('https');
-  
+
   return new Promise((resolve) => {
     const postData = JSON.stringify({
       query: 'query { user(login: "' + channelLogin + '") { stream { viewersCount createdAt game { name } } channel { self { communityPoints { balance } } } } }'
@@ -971,7 +1083,7 @@ ipcMain.handle('get-stream-stats', async (event, channelLogin) => {
           const user = response?.data?.user;
           const stream = user?.stream;
           const points = user?.channel?.self?.communityPoints?.balance;
-          
+
           if (stream) {
             const uptime = calculateUptime(stream.createdAt);
             resolve({
@@ -1004,33 +1116,33 @@ function calculateUptime(createdAt) {
   const start = new Date(createdAt);
   const now = new Date();
   const diff = Math.floor((now - start) / 1000);
-  
+
   const hours = Math.floor(diff / 3600);
   const minutes = Math.floor((diff % 3600) / 60);
-  
+
   return hours + 'ч ' + minutes + 'м';
 }
 
 // Получить прогресс дропсов
 ipcMain.handle('get-drops-progress', async (event, channelLogin) => {
   console.log('Drops progress requested for:', channelLogin);
-  
+
   try {
     // Используем fetch-drops-inventory для получения данных
     const inventoryData = await mainWindow.webContents.executeJavaScript('window.electronAPI.fetchDropsInventory()');
-    
+
     if (!inventoryData || !inventoryData.campaigns) {
-      return { 
-        campaigns: [], 
+      return {
+        campaigns: [],
         totalProgress: { percentage: 0, completed: 0, total: 0 }
       };
     }
-    
+
     // Преобразуем данные в нужный формат
     const campaigns = inventoryData.campaigns.map(campaign => {
       const drops = campaign.drops || [];
       const completedDrops = drops.filter(d => d.isClaimed || d.percentage >= 100).length;
-      
+
       return {
         id: campaign.id,
         name: campaign.name,
@@ -1048,17 +1160,17 @@ ipcMain.handle('get-drops-progress', async (event, channelLogin) => {
         completedDrops: completedDrops
       };
     });
-    
+
     const totalProgress = calculateTotalProgress(campaigns);
-    
+
     return {
       campaigns: campaigns,
       totalProgress: totalProgress
     };
   } catch (error) {
     console.error('Error getting drops progress:', error);
-    return { 
-      campaigns: [], 
+    return {
+      campaigns: [],
       totalProgress: { percentage: 0, completed: 0, total: 0 }
     };
   }
@@ -1074,24 +1186,24 @@ async function getAuthToken() {
 
   // Если OAuth токена нет, пробуем получить из cookies (старый метод)
   if (!mainWindow) return null;
-  
+
   try {
     // Получаем сессию из основного окна (webview использует partition 'persist:twitch')
     const { session } = require('electron');
     const twitchSession = session.fromPartition('persist:twitch');
-    
-    const cookies = await twitchSession.cookies.get({ 
+
+    const cookies = await twitchSession.cookies.get({
       url: 'https://www.twitch.tv',
       name: 'auth-token'
     });
-    
+
     if (cookies && cookies.length > 0) {
       return cookies[0].value;
     }
   } catch (e) {
     console.error('Error getting auth token:', e.message);
   }
-  
+
   return null;
 }
 
@@ -1100,7 +1212,7 @@ function parseDropsData(response) {
   try {
     // Пытаемся найти данные о дропсах в разных возможных путях
     let campaigns = [];
-    
+
     // Вариант 1: массив ответов
     if (Array.isArray(response)) {
       for (const item of response) {
@@ -1110,13 +1222,13 @@ function parseDropsData(response) {
         }
       }
     }
-    
+
     // Вариант 2: одиночный ответ
     if (response.data && response.data.currentUser) {
       const drops = response.data.currentUser.dropCampaigns || [];
       campaigns = campaigns.concat(processDropCampaigns(drops));
     }
-    
+
     // Вариант 3: инвентарь
     if (response.data && response.data.currentUser && response.data.currentUser.inventory) {
       const inventory = response.data.currentUser.inventory;
@@ -1124,7 +1236,7 @@ function parseDropsData(response) {
         campaigns = campaigns.concat(processDropCampaigns(inventory.dropCampaignsInProgress));
       }
     }
-    
+
     return {
       campaigns: campaigns,
       totalProgress: calculateTotalProgress(campaigns)
@@ -1138,15 +1250,15 @@ function parseDropsData(response) {
 // Обработка кампаний дропсов
 function processDropCampaigns(campaigns) {
   if (!Array.isArray(campaigns)) return [];
-  
+
   console.log('Processing campaigns:', JSON.stringify(campaigns, null, 2));
-  
+
   return campaigns.map(campaign => {
     const drops = (campaign.timeBasedDrops || []).map(drop => {
       const progress = drop.self ? drop.self.currentMinutesWatched || 0 : 0;
       const required = drop.requiredMinutesWatched || 1;
       const percentage = Math.min(100, Math.floor((progress / required) * 100));
-      
+
       // Получаем картинку из benefitEdges
       let imageURL = null;
       if (drop.benefitEdges && Array.isArray(drop.benefitEdges) && drop.benefitEdges.length > 0) {
@@ -1154,9 +1266,9 @@ function processDropCampaigns(campaigns) {
           imageURL = drop.benefitEdges[0].benefit.imageAssetURL;
         }
       }
-      
+
       console.log(`Drop ${drop.name}: progress=${progress}, required=${required}, imageURL=${imageURL}`);
-      
+
       return {
         id: drop.id,
         name: drop.name,
@@ -1167,7 +1279,7 @@ function processDropCampaigns(campaigns) {
         claimed: drop.self ? drop.self.isClaimed : false
       };
     });
-    
+
     return {
       id: campaign.id,
       name: campaign.name,
@@ -1188,15 +1300,15 @@ function calculateTotalProgress(campaigns) {
   if (!campaigns || campaigns.length === 0) {
     return { percentage: 0, completed: 0, total: 0 };
   }
-  
+
   let totalDrops = 0;
   let completedDrops = 0;
-  
+
   campaigns.forEach(campaign => {
     totalDrops += campaign.totalDrops;
     completedDrops += campaign.completedDrops;
   });
-  
+
   return {
     percentage: totalDrops > 0 ? Math.floor((completedDrops / totalDrops) * 100) : 0,
     completed: completedDrops,
@@ -1206,7 +1318,7 @@ function calculateTotalProgress(campaigns) {
 
 app.whenReady().then(() => {
   createSplashWindow();
-  
+
   // Создаем главное окно через небольшую задержку
   setTimeout(() => {
     createMainWindow();
@@ -1241,8 +1353,15 @@ app.on('window-all-closed', () => {
   }
 });
 
-app.on('before-quit', () => {
+app.on('before-quit', async () => {
   app.isQuitting = true;
+  
+  // Уведомляем рендерер о закрытии для завершения сессии
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('app-closing');
+    // Даем время на сохранение сессии
+    await new Promise(resolve => setTimeout(resolve, 500));
+  }
 });
 
 // IPC обработчики
@@ -1269,7 +1388,15 @@ ipcMain.handle('start-twitch-auth', async () => {
 
 ipcMain.handle('get-oauth-user', async () => {
   const oauth = store.get('oauth');
-  return oauth ? oauth.user : null;
+  if (!oauth) return null;
+
+  // Возвращаем весь oauth объект (включая tokens и user)
+  return {
+    accessToken: oauth.accessToken,
+    refreshToken: oauth.refreshToken,
+    expiresAt: oauth.expiresAt,
+    user: oauth.user
+  };
 });
 
 ipcMain.handle('logout-twitch', async () => {
@@ -1304,12 +1431,12 @@ ipcMain.handle('open-auth-window-old', async () => {
     // Check for successful login
     const checkInterval = setInterval(() => {
       const url = authWindow.webContents.getURL();
-      
-      if (url.includes('twitch.tv') && 
-          !url.includes('login') && 
-          !url.includes('passport') &&
-          !url.includes('authenticate')) {
-        
+
+      if (url.includes('twitch.tv') &&
+        !url.includes('login') &&
+        !url.includes('passport') &&
+        !url.includes('authenticate')) {
+
         // Get cookies, username and OAuth token
         authWindow.webContents.executeJavaScript(`
           (function() {
@@ -1377,11 +1504,11 @@ ipcMain.handle('open-auth-window-old', async () => {
         `).then(userData => {
           if (userData && userData.username) {
             clearInterval(checkInterval);
-            
+
             authWindow.webContents.session.cookies.get({})
               .then(cookies => {
                 const cookieString = cookies.map(c => c.name + '=' + c.value).join('; ');
-                
+
                 // Extract auth-token from cookies if not found in localStorage
                 let finalToken = userData.oauthToken || '';
                 if (!finalToken) {
@@ -1390,11 +1517,11 @@ ipcMain.handle('open-auth-window-old', async () => {
                     finalToken = authCookie.value;
                   }
                 }
-                
+
                 authWindow.close();
                 authWindow = null;
-                resolve({ 
-                  username: userData.username, 
+                resolve({
+                  username: userData.username,
                   avatar: userData.avatar || '',
                   cookies: cookieString,
                   oauthToken: finalToken
@@ -1460,15 +1587,15 @@ ipcMain.handle('open-external', async (event, url) => {
 // Follow/Unfollow channel
 ipcMain.handle('follow-channel', async (event, channelLogin) => {
   const https = require('https');
-  
+
   // Получаем токен авторизации
   const authToken = getAuthToken();
-  
+
   if (!authToken) {
     console.error('No auth token found');
     return { success: false, error: 'Not authenticated' };
   }
-  
+
   return new Promise((resolve) => {
     // Сначала получаем ID пользователя и ID канала
     const getUserData = () => {
@@ -1483,7 +1610,7 @@ ipcMain.handle('follow-channel', async (event, channelLogin) => {
             'Authorization': `Bearer ${authToken}`
           }
         };
-        
+
         const req = https.request(options, (res) => {
           let data = '';
           res.on('data', (chunk) => { data += chunk; });
@@ -1491,7 +1618,7 @@ ipcMain.handle('follow-channel', async (event, channelLogin) => {
             try {
               const parsed = JSON.parse(data);
               console.log('User data response:', parsed);
-              
+
               if (parsed.data && parsed.data.length > 0) {
                 resolveUser({ success: true, userId: parsed.data[0].id });
               } else {
@@ -1503,16 +1630,16 @@ ipcMain.handle('follow-channel', async (event, channelLogin) => {
             }
           });
         });
-        
+
         req.on('error', (err) => {
           console.error('Request error:', err);
           resolveUser({ success: false, error: err.message });
         });
-        
+
         req.end();
       });
     };
-    
+
     // Получаем ID текущего пользователя
     const getCurrentUser = () => {
       return new Promise((resolveUser) => {
@@ -1526,7 +1653,7 @@ ipcMain.handle('follow-channel', async (event, channelLogin) => {
             'Authorization': `Bearer ${authToken}`
           }
         };
-        
+
         const req = https.request(options, (res) => {
           let data = '';
           res.on('data', (chunk) => { data += chunk; });
@@ -1534,7 +1661,7 @@ ipcMain.handle('follow-channel', async (event, channelLogin) => {
             try {
               const parsed = JSON.parse(data);
               console.log('Current user response:', parsed);
-              
+
               if (parsed.data && parsed.data.length > 0) {
                 resolveUser({ success: true, userId: parsed.data[0].id });
               } else {
@@ -1546,32 +1673,32 @@ ipcMain.handle('follow-channel', async (event, channelLogin) => {
             }
           });
         });
-        
+
         req.on('error', (err) => {
           console.error('Request error:', err);
           resolveUser({ success: false, error: err.message });
         });
-        
+
         req.end();
       });
     };
-    
+
     // Выполняем оба запроса
     Promise.all([getCurrentUser(), getUserData()]).then(([currentUserResult, targetUserResult]) => {
       if (!currentUserResult.success || !targetUserResult.success) {
-        resolve({ 
-          success: false, 
-          error: currentUserResult.error || targetUserResult.error 
+        resolve({
+          success: false,
+          error: currentUserResult.error || targetUserResult.error
         });
         return;
       }
-      
+
       // Теперь делаем follow запрос
       const postData = JSON.stringify({
         from_id: currentUserResult.userId,
         to_id: targetUserResult.userId
       });
-      
+
       const options = {
         hostname: 'api.twitch.tv',
         port: 443,
@@ -1584,14 +1711,14 @@ ipcMain.handle('follow-channel', async (event, channelLogin) => {
           'Content-Length': Buffer.byteLength(postData)
         }
       };
-      
+
       const req = https.request(options, (res) => {
         let data = '';
         res.on('data', (chunk) => { data += chunk; });
         res.on('end', () => {
           console.log('Follow response status:', res.statusCode);
           console.log('Follow response:', data);
-          
+
           if (res.statusCode === 204 || res.statusCode === 200) {
             resolve({ success: true, followed: true });
           } else {
@@ -1599,12 +1726,12 @@ ipcMain.handle('follow-channel', async (event, channelLogin) => {
           }
         });
       });
-      
+
       req.on('error', (err) => {
         console.error('Follow request error:', err);
         resolve({ success: false, error: err.message });
       });
-      
+
       req.write(postData);
       req.end();
     });
@@ -1614,13 +1741,13 @@ ipcMain.handle('follow-channel', async (event, channelLogin) => {
 // Check if following channel
 ipcMain.handle('check-following', async (event, channelLogin) => {
   const https = require('https');
-  
+
   const authToken = getAuthToken();
-  
+
   if (!authToken) {
     return { success: false, following: false };
   }
-  
+
   return new Promise((resolve) => {
     // Сначала получаем ID текущего пользователя и ID канала
     const getCurrentUser = () => {
@@ -1635,7 +1762,7 @@ ipcMain.handle('check-following', async (event, channelLogin) => {
             'Authorization': `Bearer ${authToken}`
           }
         };
-        
+
         const req = https.request(options, (res) => {
           let data = '';
           res.on('data', (chunk) => { data += chunk; });
@@ -1652,12 +1779,12 @@ ipcMain.handle('check-following', async (event, channelLogin) => {
             }
           });
         });
-        
+
         req.on('error', () => resolveUser({ success: false }));
         req.end();
       });
     };
-    
+
     const getTargetUser = () => {
       return new Promise((resolveUser) => {
         const options = {
@@ -1670,7 +1797,7 @@ ipcMain.handle('check-following', async (event, channelLogin) => {
             'Authorization': `Bearer ${authToken}`
           }
         };
-        
+
         const req = https.request(options, (res) => {
           let data = '';
           res.on('data', (chunk) => { data += chunk; });
@@ -1687,18 +1814,18 @@ ipcMain.handle('check-following', async (event, channelLogin) => {
             }
           });
         });
-        
+
         req.on('error', () => resolveUser({ success: false }));
         req.end();
       });
     };
-    
+
     Promise.all([getCurrentUser(), getTargetUser()]).then(([currentUserResult, targetUserResult]) => {
       if (!currentUserResult.success || !targetUserResult.success) {
         resolve({ success: false, following: false });
         return;
       }
-      
+
       // Проверяем подписку
       const options = {
         hostname: 'api.twitch.tv',
@@ -1710,7 +1837,7 @@ ipcMain.handle('check-following', async (event, channelLogin) => {
           'Authorization': `Bearer ${authToken}`
         }
       };
-      
+
       const req = https.request(options, (res) => {
         let data = '';
         res.on('data', (chunk) => { data += chunk; });
@@ -1724,7 +1851,7 @@ ipcMain.handle('check-following', async (event, channelLogin) => {
           }
         });
       });
-      
+
       req.on('error', () => resolve({ success: false, following: false }));
       req.end();
     });
@@ -1734,10 +1861,10 @@ ipcMain.handle('check-following', async (event, channelLogin) => {
 // Fetch Twitch categories/games
 ipcMain.handle('fetch-twitch-categories', async () => {
   const https = require('https');
-  
+
   return new Promise((resolve) => {
     console.log('Fetching Twitch top categories...');
-    
+
     // Упрощенный GraphQL запрос без tags
     const postData = JSON.stringify({
       query: 'query { games(first: 100) { edges { node { id name displayName boxArtURL(width: 52, height: 72) viewersCount } } } }'
@@ -1766,13 +1893,13 @@ ipcMain.handle('fetch-twitch-categories', async () => {
         try {
           const response = JSON.parse(data);
           console.log('Response received:', data.substring(0, 200));
-          
+
           // Пробуем разные пути к данным
-          const edges = response?.data?.games?.edges || 
-                       response[0]?.data?.games?.edges || 
-                       response?.data?.directoriesWithTags?.edges || 
-                       response[0]?.data?.directoriesWithTags?.edges || [];
-          
+          const edges = response?.data?.games?.edges ||
+            response[0]?.data?.games?.edges ||
+            response?.data?.directoriesWithTags?.edges ||
+            response[0]?.data?.directoriesWithTags?.edges || [];
+
           const categories = edges.map(edge => ({
             id: edge.node.id,
             name: edge.node.displayName || edge.node.name,
@@ -1780,7 +1907,7 @@ ipcMain.handle('fetch-twitch-categories', async () => {
             viewersCount: edge.node.viewersCount || 0,
             tags: [] // Пока пустой массив
           }));
-          
+
           console.log('Fetched', categories.length, 'categories');
           resolve(categories);
         } catch (e) {
@@ -1803,11 +1930,11 @@ ipcMain.handle('fetch-twitch-categories', async () => {
 // Получить стримы с дропсами для категории
 ipcMain.handle('get-streams-with-drops', async (event, categoryName) => {
   const https = require('https');
-  
+
   return new Promise((resolve) => {
     const escapedName = categoryName.replace(/"/g, '\\"');
     const postData = JSON.stringify({
-      query: 
+      query:
         'query { game(name: "' + escapedName + '") { streams(first: 20) { edges { node { title broadcaster { login displayName } freeformTags { name } } } } } }'
     });
 
@@ -1834,15 +1961,15 @@ ipcMain.handle('get-streams-with-drops', async (event, categoryName) => {
         try {
           const response = JSON.parse(data);
           const streams = response?.data?.game?.streams?.edges || [];
-          
+
           // Фильтруем только стримы с тегами дропсов
           const dropsStreams = streams.filter(edge => {
             const tags = edge.node?.freeformTags || [];
             return tags.some(tag => {
               const tagName = tag.name.toLowerCase();
-              return tagName.includes('drops') || 
-                     tagName.includes('dropsenabled') || 
-                     tagName === 'dropson';
+              return tagName.includes('drops') ||
+                tagName.includes('dropsenabled') ||
+                tagName === 'dropson';
             });
           }).map(edge => {
             return {
@@ -1851,7 +1978,7 @@ ipcMain.handle('get-streams-with-drops', async (event, categoryName) => {
               title: edge.node.title
             };
           });
-          
+
           resolve(dropsStreams);
         } catch (e) {
           console.log('Error getting streams:', e.message);
@@ -1873,21 +2000,21 @@ ipcMain.handle('get-streams-with-drops', async (event, categoryName) => {
 // Получить активные кампании дропсов
 ipcMain.handle('fetch-twitch-drops', async () => {
   const https = require('https');
-  
+
   return new Promise(async (resolve) => {
     console.log('Fetching Twitch drops campaigns...');
-    
+
     // Получаем auth token
     const authToken = await getAuthToken();
-    
+
     console.log('Auth token available:', authToken ? 'YES (length: ' + authToken.length + ')' : 'NO');
-    
+
     if (!authToken) {
       console.log('No auth token available, cannot fetch drops');
       resolve([]);
       return;
     }
-    
+
     // Используем правильный GraphQL запрос для получения дропсов
     const postData = JSON.stringify({
       operationName: 'ViewerDropsDashboard',
@@ -1925,16 +2052,16 @@ ipcMain.handle('fetch-twitch-drops', async () => {
         try {
           const response = JSON.parse(data);
           console.log('Raw API response:', JSON.stringify(response).substring(0, 500));
-          
+
           // Получаем кампании из ответа
           const dropCampaigns = response?.data?.currentUser?.dropCampaigns || [];
-          
+
           console.log('Fetched', dropCampaigns.length, 'drop campaigns');
-          
+
           if (dropCampaigns.length > 0) {
             console.log('First campaign:', JSON.stringify(dropCampaigns[0]).substring(0, 400));
           }
-          
+
           // Форматируем кампании
           const formatted = dropCampaigns.map(campaign => {
             const drops = (campaign.timeBasedDrops || []).map(drop => ({
@@ -1945,7 +2072,7 @@ ipcMain.handle('fetch-twitch-drops', async () => {
               imageUrl: drop.benefitEdges?.[0]?.benefit?.imageAssetURL || '',
               imageURL: drop.benefitEdges?.[0]?.benefit?.imageAssetURL || ''
             }));
-            
+
             return {
               id: campaign.id,
               name: campaign.name,
@@ -1959,7 +2086,7 @@ ipcMain.handle('fetch-twitch-drops', async () => {
               drops: drops
             };
           });
-          
+
           resolve(formatted);
         } catch (e) {
           console.log('Error parsing drops:', e.message, data.substring(0, 200));
@@ -1981,7 +2108,7 @@ ipcMain.handle('fetch-twitch-drops', async () => {
 // Helper function to get stream count for a game
 async function getStreamCountForGame(gameName, authToken) {
   const https = require('https');
-  
+
   return new Promise((resolve) => {
     const query = `
       query {
@@ -1990,11 +2117,11 @@ async function getStreamCountForGame(gameName, authToken) {
         }
       }
     `;
-    
+
     const postData = JSON.stringify({
       query: query
     });
-    
+
     const options = {
       hostname: 'gql.twitch.tv',
       port: 443,
@@ -2007,14 +2134,14 @@ async function getStreamCountForGame(gameName, authToken) {
         'Authorization': `OAuth ${authToken}`
       }
     };
-    
+
     const req = https.request(options, (res) => {
       let data = '';
-      
+
       res.on('data', (chunk) => {
         data += chunk;
       });
-      
+
       res.on('end', () => {
         try {
           const response = JSON.parse(data);
@@ -2025,11 +2152,11 @@ async function getStreamCountForGame(gameName, authToken) {
         }
       });
     });
-    
+
     req.on('error', () => {
       resolve(undefined);
     });
-    
+
     req.write(postData);
     req.end();
   });
@@ -2038,36 +2165,36 @@ async function getStreamCountForGame(gameName, authToken) {
 // Fetch Drops Inventory (full inventory with progress tracking)
 ipcMain.handle('fetch-drops-inventory', async () => {
   const https = require('https');
-  
+
   return new Promise(async (resolve) => {
     console.log('Fetching drops inventory...');
-    
+
     // Используем cookie токен из webview (создается при просмотре стримов)
     const { session } = require('electron');
     const twitchSession = session.fromPartition('persist:twitch');
-    
+
     let authToken = null;
     try {
-      const cookies = await twitchSession.cookies.get({ 
+      const cookies = await twitchSession.cookies.get({
         url: 'https://www.twitch.tv',
         name: 'auth-token'
       });
-      
+
       if (cookies && cookies.length > 0) {
         authToken = cookies[0].value;
       }
     } catch (e) {
       console.error('Error getting cookie token:', e.message);
     }
-    
+
     if (!authToken) {
       console.log('No cookie token - user needs to watch a stream first');
       resolve({ campaigns: [], currentDrop: null, needsStream: true });
       return;
     }
-    
+
     console.log('Using cookie token for drops');
-    
+
     // GraphQL operation for inventory (campaigns in progress only)
     const postData = JSON.stringify([
       {
@@ -2140,24 +2267,24 @@ ipcMain.handle('fetch-drops-inventory', async () => {
           console.log('GraphQL Response:', data);
           const responses = JSON.parse(data);
           console.log('Parsed responses:', responses);
-          
+
           // Parse inventory (only in-progress campaigns available due to integrity check)
           const currentUser = responses[0]?.data?.currentUser || {};
           const inventory = currentUser.inventory || {};
           const ongoingCampaigns = inventory.dropCampaignsInProgress || [];
-          
+
           console.log('Inventory:', inventory);
           console.log('Ongoing campaigns:', ongoingCampaigns.length);
-          
+
           // Создаем мапу полученных дропсов из инвентаря ПЕРЕД использованием в map
           const claimedDrops = {};
           (inventory.gameEventDrops || []).forEach(drop => {
             claimedDrops[drop.id] = drop.lastAwardedAt;
           });
-          
+
           // Используем кампании в прогрессе
           const campaignsMap = new Map();
-          
+
           // Добавляем ongoing campaigns
           ongoingCampaigns.forEach(campaign => {
             campaignsMap.set(campaign.id, {
@@ -2165,31 +2292,31 @@ ipcMain.handle('fetch-drops-inventory', async () => {
               inProgress: true
             });
           });
-          
+
           // Format campaigns with stream count - claimedDrops уже объявлен выше
           const campaigns = await Promise.all(Array.from(campaignsMap.values()).map(async campaign => {
             const now = new Date();
             const startsAt = campaign.startAt ? new Date(campaign.startAt) : null;
             const endsAt = campaign.endAt ? new Date(campaign.endAt) : null;
-            
+
             let status = 'active';
             if (startsAt && startsAt > now) {
               status = 'upcoming';
             } else if (endsAt && endsAt < now) {
               status = 'expired';
             }
-            
+
             const drops = (campaign.timeBasedDrops || []).map(drop => {
               // Используем self напрямую из drop
               const self = drop.self || {};
-              
+
               const currentMinutes = self.currentMinutesWatched || 0;
               const requiredMinutes = drop.requiredMinutesWatched || 0;
               const progress = requiredMinutes > 0 ? currentMinutes / requiredMinutes : 0;
               const percentage = Math.min(100, Math.floor(progress * 100));
               const isClaimed = self.isClaimed || false;
               const canClaim = !isClaimed && progress >= 1;
-              
+
               // Получаем картинку и название награды из benefitEdges
               let imageURL = null;
               let benefitName = null;
@@ -2201,10 +2328,10 @@ ipcMain.handle('fetch-drops-inventory', async () => {
                   benefitId = drop.benefitEdges[0].benefit.id;
                 }
               }
-              
+
               // Проверяем был ли получен предмет ранее
               const wasClaimed = benefitId && claimedDrops[benefitId];
-              
+
               return {
                 id: drop.id,
                 name: drop.name,
@@ -2218,11 +2345,11 @@ ipcMain.handle('fetch-drops-inventory', async () => {
                 dropInstanceID: self.dropInstanceID
               };
             });
-            
+
             const totalDrops = drops.length;
             const claimedDropsCount = drops.filter(d => d.claimed || d.progress >= d.required).length;
             const campaignProgress = totalDrops > 0 ? claimedDropsCount / totalDrops : 0;
-            
+
             // Получаем количество стримов для категории
             let streamCount = undefined;
             const gameName = campaign.game?.displayName || campaign.game?.name;
@@ -2233,7 +2360,7 @@ ipcMain.handle('fetch-drops-inventory', async () => {
                 console.error('Error getting stream count:', e);
               }
             }
-            
+
             return {
               id: campaign.id,
               name: campaign.name,
@@ -2250,7 +2377,7 @@ ipcMain.handle('fetch-drops-inventory', async () => {
               streamCount: streamCount
             };
           }));
-          
+
           // Find current drop (first drop that can be earned and isn't claimed)
           let currentDrop = null;
           for (const campaign of campaigns) {
@@ -2276,7 +2403,7 @@ ipcMain.handle('fetch-drops-inventory', async () => {
               }
             }
           }
-          
+
           resolve({
             campaigns: campaigns,
             currentDrop: currentDrop,
@@ -2302,7 +2429,7 @@ ipcMain.handle('fetch-drops-inventory', async () => {
 // Проверка наличия стримов с дропсами в категории
 ipcMain.handle('check-category-drops', async (event, categoryName) => {
   const https = require('https');
-  
+
   return new Promise((resolve) => {
     const escapedName = categoryName.replace(/"/g, '\\"');
     const postData = JSON.stringify({
@@ -2332,18 +2459,18 @@ ipcMain.handle('check-category-drops', async (event, categoryName) => {
         try {
           const response = JSON.parse(data);
           const streams = response?.data?.game?.streams?.edges || [];
-          
+
           // Проверяем есть ли стримы с тегами дропсов
           const hasDrops = streams.some(edge => {
             const tags = edge.node?.freeformTags || [];
             return tags.some(tag => {
               const tagName = tag.name.toLowerCase();
-              return tagName.includes('drops') || 
-                     tagName.includes('dropsenabled') || 
-                     tagName === 'dropson';
+              return tagName.includes('drops') ||
+                tagName.includes('dropsenabled') ||
+                tagName === 'dropson';
             });
           });
-          
+
           resolve(hasDrops);
         } catch (e) {
           console.log('Error checking drops:', e.message);
@@ -2365,33 +2492,33 @@ ipcMain.handle('check-category-drops', async (event, categoryName) => {
 // Получить баллы канала через Twitch API
 ipcMain.handle('get-channel-points', async (event, channelId, userId) => {
   const https = require('https');
-  
+
   return new Promise(async (resolve) => {
     try {
       // Получаем cookie token из webview
       const { session } = require('electron');
       const twitchSession = session.fromPartition('persist:twitch');
-      
+
       let authToken = null;
       try {
-        const cookies = await twitchSession.cookies.get({ 
+        const cookies = await twitchSession.cookies.get({
           url: 'https://www.twitch.tv',
           name: 'auth-token'
         });
-        
+
         if (cookies && cookies.length > 0) {
           authToken = cookies[0].value;
         }
       } catch (e) {
         console.error('Error getting cookie token:', e.message);
       }
-      
+
       if (!authToken) {
         console.log('No auth token available');
         resolve({ points: 0, error: 'No auth token' });
         return;
       }
-      
+
       // GraphQL запрос для получения баллов
       const postData = JSON.stringify([{
         operationName: 'ChannelPointsContext',
@@ -2405,7 +2532,7 @@ ipcMain.handle('get-channel-points', async (event, channelId, userId) => {
           }
         }
       }]);
-      
+
       const options = {
         hostname: 'gql.twitch.tv',
         port: 443,
@@ -2418,20 +2545,20 @@ ipcMain.handle('get-channel-points', async (event, channelId, userId) => {
           'Content-Length': Buffer.byteLength(postData)
         }
       };
-      
+
       const req = https.request(options, (res) => {
         let data = '';
-        
+
         res.on('data', (chunk) => {
           data += chunk;
         });
-        
+
         res.on('end', () => {
           try {
             const response = JSON.parse(data);
             const channelData = response[0]?.data?.community?.channel;
             const points = channelData?.self?.communityPoints?.balance || 0;
-            
+
             resolve({ points, error: null });
           } catch (e) {
             console.error('Error parsing points response:', e);
@@ -2439,12 +2566,12 @@ ipcMain.handle('get-channel-points', async (event, channelId, userId) => {
           }
         });
       });
-      
+
       req.on('error', (e) => {
         console.error('Request error:', e);
         resolve({ points: 0, error: e.message });
       });
-      
+
       req.write(postData);
       req.end();
     } catch (error) {
@@ -2457,7 +2584,7 @@ ipcMain.handle('get-channel-points', async (event, channelId, userId) => {
 // Выключение компьютера
 ipcMain.handle('shutdown-computer', async (event, action) => {
   const { exec } = require('child_process');
-  
+
   switch (action) {
     case 'shutdown':
       if (process.platform === 'win32') {
@@ -2484,12 +2611,12 @@ ipcMain.handle('shutdown-computer', async (event, action) => {
 // Получение одного дропа
 ipcMain.handle('claim-drop', async (event, dropInstanceID) => {
   const https = require('https');
-  
+
   return new Promise(async (resolve) => {
     console.log('Claiming drop:', dropInstanceID);
-    
+
     let authToken = null;
-    
+
     // Сначала пробуем получить OAuth токен
     const oauth = store.get('oauth');
     if (oauth && oauth.accessToken) {
@@ -2499,13 +2626,13 @@ ipcMain.handle('claim-drop', async (event, dropInstanceID) => {
       // Если нет OAuth, пробуем куки
       const { session } = require('electron');
       const twitchSession = session.fromPartition('persist:twitch');
-      
+
       try {
-        const cookies = await twitchSession.cookies.get({ 
+        const cookies = await twitchSession.cookies.get({
           url: 'https://www.twitch.tv',
           name: 'auth-token'
         });
-        
+
         if (cookies && cookies.length > 0) {
           authToken = cookies[0].value;
           console.log('Using cookie token for claim');
@@ -2514,13 +2641,13 @@ ipcMain.handle('claim-drop', async (event, dropInstanceID) => {
         console.error('Error getting cookie token:', e.message);
       }
     }
-    
+
     if (!authToken) {
       console.error('No auth token found');
       resolve({ success: false, error: 'Требуется авторизация в Twitch' });
       return;
     }
-    
+
     try {
       const postData = JSON.stringify([{
         operationName: 'DropsPage_ClaimDropRewards',
@@ -2536,7 +2663,7 @@ ipcMain.handle('claim-drop', async (event, dropInstanceID) => {
           }
         }
       }]);
-      
+
       const options = {
         hostname: 'gql.twitch.tv',
         port: 443,
@@ -2549,19 +2676,19 @@ ipcMain.handle('claim-drop', async (event, dropInstanceID) => {
           'Content-Length': Buffer.byteLength(postData)
         }
       };
-      
+
       const req = https.request(options, (res) => {
         let data = '';
-        
+
         res.on('data', (chunk) => {
           data += chunk;
         });
-        
+
         res.on('end', () => {
           try {
             const response = JSON.parse(data);
             console.log('Claim response:', response);
-            
+
             if (response[0]?.data?.claimDropRewards?.status === 'ELIGIBLE_FOR_ALL') {
               resolve({ success: true });
             } else {
@@ -2573,12 +2700,12 @@ ipcMain.handle('claim-drop', async (event, dropInstanceID) => {
           }
         });
       });
-      
+
       req.on('error', (e) => {
         console.error('Request error:', e);
         resolve({ success: false, error: e.message });
       });
-      
+
       req.write(postData);
       req.end();
     } catch (error) {
@@ -2591,32 +2718,32 @@ ipcMain.handle('claim-drop', async (event, dropInstanceID) => {
 // Получение всех доступных наград
 ipcMain.handle('claim-all-drops', async () => {
   const https = require('https');
-  
+
   return new Promise(async (resolve) => {
     console.log('Claiming all available drops...');
-    
+
     const { session } = require('electron');
     const twitchSession = session.fromPartition('persist:twitch');
-    
+
     let authToken = null;
     try {
-      const cookies = await twitchSession.cookies.get({ 
+      const cookies = await twitchSession.cookies.get({
         url: 'https://www.twitch.tv',
         name: 'auth-token'
       });
-      
+
       if (cookies && cookies.length > 0) {
         authToken = cookies[0].value;
       }
     } catch (e) {
       console.error('Error getting cookie token:', e.message);
     }
-    
+
     if (!authToken) {
       resolve({ success: false, error: 'Требуется авторизация' });
       return;
     }
-    
+
     try {
       // Сначала получаем список всех дропсов которые можно получить
       const drops = await new Promise((resolveDrops) => {
@@ -2643,7 +2770,7 @@ ipcMain.handle('claim-all-drops', async () => {
             }
           }`
         }]);
-        
+
         const options = {
           hostname: 'gql.twitch.tv',
           port: 443,
@@ -2655,7 +2782,7 @@ ipcMain.handle('claim-all-drops', async () => {
             'Content-Type': 'text/plain;charset=UTF-8'
           }
         };
-        
+
         const req = https.request(options, (res) => {
           let data = '';
           res.on('data', (chunk) => { data += chunk; });
@@ -2663,7 +2790,7 @@ ipcMain.handle('claim-all-drops', async () => {
             try {
               const responses = JSON.parse(data);
               const campaigns = responses[0]?.data?.currentUser?.inventory?.dropCampaignsInProgress || [];
-              
+
               const claimableDrops = [];
               campaigns.forEach(campaign => {
                 campaign.timeBasedDrops?.forEach(drop => {
@@ -2676,7 +2803,7 @@ ipcMain.handle('claim-all-drops', async () => {
                   }
                 });
               });
-              
+
               resolveDrops(claimableDrops);
             } catch (e) {
               console.error('Error parsing drops:', e);
@@ -2684,17 +2811,17 @@ ipcMain.handle('claim-all-drops', async () => {
             }
           });
         });
-        
+
         req.on('error', () => resolveDrops([]));
         req.write(postData);
         req.end();
       });
-      
+
       if (drops.length === 0) {
         resolve({ success: true, claimed: 0, message: 'Нет доступных наград для получения' });
         return;
       }
-      
+
       // Получаем все награды
       let claimed = 0;
       for (const dropInstanceID of drops) {
@@ -2712,7 +2839,7 @@ ipcMain.handle('claim-all-drops', async () => {
             }
           }
         }]);
-        
+
         const claimResult = await new Promise((resolveClaim) => {
           const options = {
             hostname: 'gql.twitch.tv',
@@ -2725,7 +2852,7 @@ ipcMain.handle('claim-all-drops', async () => {
               'Content-Type': 'text/plain;charset=UTF-8'
             }
           };
-          
+
           const req = https.request(options, (res) => {
             let data = '';
             res.on('data', (chunk) => { data += chunk; });
@@ -2739,25 +2866,25 @@ ipcMain.handle('claim-all-drops', async () => {
               }
             });
           });
-          
+
           req.on('error', () => resolveClaim(false));
           req.write(claimData);
           req.end();
         });
-        
+
         if (claimResult) claimed++;
-        
+
         // Небольшая задержка между получениями
         await new Promise(r => setTimeout(r, 500));
       }
-      
-      resolve({ 
-        success: true, 
-        claimed: claimed, 
+
+      resolve({
+        success: true,
+        claimed: claimed,
         total: drops.length,
-        message: `Получено наград: ${claimed}/${drops.length}` 
+        message: `Получено наград: ${claimed}/${drops.length}`
       });
-      
+
     } catch (error) {
       console.error('Error claiming drops:', error);
       resolve({ success: false, error: error.message });
@@ -2771,4 +2898,602 @@ ipcMain.on('set-autostart', (event, enabled) => {
     openAtLogin: enabled
   });
   store.set('settings.autostart', enabled);
+});
+// Получение подписок пользователя
+ipcMain.handle('get-user-subscriptions', async (event, authToken) => {
+  return new Promise((resolve) => {
+    if (!authToken) {
+      console.log('[GetSubscriptions] No authToken provided!');
+      resolve([]);
+      return;
+    }
+
+    console.log('[GetSubscriptions] Starting with token:', authToken.substring(0, 20) + '...');
+
+    try {
+      // Используем Helix API вместо GraphQL для получения follows
+      // Сначала получаем user ID
+      const userOptions = {
+        hostname: 'api.twitch.tv',
+        path: '/helix/users',
+        method: 'GET',
+        headers: {
+          'Client-ID': TWITCH_CLIENT_ID,
+          'Authorization': `Bearer ${authToken}`
+        }
+      };
+
+      const userReq = https.request(userOptions, (userRes) => {
+        let userData = '';
+        userRes.on('data', (chunk) => { userData += chunk; });
+        userRes.on('end', () => {
+          try {
+            const userResponse = JSON.parse(userData);
+            const userId = userResponse?.data?.[0]?.id;
+            console.log('[GetSubscriptions] Got user ID:', userId);
+
+            if (!userId) {
+              console.log('[GetSubscriptions] No user ID found in response!');
+              console.log('[GetSubscriptions] Full response:', userData);
+              resolve([]);
+              return;
+            }
+
+            // Теперь получаем список follows через Helix API (минимальные данные)
+            const followsOptions = {
+              hostname: 'api.twitch.tv',
+              path: `/helix/channels/followed?user_id=${userId}&first=100`,
+              method: 'GET',
+              headers: {
+                'Client-ID': TWITCH_CLIENT_ID,
+                'Authorization': `Bearer ${authToken}`
+              }
+            };
+
+            const followsReq = https.request(followsOptions, (followsRes) => {
+              let followsData = '';
+              followsRes.on('data', (chunk) => { followsData += chunk; });
+              followsRes.on('end', () => {
+                try {
+                  const followsResponse = JSON.parse(followsData);
+                  const follows = followsResponse?.data || [];
+
+                  console.log('[GetSubscriptions] Got follows response, count:', follows.length);
+
+                  if (follows.length === 0) {
+                    resolve([]);
+                    return;
+                  }
+
+                  // УПРОЩЕННЫЙ ВАРИАНТ - возвращаем только то что есть из API
+                  const formatted = follows.map(channel => ({
+                    id: channel.broadcaster_id,
+                    login: channel.broadcaster_login,
+                    displayName: channel.broadcaster_name,
+                    profileImageUrl: '', // Будет загружено асинхронно в renderer
+                    followers: 0, // Будет получено из кеша или API
+                    lastStreamDate: null, // Будет получено из кеша или API
+                    streamFrequency: 0,
+                    consistency: 0,
+                    hasDrops: false,
+                    isLive: false
+                  }));
+
+                  console.log(`[GetSubscriptions] Loaded ${formatted.length} subscriptions`);
+                  console.log('[GetSubscriptions] About to resolve with data');
+                  resolve(formatted);
+                } catch (e) {
+                  console.error('[GetSubscriptions] Error parsing follows:', e);
+                  console.log('[GetSubscriptions] Raw data:', followsData);
+                  resolve([]);
+                }
+              });
+            });
+
+            followsReq.on('error', (e) => {
+              console.error('[GetSubscriptions] Error fetching follows:', e);
+              resolve([]);
+            });
+
+            followsReq.end();
+
+          } catch (e) {
+            console.error('[GetSubscriptions] Error parsing user data:', e);
+            console.log('[GetSubscriptions] Raw user data:', userData);
+            resolve([]);
+          }
+        });
+      });
+
+      userReq.on('error', (e) => {
+        console.error('[GetSubscriptions] Error fetching user:', e);
+        resolve([]);
+      });
+
+      userReq.end();
+
+    } catch (error) {
+      console.error('[GetSubscriptions] Error in get-user-subscriptions:', error);
+      console.error('[GetSubscriptions] Stack:', error.stack);
+      resolve([]);
+    }
+
+    // Таймаут на случай если что-то зависло
+    setTimeout(() => {
+      console.warn('[GetSubscriptions] Request timeout - 30 seconds elapsed');
+    }, 30000);
+  });
+});
+
+// Отписка от канала через GraphQL API
+ipcMain.handle('unsubscribe-channel', async (event, authToken, broadcasterId) => {
+  return new Promise(async (resolve) => {
+    console.log('[Unsubscribe] Starting unsubscribe for broadcaster:', broadcasterId);
+    
+    if (!authToken || !broadcasterId) {
+      console.error('[Unsubscribe] Missing auth token or broadcaster ID');
+      resolve({ success: false, error: 'Missing auth token or broadcaster ID' });
+      return;
+    }
+
+    try {
+      // Используем GraphQL API для реальной отписки
+      const graphqlQuery = {
+        operationName: 'FollowButton_UnfollowUser',
+        variables: {
+          input: {
+            targetID: broadcasterId
+          }
+        },
+        query: `mutation FollowButton_UnfollowUser($input: FollowUserInput!) {
+          unfollowUser(input: $input) {
+            follow {
+              user {
+                id
+                self {
+                  follower {
+                    followedAt
+                  }
+                }
+              }
+            }
+          }
+        }`
+      };
+
+      const postData = JSON.stringify([graphqlQuery]);
+
+      const options = {
+        hostname: 'gql.twitch.tv',
+        path: '/gql',
+        method: 'POST',
+        headers: {
+          'Client-ID': 'kimne78kx3ncx6brgo4mv6wki5h1ko',
+          'Authorization': `OAuth ${authToken}`,
+          'Content-Type': 'text/plain;charset=UTF-8',
+          'Content-Length': Buffer.byteLength(postData)
+        }
+      };
+
+      console.log('[Unsubscribe] Sending GraphQL request to unfollow broadcaster:', broadcasterId);
+
+      const req = https.request(options, (res) => {
+        let data = '';
+        res.on('data', (chunk) => { data += chunk; });
+        res.on('end', () => {
+          console.log('[Unsubscribe] Response status:', res.statusCode);
+          console.log('[Unsubscribe] Response data:', data);
+          
+          try {
+            const response = JSON.parse(data);
+            
+            // GraphQL может вернуть массив или объект
+            const result = Array.isArray(response) ? response[0] : response;
+            
+            // Проверяем на ошибки
+            if (result.errors && result.errors.length > 0) {
+              console.error('[Unsubscribe] GraphQL errors:', result.errors);
+              resolve({ success: false, error: result.errors[0].message });
+              return;
+            }
+            
+            // Проверяем успешность - может быть data.unfollowUser или просто data
+            if (result.data) {
+              console.log('[Unsubscribe] Successfully unfollowed broadcaster:', broadcasterId);
+              resolve({ success: true });
+            } else {
+              console.error('[Unsubscribe] No data in response:', result);
+              resolve({ success: false, error: 'No data in response' });
+            }
+          } catch (e) {
+            console.error('[Unsubscribe] Error parsing response:', e);
+            console.error('[Unsubscribe] Raw data:', data);
+            resolve({ success: false, error: 'Invalid response format' });
+          }
+        });
+      });
+
+      req.on('error', (e) => {
+        console.error('[Unsubscribe] Request error:', e);
+        resolve({ success: false, error: e.message });
+      });
+
+      req.write(postData);
+      req.end();
+    } catch (error) {
+      console.error('[Unsubscribe] Error in unsubscribe-channel:', error);
+      resolve({ success: false, error: error.message });
+    }
+  });
+});
+
+// Загрузка дополнительных данных для одного канала (картинка, фолловеры, стримы)
+ipcMain.handle('get-channel-details', async (event, authToken, channelLogin) => {
+  return new Promise((resolve) => {
+    if (!authToken || !channelLogin) {
+      console.log('[GetChannelDetails] Missing auth or login');
+      resolve({ profileImageUrl: '', followers: 0, lastStreamDate: null, isLive: false });
+      return;
+    }
+
+    console.log(`[GetChannelDetails] Starting fetch for ${channelLogin}`);
+
+    // Шаг 1: Получаем юзера для аватарки и ID
+    const userOptions = {
+      hostname: 'api.twitch.tv',
+      path: `/helix/users?login=${encodeURIComponent(channelLogin)}`,
+      method: 'GET',
+      headers: {
+        'Client-ID': TWITCH_CLIENT_ID,
+        'Authorization': `Bearer ${authToken}`
+      }
+    };
+
+    https.request(userOptions, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(data);
+          const user = json?.data?.[0];
+
+          if (!user) {
+            console.log(`[GetChannelDetails] No user found for ${channelLogin}`);
+            resolve({ profileImageUrl: '', followers: 0, lastStreamDate: null, isLive: false });
+            return;
+          }
+
+          const userId = user.id;
+          const profileImageUrl = user.profile_image_url || '';
+          const description = user.description || '';
+          console.log(`[GetChannelDetails] Got user ${channelLogin} with ID ${userId}`);
+
+          let followersData = null;
+          let streamData = null;
+          let lastVideoDate = null;
+          let requestsComplete = 0;
+
+          const finalResolve = () => {
+            requestsComplete++;
+            if (requestsComplete === 4) {
+              const result = {
+                profileImageUrl: profileImageUrl,
+                description: description,
+                followers: typeof followersData === 'number' ? followersData : 0,
+                lastStreamDate: streamData?.started_at || lastVideoDate || null,
+                isLive: !!streamData
+              };
+              console.log(`[GetChannelDetails] Final result for ${channelLogin}:`, result);
+              resolve(result);
+            }
+          };
+
+          // Шаг 2: GraphQL (lastBroadcast + stream). Фолловеры пробуем через app token ниже.
+          const gqlQuery = {
+            query: `query($login: String!) {
+              user(login: $login) {
+                followers { totalCount }
+                lastBroadcast { startedAt }
+                stream { createdAt }
+              }
+            }`,
+            variables: { login: channelLogin }
+          };
+
+          const gqlBody = JSON.stringify(gqlQuery);
+          const gqlOptions = {
+            hostname: 'gql.twitch.tv',
+            path: '/gql',
+            method: 'POST',
+            headers: {
+              'Client-ID': TWITCH_CLIENT_ID,
+              'Authorization': `Bearer ${authToken}`,
+              'Content-Type': 'application/json',
+              'Content-Length': Buffer.byteLength(gqlBody)
+            }
+          };
+
+          https.request(gqlOptions, (res) => {
+            let data = '';
+            res.on('data', chunk => data += chunk);
+            res.on('end', () => {
+              try {
+                const json = JSON.parse(data);
+                const gqlUser = json?.data?.user;
+
+                if (gqlUser?.followers?.totalCount !== undefined && followersData === null) {
+                  followersData = gqlUser.followers.totalCount || 0;
+                  console.log(`[GetChannelDetails] Followers (GQL) ${channelLogin}: total=${followersData}`);
+                }
+
+                if (gqlUser?.lastBroadcast?.startedAt) {
+                  lastVideoDate = gqlUser.lastBroadcast.startedAt;
+                  console.log(`[GetChannelDetails] Last broadcast ${channelLogin}: ${lastVideoDate}`);
+                }
+
+                if (gqlUser?.stream?.createdAt) {
+                  streamData = { started_at: gqlUser.stream.createdAt };
+                  console.log(`[GetChannelDetails] Stream (GQL) ${channelLogin}: started_at=${gqlUser.stream.createdAt}`);
+                }
+              } catch (e) {
+                console.error('[GetChannelDetails] Error parsing GraphQL:', e.message);
+              }
+
+              if (followersData === null) {
+                const gqlOptionsNoAuth = {
+                  hostname: 'gql.twitch.tv',
+                  path: '/gql',
+                  method: 'POST',
+                  headers: {
+                    'Client-ID': TWITCH_CLIENT_ID,
+                    'Content-Type': 'application/json',
+                    'Content-Length': Buffer.byteLength(gqlBody)
+                  }
+                };
+
+                https.request(gqlOptionsNoAuth, (res2) => {
+                  let data2 = '';
+                  res2.on('data', chunk => data2 += chunk);
+                  res2.on('end', () => {
+                    try {
+                      const json2 = JSON.parse(data2);
+                      const gqlUser2 = json2?.data?.user;
+                      if (gqlUser2?.followers?.totalCount !== undefined) {
+                        followersData = gqlUser2.followers.totalCount || 0;
+                        console.log(`[GetChannelDetails] Followers (GQL no auth) ${channelLogin}: total=${followersData}`);
+                      }
+                    } catch (e) {
+                      console.error('[GetChannelDetails] Error parsing GraphQL (no auth):', e.message);
+                    }
+                    finalResolve();
+                  });
+                }).on('error', (e) => {
+                  console.error('[GetChannelDetails] GraphQL no-auth request error:', e.message);
+                  finalResolve();
+                }).end(gqlBody);
+              } else {
+                finalResolve();
+              }
+            });
+          }).on('error', (e) => {
+            console.error('[GetChannelDetails] GraphQL request error:', e.message);
+            finalResolve();
+          }).end(gqlBody);
+
+          // Шаг 2.1: Фолловеры через Helix users/follows с app token
+          getAppAccessToken()
+            .then((appToken) => {
+              const followersOptions = {
+                hostname: 'api.twitch.tv',
+                path: `/helix/users/follows?to_id=${userId}&first=1`,
+                method: 'GET',
+                headers: {
+                  'Client-ID': TWITCH_CLIENT_ID,
+                  'Authorization': `Bearer ${appToken}`
+                }
+              };
+
+              https.request(followersOptions, (res) => {
+                let data = '';
+                res.on('data', chunk => data += chunk);
+                res.on('end', () => {
+                  try {
+                    if (res.statusCode !== 200) {
+                      console.error(`[GetChannelDetails] Followers helix status ${res.statusCode} for ${channelLogin}`);
+                    }
+                    const json = JSON.parse(data);
+                    if (typeof json?.total === 'number') {
+                      followersData = json.total;
+                      console.log(`[GetChannelDetails] Followers (helix app) ${channelLogin}: total=${followersData}`);
+                    } else {
+                      getFollowersFromIvr(channelLogin).then((ivrTotal) => {
+                        if (typeof ivrTotal === 'number') {
+                          followersData = ivrTotal;
+                          console.log(`[GetChannelDetails] Followers (ivr) ${channelLogin}: total=${followersData}`);
+                          finalResolve();
+                          return;
+                        }
+
+                        getFollowersFromDecapi(channelLogin).then((fallbackTotal) => {
+                          if (typeof fallbackTotal === 'number') {
+                            followersData = fallbackTotal;
+                            console.log(`[GetChannelDetails] Followers (decapi) ${channelLogin}: total=${followersData}`);
+                          }
+                          finalResolve();
+                        });
+                      });
+                      return;
+                    }
+                  } catch (e) {
+                    console.error('[GetChannelDetails] Error parsing followers (helix):', e.message);
+                    getFollowersFromIvr(channelLogin).then((ivrTotal) => {
+                      if (typeof ivrTotal === 'number') {
+                        followersData = ivrTotal;
+                        console.log(`[GetChannelDetails] Followers (ivr) ${channelLogin}: total=${followersData}`);
+                        finalResolve();
+                        return;
+                      }
+
+                      getFollowersFromDecapi(channelLogin).then((fallbackTotal) => {
+                        if (typeof fallbackTotal === 'number') {
+                          followersData = fallbackTotal;
+                          console.log(`[GetChannelDetails] Followers (decapi) ${channelLogin}: total=${followersData}`);
+                        }
+                        finalResolve();
+                      });
+                    });
+                    return;
+                  }
+                  finalResolve();
+                });
+              }).on('error', (e) => {
+                console.error('[GetChannelDetails] Followers helix request error:', e.message);
+                getFollowersFromIvr(channelLogin).then((ivrTotal) => {
+                  if (typeof ivrTotal === 'number') {
+                    followersData = ivrTotal;
+                    console.log(`[GetChannelDetails] Followers (ivr) ${channelLogin}: total=${followersData}`);
+                    finalResolve();
+                    return;
+                  }
+
+                  getFollowersFromDecapi(channelLogin).then((fallbackTotal) => {
+                    if (typeof fallbackTotal === 'number') {
+                      followersData = fallbackTotal;
+                      console.log(`[GetChannelDetails] Followers (decapi) ${channelLogin}: total=${followersData}`);
+                    }
+                    finalResolve();
+                  });
+                });
+              }).end();
+            })
+            .catch((e) => {
+              console.error('[GetChannelDetails] App token error:', e.message);
+              finalResolve();
+            });
+
+          // Шаг 3: Получаем инфо о стриме
+          const streamOptions = {
+            hostname: 'api.twitch.tv',
+            path: `/helix/streams?user_id=${userId}&first=1`,
+            method: 'GET',
+            headers: {
+              'Client-ID': TWITCH_CLIENT_ID,
+              'Authorization': `Bearer ${authToken}`
+            }
+          };
+
+          https.request(streamOptions, (res) => {
+            let data = '';
+            res.on('data', chunk => data += chunk);
+            res.on('end', () => {
+              try {
+                const json = JSON.parse(data);
+                const stream = json?.data?.[0];
+
+                if (stream) {
+                  streamData = stream;
+                  console.log(`[GetChannelDetails] Stream ${channelLogin}: started_at=${stream.started_at}`);
+                } else {
+                  console.log(`[GetChannelDetails] Stream ${channelLogin}: offline (no active stream)`);
+                }
+              } catch (e) {
+                console.error('[GetChannelDetails] Error parsing stream:', e.message);
+              }
+              finalResolve();
+            });
+          }).on('error', (e) => {
+            console.error('[GetChannelDetails] Stream request error:', e.message);
+            finalResolve();
+          }).end();
+
+          // Шаг 4: Получаем дату последнего стрима из видео (если не в эфире)
+          const videosOptions = {
+            hostname: 'api.twitch.tv',
+            path: `/helix/videos?user_id=${userId}&first=1&sort=time&type=archive`,
+            method: 'GET',
+            headers: {
+              'Client-ID': TWITCH_CLIENT_ID,
+              'Authorization': `Bearer ${authToken}`
+            }
+          };
+
+          https.request(videosOptions, (res) => {
+            let data = '';
+            res.on('data', chunk => data += chunk);
+            res.on('end', () => {
+              try {
+                const json = JSON.parse(data);
+                const video = json?.data?.[0];
+                lastVideoDate = video?.created_at || null;
+                if (lastVideoDate) {
+                  console.log(`[GetChannelDetails] Last video ${channelLogin}: ${lastVideoDate}`);
+                }
+              } catch (e) {
+                console.error('[GetChannelDetails] Error parsing videos:', e.message);
+              }
+              finalResolve();
+            });
+          }).on('error', (e) => {
+            console.error('[GetChannelDetails] Videos request error:', e.message);
+            finalResolve();
+          }).end();
+
+        } catch (e) {
+          console.error('[GetChannelDetails] Error parsing user response:', e);
+          resolve({ profileImageUrl: '', followers: 0, lastStreamDate: null, isLive: false });
+        }
+      });
+    }).on('error', (e) => {
+      console.error('[GetChannelDetails] User request error:', e);
+      resolve({ profileImageUrl: '', followers: 0, lastStreamDate: null, isLive: false });
+    }).end();
+  });
+});
+
+// Загрузка изображения по URL и возврат как base64 data URL
+ipcMain.handle('load-image', async (event, imageUrl) => {
+  return new Promise((resolve) => {
+    if (!imageUrl || imageUrl.includes('data:')) {
+      resolve(imageUrl);
+      return;
+    }
+
+    try {
+      const urlObj = new URL(imageUrl);
+      const hostname = urlObj.hostname;
+      const path = urlObj.pathname + urlObj.search;
+
+      const imgReq = https.request({
+        hostname: hostname,
+        path: path,
+        method: 'GET'
+      }, (res) => {
+        const chunks = [];
+        res.on('data', (chunk) => { chunks.push(chunk); });
+        res.on('end', () => {
+          try {
+            const buffer = Buffer.concat(chunks);
+            const base64 = buffer.toString('base64');
+            const mimeType = res.headers['content-type'] || 'image/png';
+            const dataUrl = `data:${mimeType};base64,${base64}`;
+            console.log('[LoadImage] Successfully loaded image:', imageUrl.substring(0, 50));
+            resolve(dataUrl);
+          } catch (e) {
+            console.error('[LoadImage] Error converting to base64:', e);
+            resolve(imageUrl); // Fallback to original URL
+          }
+        });
+      });
+
+      imgReq.on('error', (e) => {
+        console.error('[LoadImage] Error fetching image:', e);
+        resolve(imageUrl); // Fallback to original URL
+      });
+
+      imgReq.end();
+    } catch (error) {
+      console.error('[LoadImage] Error:', error);
+      resolve(imageUrl); // Fallback to original URL
+    }
+  });
 });

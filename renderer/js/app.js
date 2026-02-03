@@ -17,9 +17,19 @@ document.addEventListener('DOMContentLoaded', async () => {
   window.electronAPI.onAppClosing(() => {
     console.log('[App] Application closing, stopping farming session...');
     if (window.farmingPage) {
-      window.farmingPage.stopFarming();
+      window.farmingPage.stopFarming(false); // false = не показывать toast
     }
   });
+
+  // Обработчик навигации из трея
+  if (window.electronAPI.onNavigateToPage) {
+    window.electronAPI.onNavigateToPage((page) => {
+      console.log('[App] Navigate to page from tray:', page);
+      if (window.router) {
+        window.router.navigate(page);
+      }
+    });
+  }
 
   // Initialize router
   window.router = new Router();
@@ -143,6 +153,110 @@ window.utils = {
         }
       }, 300);
     }, 3000);
+  },
+
+  showConfirmation(title, message = '') {
+    return new Promise((resolve) => {
+      const modal = document.createElement('div');
+      modal.id = 'confirmation-modal';
+      modal.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.7);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10001;
+      `;
+
+      modal.innerHTML = `
+        <div style="background: var(--bg-primary); border-radius: 12px; padding: 24px; max-width: 400px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5); border: 1px solid var(--border-color);">
+          <h2 style="color: var(--text-primary); margin: 0 0 8px 0; font-size: 18px; font-weight: 600;">${title}</h2>
+          ${message ? `<p style="color: var(--text-secondary); margin: 0 0 20px 0; font-size: 14px;">${message}</p>` : ''}
+          <div style="display: flex; gap: 12px; justify-content: flex-end;">
+            <button class="btn btn-secondary" id="confirm-cancel" style="min-width: 100px;">Отмена</button>
+            <button class="btn btn-primary" id="confirm-ok" style="min-width: 100px;">Подтвердить</button>
+          </div>
+        </div>
+      `;
+
+      document.body.appendChild(modal);
+
+      document.getElementById('confirm-ok').addEventListener('click', () => {
+        document.body.removeChild(modal);
+        resolve(true);
+      });
+
+      document.getElementById('confirm-cancel').addEventListener('click', () => {
+        document.body.removeChild(modal);
+        resolve(false);
+      });
+
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+          document.body.removeChild(modal);
+          resolve(false);
+        }
+      });
+    });
+  },
+
+  showCustomConfirmation(contentHtml, options = {}) {
+    return new Promise((resolve) => {
+      const {
+        confirmText = 'Подтвердить',
+        cancelText = 'Отмена',
+        confirmClass = 'btn-primary'
+      } = options;
+
+      const modal = document.createElement('div');
+      modal.id = 'confirmation-modal';
+      modal.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.7);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10001;
+        backdrop-filter: blur(4px);
+      `;
+
+      modal.innerHTML = `
+        <div style="background: var(--bg-primary); border-radius: 16px; padding: 32px; max-width: 440px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6); border: 1px solid var(--border-color); animation: modalSlideIn 0.3s ease;">
+          ${contentHtml}
+          <div style="display: flex; gap: 12px; justify-content: center; margin-top: 24px;">
+            <button class="btn btn-secondary" id="confirm-cancel" style="flex: 1; max-width: 160px; padding: 12px 24px; font-size: 15px; font-weight: 600; border-radius: 10px; transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; text-align: center;">${cancelText}</button>
+            <button class="btn ${confirmClass}" id="confirm-ok" style="flex: 1; max-width: 160px; padding: 12px 24px; font-size: 15px; font-weight: 600; border-radius: 10px; transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; text-align: center;">${confirmText}</button>
+          </div>
+        </div>
+      `;
+
+      document.body.appendChild(modal);
+
+      document.getElementById('confirm-ok').addEventListener('click', () => {
+        document.body.removeChild(modal);
+        resolve(true);
+      });
+
+      document.getElementById('confirm-cancel').addEventListener('click', () => {
+        document.body.removeChild(modal);
+        resolve(false);
+      });
+
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+          document.body.removeChild(modal);
+          resolve(false);
+        }
+      });
+    });
   }
 };
 

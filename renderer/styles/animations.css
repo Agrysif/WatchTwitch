@@ -56,6 +56,18 @@
   }
 }
 
+/* Modal Slide In Animation */
+@keyframes modalSlideIn {
+  from {
+    transform: translateY(-20px) scale(0.95);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
 /* Scale Animations */
 .scale-in {
   animation: scaleIn 0.2s ease-out;

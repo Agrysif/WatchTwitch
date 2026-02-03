@@ -41,6 +41,10 @@ const translations = {
       remove: 'Удалить',
       noAccounts: 'Нет добавленных аккаунтов'
     },
+    subscriptions: {
+      title: 'Мои подписки',
+      subtitle: 'Управление каналами, на которые вы подписаны'
+    },
     statistics: {
       title: 'Статистика',
       subtitle: 'Ваша статистика фарминга',
@@ -139,6 +143,10 @@ const translations = {
       disconnected: 'Disconnected',
       remove: 'Remove',
       noAccounts: 'No accounts added'
+    },
+    subscriptions: {
+      title: 'My Subscriptions',
+      subtitle: 'Manage channels you follow'
     },
     statistics: {
       title: 'Statistics',

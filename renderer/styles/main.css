@@ -301,6 +301,14 @@ body {
   box-shadow: 0 0 0 3px var(--accent-shadow);
 }
 
+.input-field:read-only {
+  cursor: pointer;
+}
+
+.input-field:read-only:hover {
+  border-color: rgba(145, 71, 255, 0.5);
+}
+
 /* Progress Bars */
 .progress-bar {
   width: 100%;
@@ -1008,15 +1016,89 @@ body {
   outline: none;
   transition: all 0.2s ease;
   min-width: 150px;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg width='12' height='8' viewBox='0 0 12 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L6 6L11 1' stroke='%23999999' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 36px;
 }
 
 .settings-select:hover {
   border-color: var(--accent-color);
+  background-color: rgba(145, 71, 255, 0.05);
 }
 
 .settings-select:focus {
   border-color: var(--accent-color);
   box-shadow: 0 0 0 3px rgba(145, 71, 255, 0.1);
+}
+
+.settings-select option {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  padding: 8px 12px;
+}
+
+.settings-select option:checked {
+  background: linear-gradient(90deg, rgba(145, 71, 255, 0.3), rgba(145, 71, 255, 0.1));
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+/* Settings Toggle Styles */
+.settings-toggle {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+  flex-shrink: 0;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.settings-toggle input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  position: absolute;
+}
+
+.settings-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(255, 255, 255, 0.1);
+  transition: all 0.3s ease;
+  border-radius: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.settings-slider::before {
+  content: '';
+  position: absolute;
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 2px;
+  background-color: white;
+  transition: all 0.3s ease;
+  border-radius: 50%;
+}
+
+.settings-toggle input:checked + .settings-slider {
+  background-color: var(--accent-color);
+  border-color: var(--accent-color);
+}
+
+.settings-toggle input:checked + .settings-slider::before {
+  transform: translateX(20px);
+}
+
+.settings-toggle:hover .settings-slider {
+  box-shadow: 0 0 8px rgba(145, 71, 255, 0.3);
 }
 
 /* Settings Actions */

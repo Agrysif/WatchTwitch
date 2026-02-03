@@ -6,16 +6,9 @@
 
   <!-- Current Stream Info -->
   <div class="card">
-    <!-- Header with Session Timer -->
+    <!-- Header -->
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
       <div class="card-title" data-i18n="farming.currentStream">Текущий стрим</div>
-      <div id="session-timer-display" style="display: none; padding: 8px 16px; background: linear-gradient(135deg, rgba(145, 71, 255, 0.15), rgba(0, 229, 122, 0.15)); border: 1px solid rgba(145, 71, 255, 0.3); border-radius: 20px; font-size: 13px; font-weight: 600; color: var(--text-primary); font-family: 'Courier New', monospace; box-shadow: 0 2px 8px rgba(145, 71, 255, 0.2);">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right: 6px; vertical-align: middle; opacity: 0.8;">
-          <circle cx="12" cy="12" r="10"/>
-          <path d="M12 6v6l4 2"/>
-        </svg>
-        <span id="session-time-value">00:00:00</span>
-      </div>
     </div>
     
     <div id="current-stream-info">
@@ -57,36 +50,39 @@
       <!-- Compact Stream Info with Top Categories -->
       <div style="display: flex; gap: 12px; margin-top: 10px;">
         <!-- Stream Details - full width -->
-        <div id="stream-details" style="flex: 1; padding: 12px 16px; background: var(--bg-secondary); border-radius: 8px; border: 1px solid var(--border-color); display: flex; gap: 12px; align-items: center;">
-          <!-- Game Cover -->
-          <img id="stream-game-cover" src="" alt="Game" style="width: 48px; height: 64px; border-radius: 4px; object-fit: cover; flex-shrink: 0;">
+        <div id="stream-details" class="stream-info-card">
+          <!-- Game Cover with gradient background -->
+          <div class="stream-cover-wrapper">
+            <img id="stream-game-cover" src="" alt="Game" class="stream-game-cover">
+          </div>
           
           <!-- Info -->
           <div style="flex: 1; min-width: 0;">
-            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
-              <div style="width: 6px; height: 6px; background: #00f593; border-radius: 50%; animation: pulse 2s infinite;"></div>
-              <span id="stream-channel" style="font-size: 14px; font-weight: 600; color: var(--text-primary);"></span>
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 5px;">
+              <div class="stream-live-indicator"></div>
+              <span id="stream-channel" class="stream-channel-name"></span>
             </div>
-            <div id="stream-game" style="font-size: 11px; color: var(--text-secondary); margin-bottom: 3px;"></div>
-            <div id="stream-title" style="font-size: 11px; color: var(--text-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 4px;"></div>
-            <div id="stream-category" style="display: none; font-size: 10px; color: #adadb8; padding: 3px 8px; background: rgba(173, 173, 184, 0.15); border: 1px solid rgba(173, 173, 184, 0.25); border-radius: 4px; font-weight: 500;"></div>
+            <div id="stream-game" class="stream-game-name"></div>
+            <div id="stream-title" class="stream-title-text"></div>
+            <div id="stream-category" class="stream-category-tag"></div>
           </div>
           
           <!-- Mini Stats -->
-          <div style="display: flex; gap: 12px; flex-shrink: 0; margin-right: 8px;">
-            <div style="text-align: center;">
-              <div style="font-size: 9px; color: var(--text-tertiary); text-transform: uppercase; margin-bottom: 2px;">Зрители</div>
-              <div id="stream-viewers" style="font-size: 12px; font-weight: 600; color: var(--text-primary);">-</div>
+          <div class="stream-stats-container">
+            <div class="stream-stat-item">
+              <div class="stream-stat-label">Зрители</div>
+              <div id="stream-viewers" class="stream-stat-value">-</div>
             </div>
-            <div style="text-align: center;">
-              <div style="font-size: 9px; color: var(--text-tertiary); text-transform: uppercase; margin-bottom: 2px;">Uptime</div>
-              <div id="stream-uptime" style="font-size: 12px; font-weight: 600; color: var(--text-primary);">-</div>
+            <div class="stream-stat-divider"></div>
+            <div class="stream-stat-item">
+              <div class="stream-stat-label">Uptime</div>
+              <div id="stream-uptime" class="stream-stat-value">-</div>
             </div>
           </div>
           
           <!-- Chat Toggle -->
-          <button class="btn btn-secondary" id="toggle-chat-btn" style="height: 32px; width: 32px; padding: 0; display: flex; align-items: center; justify-content: center; flex-shrink: 0;" title="Показать/скрыть чат">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <button class="btn btn-secondary stream-chat-toggle" id="toggle-chat-btn" title="Показать/скрыть чат">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
             </svg>
           </button>
@@ -235,6 +231,162 @@
 </div>
 
 <style>
+  /* Stream Info Card Styles */
+  .stream-info-card {
+    flex: 1;
+    padding: 14px 18px;
+    background: linear-gradient(135deg, var(--bg-secondary) 0%, rgba(145, 71, 255, 0.05) 100%);
+    border-radius: 12px;
+    border: 1.5px solid var(--border-color);
+    display: flex;
+    gap: 14px;
+    align-items: center;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .stream-info-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, #00f593, transparent);
+    opacity: 0.8;
+  }
+
+  .stream-info-card:hover {
+    /* Removed hover effects */
+  }
+
+  .stream-cover-wrapper {
+    position: relative;
+    flex-shrink: 0;
+    overflow: hidden;
+    border-radius: 8px;
+  }
+
+  .stream-cover-wrapper::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: linear-gradient(45deg, transparent 30%, rgba(255, 255, 255, 0.4) 50%, transparent 70%);
+    transform: translateX(-100%) translateY(-100%) rotate(45deg);
+    transition: transform 0.6s;
+    z-index: 1;
+  }
+
+  .stream-info-card:hover .stream-cover-wrapper::before {
+    transform: translateX(100%) translateY(100%) rotate(45deg);
+  }
+
+  .stream-game-cover {
+    width: 50px;
+    height: 68px;
+    border-radius: 8px;
+    object-fit: cover;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+    position: relative;
+  }
+
+  .stream-live-indicator {
+    width: 8px;
+    height: 8px;
+    background: #00f593;
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+    box-shadow: 0 0 8px #00f593;
+  }
+
+  .stream-channel-name {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+
+  .stream-game-name {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+    font-weight: 500;
+  }
+
+  .stream-title-text {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin-bottom: 5px;
+  }
+
+  .stream-category-tag {
+    display: none;
+    font-size: 10px;
+    color: #adadb8;
+    padding: 4px 10px;
+    background: rgba(173, 173, 184, 0.15);
+    border: 1px solid rgba(173, 173, 184, 0.25);
+    border-radius: 6px;
+    font-weight: 500;
+    display: inline-block;
+  }
+
+  .stream-stats-container {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    padding: 0 16px;
+    flex-shrink: 0;
+  }
+
+  .stream-stat-item {
+    text-align: center;
+  }
+
+  .stream-stat-label {
+    font-size: 10px;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
+    font-weight: 600;
+  }
+
+  .stream-stat-value {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+
+  .stream-stat-divider {
+    width: 1px;
+    height: 32px;
+    background: linear-gradient(to bottom, transparent, var(--border-color), transparent);
+  }
+
+  .stream-chat-toggle {
+    height: 36px;
+    width: 36px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    border-radius: 10px;
+    transition: all 0.2s ease;
+  }
+
+  .stream-chat-toggle:hover {
+    transform: translateY(-2px);
+    border-color: var(--accent-color);
+  }
+
   .no-stream {
     display: flex;
     flex-direction: column;

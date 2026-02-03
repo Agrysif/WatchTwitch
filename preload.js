@@ -51,8 +51,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   claimDrop: (dropInstanceID) => ipcRenderer.invoke('claim-drop', dropInstanceID),
   getChannelPoints: (channelId, userId) => ipcRenderer.invoke('get-channel-points', channelId, userId),
   
+  // Subscriptions
+  getUserSubscriptions: (authToken) => ipcRenderer.invoke('get-user-subscriptions', authToken),
+  unsubscribeChannel: (authToken, channelId) => ipcRenderer.invoke('unsubscribe-channel', authToken, channelId),
+  getChannelDetails: (authToken, channelLogin) => ipcRenderer.invoke('get-channel-details', authToken, channelLogin),
+  loadImage: (imageUrl) => ipcRenderer.invoke('load-image', imageUrl),
+  
   // Обработчик закрытия приложения
   onAppClosing: (callback) => ipcRenderer.on('app-closing', callback),
+
+  // Обработчик навигации из трея
+  onNavigateToPage: (callback) => ipcRenderer.on('navigate-to-page', callback),
 
   // Auto updater
   checkForUpdates: () => ipcRenderer.send('check-for-updates'),

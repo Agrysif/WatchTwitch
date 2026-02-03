@@ -117,4 +117,20 @@ class Storage {
   static async saveWatchTimeStats(stats) {
     await this.set('watchTimeStats', stats);
   }
+
+  static async getSubscriptions() {
+    return await this.get('subscriptions', []);
+  }
+
+  static async saveSubscriptions(subscriptions) {
+    await this.set('subscriptions', subscriptions);
+  }
+
+  static async getItem(key, defaultValue = null) {
+    return await this.get(key, defaultValue);
+  }
+
+  static async setItem(key, value) {
+    await this.set(key, value);
+  }
 }

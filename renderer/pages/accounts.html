@@ -5,20 +5,24 @@
   </div>
 
   <div class="card">
-    <div class="add-account-section" style="display: flex; gap: 12px; margin-bottom: 24px;">
-      <button class="btn btn-primary" id="add-twitch-btn" style="flex: 1;">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M11.571 4.714h1.715v5.143H11.57zm4.715 0H18v5.143h-1.714zM6 0L1.714 4.286v15.428h5.143V24l4.286-4.286h3.428L22.286 12V0zm14.571 11.143l-3.428 3.428h-3.429l-3 3v-3H6.857V1.714h13.714Z"/>
-        </svg>
-        <span data-i18n="accounts.loginWithTwitch">Войти через Twitch</span>
+    <div class="add-account-section">
+      <button class="accounts-btn accounts-btn-primary" id="add-twitch-btn">
+        <div class="accounts-btn-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M11.571 4.714h1.715v5.143H11.57zm4.715 0H18v5.143h-1.714zM6 0L1.714 4.286v15.428h5.143V24l4.286-4.286h3.428L22.286 12V0zm14.571 11.143l-3.428 3.428h-3.429l-3 3v-3H6.857V1.714h13.714Z"/>
+          </svg>
+        </div>
+        <span data-i18n="accounts.loginWithTwitch">Войти через OAuth</span>
       </button>
-      <button class="btn btn-secondary" id="add-cookies-btn" style="flex: 1;">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z" fill="currentColor"/>
-          <circle cx="8.5" cy="8.5" r="1.5" fill="currentColor"/>
-          <circle cx="15" cy="11" r="1.5" fill="currentColor"/>
-          <circle cx="10" cy="14" r="1.5" fill="currentColor"/>
-        </svg>
+      <button class="accounts-btn accounts-btn-outline" id="add-cookies-btn">
+        <div class="accounts-btn-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z" fill="currentColor"/>
+            <circle cx="8.5" cy="8.5" r="1.5" fill="currentColor"/>
+            <circle cx="15" cy="11" r="1.5" fill="currentColor"/>
+            <circle cx="10" cy="14" r="1.5" fill="currentColor"/>
+          </svg>
+        </div>
         <span data-i18n="accounts.loginWithCookies">Войти через Cookies</span>
       </button>
     </div>
@@ -34,21 +38,23 @@
     </div>
 
     <!-- External login hint -->
-    <div class="external-login-hint" style="margin-top: 24px; padding: 16px; background: var(--bg-primary); border-radius: 8px; border: 1px dashed var(--border-color);">
-      <div style="display: flex; align-items: center; gap: 12px; color: var(--text-secondary); font-size: 14px;">
+    <div class="external-login-hint">
+      <div class="external-login-content">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
           <circle cx="12" cy="12" r="10" stroke-width="2"/>
           <path d="M12 16v-4M12 8h.01" stroke-width="2"/>
         </svg>
-        <div style="flex: 1;">
-          <strong style="color: var(--text-primary);">Совет:</strong> Если у вас уже открыт Twitch в браузере, OAuth окно автоматически использует этот аккаунт. Для входа с другого аккаунта:
+        <div class="external-login-text">
+          <strong>Совет:</strong> Если у вас уже открыт Twitch в браузере, OAuth окно автоматически использует этот аккаунт. Для входа с другого аккаунта:
         </div>
       </div>
-      <button class="btn btn-secondary" id="open-browser-btn" style="margin-top: 12px; width: 100%;">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-          <circle cx="12" cy="12" r="10" stroke-width="2"/>
-          <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" stroke-width="2"/>
-        </svg>
+      <button class="accounts-btn accounts-btn-outline" id="open-browser-btn">
+        <div class="accounts-btn-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+          </svg>
+        </div>
         <span>Открыть Twitch в браузере</span>
       </button>
     </div>
@@ -56,6 +62,112 @@
 </div>
 
 <style>
+  .add-account-section {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+
+  .accounts-btn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 12px 24px;
+    border: none;
+    border-radius: 12px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+    overflow: hidden;
+    min-height: 48px;
+  }
+
+  .accounts-btn-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+  }
+
+  .accounts-btn-primary {
+    background: linear-gradient(135deg, #9147ff 0%, #7c3aed 100%);
+    color: white;
+  }
+
+  .accounts-btn-primary:hover {
+    background: linear-gradient(135deg, #a05eff 0%, #8b49ff 100%);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(145, 71, 255, 0.4);
+  }
+
+  .accounts-btn-primary:active {
+    transform: translateY(0);
+  }
+
+  .accounts-btn-secondary {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    border: 1.5px solid var(--border-color);
+  }
+
+  .accounts-btn-secondary:hover {
+    border-color: var(--accent-color);
+    background: rgba(145, 71, 255, 0.1);
+    transform: translateY(-1px);
+  }
+
+  .accounts-btn-secondary:active {
+    transform: translateY(0);
+  }
+
+  .accounts-btn-outline {
+    background: transparent;
+    color: var(--text-primary);
+    border: 1.5px solid var(--border-color);
+    margin-top: 12px;
+    width: 100%;
+  }
+
+  .accounts-btn-outline:hover {
+    border-color: var(--accent-color);
+    background: rgba(145, 71, 255, 0.05);
+  }
+
+  .external-login-hint {
+    margin-top: 24px;
+    padding: 18px;
+    background: var(--bg-primary);
+    border-radius: 12px;
+    border: 1.5px dashed var(--border-color);
+  }
+
+  .external-login-content {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    color: var(--text-secondary);
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  .external-login-content svg {
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+
+  .external-login-text {
+    flex: 1;
+  }
+
+  .external-login-text strong {
+    color: var(--text-primary);
+  }
+
   .account-card {
     display: flex;
     align-items: center;
@@ -70,8 +182,7 @@
   }
 
   .account-card:hover {
-    border-color: var(--accent-color);
-  }
+    border-color: var(--accent-color);    transform: translateY(-1px);  }
 
   .account-card.dragging {
     opacity: 0.5;
@@ -93,32 +204,37 @@
   }
 
   .account-avatar {
-    width: 56px;
-    height: 56px;
+    width: 52px;
+    height: 52px;
     border-radius: 50%;
     background: var(--accent-color);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 24px;
+    font-size: 22px;
     font-weight: 700;
     color: white;
     flex-shrink: 0;
+    border: 2px solid rgba(145, 71, 255, 0.3);
   }
 
   .account-info {
     flex: 1;
+    min-width: 0;
   }
 
   .account-username {
-    font-size: 18px;
+    font-size: 16px;
     font-weight: 600;
     color: var(--text-primary);
     margin-bottom: 4px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .account-meta {
-    font-size: 14px;
+    font-size: 13px;
     color: var(--text-secondary);
   }
 
@@ -126,10 +242,11 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 6px 12px;
-    border-radius: 16px;
+    padding: 7px 14px;
+    border-radius: 20px;
     font-size: 13px;
     font-weight: 600;
+    white-space: nowrap;
   }
 
   .account-status.connected {
@@ -161,10 +278,12 @@
   }
 
   .account-btn {
-    padding: 8px;
-    background: none;
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    background: var(--bg-tertiary);
+    border: 1.5px solid var(--border-color);
+    border-radius: 10px;
     color: var(--text-secondary);
     cursor: pointer;
     transition: all 0.2s;
@@ -176,10 +295,15 @@
   .account-btn:hover {
     border-color: var(--accent-color);
     color: var(--accent-color);
+    transform: translateY(-1px);
+  }
+  
+  .account-btn:active {
+    transform: translateY(0);
   }
   
   .account-btn.activate {
-    border-color: rgba(0, 245, 147, 0.3);
+    border-color: rgba(0, 245, 147, 0.4);
   }
   
   .account-btn.activate:hover {
@@ -189,13 +313,13 @@
   }
   
   .account-btn.login-twitch {
-    border-color: rgba(145, 71, 255, 0.4);
+    border-color: rgba(145, 71, 255, 0.5);
   }
   
   .account-btn.login-twitch:hover {
     border-color: var(--accent-color);
     color: var(--accent-color);
-    background: rgba(145, 71, 255, 0.1);
+    background: rgba(145, 71, 255, 0.15);
   }
 
   .account-btn.delete:hover {

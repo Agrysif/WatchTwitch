@@ -1,0 +1,1028 @@
+<div class="farming-page">
+  <div class="page-header">
+    <h1 class="page-title" data-i18n="subscriptions.title">Мои подписки</h1>
+    <p class="page-subtitle" data-i18n="subscriptions.subtitle">Управление каналами, на которые вы подписаны</p>
+  </div>
+
+  <!-- Не авторизован -->
+  <div id="subscriptions-auth-section" class="card" style="display: none;">
+    <div style="text-align: center; padding: 40px 20px;">
+      <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+        style="opacity: 0.3; margin: 0 auto 20px;">
+        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"
+          stroke-width="2" />
+      </svg>
+      <h2 style="color: var(--text-primary); margin-bottom: 10px; font-size: 20px;">Войдите через Twitch</h2>
+      <p style="color: var(--text-secondary); margin-bottom: 30px; font-size: 14px;">Для просмотра подписок необходимо
+        авторизоваться</p>
+      <button id="subscriptions-auth-btn" class="btn btn-primary">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="margin-right: 8px;">
+          <path
+            d="M11.571 4.714h1.715v5.143H11.57zm4.715 0H18v5.143h-1.714zM6 0L1.714 4.286v15.428h5.143V24l4.286-4.286h3.428L22.286 12V0zm14.571 11.143l-3.428 3.428h-3.429l-3 3v-3H6.857V1.714h13.714z" />
+        </svg>
+        Войти через Twitch
+      </button>
+    </div>
+  </div>
+
+  <!-- Главное содержимое -->
+  <div id="subscriptions-content" style="display: none;">
+    <!-- Управление и фильтры -->
+    <div class="card" style="margin-bottom: 16px;">
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px;">
+        <div style="display: flex; gap: 8px; flex: 1; align-items: center;">
+          <button class="filter-icon-btn" id="refresh-subs-btn" title="Обновить список">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="23 4 23 10 17 10" />
+              <polyline points="1 20 1 14 7 14" />
+              <path d="M3.51 9a9 9 0 0114.85-3.36M20.49 15a9 9 0 01-14.85 3.36" />
+            </svg>
+          </button>
+
+          <button class="filter-icon-btn" id="cleanup-subs-btn" title="Очистить неактивные">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="3 6 5 6 21 6" />
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+            </svg>
+          </button>
+        </div>
+
+        <div style="text-align: right;">
+          <div id="subs-count" style="font-size: 14px; font-weight: 600; color: var(--accent-color);">0 подписок</div>
+        </div>
+      </div>
+
+      <!-- Приоритет подписок -->
+      <div class="priority-toggle-card" style="margin-bottom: 16px;">
+        <div class="priority-toggle-content">
+          <div>
+            <div style="font-weight: 600; font-size: 13px; color: var(--text-primary); margin-bottom: 4px;">Приоритет
+              подписок</div>
+            <div style="font-size: 12px; color: var(--text-secondary);">Фармить сначала подписки, затем остальные каналы
+            </div>
+          </div>
+          <label class="priority-toggle" for="priority-subs-toggle">
+            <input type="checkbox" id="priority-subs-toggle">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Фильтры -->
+      <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px;">
+        <button class="filter-btn active" data-filter="all">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10" />
+          </svg>
+          <span>Все</span>
+        </button>
+        <button class="filter-btn" data-filter="active">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <circle cx="12" cy="12" r="5" />
+          </svg>
+          <span>В эфире</span>
+        </button>
+        <button class="filter-btn" data-filter="inactive">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10" />
+            <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
+          </svg>
+          <span>Неактивные</span>
+        </button>
+        <button class="filter-btn" data-filter="favorites">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <path
+              d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
+          </svg>
+          <span>Избранные</span>
+        </button>
+      </div>
+
+      <!-- Поиск и переключатель вида -->
+      <div style="display: flex; gap: 8px; align-items: center;">
+        <div style="flex: 1; position: relative;">
+          <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="2">
+            <circle cx="11" cy="11" r="8" />
+            <path d="m21 21-4.35-4.35" />
+          </svg>
+          <input type="text" id="search-input" class="search-input" placeholder="Поиск по каналам...">
+        </div>
+        <div class="view-toggle">
+          <button class="view-toggle-btn active" data-view="list" title="Список">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="8" y1="6" x2="21" y2="6" />
+              <line x1="8" y1="12" x2="21" y2="12" />
+              <line x1="8" y1="18" x2="21" y2="18" />
+              <line x1="3" y1="6" x2="3.01" y2="6" />
+              <line x1="3" y1="12" x2="3.01" y2="12" />
+              <line x1="3" y1="18" x2="3.01" y2="18" />
+            </svg>
+          </button>
+          <button class="view-toggle-btn" data-view="grid" title="Плитка">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="3" width="7" height="7" />
+              <rect x="14" y="3" width="7" height="7" />
+              <rect x="14" y="14" width="7" height="7" />
+              <rect x="3" y="14" width="7" height="7" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Таблица подписок -->
+    <div class="card">
+      <div id="subscriptions-list" class="subscriptions-list-view" style="display: grid; gap: 10px;">
+        <!-- Будет заполняться JS -->
+      </div>
+
+      <!-- Пустой список -->
+      <div id="subscriptions-empty" style="text-align: center; padding: 40px 20px; display: none;">
+        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          style="opacity: 0.3; margin: 0 auto 20px;">
+          <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"
+            stroke-width="2" />
+        </svg>
+        <h3 style="color: var(--text-secondary); font-size: 16px;">Подписок не найдено</h3>
+      </div>
+
+      <!-- Загрузка -->
+      <div id="subscriptions-loading" style="text-align: center; padding: 40px 20px;">
+        <div
+          style="display: inline-block; width: 40px; height: 40px; border: 3px solid rgba(145, 71, 255, 0.2); border-top-color: #9147ff; border-radius: 50%; animation: spin 0.8s linear infinite;">
+        </div>
+        <p style="color: var(--text-secondary); margin-top: 16px;">Загрузка подписок...</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Модальное окно детали канала -->
+  <div id="channel-detail-modal"
+    style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.7); z-index: 1000; align-items: center; justify-content: center;">
+    <div
+      style="background: var(--bg-primary); border-radius: 12px; max-width: 500px; width: 90%; max-height: 80vh; overflow-y: auto; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5); padding: 24px; position: relative;">
+      <button id="close-modal-btn"
+        style="position: absolute; top: 16px; right: 16px; background: none; border: none; color: var(--text-secondary); cursor: pointer; font-size: 24px; line-height: 1; padding: 0;">×</button>
+
+      <div id="modal-content" style="display: flex; flex-direction: column; gap: 16px;">
+        <!-- Будет заполняться JS -->
+      </div>
+    </div>
+  </div>
+
+  <style>
+    /* Приоритет подписок */
+    .priority-toggle-card {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 12px 14px;
+    }
+
+    .priority-toggle-content {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .priority-toggle {
+      position: relative;
+      display: inline-block;
+      width: 44px;
+      height: 24px;
+      flex-shrink: 0;
+      overflow: hidden;
+    }
+
+    .priority-toggle input {
+      position: absolute;
+      opacity: 0;
+      width: 0;
+      height: 0;
+      margin: 0;
+      padding: 0;
+    }
+
+    .priority-toggle .toggle-slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: rgba(150, 150, 150, 0.3);
+      transition: background-color 0.3s;
+      border-radius: 24px;
+      overflow: hidden;
+    }
+
+    .toggle-slider::before {
+      position: absolute;
+      content: "";
+      height: 18px;
+      width: 18px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: transform 0.3s;
+      border-radius: 50%;
+    }
+
+    .priority-toggle input:checked+.toggle-slider {
+      background-color: var(--accent-color);
+    }
+
+    .priority-toggle input:checked+.toggle-slider::before {
+      transform: translateX(20px);
+    }
+
+    /* Поле поиска */
+    .search-icon {
+      position: absolute;
+      left: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      opacity: 0.5;
+      color: var(--text-secondary);
+      pointer-events: none;
+    }
+
+    .search-input {
+      width: 100%;
+      padding: 8px 12px 8px 38px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      color: var(--text-primary);
+      font-size: 13px;
+      outline: none;
+      transition: all 0.2s ease;
+    }
+
+    .search-input:focus {
+      border-color: var(--accent-color);
+      background: var(--bg-primary);
+    }
+
+    .search-input::placeholder {
+      color: var(--text-secondary);
+      opacity: 0.6;
+    }
+
+    /* Кнопки управления фильтрами */
+    .filter-icon-btn {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      color: var(--text-secondary);
+      border-radius: 6px;
+      padding: 8px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .filter-icon-btn:hover {
+      border-color: var(--accent-color);
+      background: rgba(145, 71, 255, 0.1);
+      color: var(--accent-color);
+    }
+
+    /* Фильтры */
+    .filter-btn {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      color: var(--text-secondary);
+      padding: 8px 14px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .filter-btn:hover {
+      border-color: var(--accent-color);
+      background: rgba(145, 71, 255, 0.05);
+    }
+
+    .filter-btn.active {
+      background: var(--accent-color);
+      color: white;
+      border-color: var(--accent-color);
+    }
+
+    /* Переключатель вида */
+    .view-toggle {
+      display: flex;
+      gap: 4px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      padding: 2px;
+    }
+
+    .view-toggle-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-secondary);
+      border-radius: 4px;
+      padding: 6px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .view-toggle-btn.active {
+      background: var(--accent-color);
+      color: white;
+    }
+
+    .view-toggle-btn:not(.active):hover {
+      background: rgba(145, 71, 255, 0.1);
+      color: var(--accent-color);
+    }
+
+    /* Карточка подписки */
+    .subscription-card {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding: 14px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      cursor: pointer;
+      position: relative;
+      overflow: hidden;
+      background-size: cover;
+      background-blend-mode: overlay;
+    }
+
+    .subscription-card.favorite {
+      background: linear-gradient(135deg, rgba(255, 107, 157, 0.05) 0%, var(--bg-secondary) 100%);
+      border-color: transparent;
+    }
+
+    .subscriptions-grid-view .subscription-card.favorite {
+      border: 1px solid rgba(255, 107, 157, 0.3);
+      background: var(--bg-secondary);
+    }
+
+    .subscription-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--accent-color), transparent);
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+
+    .subscription-card.favorite::before {
+      background: linear-gradient(90deg, transparent, #ff6b9d, transparent);
+      opacity: 1;
+    }
+
+    .subscription-card:hover {
+      transform: translateY(-2px);
+      border-color: rgba(145, 71, 255, 0.5);
+      box-shadow: 0 8px 24px rgba(145, 71, 255, 0.15);
+    }
+
+    .subscription-card:hover::before {
+      opacity: 1;
+    }
+
+    .subscription-card-main {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .subscription-card-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .subscription-card-avatar-wrapper {
+      position: relative;
+      flex-shrink: 0;
+    }
+
+    .subscription-card-avatar {
+      width: 54px;
+      height: 54px;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 2px solid rgba(145, 71, 255, 0.3);
+      transition: all 0.3s ease;
+    }
+
+    .subscription-card:hover .subscription-card-avatar {
+      border-color: rgba(145, 71, 255, 0.6);
+    }
+
+    .subscription-card-live-indicator {
+      position: absolute;
+      bottom: 2px;
+      right: 2px;
+      width: 14px;
+      height: 14px;
+      background: #ff0000;
+      border: 2px solid var(--bg-secondary);
+      border-radius: 50%;
+      animation: pulse-live 2s ease-in-out infinite;
+    }
+
+    /* Оверлеи для grid view */
+    .subscription-card-rating {
+      display: none;
+      position: absolute;
+      top: 8px;
+      left: 8px;
+      z-index: 3;
+      align-items: center;
+      gap: 3px;
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: help;
+    }
+
+    .subscription-card-status-overlay {
+      display: none;
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      z-index: 3;
+      align-items: center;
+      gap: 5px;
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(10px);
+    }
+
+    .subscription-card-status-overlay.live {
+      color: #00e57a;
+    }
+
+    .subscription-card-status-overlay.offline {
+      color: #888;
+    }
+
+    .subscription-card-stats-overlay {
+      display: none;
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      z-index: 3;
+      flex-direction: column;
+      gap: 6px;
+      padding: 6px 8px;
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(10px);
+      border-radius: 6px;
+    }
+
+    .subscription-card-stats-overlay .subscription-stat {
+      font-size: 10px;
+      color: white;
+      gap: 4px;
+    }
+
+    .subscription-card-stats-overlay .subscription-stat svg {
+      width: 12px;
+      height: 12px;
+    }
+
+    @keyframes pulse-live {
+
+      0%,
+      100% {
+        box-shadow: 0 0 0 0 rgba(255, 0, 0, 0.7);
+      }
+
+      50% {
+        box-shadow: 0 0 0 6px rgba(255, 0, 0, 0);
+      }
+    }
+
+    .subscription-card-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .subscription-card-name-line {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+
+    .subscription-card-name {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-primary);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .subscription-card-rating-inline {
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      flex-shrink: 0;
+      cursor: help;
+    }
+
+    .subscription-card-rating-inline.good,
+    .subscription-card-rating.good {
+      background: rgba(0, 229, 122, 0.15);
+      color: #00e57a;
+    }
+
+    .subscription-card-rating-inline.neutral,
+    .subscription-card-rating.neutral {
+      background: rgba(255, 193, 7, 0.15);
+      color: #ffc107;
+    }
+
+    .subscription-card-rating-inline.bad,
+    .subscription-card-rating.bad {
+      background: rgba(255, 107, 107, 0.15);
+      color: #ff6b6b;
+    }
+
+    .subscription-card-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 0;
+      font-size: 12px;
+      font-weight: 500;
+      transition: all 0.3s ease;
+    }
+
+    .subscription-card-status.live {
+      color: #00e57a;
+    }
+
+    .subscription-card-status.offline {
+      color: #888;
+    }
+
+    .subscription-card-mini-stats {
+      display: none;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: var(--text-secondary);
+      margin-top: 4px;
+    }
+
+    .mini-stat {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .mini-stat svg {
+      opacity: 0.6;
+    }
+
+    .mini-stat-separator {
+      opacity: 0.5;
+    }
+
+    .status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+
+    .subscription-card-status.live .status-dot {
+      animation: pulse-dot 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse-dot {
+
+      0%,
+      100% {
+        opacity: 1;
+        transform: scale(1);
+      }
+
+      50% {
+        opacity: 0.6;
+        transform: scale(1.2);
+      }
+    }
+
+    .game-name {
+      font-size: 11px;
+      color: var(--text-secondary);
+      background: rgba(0, 0, 0, 0.3);
+      padding: 2px 6px;
+      border-radius: 4px;
+      margin-left: 4px;
+    }
+
+    .subscription-card-right {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .subscription-card-stats {
+      display: flex;
+      gap: 12px;
+      padding: 8px 0 4px 0;
+    }
+
+    .subscription-stat {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 11px;
+      color: var(--text-secondary);
+    }
+
+    .subscription-stat svg {
+      opacity: 0.6;
+      width: 14px;
+      height: 14px;
+    }
+
+    .subscription-card-actions {
+      display: flex;
+      gap: 6px;
+    }
+
+    .subscription-action-btn {
+      flex: 1;
+      background: var(--bg-primary);
+      border: 1px solid var(--border-color);
+      color: var(--text-secondary);
+      border-radius: 8px;
+      padding: 8px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .subscription-action-btn:hover {
+      transform: translateY(-1px);
+    }
+
+    .subscription-action-btn.favorite-btn.active {
+      background: rgba(255, 107, 157, 0.15);
+      border-color: transparent;
+      color: #ff6b9d;
+    }
+
+    .subscription-action-btn.favorite-btn:hover {
+      background: rgba(255, 107, 157, 0.1);
+      border-color: #ff6b9d;
+      color: #ff6b9d;
+    }
+
+    .subscription-action-btn.twitch-btn:hover {
+      background: rgba(145, 71, 255, 0.1);
+      border-color: #9147ff;
+      color: #9147ff;
+    }
+
+    .subscription-action-btn.farm-btn:hover {
+      background: rgba(0, 229, 122, 0.1);
+      border-color: #00e57a;
+      color: #00e57a;
+    }
+
+    .subscription-action-btn.unsub-btn:hover {
+      background: rgba(255, 107, 107, 0.1);
+      border-color: #ff6b6b;
+      color: #ff6b6b;
+    }
+
+    /* Разделитель */
+    .subscriptions-divider {
+      display: flex;
+      align-items: center;
+      text-align: center;
+      margin: 8px 0;
+      color: var(--text-secondary);
+      font-size: 12px;
+      grid-column: 1 / -1;
+    }
+
+    .subscriptions-divider span {
+      padding: 0 12px;
+      background: var(--bg-primary);
+      position: relative;
+      z-index: 1;
+    }
+
+    .subscriptions-divider::before {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border-color);
+    }
+
+    .subscriptions-divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border-color);
+    }
+
+    /* Grid view */
+    .subscriptions-grid-view {
+      display: grid !important;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)) !important;
+      gap: 14px !important;
+    }
+
+    .subscriptions-grid-view .subscription-card {
+      padding: 0;
+      overflow: hidden;
+      border-radius: 12px;
+    }
+
+    .subscriptions-grid-view .subscription-card-main {
+      padding: 0;
+      flex-direction: column;
+      gap: 0;
+    }
+
+    .subscriptions-grid-view .subscription-card-left {
+      position: relative;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0;
+    }
+
+    .subscriptions-grid-view .subscription-card-avatar-wrapper {
+      position: relative;
+      width: 100%;
+      padding-top: 100%;
+      border-radius: 0;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .subscriptions-grid-view .subscription-card-avatar-wrapper::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-image: inherit;
+      background-size: cover;
+      background-position: center;
+      filter: blur(20px);
+      transform: scale(1.1);
+      z-index: 0;
+    }
+
+    .subscriptions-grid-view .subscription-card-avatar {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 140px;
+      height: 140px;
+      object-fit: cover;
+      border-radius: 50%;
+      border: none;
+      z-index: 2;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    }
+
+    .subscriptions-grid-view .subscription-card-live-indicator {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      margin-top: -70px;
+      margin-left: 50px;
+      z-index: 4;
+      width: 16px;
+      height: 16px;
+    }
+
+    .subscriptions-grid-view .subscription-card-live-indicator {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      margin-top: -70px;
+      margin-left: 50px;
+      z-index: 4;
+      width: 16px;
+      height: 16px;
+    }
+
+    .subscriptions-grid-view .subscription-card-avatar-wrapper::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 50%;
+      background: linear-gradient(to bottom, transparent 0%, var(--bg-secondary) 100%);
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    .subscriptions-grid-view .subscription-card-rating {
+      display: flex !important;
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      z-index: 4;
+      backdrop-filter: blur(8px);
+    }
+
+    .subscriptions-grid-view .subscription-card-status-overlay {
+      display: flex !important;
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      z-index: 4;
+    }
+
+    .subscriptions-grid-view .subscription-card-stats-overlay {
+      display: none !important;
+    }
+
+    .subscriptions-grid-view .subscription-card-mini-stats {
+      display: flex;
+      justify-content: center;
+    }
+
+    .subscriptions-grid-view .subscription-card-rating-inline {
+      display: none !important;
+    }
+
+    .subscriptions-grid-view .subscription-card-info {
+      position: absolute;
+      bottom: 20px;
+      left: 0;
+      right: 0;
+      z-index: 4;
+      text-align: center;
+      padding: 0 14px;
+    }
+
+    .subscriptions-grid-view .subscription-card-name-line {
+      margin-bottom: 0;
+      justify-content: center;
+    }
+
+    .subscriptions-grid-view .subscription-card-name {
+      color: var(--text-primary);
+      font-size: 16px;
+      font-weight: 700;
+      text-shadow: none;
+      margin-bottom: 0;
+    }
+
+    .subscriptions-grid-view .subscription-card-status {
+      display: none !important;
+    }
+
+    .subscriptions-grid-view .subscription-card-right {
+      padding: 12px 14px 14px 14px;
+      background: var(--bg-secondary);
+    }
+
+    .subscriptions-grid-view .subscription-card-stats {
+      display: none !important;
+    }
+
+    .subscriptions-grid-view .subscription-card-actions {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+    }
+
+    .subscriptions-grid-view .subscription-card-live-indicator {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      margin-top: -70px;
+      margin-left: 50px;
+      z-index: 4;
+      width: 16px;
+      height: 16px;
+    }
+
+    .subscriptions-list-view {
+      display: grid !important;
+      gap: 10px !important;
+    }
+
+    .subscriptions-list-view .subscription-card-avatar-wrapper {
+      background-image: none !important;
+    }
+
+    .subscriptions-list-view .subscription-card-avatar-wrapper::before {
+      display: none;
+    }
+
+    .subscriptions-list-view .subscription-card-avatar-wrapper::after {
+      display: none;
+    }
+
+    .subscriptions-list-view .subscription-card-main {
+      position: relative;
+    }
+
+    .subscriptions-list-view .subscription-card-right {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      flex-direction: row;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .subscriptions-list-view .subscription-card-stats {
+      flex-direction: row;
+      gap: 12px;
+      padding: 0;
+    }
+
+    .subscriptions-list-view .subscription-card-actions {
+      flex-direction: row;
+    }
+
+    .subscriptions-list-view .subscription-card-rating {
+      display: none;
+    }
+
+    .subscriptions-list-view .subscription-card-status-overlay {
+      display: none;
+    }
+
+    .subscriptions-list-view .subscription-card-stats-overlay {
+      display: none;
+    }
+
+    .subscriptions-list-view .subscription-card-rating-inline {
+      display: flex;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    /* Drag and Drop */
+    .subscription-card {
+      cursor: grab;
+      transition: all 0.2s ease;
+    }
+
+    .subscription-card.dragging {
+      opacity: 0.5;
+      cursor: grabbing;
+    }
+
+    .subscription-card.drag-over {
+      border: 2px dashed var(--accent-color) !important;
+      background: rgba(145, 71, 255, 0.05);
+    }
+  </style>
+</div>

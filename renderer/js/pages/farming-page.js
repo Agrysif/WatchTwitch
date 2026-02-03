@@ -942,6 +942,71 @@ class FarmingPage {
     });
   }
   
+  async addChannelToFarming(channelLogin) {
+    // Добавляет канал в список фарминга и запускает его
+    try {
+      // Ищем категорию для этого канала
+      const categoryName = channelLogin;
+      
+      // Проверяем есть ли уже эта категория
+      let category = this.categories.find(c => c.name.toLowerCase() === channelLogin.toLowerCase());
+      
+      if (!category) {
+        // Создаём новую категорию
+        category = {
+          id: Date.now().toString(),
+          name: channelLogin,
+          enabled: true,
+          autoDrops: false,
+          hasDrops: await window.electronAPI.checkCategoryDrops(channelLogin),
+          priority: 0,
+          tags: [],
+          viewersCount: 0,
+          dropsCompleted: false
+        };
+        
+        this.categories.push(category);
+        await Storage.saveCategories(this.categories);
+        this.renderCategories();
+      } else if (!category.enabled) {
+        category.enabled = true;
+        await Storage.saveCategories(this.categories);
+        this.renderCategories();
+      }
+
+      // Переключаемся на этот канал
+      const accounts = await Storage.getAccounts();
+      if (!accounts || accounts.length === 0) {
+        window.utils.showToast('Нет аккаунтов для запуска', 'error');
+        return;
+      }
+
+      const account = accounts[0];
+      const streams = await window.electronAPI.getStreamsWithDrops(channelLogin);
+      
+      if (!streams || streams.length === 0) {
+        window.utils.showToast(`На канале ${channelLogin} нет стримов с дропсами`, 'warning');
+        return;
+      }
+
+      const stream = streams[0];
+      
+      // Переключаемся на стрим
+      await window.electronAPI.openStream(`https://www.twitch.tv/${stream.login}`, account);
+      
+      this.currentCategory = category;
+      this.currentStream = stream;
+      this.resetChannelPointsTracking();
+      this.updateCurrentStreamUI(stream, category);
+      await this.saveActiveSession(stream, category);
+      
+      window.utils.showToast(`Начинаем фарминг ${stream.displayName}...`, 'success');
+    } catch (error) {
+      console.error('Error adding channel to farming:', error);
+      window.utils.showToast('Ошибка при добавлении канала в фарминг', 'error');
+    }
+  }
+
   async switchToNextEnabledCategory() {
     console.log('switchToNextEnabledCategory called');
     console.log('Current category:', this.currentCategory);
@@ -956,18 +1021,44 @@ class FarmingPage {
     }
     
     // Находим следующую включенную категорию (пропускаем завершенные)
-    // Приоритет: 1) ручные категории, 2) наличие дропсов, 3) сохранённый порядок/priority
-    const enabledCategories = this.categories
-      .filter(cat => cat.enabled && cat.id !== this.currentCategory?.id && !cat.dropsCompleted)
-      .sort((a, b) => {
+    // Приоритет: 1) подписанные каналы с дропсами (если включен приоритет), 2) ручные категории, 3) наличие дропсов, 4) сохранённый порядок/priority
+    let enabledCategories = this.categories
+      .filter(cat => cat.enabled && cat.id !== this.currentCategory?.id && !cat.dropsCompleted);
+
+    // Проверяем включен ли приоритет подписок
+    const subscriptionsPriorityEnabled = await Storage.getItem('subscriptions_priority_enabled');
+    if (subscriptionsPriorityEnabled) {
+      const subscriptions = await Storage.getSubscriptions() || [];
+      const subscriptionLogins = subscriptions.map(s => s.login.toLowerCase());
+      
+      enabledCategories.sort((a, b) => {
+        // Проверяем есть ли в подписках
+        const aIsSubscribed = subscriptionLogins.some(login => a.name.toLowerCase().includes(login) || a.name.toLowerCase() === login);
+        const bIsSubscribed = subscriptionLogins.some(login => b.name.toLowerCase().includes(login) || b.name.toLowerCase() === login);
+        
+        if (aIsSubscribed !== bIsSubscribed) return aIsSubscribed ? -1 : 1;
+        
+        // Если оба подписанные или оба нет, сортируем по остальным критериям
         const aManual = a.autoDrops ? 1 : 0;
         const bManual = b.autoDrops ? 1 : 0;
-        if (aManual !== bManual) return aManual - bManual; // 0 (ручные) раньше 1 (авто)
+        if (aManual !== bManual) return aManual - bManual;
         const aNoDrops = a.hasDrops ? 0 : 1;
         const bNoDrops = b.hasDrops ? 0 : 1;
         if (aNoDrops !== bNoDrops) return aNoDrops - bNoDrops;
         return (a.priority || 0) - (b.priority || 0);
       });
+    } else {
+      // Обычная сортировка без приоритета подписок
+      enabledCategories.sort((a, b) => {
+        const aManual = a.autoDrops ? 1 : 0;
+        const bManual = b.autoDrops ? 1 : 0;
+        if (aManual !== bManual) return aManual - bManual;
+        const aNoDrops = a.hasDrops ? 0 : 1;
+        const bNoDrops = b.hasDrops ? 0 : 1;
+        if (aNoDrops !== bNoDrops) return aNoDrops - bNoDrops;
+        return (a.priority || 0) - (b.priority || 0);
+      });
+    }
     
     console.log('Enabled categories:', enabledCategories.map(c => c.name));
     
@@ -1766,8 +1857,10 @@ class FarmingPage {
     }
   }
 
-  stopFarming() {
-    window.utils.showToast('Фарминг остановлен', 'info');
+  stopFarming(showToast = true) {
+    if (showToast) {
+      window.utils.showToast('Фарминг остановлен', 'info');
+    }
     Storage.delete('activeSession').catch(() => {});
     
     // Сохраняем сессию в статистику перед остановкой
@@ -2667,10 +2760,10 @@ class FarmingPage {
     ctx.shadowBlur = 0;
     
     // Заголовок
-    ctx.font = '600 15px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.font = '700 16px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#efeff1';
-    ctx.fillText('Динамика зрителей', width / 2, outerPadding + 16);
+    ctx.fillStyle = '#9147ff';
+    ctx.fillText('📊 Зрители', width / 2, outerPadding + 18);
 
     // Нижняя панель со значениями
     const barWidth = width - outerPadding * 2;
@@ -2693,19 +2786,20 @@ class FarmingPage {
       ctx.closePath();
     };
 
-    drawRoundRect(barX, barY, barWidth, barHeight, 8);
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.06)';
+    drawRoundRect(barX, barY, barWidth, barHeight, 10);
+    ctx.fillStyle = 'rgba(145, 71, 255, 0.1)';
     ctx.fill();
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+    ctx.strokeStyle = 'rgba(145, 71, 255, 0.3)';
+    ctx.lineWidth = 1.5;
     ctx.stroke();
 
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
-    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(145, 71, 255, 0.2)';
+    ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.moveTo(barX + segment, barY + 6);
-    ctx.lineTo(barX + segment, barY + barHeight - 6);
-    ctx.moveTo(barX + segment * 2, barY + 6);
-    ctx.lineTo(barX + segment * 2, barY + barHeight - 6);
+    ctx.moveTo(barX + segment, barY + 4);
+    ctx.lineTo(barX + segment, barY + barHeight - 4);
+    ctx.moveTo(barX + segment * 2, barY + 4);
+    ctx.lineTo(barX + segment * 2, barY + barHeight - 4);
     ctx.stroke();
 
     const current = this.viewersHistory[this.viewersHistory.length - 1];
