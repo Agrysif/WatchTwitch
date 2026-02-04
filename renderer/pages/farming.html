@@ -30,7 +30,8 @@
                    style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #000;"
                    partition="persist:twitch"
                    allowpopups="false"
-                   disablewebsecurity></webview>
+                   disablewebsecurity
+                   webpreferences="contextIsolation=false"></webview>
         </div>
         
         <!-- Chat -->
@@ -38,16 +39,51 @@
           <webview id="twitch-chat"
                    style="width: 100%; height: 450px; background: #18181b;"
                    partition="persist:twitch"
-                   allowpopups="false"></webview>
+                   allowpopups="false"
+                   webpreferences="contextIsolation=false"></webview>
         </div>
       </div>
       
       <!-- Hidden WebView for drops data extraction -->
       <webview id="drops-data-extractor"
-               style="display: none; width: 1px; height: 1px; position: absolute; left: -9999px;"
-               partition="persist:twitch"></webview>
+           style="display: none; width: 1px; height: 1px; position: absolute; left: -9999px;"
+               partition="persist:twitch"
+               webpreferences="contextIsolation=false"></webview>
       
-      <!-- Compact Stream Info with Top Categories -->
+      <!-- Preload setup script for all webviews on this page -->
+      <script>
+        const setupPreloads = async () => {
+          const preloadPath = await window.electronAPI.getWebviewPreloadPath();
+          console.log('[FarmingPage] Setting preload path:', preloadPath);
+          
+          const webviews = document.querySelectorAll('webview');
+          console.log('[FarmingPage] Found webviews:', webviews.length);
+          
+          for (const webview of webviews) {
+            // Check if preload is not already set to this path
+            if (webview.getAttribute('preload') !== preloadPath) {
+              console.log('[FarmingPage] Setting preload for webview:', webview.id);
+              webview.setAttribute('preload', preloadPath);
+              webview.dataset.preloadSet = 'true';
+            }
+          }
+        };
+
+        // Set preload when DOM is ready
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', setupPreloads);
+        } else {
+          setupPreloads();
+        }
+        
+        // Also monitor for ipc-message events from webviews to log traffic
+        document.addEventListener('ipc-message', (event) => {
+          if (event.channel === 'webview-traffic') {
+            console.log('[FarmingPage] WebView traffic event:', event.args[0], 'bytes');
+          }
+        });
+      </script>
+      
       <div style="display: flex; gap: 12px; margin-top: 10px;">
         <!-- Stream Details - full width -->
         <div id="stream-details" class="stream-info-card">

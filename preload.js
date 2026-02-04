@@ -71,5 +71,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onUpdateProgress: (callback) => ipcRenderer.on('update-download-progress', callback),
   onUpdateDownloaded: (callback) => ipcRenderer.on('update-downloaded', callback),
   onUpdateError: (callback) => ipcRenderer.on('update-error', callback),
-  getAppVersion: () => ipcRenderer.invoke('get-app-version')
+  getAppVersion: () => ipcRenderer.invoke('get-app-version'),
+
+  // Traffic monitoring
+  getTrafficData: () => ipcRenderer.invoke('get-traffic-data'),
+  resetSessionTraffic: () => ipcRenderer.invoke('reset-session-traffic'),
+  getWebviewPreloadPath: () => ipcRenderer.invoke('get-webview-preload-path')
 });

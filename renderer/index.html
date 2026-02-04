@@ -91,10 +91,10 @@
         <!-- Mini Twitch Player (16:9) - показывается когда активна сессия и не на странице фарминга -->
         <div id="sidebar-mini-player-container" style="display: none; margin-bottom: 8px; border-radius: 8px; overflow: hidden; border: 1px solid var(--border-color); opacity: 0; transform: translateY(-10px); transition: opacity 0.3s ease, transform 0.3s ease;">
           <div style="position: relative; width: 100%; padding-bottom: 56.25%; background: #000;">
-            <webview id="sidebar-mini-player"
-                    style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #000; border: none;"
-                    partition="persist:twitch"
-                    preload=""></webview>
+                <webview id="sidebar-mini-player"
+                  style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #000; border: none;"
+                  partition="persist:twitch"
+                  preload="js/webview-traffic-preload.js"></webview>
           </div>
         </div>
         
@@ -191,40 +191,75 @@
   <script src="js/pages/subscriptions-page.js"></script>
   <script src="js/pages/statistics-page.js"></script>
   <script src="js/pages/settings-page.js"></script>
+  <script src="js/updater.js"></script>
   <!-- Update Notification Overlay -->
   <div id="update-overlay" class="update-overlay" style="display: none;">
     <div class="update-modal">
-      <div class="update-header">
-        <div class="update-title">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <!-- Animated Background Gradient -->
+      <div class="update-modal-bg-gradient"></div>
+      
+      <!-- Animated Particles -->
+      <div class="update-modal-particles">
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+      </div>
+      
+      <!-- Content -->
+      <div class="update-modal-content">
+        <!-- Icon -->
+        <div class="update-modal-icon">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
           </svg>
-          <span>Доступно обновление</span>
         </div>
-        <div id="update-version" class="update-version"></div>
-      </div>
 
-      <div class="update-content">
-        <div id="update-info" class="update-info"></div>
+        <!-- Header Text -->
+        <div class="update-modal-header">
+          <div class="update-modal-title">Доступно обновление</div>
+          <div id="update-version" class="update-modal-version"></div>
+        </div>
 
-        <div id="update-progress-container" class="update-progress-container" style="display: none;">
-          <div class="progress-bar-bg">
-            <div id="update-progress-bar" class="progress-bar-fill"></div>
+        <!-- Info Text -->
+        <div id="update-info" class="update-modal-info"></div>
+
+        <!-- Progress Bar -->
+        <div id="update-progress-container" class="update-modal-progress" style="display: none;">
+          <div class="update-progress-bar">
+            <div id="update-progress-bar" class="update-progress-fill"></div>
           </div>
-          <div class="progress-info">
+          <div class="update-progress-stats">
             <span id="update-percent">0%</span>
             <span id="update-speed">0 MB/s</span>
           </div>
         </div>
 
-        <div id="update-actions" class="update-actions">
-          <button id="update-install-btn" class="btn btn-primary" style="display: none;">
-            Установить обновление
+        <!-- Actions -->
+        <div id="update-actions" class="update-modal-actions">
+          <button id="update-install-btn" class="update-btn update-btn-primary" style="display: none;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+            <span>Установить</span>
           </button>
-          <button id="update-download-btn" class="btn btn-primary">
+          <button id="update-download-btn" class="update-btn update-btn-primary">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
             Скачать обновление
           </button>
-          <button id="update-later-btn" class="btn btn-secondary">
+          <button id="update-later-btn" class="update-btn update-btn-secondary">
             Позже
           </button>
         </div>

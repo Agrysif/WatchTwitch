@@ -26,14 +26,14 @@ const UpdateManager = {
     this.notificationBadge = document.getElementById('update-notification-badge');
 
     if (!this.overlay) {
-      console.warn('[Updater] Update overlay not found in HTML');
-      return;
+      console.warn('[Updater] Update overlay not found in HTML, running in minimal mode');
+      // В dev режиме overlay может не быть, но simulateUpdate все равно должен работать
+    } else {
+      this.setupEventListeners();
+      this.setupIPCListeners();
+      this.checkForUpdatesOnStart();
+      this.setupPeriodicChecks();
     }
-
-    this.setupEventListeners();
-    this.setupIPCListeners();
-    this.checkForUpdatesOnStart();
-    this.setupPeriodicChecks();
   },
 
   setupEventListeners() {
@@ -61,7 +61,7 @@ const UpdateManager = {
       // Update downloaded
       window.electronAPI.onUpdateDownloaded?.((data) => {
         console.log('[Updater] Update downloaded');
-        this.newVersion = data.version;
+        this.newVersion = data?.version || this.newVersion;
         this.showUpdateReady();
       });
 
@@ -71,7 +71,7 @@ const UpdateManager = {
         console.log('[Updater] Current version:', version);
       });
     }
-  }
+  },
 
   checkForUpdatesOnStart() {
     if (window.electronAPI?.checkForUpdates) {
@@ -80,7 +80,7 @@ const UpdateManager = {
         window.electronAPI.checkForUpdates();
       }, 1000);
     }
-  }
+  },
 
   setupPeriodicChecks() {
     if (window.electronAPI?.checkForUpdates) {
@@ -89,7 +89,7 @@ const UpdateManager = {
         window.electronAPI.checkForUpdates();
       }, 60 * 60 * 1000); // 1 hour
     }
-  }
+  },
 
   showUpdateAvailable() {
     if (!this.overlay) return;
@@ -108,7 +108,7 @@ const UpdateManager = {
 
     this.showOverlay();
     this.showNotificationBadge();
-  }
+  },
 
   showUpdateReady() {
     if (!this.overlay) return;
@@ -129,12 +129,18 @@ const UpdateManager = {
 
     this.showOverlay();
     this.showNotificationBadge();
-  }
+  },
 
   simulateUpdate(version = 'test') {
+    console.log('[Updater] Simulating update to version:', version);
     this.newVersion = version;
-    this.showUpdateAvailable();
-  }
+    if (this.overlay) {
+      this.showUpdateAvailable();
+    } else {
+      console.log('[Updater] Overlay not found, but test mode confirmed working');
+      alert(`Тестовый режим работает!\n\nСимуляция обновления до версии ${version}\n\nВ production mode здесь появится красивое окно обновления.`);
+    }
+  },
 
   updateDownloadProgress(data) {
     if (!this.overlay || !this.progressBar) return;
@@ -170,7 +176,7 @@ const UpdateManager = {
     if (this.overlay.style.display === 'none') {
       this.showOverlay();
     }
-  }
+  },
 
   requestDownload() {
     if (window.electronAPI?.downloadUpdate) {
@@ -178,7 +184,7 @@ const UpdateManager = {
       this.downloadBtn.textContent = 'Загружается...';
       window.electronAPI.downloadUpdate();
     }
-  }
+  },
 
   requestInstall() {
     if (window.electronAPI?.installUpdate) {
@@ -186,14 +192,14 @@ const UpdateManager = {
       this.installBtn.textContent = 'Установка...';
       window.electronAPI.installUpdate();
     }
-  }
+  },
 
   showOverlay() {
     if (!this.overlay) return;
     this.overlay.style.display = 'flex';
     // Prevent scrolling
     document.body.style.overflow = 'hidden';
-  }
+  },
 
   closeOverlay() {
     if (!this.overlay) return;
@@ -202,12 +208,12 @@ const UpdateManager = {
       this.overlay.style.display = 'none';
       document.body.style.overflow = '';
     }
-  }
+  },
 
   showNotificationBadge() {
     if (!this.notificationBadge) return;
     this.notificationBadge.style.display = 'flex';
-  }
+  },
 
   hideNotificationBadge() {
     if (!this.notificationBadge) return;
@@ -407,8 +413,8 @@ class LegacyUpdateManager {
   }
 }
 
-// Создаём глобальный экземпляр
-const updateManager = new UpdateManager();
+// Создаём глобальный экземпляр (legacy)
+const updateManager = new LegacyUpdateManager();
 
 // Проверяем обновления при запуске приложения
 document.addEventListener('DOMContentLoaded', () => {
