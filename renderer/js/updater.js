@@ -48,9 +48,11 @@ const UpdateManager = {
     // Update available
     if (window.electronAPI) {
       window.electronAPI.onUpdateAvailable?.((data) => {
-        console.log('[Updater] Update available:', data.version);
-        this.newVersion = data.version;
-        this.showUpdateAvailable();
+        console.log('[Updater] Update available:', data);
+        console.log('[Updater] Version from data:', data?.version);
+        this.newVersion = data?.version || 'unknown';
+        console.log('[Updater] newVersion set to:', this.newVersion);
+        this.showUpdateAvailable(data);
       });
 
       // Download progress
@@ -91,10 +93,13 @@ const UpdateManager = {
     }
   },
 
-  showUpdateAvailable() {
+  showUpdateAvailable(data) {
     if (!this.overlay) return;
 
-    this.updateVersion.textContent = `v${this.newVersion}`;
+    const version = data?.version || this.newVersion || 'unknown';
+    console.log('[Updater] showUpdateAvailable with version:', version);
+    
+    this.updateVersion.textContent = `v${version}`;
     this.updateInfo.innerHTML = `
       <p>Новая версия приложения доступна к скачиванию.</p>
       <p style="margin-top: 8px; font-size: 13px; color: var(--text-secondary);">
