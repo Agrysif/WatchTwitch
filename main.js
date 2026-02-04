@@ -11,9 +11,22 @@ const { autoUpdater } = require('electron-updater');
 const store = new Store();
 
 // Конфигурация автообновления
+autoUpdater.logger = console;
+autoUpdater.logger.transports.file.level = 'info';
 autoUpdater.allowDowngrade = false;
 autoUpdater.autoDownload = false;
 autoUpdater.autoInstallOnAppQuit = true;
+
+// Настройка URL для обновлений (GitHub Releases)
+if (app.isPackaged) {
+  autoUpdater.setFeedURL({
+    provider: 'github',
+    owner: 'Agrysif',
+    repo: 'WatchTwitch',
+    releaseType: 'release'
+  });
+  console.log('[Updater] Feed URL configured for GitHub releases');
+}
 
 // OAuth конфигурация
 const TWITCH_CLIENT_ID = 'bi12b5gk5g141jl2yqkng1wj2k9a8s';
