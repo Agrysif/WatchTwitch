@@ -336,7 +336,9 @@ autoUpdater.on('download-progress', (progressObj) => {
 autoUpdater.on('update-downloaded', () => {
   console.log('[Updater] Обновление загружено');
   if (mainWindow) {
-    mainWindow.webContents.send('update-downloaded');
+    mainWindow.webContents.send('update-downloaded', {
+      version: updateInfo?.version || 'unknown'
+    });
   }
 });
 
