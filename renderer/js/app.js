@@ -1,5 +1,8 @@
 // Main app initialization
 document.addEventListener('DOMContentLoaded', async () => {
+  // Preload paths are now set automatically via will-attach-webview event in main process
+  // This ensures preload is applied BEFORE webview loads any content
+  
   // Initialize title bar controls
   document.getElementById('minimize-btn').addEventListener('click', () => {
     window.electronAPI.minimizeWindow();

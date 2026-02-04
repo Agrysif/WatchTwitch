@@ -382,9 +382,9 @@ class SettingsPage {
         if (event?.shiftKey) {
           if (window.UpdateManager?.simulateUpdate) {
             window.UpdateManager.simulateUpdate('test');
-            window.utils.showToast('🧪 Тестовое обновление показано', 'info');
+            window.utils.showToast('🧪 Тестовый режим активирован', 'info');
           } else {
-            window.utils.showToast('Тест недоступен (нет UpdateManager)', 'warning');
+            window.utils.showToast('⚠️ UpdateManager еще не загружен', 'warning');
           }
           return;
         }
@@ -393,7 +393,7 @@ class SettingsPage {
           window.electronAPI.checkForUpdates();
           window.utils.showToast('🔍 Проверяем обновления...', 'info');
         } else {
-          window.utils.showToast('Обновления недоступны в этом режиме', 'warning');
+          window.utils.showToast('Обновления недоступны в dev режиме', 'warning');
         }
       });
     }

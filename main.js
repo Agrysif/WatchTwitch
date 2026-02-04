@@ -5,6 +5,7 @@ const Store = require('electron-store');
 const http = require('http');
 const https = require('https');
 const url = require('url');
+const { pathToFileURL } = require('url');
 const { autoUpdater } = require('electron-updater');
 
 const store = new Store();
@@ -166,6 +167,119 @@ let splashWindow;
 let powerSaveBlockerId;
 let tray = null;
 
+// Мониторинг сетевого трафика
+let trafficData = {
+  totalBytes: 0,
+  lastBytes: 0,
+  lastUpdate: Date.now(),
+  currentRate: 0,
+  sessionStartBytes: 0
+};
+let streamTrafficInterval = null;
+
+const monitoredWebContents = new Set();
+
+function updateTrafficCounters(bytes) {
+  if (!bytes || bytes <= 0) return;
+  trafficData.totalBytes += bytes;
+  const now = Date.now();
+  const timeDiff = (now - trafficData.lastUpdate) / 1000;
+  if (timeDiff >= 1) {
+    const bytesDiff = trafficData.totalBytes - trafficData.lastBytes;
+    trafficData.currentRate = bytesDiff / timeDiff / 1024; // KB/s
+    trafficData.lastBytes = trafficData.totalBytes;
+    trafficData.lastUpdate = now;
+    console.log('[Traffic] Updated rate:', trafficData.currentRate.toFixed(1), 'KB/s | Total:', trafficData.totalBytes);
+  }
+}
+
+// Проверяем не идет ли "dead time" без трафика
+setInterval(() => {
+  const timeSinceLastUpdate = (Date.now() - trafficData.lastUpdate) / 1000;
+  if (timeSinceLastUpdate > 3 && trafficData.currentRate > 0) {
+    console.log('[Traffic] No data for', timeSinceLastUpdate.toFixed(1), 's - setting rate to 0');
+    trafficData.currentRate = 0;
+  }
+}, 2000);
+
+function startStreamTrafficSampling(webContents) {
+  if (!webContents || webContents.isDestroyed()) return;
+
+  if (streamTrafficInterval) {
+    clearInterval(streamTrafficInterval);
+    streamTrafficInterval = null;
+  }
+
+  let lastEntryCount = 0;
+
+  streamTrafficInterval = setInterval(async () => {
+    if (!webContents || webContents.isDestroyed()) return;
+    try {
+      const result = await webContents.executeJavaScript(`
+        (() => {
+          const entries = performance.getEntriesByType('resource');
+          let total = 0;
+          for (const e of entries) {
+            if (typeof e.transferSize === 'number' && e.transferSize > 0) total += e.transferSize;
+          }
+          return { total, entryCount: entries.length };
+        })();
+      `, true);
+
+      if (result && result.total > 0) {
+        console.log('[Stream Traffic] Performance API:', result.total, 'bytes from', result.entryCount, 'entries');
+        updateTrafficCounters(result.total);
+        lastEntryCount = result.entryCount;
+      }
+    } catch (e) {
+      // ignore sampling errors
+    }
+  }, 1000);
+}
+
+function setupTrafficMonitoring(webContents) {
+  if (!webContents || webContents.isDestroyed() || monitoredWebContents.has(webContents.id)) return;
+  monitoredWebContents.add(webContents.id);
+
+  try {
+    if (!webContents.debugger.isAttached()) {
+      webContents.debugger.attach('1.3');
+    }
+    webContents.debugger.sendCommand('Network.enable');
+    webContents.debugger.sendCommand('Network.setCacheDisabled', { cacheDisabled: true });
+
+    webContents.debugger.on('message', (_event, method, params) => {
+      if (method === 'Network.dataReceived') {
+        updateTrafficCounters(params.encodedDataLength || params.dataLength || 0);
+      }
+      if (method === 'Network.loadingFinished') {
+        updateTrafficCounters(params.encodedDataLength || 0);
+      }
+    });
+
+    webContents.on('destroyed', () => {
+      monitoredWebContents.delete(webContents.id);
+      try {
+        if (!webContents.isDestroyed() && webContents.debugger.isAttached()) {
+          webContents.debugger.detach();
+        }
+      } catch (e) {
+        console.warn('[Traffic] Debugger detach failed:', e.message);
+      }
+    });
+  } catch (error) {
+    console.warn('[Traffic] Debugger attach failed:', error.message);
+    // Retry once after load if attach failed (e.g., too early)
+    try {
+      webContents.once('did-finish-load', () => {
+        setupTrafficMonitoring(webContents);
+      });
+    } catch (_) {
+      // ignore
+    }
+  }
+}
+
 // ===== АВТООБНОВЛЕНИЕ =====
 let updateInfo = null;
 
@@ -235,6 +349,44 @@ ipcMain.on('download-update', async () => {
 });
 
 ipcMain.handle('get-app-version', () => app.getVersion());
+
+ipcMain.handle('get-webview-preload-path', () => {
+  const preloadPath = path.join(__dirname, 'renderer', 'js', 'webview-traffic-preload.js');
+  return pathToFileURL(preloadPath).toString();
+});
+
+ipcMain.on('webview-traffic', (_event, bytes) => {
+  bytes = Number(bytes) || 0;
+  if (bytes > 0) {
+    console.log('[WebView Traffic IPC] Received:', bytes, 'bytes | Total now:', trafficData.totalBytes + bytes);
+    updateTrafficCounters(bytes);
+  }
+});
+
+// Обработка автоматического сбора сундуков
+ipcMain.on('chest-claimed', (_event, data) => {
+  console.log('[Chest] Автоматический сбор сундука:', data.timestamp);
+});
+// Получить данные о трафике
+ipcMain.handle('get-traffic-data', () => {
+  const sessionBytes = trafficData.totalBytes - trafficData.sessionStartBytes;
+  const result = {
+    totalBytes: trafficData.totalBytes,
+    sessionBytes: sessionBytes,
+    currentRate: trafficData.currentRate,
+    lastUpdate: trafficData.lastUpdate
+  };
+  console.log('[IPC] get-traffic-data:', result.currentRate.toFixed(1), 'KB/s |', (result.sessionBytes / 1024 / 1024).toFixed(1), 'MB in session');
+  return result;
+});
+
+// Сбросить счетчик сессии
+ipcMain.handle('reset-session-traffic', () => {
+  trafficData.sessionStartBytes = trafficData.totalBytes;
+  trafficData.lastBytes = trafficData.totalBytes;
+  trafficData.lastUpdate = Date.now();
+  return { success: true };
+});
 
 // Read local file content for renderer
 ipcMain.handle('read-file', async (event, relativePath) => {
@@ -313,6 +465,12 @@ function createMainWindow() {
   });
 
   mainWindow.loadFile('renderer/index.html');
+
+  // Настраиваем реальный мониторинг трафика через CDP (включая webview)
+  setupTrafficMonitoring(mainWindow.webContents);
+  mainWindow.webContents.on('did-attach-webview', (_event, webContents) => {
+    setupTrafficMonitoring(webContents);
+  });
 
   // Показываем главное окно после загрузки и закрываем splash
   mainWindow.once('ready-to-show', () => {
@@ -807,6 +965,9 @@ async function createStreamView(url, account = null) {
     }
   });
 
+  // Реальный мониторинг трафика для BrowserView
+  setupTrafficMonitoring(streamView.webContents);
+
   mainWindow.addBrowserView(streamView);
 
   // Устанавливаем размер и позицию - в области current-stream-info
@@ -841,6 +1002,8 @@ async function createStreamView(url, account = null) {
   // Настраиваем качество после загрузки страницы
   streamView.webContents.once('did-finish-load', () => {
     console.log('Stream loaded, setting up quality...');
+
+    startStreamTrafficSampling(streamView.webContents);
 
     // Если есть OAuth токен, инжектим его в localStorage
     const oauth = store.get('oauth');
@@ -894,6 +1057,13 @@ async function createStreamView(url, account = null) {
   // Логируем ошибки
   streamView.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
     console.error('Stream failed to load:', errorCode, errorDescription);
+  });
+
+  streamView.webContents.on('destroyed', () => {
+    if (streamTrafficInterval) {
+      clearInterval(streamTrafficInterval);
+      streamTrafficInterval = null;
+    }
   });
 
   // Перерисовка при изменении размера окна
@@ -1317,6 +1487,22 @@ function calculateTotalProgress(campaigns) {
 }
 
 app.whenReady().then(() => {
+  app.on('web-contents-created', (_event, contents) => {
+    const type = contents.getType();
+    if (type === 'window' || type === 'webview' || type === 'browserView') {
+      setupTrafficMonitoring(contents);
+    }
+    
+    // Для webview: устанавливаем preload ПЕРЕД загрузкой URL (через embedder window)
+    if (type === 'window') {
+      contents.on('will-attach-webview', (_event, webPreferences) => {
+        const preloadPath = path.join(__dirname, 'renderer', 'js', 'webview-traffic-preload.js');
+        webPreferences.preload = preloadPath;
+        console.log('[WebView] Preload set before attach:', preloadPath);
+      });
+    }
+  });
+
   createSplashWindow();
 
   // Создаем главное окно через небольшую задержку
@@ -1390,12 +1576,16 @@ ipcMain.handle('get-oauth-user', async () => {
   const oauth = store.get('oauth');
   if (!oauth) return null;
 
+  const accessToken = await getValidAccessToken();
+  if (!accessToken) return null;
+
+  const refreshed = store.get('oauth') || oauth;
   // Возвращаем весь oauth объект (включая tokens и user)
   return {
-    accessToken: oauth.accessToken,
-    refreshToken: oauth.refreshToken,
-    expiresAt: oauth.expiresAt,
-    user: oauth.user
+    accessToken,
+    refreshToken: refreshed.refreshToken || oauth.refreshToken,
+    expiresAt: refreshed.expiresAt || oauth.expiresAt,
+    user: refreshed.user || oauth.user
   };
 });
 

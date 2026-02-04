@@ -75,6 +75,25 @@ class SubscriptionsPage {
       }
 
       const account = accounts[0];
+      let oauthData = null;
+      try {
+        oauthData = await window.electronAPI.getOAuthUser?.();
+      } catch (e) {
+        console.warn('Failed to get OAuth data:', e);
+      }
+
+      if (oauthData?.accessToken) {
+        const tokenChanged = oauthData.accessToken !== account.accessToken;
+        const refreshChanged = oauthData.refreshToken && oauthData.refreshToken !== account.refreshToken;
+
+        if (tokenChanged || refreshChanged) {
+          account.accessToken = oauthData.accessToken;
+          if (oauthData.refreshToken) {
+            account.refreshToken = oauthData.refreshToken;
+          }
+          await Storage.saveAccount(account);
+        }
+      }
       console.log('[Subscriptions] Account found:', account?.username);
       console.log('[Subscriptions] Account has accessToken:', !!account?.accessToken);
       console.log('[Subscriptions] Token value:', account?.accessToken ? account.accessToken.substring(0, 20) + '...' : 'NONE');

@@ -7,6 +7,7 @@ class FarmingPage {
     this.sessionStartTime = null;
     this.sessionInterval = null;
     this.estimatedBandwidth = 0;
+    this.sessionBytes = 0;
     this.bandwidthHistory = [];
     this.streamStatsInterval = null;
     this.viewersHistory = [];
@@ -33,6 +34,17 @@ class FarmingPage {
     this.renderCategories();
     this.setupEventListeners();
     this.startAutoUpdate();
+
+        // Завершаем сессию при закрытии приложения
+        if (window.electronAPI && typeof window.electronAPI.onAppClosing === 'function') {
+          window.electronAPI.onAppClosing(() => {
+            if (this.sessionStartTime) {
+              this.updateSessionInfo()
+                .catch(() => {})
+                .finally(() => this.stopFarming(false));
+            }
+          });
+        }
 
     // Восстанавливаем активную сессию после перезапуска/переключения вкладок
     await this.resumeActiveSession();
@@ -864,6 +876,14 @@ class FarmingPage {
     
     // Запускаем трекинг
     this.sessionStartTime = Date.now();
+    
+    // Сбрасываем счетчик трафика
+    try {
+      await window.electronAPI.resetSessionTraffic();
+    } catch (error) {
+      console.error('Failed to reset session traffic:', error);
+    }
+    
     this.updateSessionInfo();
     this.sessionInterval = setInterval(() => {
       this.updateSessionInfo();
@@ -2013,7 +2033,7 @@ class FarmingPage {
     }
   }
 
-  updateSessionInfo() {
+  async updateSessionInfo() {
     if (!this.sessionStartTime) return;
     
     const duration = Math.floor((Date.now() - this.sessionStartTime) / 1000);
@@ -2034,48 +2054,45 @@ class FarmingPage {
       durationEl.textContent = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
     }
     
-    // Реальный расчет потребления на основе webview
-    const player = document.getElementById('twitch-player');
-    const miniPlayer = document.getElementById('mini-twitch-player');
-    
-    let currentRate = 0;
-    
-    // Проверяем какой плеер активен
-    const activePlayer = (player && player.src) ? player : (miniPlayer && miniPlayer.src) ? miniPlayer : null;
-    
-    if (activePlayer && activePlayer.src) {
-      // Низкое качество 160p: ~250-350 KB/s
-      // Используем среднее значение с небольшой вариацией
-      const baseRate = 300;
-      const variation = Math.sin(Date.now() / 10000) * 50; // Плавная вариация
-      currentRate = baseRate + variation;
+    // Получаем реальные данные трафика из main процесса
+    try {
+      const trafficData = await window.electronAPI.getTrafficData();
+      const currentRate = trafficData.currentRate || 0; // в KB/s
+      const sessionBytes = trafficData.sessionBytes || 0;
+
+      this.sessionBytes = sessionBytes;
+      this.estimatedBandwidth = sessionBytes;
       
-      this.estimatedBandwidth += currentRate;
-      
-      // Сохраняем в историю (последние 10 значений)
-      this.bandwidthHistory.push(currentRate);
-      if (this.bandwidthHistory.length > 100) {  // Увеличиваем историю для более гладкого графика
-        this.bandwidthHistory.shift();
-      }
-    }
-    
-    const bandwidthEl = document.getElementById('session-bandwidth');
-    if (bandwidthEl) {
-      let totalText = '';
-      if (this.estimatedBandwidth < 1024) {
-        totalText = `${Math.round(this.estimatedBandwidth)} KB`;
-      } else if (this.estimatedBandwidth < 1024 * 1024) {
-        totalText = `${(this.estimatedBandwidth / 1024).toFixed(1)} MB`;
-      } else {
-        totalText = `${(this.estimatedBandwidth / (1024 * 1024)).toFixed(2)} GB`;
+      // Сохраняем в историю
+      if (currentRate > 0) {
+        this.bandwidthHistory.push(currentRate);
+        if (this.bandwidthHistory.length > 100) {
+          this.bandwidthHistory.shift();
+        }
       }
       
-      // Используем среднее значение из истории для более стабильного отображения
-      const avgRate = this.bandwidthHistory.length > 0
-        ? this.bandwidthHistory.reduce((a, b) => a + b, 0) / this.bandwidthHistory.length
-        : currentRate;
-      
-      bandwidthEl.textContent = `${totalText} | ${Math.round(avgRate)} KB/s`;
+      const bandwidthEl = document.getElementById('session-bandwidth');
+      if (bandwidthEl) {
+        // Переводим байты в читабельный формат
+        let totalText = '';
+        const totalKB = sessionBytes / 1024;
+        
+        if (totalKB < 1024) {
+          totalText = `${Math.round(totalKB)} KB`;
+        } else if (totalKB < 1024 * 1024) {
+          totalText = `${(totalKB / 1024).toFixed(1)} MB`;
+        } else {
+          totalText = `${(totalKB / (1024 * 1024)).toFixed(2)} GB`;
+        }
+        
+        const rateText = currentRate >= 1024
+          ? `${(currentRate / 1024).toFixed(1)} MB/s`
+          : `${Math.round(currentRate)} KB/s`;
+        
+        bandwidthEl.textContent = `${totalText} | ${rateText}`;
+      }
+    } catch (error) {
+      console.error('Failed to get traffic data:', error);
     }
   }
 
