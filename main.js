@@ -12,7 +12,6 @@ const store = new Store();
 
 // Конфигурация автообновления
 autoUpdater.logger = console;
-autoUpdater.logger.transports.file.level = 'info';
 autoUpdater.allowDowngrade = false;
 autoUpdater.autoDownload = false;
 autoUpdater.autoInstallOnAppQuit = true;
