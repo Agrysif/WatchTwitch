@@ -17,14 +17,20 @@ autoUpdater.autoDownload = false;
 autoUpdater.autoInstallOnAppQuit = true;
 
 // Настройка URL для обновлений (GitHub Releases)
-if (app.isPackaged) {
+// Force enable updater even in dev mode for testing
+const isDev = !app.isPackaged;
+const enableUpdater = true; // Set to false to disable updater in dev
+
+if ((app.isPackaged || isDev) && enableUpdater) {
   autoUpdater.setFeedURL({
     provider: 'github',
     owner: 'Agrysif',
     repo: 'WatchTwitch',
     releaseType: 'release'
   });
-  console.log('[Updater] Feed URL configured for GitHub releases');
+  console.log('[Updater] Feed URL configured for GitHub releases (isPackaged:', app.isPackaged, ', isDev:', isDev, ')');
+} else {
+  console.log('[Updater] Updater disabled (isPackaged:', app.isPackaged, ')');
 }
 
 // OAuth конфигурация
@@ -301,6 +307,8 @@ autoUpdater.on('checking-for-update', () => {
 
 autoUpdater.on('update-available', (info) => {
   console.log('[Updater] Доступно обновление:', info.version);
+  console.log('[Updater] Current app version:', app.getVersion());
+  console.log('[Updater] Files:', info.files);
   updateInfo = info;
   if (mainWindow) {
     mainWindow.webContents.send('update-available', {
@@ -344,8 +352,13 @@ autoUpdater.on('update-downloaded', () => {
 
 // IPC обработчики для обновления
 ipcMain.on('check-for-updates', async () => {
-  console.log('[IPC] Проверка обновлений...');
-  await autoUpdater.checkForUpdates();
+  console.log('[IPC] Проверка обновлений... (app version:', app.getVersion(), ')');
+  try {
+    const result = await autoUpdater.checkForUpdates();
+    console.log('[Updater] Check result:', result);
+  } catch (err) {
+    console.error('[Updater] Error during check:', err);
+  }
 });
 
 ipcMain.on('install-update', () => {
