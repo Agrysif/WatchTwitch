@@ -1,294 +1,91 @@
 /**
- * Update Handler Module
- * Manages app update lifecycle and beautiful UI overlay
+ * UpdateManager - Управление обновлениями
+ * Простая и надежная реализация как в v1.0.6
  */
 
-const UpdateManager = {
-  currentVersion: null,
-  newVersion: null,
-  downloadProgress: 0,
-  downloadSpeed: 0,
-  lastDownloadedBytes: 0,
-  lastSpeedCheckTime: 0,
-
-  init() {
-    this.overlay = document.getElementById('update-overlay');
-    this.modal = document.querySelector('.update-modal');
-    this.downloadBtn = document.getElementById('update-download-btn');
-    this.installBtn = document.getElementById('update-install-btn');
-    this.laterBtn = document.getElementById('update-later-btn');
-    this.progressBar = document.getElementById('update-progress-bar');
-    this.progressContainer = document.getElementById('update-progress-container');
-    this.updateInfo = document.getElementById('update-info');
-    this.updateVersion = document.getElementById('update-version');
-    this.percentDisplay = document.getElementById('update-percent');
-    this.speedDisplay = document.getElementById('update-speed');
-    this.notificationBadge = document.getElementById('update-notification-badge');
-
-    if (!this.overlay) {
-      console.warn('[Updater] Update overlay not found in HTML, running in minimal mode');
-      // В dev режиме overlay может не быть, но simulateUpdate все равно должен работать
-    } else {
-      this.setupEventListeners();
-      this.setupIPCListeners();
-      this.checkForUpdatesOnStart();
-      this.setupPeriodicChecks();
-    }
-  },
-
-  setupEventListeners() {
-    if (!this.downloadBtn) return;
-    
-    this.downloadBtn.addEventListener('click', () => this.requestDownload());
-    this.installBtn.addEventListener('click', () => this.requestInstall());
-    this.laterBtn.addEventListener('click', () => this.closeOverlay());
-  },
-
-  setupIPCListeners() {
-    // Update available
-    if (window.electronAPI) {
-      window.electronAPI.onUpdateAvailable?.((data) => {
-        console.log('[Updater] Update available:', data);
-        console.log('[Updater] Version from data:', data?.version);
-        this.newVersion = data?.version || 'unknown';
-        console.log('[Updater] newVersion set to:', this.newVersion);
-        this.showUpdateAvailable(data);
-      });
-
-      // Download progress
-      window.electronAPI.onUpdateProgress?.((data) => {
-        this.updateDownloadProgress(data);
-      });
-
-      // Update downloaded
-      window.electronAPI.onUpdateDownloaded?.((data) => {
-        console.log('[Updater] Update downloaded');
-        this.newVersion = data?.version || this.newVersion;
-        this.showUpdateReady();
-      });
-
-      // Update error
-      window.electronAPI.onUpdateError?.((message) => {
-        console.error('[Updater] Update error:', message);
-        this.showUpdateError(message);
-      });
-
-      // Current version
-      window.electronAPI.getAppVersion?.().then((version) => {
-        this.currentVersion = version;
-        console.log('[Updater] Current version:', version);
-      });
-    }
-  },
-
-  checkForUpdatesOnStart() {
-    if (window.electronAPI?.checkForUpdates) {
-      // Check for updates after app loads
-      setTimeout(() => {
-        window.electronAPI.checkForUpdates();
-      }, 1000);
-    }
-  },
-
-  setupPeriodicChecks() {
-    if (window.electronAPI?.checkForUpdates) {
-      // Check for updates every hour
-      setInterval(() => {
-        window.electronAPI.checkForUpdates();
-      }, 60 * 60 * 1000); // 1 hour
-    }
-  },
-
-  showUpdateAvailable(data) {
-    if (!this.overlay) return;
-
-    const version = data?.version || this.newVersion || 'unknown';
-    console.log('[Updater] showUpdateAvailable with version:', version);
-    
-    this.updateVersion.textContent = `v${version}`;
-    this.updateInfo.innerHTML = `
-      <p>Новая версия приложения доступна к скачиванию.</p>
-      <p style="margin-top: 8px; font-size: 13px; color: var(--text-secondary);">
-        Текущая версия: v${this.currentVersion || 'unknown'}
-      </p>
-    `;
-
-    this.downloadBtn.style.display = 'block';
-    this.installBtn.style.display = 'none';
-    this.progressContainer.style.display = 'none';
-
-    this.showOverlay();
-    this.showNotificationBadge();
-  },
-
-  showUpdateReady() {
-    if (!this.overlay) return;
-
-    this.updateVersion.textContent = `v${this.newVersion}`;
-    this.updateInfo.innerHTML = `
-      <p><strong>Обновление загружено и готово к установке!</strong></p>
-      <p style="margin-top: 8px; font-size: 13px; color: var(--text-secondary);">
-        Приложение перезагрузится и установит обновление.
-      </p>
-    `;
-
-    this.downloadBtn.style.display = 'none';
-    this.installBtn.style.display = 'block';
-    this.installBtn.disabled = false;
-    this.installBtn.textContent = 'Установить и перезагрузиться';
-    this.progressContainer.style.display = 'none';
-
-    this.showOverlay();
-    this.showNotificationBadge();
-  },
-
-  simulateUpdate(version = 'test') {
-    console.log('[Updater] Simulating update to version:', version);
-    this.newVersion = version;
-    if (this.overlay) {
-      this.showUpdateAvailable();
-    } else {
-      console.log('[Updater] Overlay not found, but test mode confirmed working');
-      alert(`Тестовый режим работает!\n\nСимуляция обновления до версии ${version}\n\nВ production mode здесь появится красивое окно обновления.`);
-    }
-  },
-
-  updateDownloadProgress(data) {
-    if (!this.overlay || !this.progressBar) return;
-
-    const percent = Math.min(Math.round((data.transferred / data.total) * 100), 100);
-    this.downloadProgress = percent;
-
-    // Calculate speed
-    const now = Date.now();
-    if (this.lastSpeedCheckTime && now - this.lastSpeedCheckTime >= 500) {
-      const bytesDifference = data.transferred - this.lastDownloadedBytes;
-      const timeDifference = (now - this.lastSpeedCheckTime) / 1000; // seconds
-      this.downloadSpeed = (bytesDifference / timeDifference) / (1024 * 1024); // MB/s
-      this.lastDownloadedBytes = data.transferred;
-      this.lastSpeedCheckTime = now;
-    } else if (!this.lastSpeedCheckTime) {
-      this.lastSpeedCheckTime = now;
-      this.lastDownloadedBytes = data.transferred;
-    }
-
-    // Update UI
-    this.progressBar.style.width = `${percent}%`;
-    this.percentDisplay.textContent = `${percent}%`;
-    this.speedDisplay.textContent = `${this.downloadSpeed.toFixed(1)} MB/s`;
-
-    // Show progress container when download starts
-    if (this.progressContainer.style.display === 'none') {
-      this.progressContainer.style.display = 'block';
-      this.downloadBtn.style.display = 'none';
-    }
-
-    // Keep overlay visible during download
-    if (this.overlay.style.display === 'none') {
-      this.showOverlay();
-    }
-  },
-
-  requestDownload() {
-    if (window.electronAPI?.downloadUpdate) {
-      this.downloadBtn.disabled = true;
-      this.downloadBtn.textContent = 'Загружается...';
-      if (this.progressContainer) {
-        this.progressContainer.style.display = 'block';
-      }
-      if (this.progressBar) {
-        this.progressBar.style.width = '0%';
-      }
-      if (this.percentDisplay) {
-        this.percentDisplay.textContent = '0%';
-      }
-      if (this.speedDisplay) {
-        this.speedDisplay.textContent = '0 MB/s';
-      }
-      window.electronAPI.downloadUpdate();
-    }
-  },
-
-  showUpdateError(message) {
-    if (!this.overlay) return;
-
-    const errorText = message || 'Неизвестная ошибка при загрузке обновления.';
-    this.updateInfo.innerHTML = `
-      <p><strong>Ошибка обновления</strong></p>
-      <p style="margin-top: 8px; font-size: 13px; color: var(--text-secondary);">
-        ${errorText}
-      </p>
-    `;
-
-    this.downloadBtn.style.display = 'block';
-    this.downloadBtn.disabled = false;
-    this.downloadBtn.textContent = 'Скачать обновление';
-    this.installBtn.style.display = 'none';
-    this.progressContainer.style.display = 'none';
-
-    this.showOverlay();
-    this.showNotificationBadge();
-  }
-
-  requestInstall() {
-    if (window.electronAPI?.installUpdate) {
-      this.installBtn.disabled = true;
-      this.installBtn.textContent = 'Установка...';
-      window.electronAPI.installUpdate();
-    }
-  },
-
-  showOverlay() {
-    if (!this.overlay) return;
-    this.overlay.style.display = 'flex';
-    // Prevent scrolling
-    document.body.style.overflow = 'hidden';
-  },
-
-  closeOverlay() {
-    if (!this.overlay) return;
-    // Only close if download hasn't started
-    if (this.progressContainer.style.display === 'none') {
-      this.overlay.style.display = 'none';
-      document.body.style.overflow = '';
-    }
-  },
-
-  showNotificationBadge() {
-    if (!this.notificationBadge) return;
-    this.notificationBadge.style.display = 'flex';
-  },
-
-  hideNotificationBadge() {
-    if (!this.notificationBadge) return;
-    this.notificationBadge.style.display = 'none';
-  }
-};
-
-// Make available for debug/test actions
-window.UpdateManager = UpdateManager;
-
-// Initialize when DOM is ready
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => {
-    UpdateManager.init();
-  });
-} else {
-  UpdateManager.init();
-}
-
-// ============ LEGACY CODE (kept for compatibility) ============
-const updaterAPI = window.electronAPI;
-if (!updaterAPI) {
-  console.warn('[UI] electronAPI not available; updater disabled');
-}
-
-class LegacyUpdateManager {
+class UpdateManager {
   constructor() {
+    console.log('[Updater] UpdateManager created');
     this.updateAvailable = false;
     this.downloadProgress = 0;
     this.isDownloading = false;
     this.updateInfo = null;
+    this.setupListeners();
+  }
+
+  setupListeners() {
+    // Доступно обновление
+    if (window.electronAPI) {
+      window.electronAPI.onUpdateAvailable?.((info) => {
+        console.log('[Updater] Update available:', info.version);
+        this.updateAvailable = true;
+        this.updateInfo = info;
+        this.showUpdateNotification(info);
+      });
+
+      // Прогресс загрузки
+      window.electronAPI.onUpdateProgress?.((progress) => {
+        console.log('[Updater] Download progress:', progress.percent);
+        this.downloadProgress = progress.percent;
+        this.isDownloading = true;
+        this.updateProgressBar(progress);
+      });
+
+      // Обновление загружено
+      window.electronAPI.onUpdateDownloaded?.(() => {
+        console.log('[Updater] Update downloaded');
+        this.isDownloading = false;
+        this.showReadyToInstall();
+      });
+
+      // Ошибка при обновлении
+      window.electronAPI.onUpdateError?.((error) => {
+        console.error('[Updater] Update error:', error);
+        this.showUpdateError(error);
+      });
+    }
+  }
+
+  showUpdateNotification(info) {
+    // Удаляем старое уведомление если есть
+    const existing = document.getElementById('update-notification');
+    if (existing) existing.remove();
+
+    const notification = document.createElement('div');
+    notification.id = 'update-notification';
+    notification.className = 'update-notification';
+    notification.innerHTML = `
+      <div class="update-content">
+        <div class="update-header">
+          <div class="update-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2m0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8m3.5-9H13V7h-2v4H8.5l3.5 3.5 3.5-3.5z" fill="currentColor"/>
+            </svg>
+          </div>
+          <div class="update-text">
+            <div class="update-title">Доступно обновление</div>
+            <div class="update-version">Версия ${info.version}</div>
+          </div>
+          <button class="close-notification" onclick="updateManager.closeNotification()">
+            <svg width="16" height="16" viewBox="0 0 16 16">
+              <path d="M12 4L4 12M4 4L12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+          </button>
+        </div>
+        <div class="update-progress" style="display: none;" id="update-progress-bar">
+          <div class="progress-fill"></div>
+        </div>
+        <div class="update-actions">
+          <button class="btn-secondary" onclick="updateManager.closeNotification()">Позже</button>
+          <button class="btn-primary" onclick="updateManager.startUpdate()" id="update-btn">
+            Обновить
+          </button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(notification);
+    this.animateNotification(notification);
   }
 
   updateProgressBar(progress) {
@@ -308,7 +105,6 @@ class LegacyUpdateManager {
   showReadyToInstall() {
     const notification = document.getElementById('update-notification');
     if (notification) {
-      const content = notification.querySelector('.update-content');
       const header = notification.querySelector('.update-header');
       const actions = notification.querySelector('.update-actions');
 
@@ -332,7 +128,7 @@ class LegacyUpdateManager {
       actions.innerHTML = `
         <button class="btn-secondary" onclick="updateManager.closeNotification()">Позже</button>
         <button class="btn-primary update-install" onclick="updateManager.installUpdate()">
-          Установить и перезагрузить
+          Установить и перезагрузиться
         </button>
       `;
 
@@ -346,6 +142,7 @@ class LegacyUpdateManager {
 
     const errorNotif = document.createElement('div');
     errorNotif.className = 'update-notification error';
+    errorNotif.id = 'error-notif';
     errorNotif.innerHTML = `
       <div class="update-content">
         <div class="update-header">
@@ -366,7 +163,6 @@ class LegacyUpdateManager {
         </div>
       </div>
     `;
-    errorNotif.id = 'error-notif';
 
     document.body.appendChild(errorNotif);
     this.animateNotification(errorNotif);
@@ -379,16 +175,17 @@ class LegacyUpdateManager {
   }
 
   startUpdate() {
-    console.log('[UI] Начинаем загрузку обновления...');
-    if (!updaterAPI) return;
-    this.showOverlayProgressState();
-    updaterAPI.downloadUpdate();
+    console.log('[Updater] Starting download...');
+    if (window.electronAPI?.downloadUpdate) {
+      window.electronAPI.downloadUpdate();
+    }
   }
 
   installUpdate() {
-    console.log('[UI] Установка обновления...');
-    if (!updaterAPI) return;
-    updaterAPI.installUpdate();
+    console.log('[Updater] Installing update...');
+    if (window.electronAPI?.installUpdate) {
+      window.electronAPI.installUpdate();
+    }
   }
 
   closeNotification() {
@@ -400,98 +197,20 @@ class LegacyUpdateManager {
   }
 
   checkForUpdates() {
-    console.log('[UI] Проверка обновлений...');
-    
-    // Ensure UpdateManager is initialized
-    if (!UpdateManager.overlay) {
-      console.warn('[UI] UpdateManager not initialized yet, initializing now...');
-      initUpdateManager();
+    console.log('[Updater] Checking for updates...');
+    if (window.electronAPI?.checkForUpdates) {
+      window.electronAPI.checkForUpdates();
     }
-    
-    if (!updaterAPI) return;
-    updaterAPI.checkForUpdates();
-  }
-
-  showOverlayProgressState() {
-    const overlay = document.getElementById('update-overlay');
-    if (!overlay) return;
-    const progress = overlay.querySelector('.update-overlay-progress');
-    const status = document.getElementById('update-overlay-status');
-    const actions = overlay.querySelector('.update-overlay-actions');
-    if (progress) progress.style.display = 'block';
-    if (status) {
-      status.style.display = 'block';
-      status.textContent = 'Подготовка...';
-    }
-    if (actions) {
-      actions.innerHTML = `
-        <button class="btn-secondary" id="update-overlay-later">Свернуть</button>
-      `;
-      document.getElementById('update-overlay-later')?.addEventListener('click', () => overlay.remove());
-    }
-  }
-
-  updateOverlayProgress(progress) {
-    const overlay = document.getElementById('update-overlay');
-    if (!overlay) return;
-    const fill = overlay.querySelector('.update-overlay-progress-fill');
-    const status = document.getElementById('update-overlay-status');
-    if (fill) fill.style.width = `${progress.percent}%`;
-    if (status) status.textContent = `Загрузка ${Math.round(progress.percent)}%`;
-  }
-
-  showOverlayReady() {
-    const overlay = document.getElementById('update-overlay');
-    if (!overlay) return;
-    const status = document.getElementById('update-overlay-status');
-    if (status) status.textContent = 'Обновление готово к установке';
-    const actions = overlay.querySelector('.update-overlay-actions');
-    if (actions) {
-      actions.innerHTML = `
-        <button class="btn-secondary" id="update-overlay-later">Позже</button>
-        <button class="btn-primary update-install" id="update-overlay-install">Установить</button>
-      `;
-      document.getElementById('update-overlay-later')?.addEventListener('click', () => overlay.remove());
-      document.getElementById('update-overlay-install')?.addEventListener('click', () => this.installUpdate());
-    }
-  }
-
-  showOverlayError(error) {
-    const overlay = document.getElementById('update-overlay');
-    if (!overlay) return;
-    const status = document.getElementById('update-overlay-status');
-    if (status) status.textContent = `Ошибка: ${error}`;
   }
 }
 
-// Создаём глобальный экземпляр (legacy)
-const updateManager = new LegacyUpdateManager();
-
-// Инициализируем UpdateManager когда DOM готов
-function initUpdateManager() {
-  console.log('[Updater] Initializing UpdateManager...');
-  UpdateManager.init();
-  console.log('[Updater] UpdateManager initialized, overlay:', !!UpdateManager.overlay);
-}
+// Создаём глобальный экземпляр СРАЗУ
+const updateManager = new UpdateManager();
 
 // Проверяем обновления при запуске приложения
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => {
-    console.log('[Updater] DOMContentLoaded event fired');
-    setTimeout(() => {
-      initUpdateManager();
-      setTimeout(() => {
-        updateManager.checkForUpdates();
-      }, 500);
-    }, 100);
-  });
-} else {
-  // DOM уже загружен
-  console.log('[Updater] DOM already loaded, init after delay');
+document.addEventListener('DOMContentLoaded', () => {
+  console.log('[Updater] DOMContentLoaded - checking for updates');
   setTimeout(() => {
-    initUpdateManager();
-    setTimeout(() => {
-      updateManager.checkForUpdates();
-    }, 500);
-  }, 100);
-}
+    updateManager.checkForUpdates();
+  }, 2000);
+});
