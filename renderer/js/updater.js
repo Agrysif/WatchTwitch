@@ -166,8 +166,8 @@ class UpdateManager {
 
   startUpdate() {
     console.log('[UI] Начинаем загрузку обновления...');
-    if (window.electronAPI?.checkForUpdates) {
-      window.electronAPI.checkForUpdates();
+    if (window.electronAPI?.downloadUpdate) {
+      window.electronAPI.downloadUpdate();
     }
   }
 
