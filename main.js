@@ -26,9 +26,13 @@ if ((app.isPackaged || isDev) && enableUpdater) {
     provider: 'github',
     owner: 'Agrysif',
     repo: 'WatchTwitch',
-    releaseType: 'release'
+    releaseType: 'release',
+    // Explicitly point to latest release
+    updaterCacheDirName: 'watchtwitch-updater'
   });
   console.log('[Updater] Feed URL configured for GitHub releases (isPackaged:', app.isPackaged, ', isDev:', isDev, ')');
+  console.log('[Updater] App version:', app.getVersion());
+  console.log('[Updater] Will check: https://github.com/Agrysif/WatchTwitch/releases');
 } else {
   console.log('[Updater] Updater disabled (isPackaged:', app.isPackaged, ')');
 }
@@ -302,7 +306,11 @@ function setupTrafficMonitoring(webContents) {
 let updateInfo = null;
 
 autoUpdater.on('checking-for-update', () => {
-  console.log('[Updater] Проверка обновлений...');
+  console.log('[Updater] ===== CHECKING FOR UPDATE =====');
+  console.log('[Updater] Current version:', app.getVersion());
+  console.log('[Updater] Platform:', process.platform);
+  console.log('[Updater] Arch:', process.arch);
+  console.log('[Updater] Checking GitHub releases...');
 });
 
 autoUpdater.on('update-available', (info) => {
@@ -320,11 +328,16 @@ autoUpdater.on('update-available', (info) => {
 });
 
 autoUpdater.on('update-not-available', () => {
-  console.log('[Updater] Обновление не требуется');
+  console.log('[Updater] ===== UPDATE NOT AVAILABLE =====');
+  console.log('[Updater] Current version is up-to-date');
+  console.log('[Updater] App version:', app.getVersion());
 });
 
 autoUpdater.on('error', (error) => {
-  console.error('[Updater] Ошибка при проверке обновлений:', error);
+  console.error('[Updater] ===== UPDATE CHECK ERROR =====');
+  console.error('[Updater] Error type:', error.name);
+  console.error('[Updater] Error message:', error.message);
+  console.error('[Updater] Error stack:', error.stack);
   if (mainWindow) {
     mainWindow.webContents.send('update-error', error.message);
   }
