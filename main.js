@@ -22,15 +22,15 @@ const isDev = !app.isPackaged;
 const enableUpdater = true; // Set to false to disable updater in dev
 
 if ((app.isPackaged || isDev) && enableUpdater) {
+  // Try different approach - use explicit channel
   autoUpdater.setFeedURL({
     provider: 'github',
     owner: 'Agrysif',
     repo: 'WatchTwitch',
     releaseType: 'release',
-    // Explicitly point to latest release
-    updaterCacheDirName: 'watchtwitch-updater'
+    channel: 'latest'  // Explicitly use latest channel
   });
-  console.log('[Updater] Feed URL configured for GitHub releases (isPackaged:', app.isPackaged, ', isDev:', isDev, ')');
+  console.log('[Updater] Feed URL configured for GitHub releases (channel: latest)');
   console.log('[Updater] App version:', app.getVersion());
   console.log('[Updater] Will check: https://github.com/Agrysif/WatchTwitch/releases');
 } else {
