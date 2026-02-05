@@ -1,195 +1,448 @@
 /**
- * Update Manager - Управление обновлениями
+ * Auto-Update Manager v2 - Полная переделка логики обновлений
+ * Встроенное красивое окно с прогресс баром в стиле приложения
  */
 
 class UpdateManager {
   constructor() {
-    this.updateAvailable = false;
-    this.downloadProgress = 0;
-    this.isDownloading = false;
+    this.checking = false;
+    this.downloading = false;
     this.updateInfo = null;
+    this.checkInterval = null;
+    
+    this.createOverlay();
     this.setupListeners();
+    this.startAutoCheck();
   }
 
+  /**
+   * Создаём красивое overlay окно для обновлений
+   */
+  createOverlay() {
+    const style = document.createElement('style');
+    style.textContent = `
+      #update-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.7);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 10000;
+        backdrop-filter: blur(4px);
+        animation: fadeIn 0.3s ease-out;
+      }
+
+      #update-overlay.show {
+        display: flex;
+      }
+
+      @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+
+      .update-window {
+        background: linear-gradient(135deg, #0e0e10 0%, #1a1a2e 100%);
+        border-radius: 16px;
+        padding: 32px;
+        width: 90%;
+        max-width: 500px;
+        box-shadow: 0 25px 50px rgba(0, 0, 0, 0.8);
+        animation: slideUp 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        border: 1px solid rgba(145, 71, 255, 0.2);
+      }
+
+      @keyframes slideUp {
+        from {
+          opacity: 0;
+          transform: translateY(40px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      .update-logo {
+        width: 80px;
+        height: 80px;
+        background: linear-gradient(135deg, #9147ff 0%, #772ce8 100%);
+        border-radius: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 24px;
+        box-shadow: 0 15px 40px rgba(145, 71, 255, 0.3);
+      }
+
+      .update-logo svg {
+        width: 48px;
+        height: 48px;
+        fill: white;
+      }
+
+      .update-title {
+        font-size: 24px;
+        font-weight: 700;
+        color: #efeff1;
+        margin-bottom: 8px;
+        text-align: center;
+      }
+
+      .update-subtitle {
+        font-size: 14px;
+        color: #adadb8;
+        text-align: center;
+        margin-bottom: 24px;
+      }
+
+      .update-version {
+        font-size: 13px;
+        color: #9147ff;
+        text-align: center;
+        margin-bottom: 24px;
+        padding: 8px 12px;
+        background: rgba(145, 71, 255, 0.1);
+        border-radius: 8px;
+        display: inline-block;
+        width: 100%;
+      }
+
+      .update-progress-section {
+        margin-bottom: 24px;
+      }
+
+      .update-progress-label {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 12px;
+        font-size: 13px;
+        color: #adadb8;
+      }
+
+      .update-progress-bar {
+        width: 100%;
+        height: 6px;
+        background: rgba(145, 71, 255, 0.1);
+        border-radius: 3px;
+        overflow: hidden;
+        position: relative;
+      }
+
+      .update-progress-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #9147ff 0%, #00e57a 100%);
+        border-radius: 3px;
+        width: 0%;
+        transition: width 0.3s ease-out;
+        box-shadow: 0 0 12px rgba(145, 71, 255, 0.6);
+      }
+
+      .update-actions {
+        display: flex;
+        gap: 12px;
+        justify-content: center;
+      }
+
+      .update-btn {
+        padding: 12px 24px;
+        border-radius: 8px;
+        border: none;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        flex: 1;
+      }
+
+      .update-btn-primary {
+        background: linear-gradient(135deg, #9147ff 0%, #772ce8 100%);
+        color: white;
+        box-shadow: 0 8px 24px rgba(145, 71, 255, 0.3);
+      }
+
+      .update-btn-primary:hover:not(:disabled) {
+        transform: translateY(-2px);
+        box-shadow: 0 12px 32px rgba(145, 71, 255, 0.4);
+      }
+
+      .update-btn-primary:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+
+      .update-btn-secondary {
+        background: rgba(145, 71, 255, 0.1);
+        color: #9147ff;
+        border: 1px solid rgba(145, 71, 255, 0.3);
+      }
+
+      .update-btn-secondary:hover:not(:disabled) {
+        background: rgba(145, 71, 255, 0.2);
+        border-color: rgba(145, 71, 255, 0.5);
+      }
+
+      .update-status {
+        text-align: center;
+        font-size: 13px;
+        color: #adadb8;
+        margin-bottom: 16px;
+      }
+
+      .update-status.success {
+        color: #00e57a;
+      }
+
+      .update-status.error {
+        color: #ff4444;
+      }
+
+      .spinner {
+        display: inline-block;
+        width: 14px;
+        height: 14px;
+        border: 2px solid rgba(145, 71, 255, 0.3);
+        border-top-color: #9147ff;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+      }
+
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+    `;
+    document.head.appendChild(style);
+
+    const overlay = document.createElement('div');
+    overlay.id = 'update-overlay';
+    overlay.innerHTML = `
+      <div class="update-window">
+        <div class="update-logo">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M11.571 4.714h1.715v5.143H11.57zm4.715 0H18v5.143h-1.714zM6 0L1.714 4.286v15.428h5.143V24l4.286-4.286h3.428L22.286 12V0zm14.571 11.143l-3.428 3.428h-3.429l-3 3v-3H6.857V1.714h13.714Z"/>
+          </svg>
+        </div>
+
+        <div class="update-title">Доступно обновление</div>
+        <div class="update-subtitle" id="update-subtitle">Новая версия приложения</div>
+        <div class="update-version" id="update-version-text">Загрузка информации...</div>
+
+        <div class="update-progress-section" id="progress-section" style="display: none;">
+          <div class="update-progress-label">
+            <span>Загрузка обновления</span>
+            <span id="progress-percent">0%</span>
+          </div>
+          <div class="update-progress-bar">
+            <div class="update-progress-fill" id="update-progress-fill"></div>
+          </div>
+        </div>
+
+        <div class="update-status" id="update-status"></div>
+
+        <div class="update-actions">
+          <button class="update-btn update-btn-secondary" id="update-later-btn" onclick="updateManager.closeWindow()">
+            Позже
+          </button>
+          <button class="update-btn update-btn-primary" id="update-download-btn" onclick="updateManager.downloadUpdate()">
+            Загрузить и установить
+          </button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    this.overlay = overlay;
+    this.window = overlay.querySelector('.update-window');
+  }
+
+  /**
+   * Настраиваем IPC слушатели
+   */
   setupListeners() {
-    // Доступно обновление
-    if (window.electronAPI?.onUpdateAvailable) {
-      window.electronAPI.onUpdateAvailable((info) => {
-        console.log('[UI] Доступно обновление:', info.version);
-        this.updateAvailable = true;
-        this.updateInfo = info;
-        this.showUpdateNotification(info);
-      });
+    if (!window.electronAPI) {
+      console.warn('[UpdateManager] electronAPI not available');
+      return;
     }
+
+    // Обновление доступно
+    window.electronAPI.onUpdateAvailable?.((info) => {
+      console.log('[UpdateManager] Update available:', info.version);
+      this.updateInfo = info;
+      this.showWindow();
+      this.updateVersionText(info.version);
+    });
 
     // Прогресс загрузки
-    if (window.electronAPI?.onUpdateProgress) {
-      window.electronAPI.onUpdateProgress((progress) => {
-        this.downloadProgress = progress.percent;
-        this.isDownloading = true;
-        this.updateProgressBar(progress);
-      });
-    }
+    window.electronAPI.onUpdateProgress?.((progress) => {
+      this.downloading = true;
+      this.showProgress(progress.percent);
+    });
 
-    // Обновление загружено
-    if (window.electronAPI?.onUpdateDownloaded) {
-      window.electronAPI.onUpdateDownloaded(() => {
-        console.log('[UI] Обновление загружено');
-        this.isDownloading = false;
-        this.showReadyToInstall();
-      });
-    }
+    // Обновление загружено и готово к установке
+    window.electronAPI.onUpdateDownloaded?.(() => {
+      console.log('[UpdateManager] Update downloaded, ready to install');
+      this.downloading = false;
+      this.showReadyToInstall();
+    });
 
-    // Ошибка при обновлении
-    if (window.electronAPI?.onUpdateError) {
-      window.electronAPI.onUpdateError((error) => {
-        console.error('[UI] Ошибка обновления:', error);
-        this.showUpdateError(error);
-      });
-    }
+    // Ошибка обновления
+    window.electronAPI.onUpdateError?.((error) => {
+      console.error('[UpdateManager] Update error:', error);
+      this.showError(error);
+    });
   }
 
-  showUpdateNotification(info) {
-    // Удаляем старое уведомление если есть
-    const existing = document.getElementById('update-notification');
-    if (existing) existing.remove();
-
-    const notification = document.createElement('div');
-    notification.id = 'update-notification';
-    notification.className = 'update-notification';
-    notification.innerHTML = `
-      <div class="update-content">
-        <div class="update-header">
-          <div class="update-icon">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none">        
-              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2m0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8m3.5-9H13V7h-2v4H8.5l3.5 3.5 3.5-3.5z" fill="currentColor"/>                                               </svg>
-          </div>
-          <div class="update-text">
-            <div class="update-title">Доступно обновление</div>
-            <div class="update-version">Версия ${info.version}</div>
-          </div>
-          <button class="close-notification" onclick="updateManager.closeNotification()">                                                                                   <svg width="16" height="16" viewBox="0 0 16 16">
-              <path d="M12 4L4 12M4 4L12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>                                                                </svg>
-          </button>
-        </div>
-        <div class="update-progress" style="display: none;" id="update-progress-bar">                                                                                     <div class="progress-fill"></div>
-        </div>
-        <div class="update-actions">
-          <button class="btn-secondary" onclick="updateManager.closeNotification()">Позже</button>                                                                        <button class="btn-primary" onclick="updateManager.startUpdate()" id="update-btn">                                                                                Обновить
-          </button>
-        </div>
-      </div>
-    `;
-
-    document.body.appendChild(notification);
-    this.animateNotification(notification);
+  /**
+   * Показать окно обновления
+   */
+  showWindow() {
+    this.overlay.classList.add('show');
+    document.getElementById('progress-section').style.display = 'none';
+    document.getElementById('update-status').textContent = '';
+    document.getElementById('update-later-btn').style.display = 'block';
   }
 
-  updateProgressBar(progress) {
-    const progressBar = document.getElementById('update-progress-bar');
-    const fill = progressBar?.querySelector('.progress-fill');
-    const btn = document.getElementById('update-btn');
-
-    if (progressBar) progressBar.style.display = 'block';
-    if (fill) fill.style.width = progress.percent + '%';
-
-    if (btn) {
-      btn.disabled = true;
-      btn.textContent = `Загрузка ${progress.percent}%`;
-    }
+  /**
+   * Закрыть окно обновления
+   */
+  closeWindow() {
+    this.overlay.classList.remove('show');
   }
 
+  /**
+   * Обновить текст версии
+   */
+  updateVersionText(version) {
+    document.getElementById('update-version-text').textContent = `Версия ${version}`;
+  }
+
+  /**
+   * Показать прогресс загрузки
+   */
+  showProgress(percent) {
+    const progressSection = document.getElementById('progress-section');
+    progressSection.style.display = 'block';
+    
+    const fill = document.getElementById('update-progress-fill');
+    const percentText = document.getElementById('progress-percent');
+    
+    fill.style.width = percent + '%';
+    percentText.textContent = Math.round(percent) + '%';
+    
+    const btn = document.getElementById('update-download-btn');
+    btn.disabled = true;
+    btn.textContent = 'Загрузка...';
+    
+    document.getElementById('update-later-btn').style.display = 'none';
+  }
+
+  /**
+   * Показать что обновление готово к установке
+   */
   showReadyToInstall() {
-    const notification = document.getElementById('update-notification');        
-    if (notification) {
-      const content = notification.querySelector('.update-content');
-      const header = notification.querySelector('.update-header');
-      const actions = notification.querySelector('.update-actions');
+    const fill = document.getElementById('update-progress-fill');
+    fill.style.width = '100%';
+    
+    const btn = document.getElementById('update-download-btn');
+    btn.disabled = false;
+    btn.textContent = 'Установить и перезагрузить';
+    btn.onclick = () => this.installUpdate();
+    
+    const status = document.getElementById('update-status');
+    status.textContent = '✓ Обновление готово';
+    status.classList.add('success');
+    
+    document.getElementById('update-later-btn').style.display = 'block';
+  }
 
-      header.innerHTML = `
-        <div class="update-icon success">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-            <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" fill="currentColor"/>                                                                     </svg>
-        </div>
-        <div class="update-text">
-          <div class="update-title">Обновление готово</div>
-          <div class="update-version">Нажмите, чтобы установить</div>
-        </div>
-        <button class="close-notification" onclick="updateManager.closeNotification()">                                                                                   <svg width="16" height="16" viewBox="0 0 16 16">
-            <path d="M12 4L4 12M4 4L12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>                                                                </svg>
-        </button>
-      `;
+  /**
+   * Показать ошибку
+   */
+  showError(error) {
+    this.downloading = false;
+    
+    const btn = document.getElementById('update-download-btn');
+    btn.disabled = false;
+    btn.textContent = 'Попробовать ещё';
+    btn.onclick = () => this.checkForUpdates();
+    
+    const status = document.getElementById('update-status');
+    status.textContent = '✗ Ошибка: ' + error;
+    status.classList.add('error');
+    
+    document.getElementById('progress-section').style.display = 'none';
+  }
 
-      actions.innerHTML = `
-        <button class="btn-secondary" onclick="updateManager.closeNotification()">Позже</button>                                                                        <button class="btn-primary update-install" onclick="updateManager.installUpdate()">                                                                               Установить и перезагрузить
-        </button>
-      `;
-
-      notification.classList.add('ready');
+  /**
+   * Проверить обновления
+   */
+  checkForUpdates() {
+    if (this.checking || this.downloading) return;
+    
+    this.checking = true;
+    console.log('[UpdateManager] Checking for updates...');
+    
+    if (window.electronAPI?.checkForUpdates) {
+      window.electronAPI.checkForUpdates();
     }
+    
+    setTimeout(() => {
+      this.checking = false;
+    }, 2000);
   }
 
-  showUpdateError(error) {
-    const notification = document.getElementById('update-notification');        
-    if (notification) notification.remove();
-
-    const errorNotif = document.createElement('div');
-    errorNotif.className = 'update-notification error';
-    errorNotif.innerHTML = `
-      <div class="update-content">
-        <div class="update-header">
-          <div class="update-icon error">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none">        
-              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2m1 15h-2v-2h2v2m0-4h-2V7h2v6z" fill="currentColor"/>                                </svg>
-          </div>
-          <div class="update-text">
-            <div class="update-title">Ошибка при проверке обновлений</div>      
-            <div class="update-version">${error}</div>
-          </div>
-          <button class="close-notification" onclick="document.getElementById('error-notif').remove()">                                                                     <svg width="16" height="16" viewBox="0 0 16 16">
-              <path d="M12 4L4 12M4 4L12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>                                                                </svg>
-          </button>
-        </div>
-      </div>
-    `;
-    errorNotif.id = 'error-notif';
-
-    document.body.appendChild(errorNotif);
-    this.animateNotification(errorNotif);
-
-    setTimeout(() => errorNotif.remove(), 5000);
-  }
-
-  animateNotification(element) {
-    element.style.animation = 'slideInRight 0.3s ease-out';
-  }
-
-  startUpdate() {
-    console.log('[UI] Начинаем загрузку обновления...');
+  /**
+   * Загрузить обновление
+   */
+  downloadUpdate() {
+    if (this.downloading) return;
+    
+    console.log('[UpdateManager] Starting download...');
+    
     if (window.electronAPI?.downloadUpdate) {
       window.electronAPI.downloadUpdate();
     }
   }
 
+  /**
+   * Установить обновление
+   */
   installUpdate() {
-    console.log('[UI] Установка обновления...');
+    console.log('[UpdateManager] Installing update...');
+    
     if (window.electronAPI?.installUpdate) {
       window.electronAPI.installUpdate();
     }
   }
 
-  closeNotification() {
-    const notification = document.getElementById('update-notification');        
-    if (notification) {
-      notification.style.animation = 'slideOutRight 0.3s ease-in';
-      setTimeout(() => notification.remove(), 300);
-    }
+  /**
+   * Автоматическая проверка каждые 30 минут
+   */
+  startAutoCheck() {
+    // Первая проверка через 3 секунды после запуска
+    setTimeout(() => {
+      this.checkForUpdates();
+    }, 3000);
+
+    // Затем проверяем каждые 30 минут
+    this.checkInterval = setInterval(() => {
+      if (!this.checking && !this.downloading) {
+        this.checkForUpdates();
+      }
+    }, 30 * 60 * 1000); // 30 minutes
   }
 
-  checkForUpdates() {
-    console.log('[UI] Проверка обновлений...');
-    if (window.electronAPI?.checkForUpdates) {
-      window.electronAPI.checkForUpdates();
+  /**
+   * Остановить автоматическую проверку
+   */
+  stopAutoCheck() {
+    if (this.checkInterval) {
+      clearInterval(this.checkInterval);
     }
   }
 }
@@ -197,10 +450,7 @@ class UpdateManager {
 // Создаём глобальный экземпляр
 const updateManager = new UpdateManager();
 
-// Проверяем обновления при запуске приложения
-document.addEventListener('DOMContentLoaded', () => {
-  // Проверяем через 2 секунды после загрузки
-  setTimeout(() => {
-    updateManager.checkForUpdates();
-  }, 2000);
+// Очищаем при закрытии окна
+window.addEventListener('beforeunload', () => {
+  updateManager.stopAutoCheck();
 });
