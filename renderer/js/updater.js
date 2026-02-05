@@ -1,8 +1,6 @@
 /**
- * Update Manager - Управление обновлениями в стиле приложения
+ * Update Manager - Управление обновлениями
  */
-
-const { ipcRenderer } = require('electron');
 
 class UpdateManager {
   constructor() {
@@ -15,32 +13,40 @@ class UpdateManager {
 
   setupListeners() {
     // Доступно обновление
-    ipcRenderer.on('update-available', (event, info) => {
-      console.log('[UI] Доступно обновление:', info.version);
-      this.updateAvailable = true;
-      this.updateInfo = info;
-      this.showUpdateNotification(info);
-    });
+    if (window.electronAPI?.onUpdateAvailable) {
+      window.electronAPI.onUpdateAvailable((info) => {
+        console.log('[UI] Доступно обновление:', info.version);
+        this.updateAvailable = true;
+        this.updateInfo = info;
+        this.showUpdateNotification(info);
+      });
+    }
 
     // Прогресс загрузки
-    ipcRenderer.on('update-download-progress', (event, progress) => {
-      this.downloadProgress = progress.percent;
-      this.isDownloading = true;
-      this.updateProgressBar(progress);
-    });
+    if (window.electronAPI?.onUpdateProgress) {
+      window.electronAPI.onUpdateProgress((progress) => {
+        this.downloadProgress = progress.percent;
+        this.isDownloading = true;
+        this.updateProgressBar(progress);
+      });
+    }
 
     // Обновление загружено
-    ipcRenderer.on('update-downloaded', () => {
-      console.log('[UI] Обновление загружено');
-      this.isDownloading = false;
-      this.showReadyToInstall();
-    });
+    if (window.electronAPI?.onUpdateDownloaded) {
+      window.electronAPI.onUpdateDownloaded(() => {
+        console.log('[UI] Обновление загружено');
+        this.isDownloading = false;
+        this.showReadyToInstall();
+      });
+    }
 
     // Ошибка при обновлении
-    ipcRenderer.on('update-error', (event, error) => {
-      console.error('[UI] Ошибка обновления:', error);
-      this.showUpdateError(error);
-    });
+    if (window.electronAPI?.onUpdateError) {
+      window.electronAPI.onUpdateError((error) => {
+        console.error('[UI] Ошибка обновления:', error);
+        this.showUpdateError(error);
+      });
+    }
   }
 
   showUpdateNotification(info) {
@@ -160,12 +166,16 @@ class UpdateManager {
 
   startUpdate() {
     console.log('[UI] Начинаем загрузку обновления...');
-    ipcRenderer.send('check-for-updates');
+    if (window.electronAPI?.checkForUpdates) {
+      window.electronAPI.checkForUpdates();
+    }
   }
 
   installUpdate() {
     console.log('[UI] Установка обновления...');
-    ipcRenderer.send('install-update');
+    if (window.electronAPI?.installUpdate) {
+      window.electronAPI.installUpdate();
+    }
   }
 
   closeNotification() {
@@ -178,7 +188,9 @@ class UpdateManager {
 
   checkForUpdates() {
     console.log('[UI] Проверка обновлений...');
-    ipcRenderer.send('check-for-updates');
+    if (window.electronAPI?.checkForUpdates) {
+      window.electronAPI.checkForUpdates();
+    }
   }
 }
 
