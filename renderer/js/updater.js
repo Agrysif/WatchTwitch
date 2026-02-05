@@ -460,13 +460,20 @@ class LegacyUpdateManager {
 // Создаём глобальный экземпляр (legacy)
 const updateManager = new LegacyUpdateManager();
 
-// Инициализируем UpdateManager при загрузке
-document.addEventListener('DOMContentLoaded', () => {
-  console.log('[Updater] Initializing UpdateManager...');
-  UpdateManager.init();
-  
-  // Проверяем через 2 секунды после загрузки
+// Инициализируем UpdateManager СРАЗУ (не ждём DOMContentLoaded)
+console.log('[Updater] Initializing UpdateManager immediately...');
+UpdateManager.init();
+
+// Проверяем обновления при запуске приложения
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => {
+    setTimeout(() => {
+      updateManager.checkForUpdates();
+    }, 2000);
+  });
+} else {
+  // DOM уже загружен, проверяем сразу
   setTimeout(() => {
     updateManager.checkForUpdates();
   }, 2000);
-});
+}
