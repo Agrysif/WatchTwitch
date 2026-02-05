@@ -401,6 +401,13 @@ class LegacyUpdateManager {
 
   checkForUpdates() {
     console.log('[UI] Проверка обновлений...');
+    
+    // Ensure UpdateManager is initialized
+    if (!UpdateManager.overlay) {
+      console.warn('[UI] UpdateManager not initialized yet, initializing now...');
+      initUpdateManager();
+    }
+    
     if (!updaterAPI) return;
     updaterAPI.checkForUpdates();
   }
@@ -460,20 +467,31 @@ class LegacyUpdateManager {
 // Создаём глобальный экземпляр (legacy)
 const updateManager = new LegacyUpdateManager();
 
-// Инициализируем UpdateManager СРАЗУ (не ждём DOMContentLoaded)
-console.log('[Updater] Initializing UpdateManager immediately...');
-UpdateManager.init();
+// Инициализируем UpdateManager когда DOM готов
+function initUpdateManager() {
+  console.log('[Updater] Initializing UpdateManager...');
+  UpdateManager.init();
+  console.log('[Updater] UpdateManager initialized, overlay:', !!UpdateManager.overlay);
+}
 
 // Проверяем обновления при запуске приложения
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => {
+    console.log('[Updater] DOMContentLoaded event fired');
     setTimeout(() => {
-      updateManager.checkForUpdates();
-    }, 2000);
+      initUpdateManager();
+      setTimeout(() => {
+        updateManager.checkForUpdates();
+      }, 500);
+    }, 100);
   });
 } else {
-  // DOM уже загружен, проверяем сразу
+  // DOM уже загружен
+  console.log('[Updater] DOM already loaded, init after delay');
   setTimeout(() => {
-    updateManager.checkForUpdates();
-  }, 2000);
+    initUpdateManager();
+    setTimeout(() => {
+      updateManager.checkForUpdates();
+    }, 500);
+  }, 100);
 }
