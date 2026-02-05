@@ -359,6 +359,9 @@ ipcMain.on('download-update', async () => {
     await autoUpdater.downloadUpdate();
   } catch (error) {
     console.error('[Updater] Ошибка загрузки обновления:', error);
+    if (mainWindow) {
+      mainWindow.webContents.send('update-error', error?.message || 'Ошибка загрузки обновления');
+    }
   }
 });
 

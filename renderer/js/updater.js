@@ -67,6 +67,12 @@ const UpdateManager = {
         this.showUpdateReady();
       });
 
+      // Update error
+      window.electronAPI.onUpdateError?.((message) => {
+        console.error('[Updater] Update error:', message);
+        this.showUpdateError(message);
+      });
+
       // Current version
       window.electronAPI.getAppVersion?.().then((version) => {
         this.currentVersion = version;
@@ -187,9 +193,42 @@ const UpdateManager = {
     if (window.electronAPI?.downloadUpdate) {
       this.downloadBtn.disabled = true;
       this.downloadBtn.textContent = 'Загружается...';
+      if (this.progressContainer) {
+        this.progressContainer.style.display = 'block';
+      }
+      if (this.progressBar) {
+        this.progressBar.style.width = '0%';
+      }
+      if (this.percentDisplay) {
+        this.percentDisplay.textContent = '0%';
+      }
+      if (this.speedDisplay) {
+        this.speedDisplay.textContent = '0 MB/s';
+      }
       window.electronAPI.downloadUpdate();
     }
   },
+
+  showUpdateError(message) {
+    if (!this.overlay) return;
+
+    const errorText = message || 'Неизвестная ошибка при загрузке обновления.';
+    this.updateInfo.innerHTML = `
+      <p><strong>Ошибка обновления</strong></p>
+      <p style="margin-top: 8px; font-size: 13px; color: var(--text-secondary);">
+        ${errorText}
+      </p>
+    `;
+
+    this.downloadBtn.style.display = 'block';
+    this.downloadBtn.disabled = false;
+    this.downloadBtn.textContent = 'Скачать обновление';
+    this.installBtn.style.display = 'none';
+    this.progressContainer.style.display = 'none';
+
+    this.showOverlay();
+    this.showNotificationBadge();
+  }
 
   requestInstall() {
     if (window.electronAPI?.installUpdate) {
