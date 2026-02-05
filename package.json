@@ -37,12 +37,7 @@
     "directories": {
       "output": "dist"
     },
-    "publish": {
-      "provider": "github",
-      "owner": "Agrysif",
-      "repo": "WatchTwitch",
-      "releaseType": "release"
-    },
+    "publish": [],
     "win": {
       "target": [
         {
