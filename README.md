@@ -1,69 +1,67 @@
 # WatchTwitch - Twitch Drops Farming Application
 
-Автоматическое приложение для сбора дропсов на платформе Twitch.
+An automatic application for collecting drops on the Twitch platform.
 
 <img width="1916" height="1033" alt="image" src="https://github.com/user-attachments/assets/5b882f2c-4ecc-4bc9-8f63-eb75d86279ac" /> <img width="1917" height="1028" alt="image" src="https://github.com/user-attachments/assets/bf8944b0-8b06-43d7-8b0f-2c3cb0e51227" />
 
 
 
 
-## Возможности
+## Features
 
-- 🎮 Автоматический фарминг дропсов с Twitch
-- 🔐 Два способа авторизации (OAuth и Cookies)
-- 📊 Детальная статистика просмотров и полученных дропсов
-- 🎯 Управление приоритетами категорий с drag-and-drop
-- 🌙 Темная и светлая тема в стиле Twitch
-- 🔔 Уведомления о получении дропсов
-- 💤 Автовыключение компьютера после завершения
-- 🌍 Мультиязычность (Русский/English)
-- 📱 Несколько аккаунтов
-- ⚡ Минимальное потребление ресурсов
+- 🎮 Automatic farming of drops from Twitch
+- 🔐 Two authorization methods (OAuth and Cookies)
+- 📊 Detailed statistics of views and drops received
+- 🎯 Category priority management with drag-and-drop
+- 🌙 Dark and light theme in Twitch style
+- 🔔 Notifications about receiving drops
+- 🌍 Automatic computer shutdown after completion
 
-## Установите приложение просто скачав и установив файлик Setup.exe последней версии
+
+## Install the application simply by downloading and installing the file Setup.exe the latest version
 
 ------
 
-## Использование
+## Usage
 
-### 1. Добавление аккаунта
+###1. Adding an account
 
-- Перейдите в раздел "Аккаунты"
-- Выберите способ входа:
-  - **OAuth**: Войдите через Twitch напрямую
-  - Далее войдите в аккаунт с помощью логина и пароля
-    (приложение работает локально и не передает ваши данные)
+- Go to the "Accounts" section
+- Select the login method:
+- **OAuth**: Log in via Twitch directly
+  - Next, log in to your account using your username and password
+(the application works locally and does not transmit your data)
 
-### 2. Выбор категорий
+### 2. Choosing categories
 
-- Перейдите в раздел "Фарминг"
-- Нажмите "Добавить категорию"
-- Выберите игры с активными дропсами или с вашей любимой
-- Перетащите категории для изменения приоритета
+- Go to the "Farming" section
+- Click "Add Category"
+- Choose games with active drops or with your favorite
+- Drag and drop categories to change the priority
 
-### 3. Запуск фарминга
+### 3. Start farming
 
-- Нажмите "Начать фарминг"
-- Приложение автоматически:
-  - Выберет стример с дропсами
-  - Откроет стрим в фоновом режиме
-  - Отслеживает прогресс дропсов
-  - Переключается между категориями
+- Click "Start Farming"
+- The app automatically:
+- Selects a streamer with drops
+  - Opens the stream in the background
+  - Tracks the progress of drops
+  - Switches between categories
 
-### 4. Настройки
+###4. Settings
 
-- **Качество стрима**: Минимальное для экономии трафика
-- **Интервал проверки**: Как часто проверять прогресс (по умолчанию 1 мин)
-- **Язык стримов**: Приоритет русским или английским стримерам
+- **Stream quality**: Minimal to save traffic
+- **Verification interval**: How often to check the progress (default is 1 minute)
+- **Stream language**: Priority for Russian or English streamers
 
-## Технологии
+## Technology
 
-- **Electron** - Кросс-платформенный фреймворк
-- **electron-store** - Хранение данных локально
-- **HTML/CSS/JavaScript** - Интерфейс
-- **Native APIs** - Системная интеграция
+- **Electron** - A cross-platform framework
+- **electron-store** - Storing data locally
+- **HTML/CSS/JavaScript** - Interface
+- **Native APIs** - System Integration
 
-## Структура проекта
+## Project structure
 
 ```
 WatchTwitch/
@@ -93,24 +91,25 @@ WatchTwitch/
     └── logo.svg
 ```
 
-## Безопасность
+## Security
 
-- Данные аккаунтов хранятся локально
-- Нет передачи данных на сторонние серверы
-- Cookies шифруются встроенными средствами Electron
+- Account data is stored locally
+- There is no data transfer to third-party servers
+- Cookies are encrypted with built-in Electron tools
 
-## Поддержка
+## Support
 
-При возникновении проблем:
+When problems arise:
 
-1. Включите логирование в настройках
-2. Проверьте консоль DevTools (Ctrl+Shift+I)
-3. Создайте issue на GitHub
+1. Enable logging in the settings
+2. Check the DevTools console (Ctrl+Shift+I)
+3. Create an issue on GitHub
 
-## Лицензия
+## License
 
 MIT License
 
-## Автор
+## Author
 
+Agrysif - Egor Balashov
 Created with ❤️ for Twitch community
