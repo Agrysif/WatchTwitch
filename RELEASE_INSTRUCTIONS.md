@@ -3,6 +3,7 @@
 ## Шаг 1: Авторизация GitHub CLI
 
 Откройте PowerShell и выполните:
+
 ```powershell
 # Скачайте GitHub CLI с https://github.com/cli/cli/releases
 # Или используйте scoop: scoop install gh
@@ -19,6 +20,7 @@ https://github.com/cli/cli/releases/download/v2.51.0/gh_2.51.0_windows_amd64.msi
 ## Шаг 2: Проверьте что релизы собраны
 
 Проверьте что файлы есть в `dist/`:
+
 ```
 WatchTwitch Setup 1.0.10.exe
 WatchTwitch Setup 1.0.10.exe.blockmap
@@ -34,6 +36,7 @@ latest-1.0.11.yml
 В папке проекта выполните (после авторизации gh):
 
 ### Релиз 1.0.10:
+
 ```powershell
 gh release create v1.0.10 `
   -t "Release 1.0.10" `
@@ -51,6 +54,7 @@ This is an automated release build for testing the auto-update system.
 ```
 
 ### Релиз 1.0.11:
+
 ```powershell
 gh release create v1.0.11 `
   -t "Release 1.0.11" `
@@ -92,7 +96,7 @@ This is an automated release build for testing the auto-update system.
    - Title: Release 1.0.10
    - Description: (скопируйте из шага 3)
    - Загрузите файлы:
-     * dist/WatchTwitch Setup 1.0.10.exe
-     * dist/WatchTwitch Setup 1.0.10.exe.blockmap
-     * dist/latest-1.0.10.yml
+     - dist/WatchTwitch Setup 1.0.10.exe
+     - dist/WatchTwitch Setup 1.0.10.exe.blockmap
+     - dist/latest-1.0.10.yml
 3. Повторите для v1.0.11

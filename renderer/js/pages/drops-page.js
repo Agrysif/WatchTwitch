@@ -10,6 +10,7 @@
   class DropsPage {
     constructor() {
       console.log('DropsPage constructor');
+      this.i18n = window.i18n;
       this.campaigns = [];
       this.claimedDrops = [];
       this.updateTimer = null;
@@ -19,6 +20,17 @@
       this.inventoryGameFilter = null;
       this.showAllGames = false; // Новое свойство для управления показом всех игр
       this.initialized = false;
+      
+      // Определение редкостей дропов
+      this.rarityTiers = [
+        { name: 'common', label: 'Обычный', minMinutes: 0, maxMinutes: 60, minViewers: 50000, color: '#888888', glow: 'rgba(136, 136, 136, 0.4)' },
+        { name: 'uncommon', label: 'Необычный', minMinutes: 61, maxMinutes: 120, minViewers: 30000, color: '#00ff00', glow: 'rgba(0, 255, 0, 0.4)' },
+        { name: 'rare', label: 'Редкий', minMinutes: 121, maxMinutes: 240, minViewers: 15000, color: '#0099ff', glow: 'rgba(0, 153, 255, 0.4)' },
+        { name: 'epic', label: 'Эпический', minMinutes: 241, maxMinutes: 480, minViewers: 8000, color: '#9d00ff', glow: 'rgba(157, 0, 255, 0.4)' },
+        { name: 'legendary', label: 'Легендарный', minMinutes: 481, maxMinutes: 720, minViewers: 3000, color: '#ff8800', glow: 'rgba(255, 136, 0, 0.4)' },
+        { name: 'mythic', label: 'Мифический', minMinutes: 721, maxMinutes: 99999, minViewers: 0, color: '#ff0088', glow: 'rgba(255, 0, 136, 0.4)' }
+      ];
+      
       this.init();
     }
 
@@ -105,6 +117,7 @@
         
         this.setupTabs();
         this.setupButtons();
+        this.setupDropCardClickHandlers();
         await this.loadDrops();
         this.startAutoRefresh();
         this.initialized = true;
@@ -169,6 +182,22 @@
           }
         });
       }
+    }
+
+    setupDropCardClickHandlers() {
+      // Используем делегирование событий на document
+      document.addEventListener('click', (e) => {
+        const dropCard = e.target.closest('.drop-card-clickable');
+        if (dropCard && dropCard.dataset.drop) {
+          try {
+            const drop = JSON.parse(decodeURIComponent(dropCard.dataset.drop));
+            const campaign = dropCard.dataset.campaign ? JSON.parse(decodeURIComponent(dropCard.dataset.campaign)) : null;
+            this.showDropDetailModal(drop, campaign);
+          } catch (error) {
+            console.error('Error parsing drop data:', error);
+          }
+        }
+      });
     }
 
     async loadDrops() {
@@ -386,7 +415,7 @@
     createCampaignCard(campaign, isCompleted, isExpired = false) {
       const card = document.createElement('div');
       card.className = 'campaign-card';
-      card.style.cssText = `background: rgba(0,0,0,0.2); border-radius: 12px; overflow: hidden; margin-bottom: 20px; transition: border 0.2s; border: 2px solid transparent; transform: none !important; box-shadow: none !important; ${isCompleted ? 'opacity: 0.85;' : ''}`;
+      card.style.cssText = `background: rgba(0,0,0,0.2); border-radius: 12px; overflow: visible; margin-bottom: 20px; transition: border 0.2s; border: 2px solid transparent; transform: none !important; box-shadow: none !important; ${isCompleted ? 'opacity: 0.85;' : ''}`;
       
       // Добавляем обработчики hover только для обводки
       card.addEventListener('mouseenter', () => {
@@ -421,11 +450,11 @@
           const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
           
           if (days > 0) {
-            timeText = `Осталось: ${days}д ${hours}ч`;
+            timeText = `${this.i18n.t('drops.remaining')}: ${days}${this.i18n.t('common.days')} ${hours}${this.i18n.t('common.hours')}`;
           } else if (hours > 0) {
-            timeText = `Осталось: ${hours}ч ${minutes}м`;
+            timeText = `${this.i18n.t('drops.remaining')}: ${hours}${this.i18n.t('common.hours')} ${minutes}${this.i18n.t('common.minuteShort')}`;
           } else {
-            timeText = `Осталось: ${minutes}м`;
+            timeText = `${this.i18n.t('drops.remaining')}: ${minutes}${this.i18n.t('common.minuteShort')}`;
           }
         }
       }
@@ -462,14 +491,20 @@
           ${isExpired ? '<div style="position: absolute; top: 15px; right: 15px; background: rgba(255,255,255,0.15); color: #fff; padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 700; backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.2);">Завершено</div>' : (isCompleted ? '<div style="position: absolute; top: 15px; right: 15px; background: rgba(0,245,147,0.2); color: #00f593; padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 700; backdrop-filter: blur(8px); border: 1px solid rgba(0,245,147,0.4);">✓ 100%</div>' : '')}
         </div>
         
-        <div style="padding: 20px;">
+        <div style="padding: 20px; overflow: visible;">
           <div style="margin-bottom: 20px;">
             <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-              <span style="color: var(--text-secondary); font-size: 14px; font-weight: 600;">${completedDrops} из ${totalDrops} получено</span>
+              <span style="color: var(--text-secondary); font-size: 14px; font-weight: 600;">${completedDrops} ${this.i18n.t('common.of')} ${totalDrops} ${this.i18n.t('drops.claimed').toLowerCase()}</span>
               <span style="color: ${progressPercent === 100 ? '#00f593' : 'var(--accent-color)'}; font-size: 14px; font-weight: 700;">${progressPercent}%</span>
             </div>
-            <div style="background: rgba(255,255,255,0.08); height: 10px; border-radius: 5px; overflow: hidden; box-shadow: inset 0 1px 3px rgba(0,0,0,0.3);">
-              <div style="background: ${progressPercent === 100 ? '#00f593' : '#9147ff'} !important; height: 100%; width: ${progressPercent}%; transition: width 0.5s ease; box-shadow: 0 0 10px ${progressPercent === 100 ? 'rgba(0,245,147,0.5)' : 'rgba(145,71,255,0.5)'};"></div>
+            <div class="campaign-progress-container" style="position: relative;">
+              <div class="campaign-progress-bar" style="background: rgba(255,255,255,0.08); height: 10px; border-radius: 5px; overflow: hidden; box-shadow: inset 0 1px 3px rgba(0,0,0,0.3); cursor: pointer;">
+                <div style="background: ${progressPercent === 100 ? '#00f593' : '#9147ff'} !important; height: 100%; width: ${progressPercent}%; transition: width 0.5s ease; box-shadow: 0 0 10px ${progressPercent === 100 ? 'rgba(0,245,147,0.5)' : 'rgba(145,71,255,0.5)'};"></div>
+              </div>
+              <div class="campaign-progress-tooltip" style="display: none; position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); margin-bottom: 8px; background: rgba(0,0,0,0.95); border: 1px solid rgba(145,71,255,0.3); border-radius: 8px; padding: 8px; z-index: 1000; backdrop-filter: blur(8px); min-width: 120px;">
+                <div class="tooltip-drops-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(48px, 1fr)); gap: 6px;">
+                </div>
+              </div>
             </div>
           </div>
           
@@ -478,6 +513,51 @@
           </div>
         </div>
       `;
+      
+      // Добавляем обработчики для tooltip прогресс-бара
+      const progressBar = card.querySelector('.campaign-progress-bar');
+      const tooltip = card.querySelector('.campaign-progress-tooltip');
+      const tooltipGrid = card.querySelector('.tooltip-drops-grid');
+      
+      console.log('Campaign:', campaign.name, 'progressBar:', !!progressBar, 'tooltip:', !!tooltip, 'tooltipGrid:', !!tooltipGrid, 'drops:', campaign.drops?.length);
+      
+      if (progressBar && tooltip && tooltipGrid && campaign.drops && campaign.drops.length > 0) {
+        progressBar.addEventListener('mouseenter', () => {
+          console.log('Tooltip mouseenter, drops:', campaign.drops.length);
+          // Очищаем и заполняем tooltip изображениями дропсов
+          tooltipGrid.innerHTML = '';
+          campaign.drops.forEach((drop, index) => {
+            const imageUrl = drop.imageURL || drop.imageUrl || 'https://via.placeholder.com/48x48?text=Drop';
+            console.log(`Drop ${index}:`, drop.benefitName, 'imageUrl:', imageUrl);
+            const dropImg = document.createElement('img');
+            dropImg.src = imageUrl;
+            dropImg.style.cssText = 'width: 48px; height: 48px; border-radius: 4px; object-fit: cover; border: 1px solid rgba(145,71,255,0.2); transition: transform 0.2s ease;';
+            dropImg.addEventListener('mouseenter', () => {
+              dropImg.style.transform = 'scale(1.1)';
+              dropImg.style.borderColor = 'rgba(145,71,255,0.6)';
+            });
+            dropImg.addEventListener('mouseleave', () => {
+              dropImg.style.transform = 'scale(1)';
+              dropImg.style.borderColor = 'rgba(145,71,255,0.2)';
+            });
+            tooltipGrid.appendChild(dropImg);
+          });
+          tooltip.style.display = 'block';
+          // Анимация появления
+          tooltip.style.opacity = '0';
+          tooltip.style.transition = 'opacity 0.2s ease';
+          setTimeout(() => {
+            tooltip.style.opacity = '1';
+          }, 0);
+        });
+        
+        progressBar.addEventListener('mouseleave', () => {
+          tooltip.style.opacity = '0';
+          setTimeout(() => {
+            tooltip.style.display = 'none';
+          }, 200);
+        });
+      }
       
       return card;
     }
@@ -491,8 +571,20 @@
       const required = drop.required || 0;
       const remaining = Math.max(0, required - progress);
       
+      // Находим кампанию для этого дропа
+      const dropCampaign = this.campaigns.find(c => 
+        c.drops && c.drops.some(d => 
+          (d.benefitId && d.benefitId === drop.benefitId) || 
+          (d.id && d.id === drop.id)
+        )
+      );
+      
       let statusBadge = '';
       let bottomSection = '';
+      
+      // Сохраняем данные дропа и кампании для клика
+      const dropDataStr = encodeURIComponent(JSON.stringify(drop));
+      const campaignDataStr = dropCampaign ? encodeURIComponent(JSON.stringify(dropCampaign)) : '';
       
       if (isClaimed) {
         // Получено - бадж внизу над картинкой
@@ -507,7 +599,7 @@
         bottomSection = `
           <div style="background: rgba(0,0,0,0.85); padding: 8px;">
             <div style="color: rgba(255,255,255,0.9); font-size: 10px; font-weight: 600; margin-bottom: 6px; text-align: center;">${drop.benefitName || 'Reward'}</div>
-            <button onclick="window.claimDropNow('${drop.dropInstanceID}', this)" style="width: 100%; background: linear-gradient(135deg, #9147ff, #772ce8); color: white; border: none; padding: 6px; border-radius: 4px; font-size: 10px; font-weight: 700; cursor: pointer; text-transform: uppercase; letter-spacing: 0.5px;">Забрать</button>
+            <button onclick="window.claimDropNow('${drop.dropInstanceID}', this)" style="width: 100%; background: linear-gradient(135deg, #9147ff, #772ce8); color: white; border: none; padding: 6px; border-radius: 4px; font-size: 10px; font-weight: 700; cursor: pointer; text-transform: uppercase; letter-spacing: 0.5px;">${this.i18n.t('farming.claim')}</button>
           </div>
         `;
       } else {
@@ -527,7 +619,7 @@
       }
       
       return `
-        <div style="
+        <div class="drop-card-clickable" data-drop="${dropDataStr}" data-campaign="${campaignDataStr}" style="
           position: relative; 
           background: rgba(0,0,0,0.3); 
           border-radius: 8px; 
@@ -851,7 +943,18 @@
       const imageUrl = drop.image || 'https://via.placeholder.com/100x100?text=Drop';
       const timeAgo = drop.claimedAt ? this.getTimeAgo(drop.claimedAt) : '';
       
+      // Находим кампанию для этого дропа
+      const dropCampaign = this.campaigns.find(c => 
+        c.drops && c.drops.some(d => 
+          (d.benefitId && d.benefitId === drop.id) || 
+          (d.id && d.id === drop.id)
+        )
+      );
+      
       const card = document.createElement('div');
+      card.className = 'drop-card-clickable';
+      card.dataset.drop = encodeURIComponent(JSON.stringify(drop));
+      card.dataset.campaign = dropCampaign ? encodeURIComponent(JSON.stringify(dropCampaign)) : '';
       card.style.cssText = 'position: relative; background: rgba(0,0,0,0.3); border-radius: 8px; overflow: hidden; cursor: pointer; border: 2px solid transparent; transition: border 0.3s;';
       
       // Анимация flip с подсветкой
@@ -881,9 +984,9 @@
         
         <div style="background: rgba(0,0,0,0.9); padding: 10px;">
           ${drop.claimed ? 
-            '<div style="display: inline-flex; align-items: center; gap: 3px; background: rgba(0,200,83,0.15); color: #00c853; padding: 2px 6px; border-radius: 4px; font-size: 9px; font-weight: 600; margin-bottom: 6px;"><span style="font-size: 10px;">✓</span> Получено</div>' : 
+            `<div style="display: inline-flex; align-items: center; gap: 3px; background: rgba(0,200,83,0.15); color: #00c853; padding: 2px 6px; border-radius: 4px; font-size: 9px; font-weight: 600; margin-bottom: 6px;"><span style="font-size: 10px;">✓</span> ${this.i18n.t('drops.claimed')}</div>` : 
             drop.canClaim ? 
-              `<button onclick="window.claimDropNow('${drop.dropInstanceID}', this)" style="width: 100%; background: linear-gradient(135deg, #9147ff, #772ce8); color: white; border: none; padding: 6px; border-radius: 4px; font-size: 10px; font-weight: 700; cursor: pointer; text-transform: uppercase; margin-bottom: 6px;">Забрать</button>` :
+              `<button onclick="window.claimDropNow('${drop.dropInstanceID}', this)" style="width: 100%; background: linear-gradient(135deg, #9147ff, #772ce8); color: white; border: none; padding: 6px; border-radius: 4px; font-size: 10px; font-weight: 700; cursor: pointer; text-transform: uppercase; margin-bottom: 6px;">${this.i18n.t('farming.claim')}</button>` :
               ''
           }
           <div style="color: #fff; font-size: 12px; font-weight: 600; margin-bottom: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${drop.name}">${drop.name}</div>
@@ -939,6 +1042,58 @@
       if (n1 > 1 && n1 < 5) return two;
       if (n1 === 1) return one;
       return five;
+    }
+
+    // Вычисление редкости дропа
+    calculateDropRarity(drop, campaign) {
+      const requiredMinutes = drop.required || drop.requiredMinutesWatched || 0;
+      const viewersCount = campaign?.game?.viewersCount || campaign?.viewersCount || 0;
+      
+      let rarity = this.rarityTiers[0];
+      
+      for (let tier of this.rarityTiers) {
+        if (requiredMinutes >= tier.minMinutes && requiredMinutes <= tier.maxMinutes) {
+          rarity = tier;
+          break;
+        }
+      }
+      
+      if (viewersCount > 0 && viewersCount < rarity.minViewers) {
+        const currentIndex = this.rarityTiers.indexOf(rarity);
+        if (currentIndex < this.rarityTiers.length - 1) {
+          rarity = this.rarityTiers[currentIndex + 1];
+        }
+      }
+      
+      const baseOwners = Math.max(viewersCount * 0.3, 10000);
+      const rarityMultiplier = Math.pow(this.rarityTiers.indexOf(rarity) + 1, 2);
+      const estimatedOwners = Math.floor(baseOwners / rarityMultiplier);
+      
+      const difficulty = Math.min(10, Math.max(1, Math.ceil(requiredMinutes / 90)));
+      
+      return {
+        ...rarity,
+        requiredMinutes,
+        viewersCount,
+        estimatedOwners: estimatedOwners > 1000 ? `${Math.floor(estimatedOwners / 1000)}K+` : `${estimatedOwners}+`,
+        difficulty
+      };
+    }
+
+    formatViewersCount(count) {
+      if (!count || count === 0) return '—';
+      if (count >= 1000000) return `${(count / 1000000).toFixed(1)}M`;
+      if (count >= 1000) return `${(count / 1000).toFixed(1)}K`;
+      return count.toString();
+    }
+
+    // Показать модальное окно с деталями дропа
+    showDropDetailModal(drop, campaign) {
+      if (window.showDropDetailModal) {
+        window.showDropDetailModal(drop, campaign, this);
+      } else {
+        console.error('Drop detail modal script not loaded');
+      }
     }
 
     startAutoRefresh() {

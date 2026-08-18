@@ -45,7 +45,7 @@
           <path d="M12 16v-4M12 8h.01" stroke-width="2"/>
         </svg>
         <div class="external-login-text">
-          <strong>Совет:</strong> Если у вас уже открыт Twitch в браузере, OAuth окно автоматически использует этот аккаунт. Для входа с другого аккаунта:
+          <strong data-i18n="accounts.hint">Совет:</strong> <span data-i18n="accounts.oauthHint">Если у вас уже открыт Twitch в браузере, OAuth окно автоматически использует этот аккаунт. Для входа с другого аккаунта:</span>
         </div>
       </div>
       <button class="accounts-btn accounts-btn-outline" id="open-browser-btn">
@@ -55,7 +55,7 @@
             <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
           </svg>
         </div>
-        <span>Открыть Twitch в браузере</span>
+        <span data-i18n="accounts.openBrowser">Открыть Twitch в браузере</span>
       </button>
     </div>
   </div>
@@ -64,6 +64,7 @@
 <style>
   .add-account-section {
     display: flex;
+    align-items: stretch;
     gap: 16px;
     margin-bottom: 24px;
   }
@@ -74,8 +75,9 @@
     align-items: center;
     justify-content: center;
     gap: 10px;
-    padding: 12px 24px;
-    border: none;
+    padding: 0 24px;
+    height: 48px;
+    border: 1.5px solid transparent;
     border-radius: 12px;
     font-size: 15px;
     font-weight: 600;
@@ -83,7 +85,7 @@
     transition: all 0.2s;
     position: relative;
     overflow: hidden;
-    min-height: 48px;
+    box-sizing: border-box;
   }
 
   .accounts-btn-icon {
@@ -97,6 +99,7 @@
   .accounts-btn-primary {
     background: linear-gradient(135deg, #9147ff 0%, #7c3aed 100%);
     color: white;
+    border-color: transparent;
   }
 
   .accounts-btn-primary:hover {
@@ -123,6 +126,10 @@
 
   .accounts-btn-secondary:active {
     transform: translateY(0);
+  }
+
+  .add-account-section .accounts-btn-outline {
+    margin-top: 0;
   }
 
   .accounts-btn-outline {
@@ -179,10 +186,14 @@
     margin-bottom: 12px;
     transition: all 0.2s;
     user-select: none;
+    cursor: pointer;
   }
 
   .account-card:hover {
-    border-color: var(--accent-color);    transform: translateY(-1px);  }
+    border-color: var(--accent-color);
+    box-shadow: 0 4px 12px rgba(145, 71, 255, 0.15);
+    /* transform убран для предотвращения скролла */
+  }
 
   .account-card.dragging {
     opacity: 0.5;
@@ -326,5 +337,210 @@
     border-color: var(--error-color);
     color: var(--error-color);
     background: rgba(232, 17, 35, 0.1);
+  }
+
+  /* Modal Base Styles */
+  .auth-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    box-sizing: border-box;
+  }
+
+  .auth-modal::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(4px);
+    z-index: -1;
+    animation: fadeIn 0.2s ease;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  .auth-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(4px);
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    z-index: 9999;
+    pointer-events: none;
+  }
+
+  .auth-modal-content {
+    position: relative;
+    z-index: 10001;
+    background: var(--card-bg);
+    border-radius: 16px;
+    padding: 24px;
+    width: 100%;
+    max-width: 500px;
+    max-height: 85vh;
+    overflow-y: auto;
+    overflow-x: hidden;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  }
+
+  .auth-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+  }
+
+  .auth-modal-header h2,
+  .auth-modal-header h3 {
+    margin: 0;
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--text-primary);
+    flex: 1;
+  }
+
+  .close-modal {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-secondary);
+    padding: 8px;
+    border-radius: 8px;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 40px;
+    height: 40px;
+  }
+
+  .close-modal:hover {
+    background: var(--input-bg);
+    color: var(--text-primary);
+  }
+
+  .modal-close-btn {
+    flex-shrink: 0;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-secondary);
+    padding: 8px;
+    border-radius: 8px;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+  }
+
+  .modal-close-btn:hover {
+    background: rgba(145, 71, 255, 0.1);
+    color: var(--accent-color);
+  }
+
+  .modal-close-btn:active {
+    background: rgba(145, 71, 255, 0.2);
+  }
+
+  .auth-modal-footer {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-shrink: 0;
+    padding: 12px 20px;
+    border-top: 1px solid var(--border-color);
+    background: var(--card-bg);
+    position: sticky;
+    bottom: 0;
+  }
+
+  .footer-close-text {
+    color: var(--text-secondary);
+    opacity: 0.6;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .footer-close-text:hover {
+    opacity: 1;
+    color: var(--accent-color);
+  }
+
+  .auth-modal-body {
+    overflow-y: auto;
+    flex: 1;
+    padding: 0 16px 0 0;
+  }
+
+  .auth-modal-body > div {
+    padding: 0 4px 0 0;
+  }
+
+  .auth-modal-body::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .auth-modal-body::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .auth-modal-body::-webkit-scrollbar-thumb {
+    background: rgba(145, 71, 255, 0.3);
+    border-radius: 3px;
+  }
+
+  .auth-modal-body::-webkit-scrollbar-thumb:hover {
+    background: rgba(145, 71, 255, 0.5);
+  }
+
+  /* Account Details Modal */
+  .account-details-modal {
+    max-width: 500px;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+
+  @keyframes slideUp {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .detail-row {
+    transition: all 0.2s ease;
+  }
+
+  .detail-row:hover {
+    background: var(--input-bg) !important;
+  }
+
+  .detail-row.clickable {
+    cursor: pointer;
+  }
+
+  .detail-row.clickable:hover {
+    background: linear-gradient(135deg, rgba(145, 71, 255, 0.1), rgba(119, 44, 232, 0.05)) !important;
+  }
+
+  .close-modal:hover {
+    background: var(--input-bg) !important;
+    color: var(--text-primary) !important;
   }
 </style>

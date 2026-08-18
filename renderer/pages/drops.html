@@ -1,7 +1,7 @@
 <div class="farming-page">
     <div class="page-header">
-        <h1 class="page-title">Дропсы Twitch</h1>
-        <p class="page-subtitle">Прогресс получения дропсов</p>
+        <h1 class="page-title" data-i18n="drops.twitchDrops">Дропсы Twitch</h1>
+        <p class="page-subtitle" data-i18n="drops.dropsProgress">Прогресс получения дропсов</p>
     </div>
 
     <!-- Секция авторизации -->
@@ -10,13 +10,13 @@
             <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="opacity: 0.3; margin: 0 auto 20px;">
                 <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" stroke-width="2"/>
             </svg>
-            <h2 style="color: var(--text-primary); margin-bottom: 10px; font-size: 20px;">Войдите через Twitch</h2>
+            <h2 style="color: var(--text-primary); margin-bottom: 10px; font-size: 20px;" data-i18n="drops.loginRequired">Войдите через Twitch</h2>
             <p style="color: var(--text-secondary); margin-bottom: 30px; font-size: 14px;">Для просмотра дропсов необходимо авторизоваться</p>
             <button id="authButton" class="btn btn-primary">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="margin-right: 8px;">
                     <path d="M11.571 4.714h1.715v5.143H11.57zm4.715 0H18v5.143h-1.714zM6 0L1.714 4.286v15.428h5.143V24l4.286-4.286h3.428L22.286 12V0zm14.571 11.143l-3.428 3.428h-3.429l-3 3v-3H6.857V1.714h13.714z"/>
                 </svg>
-                Войти через Twitch
+                <span data-i18n="drops.loginButton">Войти через Twitch</span>
             </button>
         </div>
     </div>
@@ -38,22 +38,22 @@
             <!-- Статистика в строку -->
             <div class="drops-stats-container">
                 <div class="drops-stat-item">
-                    <div class="drops-stat-label">Получено</div>
+                    <div class="drops-stat-label" data-i18n="drops.received">Получено</div>
                     <div class="drops-stat-value drops-stat-purple" id="totalClaimedDrops">0</div>
                 </div>
                 <div class="drops-stat-divider"></div>
                 <div class="drops-stat-item">
-                    <div class="drops-stat-label">Завершено</div>
+                    <div class="drops-stat-label" data-i18n="drops.completed">Завершено</div>
                     <div class="drops-stat-value drops-stat-green" id="completedCampaignsCount">0</div>
                 </div>
                 <div class="drops-stat-divider"></div>
                 <div class="drops-stat-item">
-                    <div class="drops-stat-label">Активно</div>
+                    <div class="drops-stat-label" data-i18n="drops.active">Активно</div>
                     <div class="drops-stat-value drops-stat-red" id="activeCampaignsCount">0</div>
                 </div>
             </div>
             
-            <button id="logoutButton" class="btn btn-secondary drops-logout-btn">Выйти</button>
+            <button id="logoutButton" class="btn btn-secondary drops-logout-btn" data-i18n="drops.logout">Выйти</button>
         </div>
     </div>
 
@@ -70,7 +70,7 @@
                         <polyline points="12 6 12 12 16 14"></polyline>
                     </svg>
                 </div>
-                <span class="drops-tab-text">Прогресс</span>
+                <span class="drops-tab-text" data-i18n="drops.progress">Прогресс</span>
             </button>
             <button class="drops-tab-button" data-tab="inventory">
                 <div class="drops-tab-icon">
@@ -81,7 +81,7 @@
                         <rect x="3" y="14" width="7" height="7"></rect>
                     </svg>
                 </div>
-                <span class="drops-tab-text">Инвентарь</span>
+                <span class="drops-tab-text" data-i18n="drops.inventory">Инвентарь</span>
             </button>
         </div>
     </div>
@@ -90,28 +90,28 @@
     <div id="progressTab" class="tab-content" style="display: none;">
         <div class="card">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px;">
-                <div class="card-title">Активные дропсы</div>
+                <div class="card-title" data-i18n="drops.activeDrops">Активные дропсы</div>
                 <div style="display: flex; gap: 10px;">
-                    <button id="claimAllButton" class="btn btn-primary" style="display: flex; align-items: center; gap: 6px;">
+                    <button id="claimAllButton" class="btn btn-primary" style="display: flex; align-items: center; gap: 6px; background: linear-gradient(135deg, #9147ff, #772ce8); border: none; box-shadow: 0 2px 8px rgba(145, 71, 255, 0.3); color: white;">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
                             <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
                         </svg>
-                        Получить все награды
+                        <span data-i18n="drops.claimAll">Получить все награды</span>
                     </button>
                     <button id="refreshButton" class="btn btn-secondary">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
                         </svg>
-                        Обновить
+                        <span data-i18n="drops.refresh">Обновить</span>
                     </button>
                 </div>
             </div>
 
-            <div id="loadingState" style="text-align: center; padding: 40px; color: var(--text-secondary);">
+            <div id="loadingState" style="text-align: center; padding: 40px; color: var(--text-secondary);" data-i18n="drops.loading">
                 Загрузка дропсов...
             </div>
 
-            <div id="emptyState" style="display: none; text-align: center; padding: 60px 20px; color: var(--text-secondary);">
+            <div id="emptyState" style="display: none; text-align: center; padding: 60px 20px; color: var(--text-secondary);" data-i18n="drops.noCampaigns">
                 У вас пока нет активных дропсов
             </div>
 
@@ -610,6 +610,32 @@
     overflow: hidden;
     text-overflow: ellipsis;
 }
+
+/* Light Theme Adjustments */
+.theme-light .drops-tabs-wrapper {
+    background: var(--bg-secondary);
+    border-color: var(--border-color);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+}
+
+.theme-light .drops-tab-button:hover:not(.active) {
+    background: rgba(145, 71, 255, 0.08);
+}
+
+.theme-light .drops-tab-button.active {
+    background: linear-gradient(135deg, #9147ff 0%, #772ce8 100%);
+    box-shadow: 0 4px 12px rgba(145, 71, 255, 0.25);
+}
+
+.theme-light .card {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.theme-light .campaign-card {
+    background: var(--bg-secondary);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
 </style>
 
+<script src="./js/features/drops/drop-detail-modal.js"></script>
 <script src="./js/pages/drops-page.js"></script>

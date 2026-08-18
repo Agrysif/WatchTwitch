@@ -19,7 +19,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   closeStream: () => ipcRenderer.send('close-stream'),
   
   // Уведомления
-  showNotification: (title, body) => ipcRenderer.send('show-notification', { title, body }),
+  showNotification: (title, body, icon) => ipcRenderer.send('show-notification', { title, body, icon }),
+  showDropNotification: (dropName, gameName, dropIcon) => ipcRenderer.send('show-drop-notification', { dropName, gameName, dropIcon }),
   
   // Выключение
   shutdownComputer: (action) => ipcRenderer.invoke('shutdown-computer', action),
@@ -73,8 +74,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onUpdateError: (callback) => ipcRenderer.on('update-error', (event, data) => callback(data)),
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
 
-  // Traffic monitoring
-  getTrafficData: () => ipcRenderer.invoke('get-traffic-data'),
-  resetSessionTraffic: () => ipcRenderer.invoke('reset-session-traffic'),
-  getWebviewPreloadPath: () => ipcRenderer.invoke('get-webview-preload-path')
+  getWebviewPreloadPath: () => ipcRenderer.invoke('get-webview-preload-path'),
+
+  // Diagnostics
+  setProcessLabel: (payload) => ipcRenderer.invoke('set-process-label', payload),
+  getProcessMetrics: () => ipcRenderer.invoke('get-process-metrics')
 });

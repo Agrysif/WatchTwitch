@@ -6,3 +6,7 @@ dist/**
 *.env.*
 /.vs
 /.vscode
+
+# Скрипты с захардкоженным GitHub-токеном — не коммитить
+fix-release.ps1
+upload-v1.0.12.ps1

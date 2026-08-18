@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, Notification, powerSaveBlocker, shell, Tray, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, Notification, powerSaveBlocker, shell, Tray, Menu, webContents } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const Store = require('electron-store');
@@ -8,7 +8,19 @@ const url = require('url');
 const { pathToFileURL } = require('url');
 const { autoUpdater } = require('electron-updater');
 
+app.commandLine.appendSwitch('disable-logging');
+app.commandLine.appendSwitch('log-level', '3');
+
 const store = new Store();
+const processLabels = new Map();
+
+function setProcessLabel(targetWebContents, label) {
+  if (!targetWebContents || !label) return false;
+  const pid = targetWebContents.getOSProcessId();
+  if (!pid) return false;
+  processLabels.set(pid, label);
+  return true;
+}
 
 // Конфигурация автообновления
 autoUpdater.logger = console;
@@ -210,7 +222,6 @@ function updateTrafficCounters(bytes) {
     trafficData.currentRate = bytesDiff / timeDiff / 1024; // KB/s
     trafficData.lastBytes = trafficData.totalBytes;
     trafficData.lastUpdate = now;
-    console.log('[Traffic] Updated rate:', trafficData.currentRate.toFixed(1), 'KB/s | Total:', trafficData.totalBytes);
   }
 }
 
@@ -218,7 +229,6 @@ function updateTrafficCounters(bytes) {
 setInterval(() => {
   const timeSinceLastUpdate = (Date.now() - trafficData.lastUpdate) / 1000;
   if (timeSinceLastUpdate > 3 && trafficData.currentRate > 0) {
-    console.log('[Traffic] No data for', timeSinceLastUpdate.toFixed(1), 's - setting rate to 0');
     trafficData.currentRate = 0;
   }
 }, 2000);
@@ -400,7 +410,6 @@ ipcMain.handle('get-webview-preload-path', () => {
 ipcMain.on('webview-traffic', (_event, bytes) => {
   bytes = Number(bytes) || 0;
   if (bytes > 0) {
-    console.log('[WebView Traffic IPC] Received:', bytes, 'bytes | Total now:', trafficData.totalBytes + bytes);
     updateTrafficCounters(bytes);
   }
 });
@@ -409,50 +418,23 @@ ipcMain.on('webview-traffic', (_event, bytes) => {
 ipcMain.on('chest-claimed', (_event, data) => {
   console.log('[Chest] Автоматический сбор сундука:', data.timestamp);
 });
-// Получить данные о трафике
-ipcMain.handle('get-traffic-data', () => {
-  const sessionBytes = trafficData.totalBytes - trafficData.sessionStartBytes;
-  const result = {
-    totalBytes: trafficData.totalBytes,
-    sessionBytes: sessionBytes,
-    currentRate: trafficData.currentRate,
-    lastUpdate: trafficData.lastUpdate
-  };
-  console.log('[IPC] get-traffic-data:', result.currentRate.toFixed(1), 'KB/s |', (result.sessionBytes / 1024 / 1024).toFixed(1), 'MB in session');
-  return result;
-});
-
-// Сбросить счетчик сессии
-ipcMain.handle('reset-session-traffic', () => {
-  trafficData.sessionStartBytes = trafficData.totalBytes;
-  trafficData.lastBytes = trafficData.totalBytes;
-  trafficData.lastUpdate = Date.now();
-  return { success: true };
-});
 
 // Read local file content for renderer
 ipcMain.handle('read-file', async (event, relativePath) => {
   try {
-    console.log('[IPC] read-file requested:', relativePath);
-    console.log('[IPC] __dirname:', __dirname);
     const fullPath = path.join(__dirname, relativePath);
-    console.log('[IPC] full path:', fullPath);
     const fs = require('fs');
 
     // Check if path exists
     const exists = fs.existsSync(fullPath);
-    console.log('[IPC] File exists:', exists);
 
     if (!exists) {
       console.error('[IPC] File not found:', fullPath);
       // Try some alternative paths
-      const altPath1 = path.join(__dirname, '..', 'renderer', relativePath.split('/').pop());
-      console.log('[IPC] Trying alternative:', altPath1, 'exists:', fs.existsSync(altPath1));
       return { success: false, error: 'File not found: ' + fullPath };
     }
 
     const content = fs.readFileSync(fullPath, 'utf-8');
-    console.log('[IPC] read-file success, length:', content.length, 'first 100 chars:', content.substring(0, 100));
     return { success: true, content };
   } catch (e) {
     console.error('[IPC] Failed to read file:', relativePath, e.message);
@@ -542,8 +524,14 @@ function createMainWindow() {
 
   mainWindow.on('close', (event) => {
     // Сворачиваем в трей при закрытии (если включено)
-    const minimizeToTray = store.get('settings.minimizeToTray', true); // По умолчанию включено
+    const minimizeToTray = store.get('settings.minimizeToTray', false); // По умолчанию выключено
+    console.log('[DEBUG] Close event triggered');
+    console.log('[DEBUG] app.isQuitting:', app.isQuitting);
+    console.log('[DEBUG] minimizeToTray:', minimizeToTray);
+    console.log('[DEBUG] Full settings object:', store.get('settings'));
+    
     if (!app.isQuitting && minimizeToTray) {
+      console.log('[DEBUG] Hiding window to tray');
       event.preventDefault();
       mainWindow.hide();
       // Показываем уведомление при первом сворачивании
@@ -1419,6 +1407,25 @@ async function getAuthToken() {
   return null;
 }
 
+async function getCookieAuthToken() {
+  try {
+    const { session } = require('electron');
+    const twitchSession = session.fromPartition('persist:twitch');
+    const cookies = await twitchSession.cookies.get({
+      url: 'https://www.twitch.tv',
+      name: 'auth-token'
+    });
+
+    if (cookies && cookies.length > 0) {
+      return cookies[0].value;
+    }
+  } catch (e) {
+    console.error('Error getting cookie auth token:', e.message);
+  }
+
+  return null;
+}
+
 // Парсинг данных дропсов
 function parseDropsData(response) {
   try {
@@ -1526,6 +1533,11 @@ function calculateTotalProgress(campaigns) {
     completed: completedDrops,
     total: totalDrops
   };
+}
+
+// Устанавливаем название приложения для Windows уведомлений
+if (process.platform === 'win32') {
+  app.setAppUserModelId('WatchTwitch.App');
 }
 
 app.whenReady().then(() => {
@@ -1791,6 +1803,26 @@ ipcMain.handle('store-delete', (event, key) => {
   store.delete(key);
 });
 
+ipcMain.handle('set-process-label', (event, payload = {}) => {
+  const { webContentsId, label } = payload || {};
+  if (webContentsId) {
+    const target = webContents.fromId(webContentsId);
+    return setProcessLabel(target, label);
+  }
+  return setProcessLabel(event.sender, label);
+});
+
+ipcMain.handle('get-process-metrics', () => {
+  const metrics = app.getAppMetrics();
+  return metrics.map(metric => ({
+    pid: metric.pid,
+    type: metric.type,
+    cpu: metric.cpu,
+    memory: metric.memory,
+    label: processLabels.get(metric.pid) || ''
+  }));
+});
+
 // Открытие стрима
 ipcMain.handle('open-stream', async (event, url, account = null) => {
   console.log('Stream requested:', url);
@@ -1803,10 +1835,152 @@ ipcMain.on('close-stream', () => {
   console.log('Stream closed');
 });
 
-// Уведомления
-ipcMain.on('show-notification', (event, { title, body }) => {
-  if (store.get('settings.notifications', true)) {
-    new Notification({ title, body }).show();
+// Уведомления - кастомное окно
+let dropNotificationWindow = null;
+
+function createDropNotification(dropName, gameName, dropIcon) {
+  // Закрываем предыдущее уведомление если есть
+  if (dropNotificationWindow && !dropNotificationWindow.isDestroyed()) {
+    dropNotificationWindow.close();
+  }
+
+  const { screen } = require('electron');
+  const primaryDisplay = screen.getPrimaryDisplay();
+  const { width, height } = primaryDisplay.workAreaSize;
+
+  // Параметры уведомления
+  const notificationWidth = 360;
+  const notificationHeight = 100;
+  const margin = 20;
+
+  dropNotificationWindow = new BrowserWindow({
+    width: notificationWidth,
+    height: notificationHeight,
+    x: width - notificationWidth - margin,
+    y: height - notificationHeight - margin,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    resizable: false,
+    show: false,
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false,
+      webSecurity: false // Разрешаем загрузку внешних изображений
+    }
+  });
+
+  // Формируем URL с параметрами - передаем напрямую через IPC
+  dropNotificationWindow.loadFile('renderer/notification.html');
+
+  dropNotificationWindow.once('ready-to-show', () => {
+    dropNotificationWindow.show();
+    
+    // Загружаем картинку через главный процесс и передаем как base64
+    if (dropIcon && dropIcon.startsWith('http')) {
+      const https = require('https');
+      const http = require('http');
+      const protocol = dropIcon.startsWith('https') ? https : http;
+      
+      console.log('[Main] Downloading image:', dropIcon);
+      
+      protocol.get(dropIcon, (response) => {
+        console.log('[Main] Response status:', response.statusCode);
+        console.log('[Main] Response content-type:', response.headers['content-type']);
+        
+        // Проверяем что ответ успешный и это изображение
+        if (response.statusCode !== 200 || !response.headers['content-type']?.startsWith('image/')) {
+          console.error('[Main] Invalid response - not an image or error status');
+          // Передаем без картинки
+          dropNotificationWindow.webContents.send('notification-data', {
+            dropName,
+            gameName,
+            dropIcon: null
+          });
+          return;
+        }
+        
+        const chunks = [];
+        
+        response.on('data', (chunk) => {
+          chunks.push(chunk);
+        });
+        
+        response.on('end', () => {
+          const buffer = Buffer.concat(chunks);
+          const base64 = buffer.toString('base64');
+          const contentType = response.headers['content-type'];
+          const dataUrl = `data:${contentType};base64,${base64}`;
+          
+          console.log('[Main] Image downloaded successfully, size:', buffer.length, 'bytes');
+          
+          // Передаем данные с base64 изображением
+          dropNotificationWindow.webContents.send('notification-data', {
+            dropName,
+            gameName,
+            dropIcon: dataUrl
+          });
+        });
+        
+      }).on('error', (err) => {
+        console.error('[Main] Failed to download image:', err);
+        // Передаем без картинки
+        dropNotificationWindow.webContents.send('notification-data', {
+          dropName,
+          gameName,
+          dropIcon: null
+        });
+      });
+    } else {
+      // Передаем данные без картинки
+      dropNotificationWindow.webContents.send('notification-data', {
+        dropName,
+        gameName,
+        dropIcon: null
+      });
+    }
+  });
+
+  dropNotificationWindow.on('closed', () => {
+    dropNotificationWindow = null;
+  });
+}
+
+ipcMain.on('show-drop-notification', (event, { dropName, gameName, dropIcon }) => {
+  console.log('[Main] show-drop-notification received:', { dropName, gameName, dropIcon });
+  createDropNotification(dropName, gameName, dropIcon);
+});
+
+ipcMain.on('close-drop-notification', () => {
+  if (dropNotificationWindow && !dropNotificationWindow.isDestroyed()) {
+    dropNotificationWindow.close();
+  }
+});
+
+// Старые системные уведомления (оставляем для совместимости)
+ipcMain.on('show-notification', (event, { title, body, icon }) => {
+  console.log('[Main] show-notification received:', { title, body, icon });
+  const notificationsEnabled = store.get('settings.notifications', true);
+  console.log('[Main] Notifications enabled:', notificationsEnabled);
+  
+  if (notificationsEnabled) {
+    console.log('[Main] Showing notification');
+    const notificationOptions = { 
+      title, 
+      body,
+      silent: false,
+      timeoutType: 'default'
+    };
+    
+    // Если передана иконка (URL), пытаемся её использовать
+    if (icon) {
+      notificationOptions.icon = icon;
+    }
+    
+    new Notification(notificationOptions).show();
+  } else {
+    console.log('[Main] Notifications disabled in store');
   }
 });
 
@@ -2159,6 +2333,128 @@ ipcMain.handle('fetch-twitch-categories', async () => {
   });
 });
 
+function streamHasDropsSignal(node) {
+  const tags = node?.freeformTags || [];
+  const title = (node?.title || '').toLowerCase();
+
+  const hasTagSignal = tags.some(tag => {
+    const tagName = String(tag?.name || '').toLowerCase();
+    return tagName.includes('drops') ||
+      tagName.includes('dropsenabled') ||
+      tagName.includes('dropenabled') ||
+      tagName === 'dropson';
+  });
+
+  if (hasTagSignal) return true;
+
+  return title.includes(' drops') ||
+    title.startsWith('drops') ||
+    title.includes('[drops') ||
+    title.includes('дропс') ||
+    title.includes('дропы');
+}
+
+async function hasActiveInventoryDropsForCategory(categoryName) {
+  const https = require('https');
+  const { session } = require('electron');
+  const twitchSession = session.fromPartition('persist:twitch');
+
+  let authToken = null;
+  try {
+    const cookies = await twitchSession.cookies.get({
+      url: 'https://www.twitch.tv',
+      name: 'auth-token'
+    });
+
+    if (cookies && cookies.length > 0) {
+      authToken = cookies[0].value;
+    }
+  } catch (e) {
+    console.error('[DropsCheck] Error getting auth-token cookie:', e.message);
+  }
+
+  if (!authToken) {
+    return null;
+  }
+
+  const postData = JSON.stringify({
+    operationName: 'ViewerDropsDashboard',
+    variables: {},
+    extensions: {
+      persistedQuery: {
+        version: 1,
+        sha256Hash: 'e8b98b52bbd7ccd37d0b671ad0d47be5238caa5bea637d2a65776175b4a23a64'
+      }
+    }
+  });
+
+  const options = {
+    hostname: 'gql.twitch.tv',
+    port: 443,
+    path: '/gql',
+    method: 'POST',
+    headers: {
+      'Client-ID': 'kimne78kx3ncx6brgo4mv6wki5h1ko',
+      'Authorization': `OAuth ${authToken}`,
+      'Content-Type': 'text/plain;charset=UTF-8'
+    }
+  };
+
+  return new Promise((resolve) => {
+    const req = https.request(options, (res) => {
+      let data = '';
+
+      res.on('data', (chunk) => {
+        data += chunk;
+      });
+
+      res.on('end', () => {
+        try {
+          const response = JSON.parse(data);
+          const campaigns = response?.data?.currentUser?.dropCampaigns || [];
+          const lookup = String(categoryName || '').toLowerCase();
+          const now = Date.now();
+
+          const matchingCampaign = campaigns.find(campaign => {
+            const gameName = String(campaign?.game?.name || '').toLowerCase();
+            const displayName = String(campaign?.game?.displayName || '').toLowerCase();
+            const endAt = campaign?.endAt ? new Date(campaign.endAt).getTime() : null;
+            const startAt = campaign?.startAt ? new Date(campaign.startAt).getTime() : null;
+            const isExpired = endAt && endAt <= now;
+            const isFuture = startAt && startAt > now;
+            const status = String(campaign?.status || '').toUpperCase();
+
+            if (status === 'EXPIRED' || isExpired || isFuture) {
+              return false;
+            }
+
+            return gameName === lookup || displayName === lookup;
+          });
+
+          if (!matchingCampaign) {
+            resolve(false);
+            return;
+          }
+
+          const drops = matchingCampaign.timeBasedDrops || [];
+          resolve(drops.length > 0);
+        } catch (e) {
+          console.error('[DropsCheck] Campaign parse error:', e.message);
+          resolve(null);
+        }
+      });
+    });
+
+    req.on('error', (e) => {
+      console.error('[DropsCheck] Campaign request error:', e.message);
+      resolve(null);
+    });
+
+    req.write(postData);
+    req.end();
+  });
+}
+
 // Получить стримы с дропсами для категории
 ipcMain.handle('get-streams-with-drops', async (event, categoryName) => {
   const https = require('https');
@@ -2194,22 +2490,17 @@ ipcMain.handle('get-streams-with-drops', async (event, categoryName) => {
           const response = JSON.parse(data);
           const streams = response?.data?.game?.streams?.edges || [];
 
-          // Фильтруем только стримы с тегами дропсов
-          const dropsStreams = streams.filter(edge => {
-            const tags = edge.node?.freeformTags || [];
-            return tags.some(tag => {
-              const tagName = tag.name.toLowerCase();
-              return tagName.includes('drops') ||
-                tagName.includes('dropsenabled') ||
-                tagName === 'dropson';
-            });
-          }).map(edge => {
+          // Фильтруем стримы по сигналам дропсов
+          const dropsStreams = streams.filter(edge => streamHasDropsSignal(edge.node)).map(edge => {
+            const broadcaster = edge.node?.broadcaster;
+            if (!broadcaster) return null;
+            
             return {
-              login: edge.node.broadcaster.login,
-              displayName: edge.node.broadcaster.displayName,
+              login: broadcaster.login,
+              displayName: broadcaster.displayName,
               title: edge.node.title
             };
-          });
+          }).filter(stream => stream !== null);
 
           resolve(dropsStreams);
         } catch (e) {
@@ -2234,10 +2525,11 @@ ipcMain.handle('fetch-twitch-drops', async () => {
   const https = require('https');
 
   return new Promise(async (resolve) => {
-    console.log('Fetching Twitch drops campaigns...');
-
-    // Получаем auth token
-    const authToken = await getAuthToken();
+    // Для ViewerDropsDashboard приоритетнее cookie auth-token из webview
+    let authToken = await getCookieAuthToken();
+    if (!authToken) {
+      authToken = await getAuthToken();
+    }
 
     console.log('Auth token available:', authToken ? 'YES (length: ' + authToken.length + ')' : 'NO');
 
@@ -2283,19 +2575,39 @@ ipcMain.handle('fetch-twitch-drops', async () => {
       res.on('end', () => {
         try {
           const response = JSON.parse(data);
-          console.log('Raw API response:', JSON.stringify(response).substring(0, 500));
 
-          // Получаем кампании из ответа
-          const dropCampaigns = response?.data?.currentUser?.dropCampaigns || [];
+          // Получаем кампании из ответа (ответ может быть объектом или массивом)
+          const root = Array.isArray(response) ? response[0] : response;
+          const dropCampaigns = root?.data?.currentUser?.dropCampaigns || [];
 
-          console.log('Fetched', dropCampaigns.length, 'drop campaigns');
-
-          if (dropCampaigns.length > 0) {
-            console.log('First campaign:', JSON.stringify(dropCampaigns[0]).substring(0, 400));
-          }
-
-          // Форматируем кампании
-          const formatted = dropCampaigns.map(campaign => {
+          // Форматируем кампании (ФИЛЬТРУЕМ ТОЛЬКО АКТИВНЫЕ)
+          const now = new Date();
+          const formatted = dropCampaigns
+            .filter(campaign => {
+              // Пропускаем завершенные кампании
+              if (campaign.status === 'EXPIRED') return false;
+              
+              // Проверяем, не истек ли срок
+              if (campaign.endAt) {
+                const endDate = new Date(campaign.endAt);
+                if (endDate < now) {
+                  console.log(`Filtering out expired campaign: ${campaign.name} (ended ${campaign.endAt})`);
+                  return false;
+                }
+              }
+              
+              // Проверяем, началась ли кампания
+              if (campaign.startAt) {
+                const startDate = new Date(campaign.startAt);
+                if (startDate > now) {
+                  console.log(`Filtering out future campaign: ${campaign.name} (starts ${campaign.startAt})`);
+                  return false;
+                }
+              }
+              
+              return true;
+            })
+            .map(campaign => {
             const drops = (campaign.timeBasedDrops || []).map(drop => ({
               id: drop.id,
               name: drop.name,
@@ -2321,7 +2633,7 @@ ipcMain.handle('fetch-twitch-drops', async () => {
 
           resolve(formatted);
         } catch (e) {
-          console.log('Error parsing drops:', e.message, data.substring(0, 200));
+          console.log('Error parsing drops:', e.message);
           resolve([]);
         }
       });
@@ -2610,9 +2922,20 @@ ipcMain.handle('fetch-drops-inventory', async () => {
             };
           }));
 
+          // Фильтруем только активные кампании (убираем expired и upcoming)
+          const activeCampaigns = campaigns.filter(campaign => {
+            if (campaign.status === 'expired') {
+              return false;
+            }
+            if (campaign.status === 'upcoming') {
+              return false;
+            }
+            return true;
+          });
+
           // Find current drop (first drop that can be earned and isn't claimed)
           let currentDrop = null;
-          for (const campaign of campaigns) {
+          for (const campaign of activeCampaigns) {
             if (campaign.status === 'active') {
               const activeDrop = campaign.drops.find(d => !d.isClaimed && d.currentMinutes < d.requiredMinutes);
               if (activeDrop) {
@@ -2637,7 +2960,7 @@ ipcMain.handle('fetch-drops-inventory', async () => {
           }
 
           resolve({
-            campaigns: campaigns,
+            campaigns: activeCampaigns,
             currentDrop: currentDrop,
             claimedDrops: Object.keys(claimedDrops).map(id => ({ id, lastAwardedAt: claimedDrops[id] }))
           });
@@ -2661,6 +2984,12 @@ ipcMain.handle('fetch-drops-inventory', async () => {
 // Проверка наличия стримов с дропсами в категории
 ipcMain.handle('check-category-drops', async (event, categoryName) => {
   const https = require('https');
+
+  // Надёжный путь: сначала проверяем активные кампании на странице Twitch Drops
+  const hasInventoryDrops = await hasActiveInventoryDropsForCategory(categoryName);
+  if (hasInventoryDrops === true) {
+    return true;
+  }
 
   return new Promise((resolve) => {
     const escapedName = categoryName.replace(/"/g, '\\"');
@@ -2692,16 +3021,8 @@ ipcMain.handle('check-category-drops', async (event, categoryName) => {
           const response = JSON.parse(data);
           const streams = response?.data?.game?.streams?.edges || [];
 
-          // Проверяем есть ли стримы с тегами дропсов
-          const hasDrops = streams.some(edge => {
-            const tags = edge.node?.freeformTags || [];
-            return tags.some(tag => {
-              const tagName = tag.name.toLowerCase();
-              return tagName.includes('drops') ||
-                tagName.includes('dropsenabled') ||
-                tagName === 'dropson';
-            });
-          });
+          // Fallback: эвристика по тегам/тайтлу
+          const hasDrops = streams.some(edge => streamHasDropsSignal(edge.node));
 
           resolve(hasDrops);
         } catch (e) {

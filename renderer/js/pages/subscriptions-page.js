@@ -1,5 +1,6 @@
 class SubscriptionsPage {
   constructor() {
+    this.i18n = window.i18n;
     this.subscriptions = [];
     this.filteredSubscriptions = [];
     this.currentFilter = 'all';
@@ -259,7 +260,7 @@ class SubscriptionsPage {
       inactive: this.subscriptions.filter(s => !this.isChannelActive(s)).length
     };
 
-    document.getElementById('subs-count').textContent = `${this.subscriptionStats.total} подписок`;
+    document.getElementById('subs-count').textContent = `${this.subscriptionStats.total} ${this.i18n.t('subscriptions.subsCount')}`;
   }
 
   isChannelActive(subscription) {
@@ -294,10 +295,20 @@ class SubscriptionsPage {
       );
     }
 
-    // Сортируем: избранные вверху, потом по рейтингу
+    // Сортируем: избранные вверху, потом по приоритету (если есть), иначе по рейтингу
     this.filteredSubscriptions = filtered.sort((a, b) => {
+      // Избранные всегда вверху
       if (a.isFavorite && !b.isFavorite) return -1;
       if (!a.isFavorite && b.isFavorite) return 1;
+      
+      // Если оба избранные, сортируем по приоритету
+      if (a.isFavorite && b.isFavorite) {
+        const aPriority = a.priority !== undefined ? a.priority : 9999;
+        const bPriority = b.priority !== undefined ? b.priority : 9999;
+        return aPriority - bPriority;
+      }
+      
+      // Обычные каналы по рейтингу
       return b.rating - a.rating;
     });
 
@@ -399,7 +410,7 @@ class SubscriptionsPage {
     const ratingColor = sub.rating >= 70 ? 'good' : sub.rating >= 40 ? 'neutral' : 'bad';
     const lastStreamText = this.getLastStreamText(sub.lastStreamDate);
     const isLive = sub.isLive === true;
-    const ratingText = sub.rating >= 70 ? 'Отличный рейтинг' : sub.rating >= 40 ? 'Средний рейтинг' : 'Низкий рейтинг';
+    const ratingText = sub.rating >= 70 ? this.i18n.t('subscriptions.excellentRating') : sub.rating >= 40 ? this.i18n.t('subscriptions.averageRating') : this.i18n.t('subscriptions.lowRating');
     const isFavorite = sub.isFavorite || false;
     const gameName = sub.gameName || '';
     const gameImageUrl = sub.gameImageUrl || '';
@@ -462,7 +473,7 @@ class SubscriptionsPage {
               </div>
               <div class="subscription-card-status ${isLive ? 'live' : 'offline'}">
                 <span class="status-dot"></span>
-                <span class="status-text">${isLive ? 'В эфире' : 'Офлайн'}</span>
+                <span class="status-text">${isLive ? this.i18n.t('subscriptions.live') : this.i18n.t('subscriptions.offline')}</span>
                 ${isLive && gameName ? `<span class="game-name">${gameName}</span>` : ''}
               </div>
               <div class="subscription-card-mini-stats">
@@ -509,22 +520,22 @@ class SubscriptionsPage {
             </div>
             
             <div class="subscription-card-actions">
-              <button class="subscription-action-btn favorite-btn ${isFavorite ? 'active' : ''}" title="${isFavorite ? 'Убрать из избранного' : 'Добавить в избранное'}">
+              <button class="subscription-action-btn favorite-btn ${isFavorite ? 'active' : ''}" title="${isFavorite ? this.i18n.t('subscriptions.removeFromFavorites') : this.i18n.t('subscriptions.addToFavorites')}">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="${isFavorite ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2">
                   <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
                 </svg>
               </button>
-              <button class="subscription-action-btn twitch-btn" title="Открыть на Twitch">
+              <button class="subscription-action-btn twitch-btn" title="${this.i18n.t('subscriptions.openOnTwitch')}">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M11.571 4.714h1.715v5.143H11.57zm4.715 0H18v5.143h-1.714zM6 0L1.714 4.286v15.428h5.143V24l4.286-4.286h3.428L22.286 12V0zm14.571 11.143l-3.428 3.428h-3.429l-3 3v-3H6.857V1.714h13.714z"/>
                 </svg>
               </button>
-              <button class="subscription-action-btn farm-btn" title="Начать фарм">
+              <button class="subscription-action-btn farm-btn" title="${this.i18n.t('subscriptions.startFarm')}">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>
                 </svg>
               </button>
-              <button class="subscription-action-btn unsub-btn" title="Отписаться">
+              <button class="subscription-action-btn unsub-btn" title="${this.i18n.t('subscriptions.unsubscribe')}">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
                 </svg>
@@ -559,7 +570,7 @@ class SubscriptionsPage {
       statusEl.className = `subscription-card-status ${isLive ? 'live' : 'offline'}`;
       const statusText = statusEl.querySelector('.status-text');
       if (statusText) {
-        statusText.textContent = isLive ? 'В эфире' : 'Офлайн';
+        statusText.textContent = isLive ? this.i18n.t('subscriptions.live') : this.i18n.t('subscriptions.offline');
       }
     }
 
@@ -600,7 +611,7 @@ class SubscriptionsPage {
     const ratingEl = cardElement.querySelector('.subscription-card-rating');
     if (ratingEl) {
       const ratingColor = sub.rating >= 70 ? 'good' : sub.rating >= 40 ? 'neutral' : 'bad';
-      const ratingText = sub.rating >= 70 ? 'Отличный рейтинг' : sub.rating >= 40 ? 'Средний рейтинг' : 'Низкий рейтинг';
+      const ratingText = sub.rating >= 70 ? this.i18n.t('subscriptions.excellentRating') : sub.rating >= 40 ? this.i18n.t('subscriptions.averageRating') : this.i18n.t('subscriptions.lowRating');
       ratingEl.className = `subscription-card-rating ${ratingColor}`;
       ratingEl.title = `${ratingText}: ${Math.round(sub.rating)}/100 (качество канала для фарминга)`;
       const ratingValue = ratingEl.querySelector('span');
@@ -611,14 +622,14 @@ class SubscriptionsPage {
   }
 
   getLastStreamText(lastStreamDate) {
-    if (!lastStreamDate) return 'Никогда';
+    if (!lastStreamDate) return this.i18n.t('subscriptions.never');
 
     const date = new Date(lastStreamDate);
     const days = Math.floor((Date.now() - date.getTime()) / (1000 * 60 * 60 * 24));
 
-    if (days === 0) return 'Сегодня';
-    if (days === 1) return 'Вчера';
-    if (days < 7) return `${days} дней назад`;
+    if (days === 0) return this.i18n.t('subscriptions.today');
+    if (days === 1) return this.i18n.t('subscriptions.yesterday');
+    if (days < 7) return `${days} ${this.i18n.t('subscriptions.daysAgo')}`;
     if (days < 30) return `${Math.floor(days / 7)} недель назад`;
     if (days < 365) return `${Math.floor(days / 30)} месяцев назад`;
     return `${Math.floor(days / 365)} лет назад`;
@@ -632,7 +643,7 @@ class SubscriptionsPage {
     const daysSinceStream = (Date.now() - lastStreamDate.getTime()) / (1000 * 60 * 60 * 24);
     const isLive = sub.isLive === true;
     const ratingColor = sub.rating >= 70 ? '#00e57a' : sub.rating >= 40 ? '#9147ff' : '#ff6b6b';
-    const activityStatus = daysSinceStream > 30 ? 'Неактивен' : daysSinceStream > 7 ? 'Редко' : 'Активен';
+    const activityStatus = daysSinceStream > 30 ? this.i18n.t('subscriptions.inactive') : daysSinceStream > 7 ? this.i18n.t('subscriptions.rarely') : this.i18n.t('subscriptions.activeStatus');
     const activityIcon = daysSinceStream > 30 ? '🔴' : daysSinceStream > 7 ? '🟡' : '🟢';
     const activityColor = daysSinceStream > 30 ? '#ff6b6b' : daysSinceStream > 7 ? '#ffaa00' : '#00e57a';
 
@@ -661,21 +672,21 @@ class SubscriptionsPage {
 
       <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px;">
         <div style="padding: 16px; background: linear-gradient(135deg, rgba(0, 229, 122, 0.1) 0%, rgba(0, 229, 122, 0.05) 100%); border: 1px solid rgba(0, 229, 122, 0.2); border-radius: 10px; text-align: center;">
-          <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">Рейтинг</div>
+          <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">${this.i18n.t('subscriptions.rating')}</div>
           <div style="font-size: 24px; font-weight: 700; color: ${ratingColor};">
             ${Math.round(sub.rating)}
           </div>
-          <div style="font-size: 10px; color: var(--text-secondary); margin-top: 4px;">${sub.rating >= 70 ? 'Отличный' : sub.rating >= 40 ? 'Средний' : 'Низкий'}</div>
+          <div style="font-size: 10px; color: var(--text-secondary); margin-top: 4px;">${sub.rating >= 70 ? this.i18n.t('subscriptions.excellent') : sub.rating >= 40 ? this.i18n.t('subscriptions.average') : this.i18n.t('subscriptions.low')}</div>
         </div>
         
         <div style="padding: 16px; background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(59, 130, 246, 0.05) 100%); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: 10px; text-align: center;">
-          <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">Фолловеров</div>
+          <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">${this.i18n.t('subscriptions.followers')}</div>
           <div style="font-size: 24px; font-weight: 700; color: var(--accent-color);">${this.formatFollowers(sub.followers || 0)}</div>
           <div style="font-size: 10px; color: var(--text-secondary); margin-top: 4px;">${(sub.followers || 0).toLocaleString()}</div>
         </div>
         
         <div style="padding: 16px; background: linear-gradient(135deg, rgba(168, 85, 247, 0.1) 0%, rgba(168, 85, 247, 0.05) 100%); border: 1px solid rgba(168, 85, 247, 0.2); border-radius: 10px; text-align: center;">
-          <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">Активность</div>
+          <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">${this.i18n.t('subscriptions.activity')}</div>
           <div style="font-size: 20px; margin-bottom: 2px;">${activityIcon}</div>
           <div style="font-size: 13px; font-weight: 600; color: ${activityColor};">${activityStatus}</div>
         </div>
@@ -687,12 +698,12 @@ class SubscriptionsPage {
             <circle cx="12" cy="12" r="10"/>
             <polyline points="12 6 12 12 16 14"/>
           </svg>
-          <div style="font-size: 11px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;">Последний стрим</div>
+          <div style="font-size: 11px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;">${this.i18n.t('subscriptions.lastStream')}</div>
         </div>
         <div style="font-size: 14px; font-weight: 600; color: var(--text-primary);">${this.getLastStreamText(sub.lastStreamDate)}</div>
       </div>
 
-      ${sub.hasDrops ? '<div style="padding: 16px; background: linear-gradient(135deg, rgba(145, 71, 255, 0.15) 0%, rgba(145, 71, 255, 0.05) 100%); border: 1px solid rgba(145, 71, 255, 0.3); border-radius: 10px; display: flex; align-items: center; gap: 12px; margin-bottom: 16px;"><div style="font-size: 24px;">💎</div><div><div style="font-size: 13px; font-weight: 600; color: var(--text-primary);">Доступны дропсы</div><div style="font-size: 11px; color: var(--text-secondary); margin-top: 2px;">На канале можно получить награды</div></div></div>' : ''}
+      ${sub.hasDrops ? `<div style="padding: 16px; background: linear-gradient(135deg, rgba(145, 71, 255, 0.15) 0%, rgba(145, 71, 255, 0.05) 100%); border: 1px solid rgba(145, 71, 255, 0.3); border-radius: 10px; display: flex; align-items: center; gap: 12px; margin-bottom: 16px;"><div style="font-size: 24px;">💎</div><div><div style="font-size: 13px; font-weight: 600; color: var(--text-primary);">${this.i18n.t('subscriptions.dropsAvailable')}</div><div style="font-size: 11px; color: var(--text-secondary); margin-top: 2px;">${this.i18n.t('subscriptions.canGetRewards')}</div></div></div>` : ''}
 
       <div style="display: flex; gap: 10px;">
         <button class="modal-btn modal-btn-primary" id="farm-channel-detail-btn" style="flex: 1; padding: 12px; background: linear-gradient(135deg, var(--accent-color) 0%, #7c3aed 100%); border: none; border-radius: 8px; color: white; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s; box-shadow: 0 2px 8px rgba(145, 71, 255, 0.3);">
@@ -700,7 +711,7 @@ class SubscriptionsPage {
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
               <path d="M12 2L2 7v10c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-10-5z"/>
             </svg>
-            <span>Начать фарминг</span>
+            <span>${this.i18n.t('subscriptions.startFarming')}</span>
           </div>
         </button>
         <button class="modal-btn modal-btn-secondary" id="view-twitch-btn" style="padding: 12px 16px; background: rgba(145, 71, 255, 0.1); border: 1px solid rgba(145, 71, 255, 0.3); border-radius: 8px; color: var(--accent-color); font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s;">
@@ -1044,10 +1055,12 @@ class SubscriptionsPage {
     this.filteredSubscriptions[draggedIndex] = this.filteredSubscriptions[targetIndex];
     this.filteredSubscriptions[targetIndex] = temp;
 
-    // Обновляем приоритет в основном массиве
+    // Обновляем приоритет ТОЛЬКО для избранных каналов
     const newPriorities = new Map();
     this.filteredSubscriptions.forEach((sub, index) => {
-      newPriorities.set(sub.id, index);
+      if (sub.isFavorite) {
+        newPriorities.set(sub.id, index);
+      }
     });
 
     this.subscriptions.forEach(sub => {

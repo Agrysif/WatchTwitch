@@ -517,6 +517,10 @@ class Router {
           miniPlayerContainer.style.transform = 'translateY(0)';
         }, 50);
         console.log('[MiniPlayer] Mini player shown in sidebar (farming active)');
+
+        if (bgPlayer && bgPlayer.src) {
+          bgPlayer.src = '';
+        }
       } else if (!streamUrl) {
         console.log('[MiniPlayer] No stream URL found');
       }
@@ -530,6 +534,10 @@ class Router {
           miniPlayerContainer.style.display = 'none';
           miniPlayer.src = '';
         }, 300);
+      }
+
+      if (page === 'farming' && bgPlayer && bgPlayer.src) {
+        bgPlayer.src = '';
       }
     }
   }
@@ -569,40 +577,51 @@ class Router {
 
 // Инициализируем синхронизацию при загрузке
 document.addEventListener('DOMContentLoaded', () => {
-  // Синхронизируем фоновый плеер с мини-плеером каждые 3 секунды
+  const syncState = {
+    lastSync: 0,
+    lastAutoplay: 0
+  };
+
+  // Синхронизируем фоновый плеер с мини-плеером каждые 10 секунд
   setInterval(() => {
     const bgPlayer = document.getElementById('background-twitch-player');
     const miniPlayer = document.getElementById('sidebar-mini-player');
+    const isFarmingPage = document.querySelector('.nav-item.active')?.getAttribute('data-page') === 'farming';
+    const now = Date.now();
     
-    if (bgPlayer && bgPlayer.src && miniPlayer) {
-      if (miniPlayer.src !== bgPlayer.src && document.querySelector('.nav-item.active')?.getAttribute('data-page') !== 'farming') {
+    if (bgPlayer && bgPlayer.src && miniPlayer && !isFarmingPage) {
+      if (miniPlayer.src !== bgPlayer.src && now - syncState.lastSync > 8000) {
         console.log('[Sync] Syncing background player to mini player');
         miniPlayer.src = bgPlayer.src;
+        syncState.lastSync = now;
         
         // Пытаемся запустить воспроизведение после синхронизации
-        setTimeout(() => {
-          try {
-            miniPlayer.executeJavaScript(`
-              try {
-                const buttons = document.querySelectorAll('button, [role="button"]');
-                let playBtn = null;
-                for (let btn of buttons) {
-                  const ariaLabel = btn.getAttribute('aria-label') || '';
-                  if (ariaLabel.includes('Play') || btn.title?.includes('Play')) {
-                    playBtn = btn;
-                    break;
+        if (now - syncState.lastAutoplay > 15000) {
+          syncState.lastAutoplay = now;
+          setTimeout(() => {
+            try {
+              miniPlayer.executeJavaScript(`
+                try {
+                  const buttons = document.querySelectorAll('button, [role="button"]');
+                  let playBtn = null;
+                  for (let btn of buttons) {
+                    const ariaLabel = btn.getAttribute('aria-label') || '';
+                    if (ariaLabel.includes('Play') || btn.title?.includes('Play')) {
+                      playBtn = btn;
+                      break;
+                    }
                   }
-                }
-                if (playBtn && playBtn.offsetParent !== null) {
-                  playBtn.click();
-                }
-              } catch (e) {}
-            `, false);
-          } catch (e) {}
-        }, 500);
+                  if (playBtn && playBtn.offsetParent !== null) {
+                    playBtn.click();
+                  }
+                } catch (e) {}
+              `, false);
+            } catch (e) {}
+          }, 500);
+        }
       }
     }
-  }, 3000);
+  }, 10000);
   
   // Обработчик закрытия mini PiP
   const closeBtn = document.getElementById('close-mini-stream');
