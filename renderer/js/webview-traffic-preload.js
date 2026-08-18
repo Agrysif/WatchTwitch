@@ -11,6 +11,25 @@ const { ipcRenderer } = require('electron');
 console.log('[WebviewPreload] ✅ Preload loaded');
 
 // ================================
+// Принудительно низкое качество видео
+// ================================
+// Параметр quality= в URL встроенный плеер Twitch игнорирует, а прокликивание
+// меню настроек скриптом срабатывает не всегда. Надёжный способ — записать
+// предпочтение в localStorage ДО загрузки скриптов плеера: preload выполняется
+// раньше страницы, поэтому плеер стартует сразу в нужном качестве.
+// Без этого стрим шёл в исходном качестве: около 10 Мбит/с трафика и
+// заметная нагрузка на процессор от декодирования 1080p ради фарма дропсов.
+try {
+  const host = window.location.hostname || '';
+  if (host.includes('twitch.tv')) {
+    localStorage.setItem('video-quality', '{"default":"160p30"}');
+    console.log('[WebviewPreload] ✅ Качество видео зафиксировано на 160p30');
+  }
+} catch (e) {
+  console.warn('[WebviewPreload] Не удалось задать качество видео:', e.message);
+}
+
+// ================================
 // Auto-claim channel points chests
 // ================================
 let autoClaimEnabled = true;

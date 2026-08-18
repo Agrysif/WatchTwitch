@@ -19,7 +19,10 @@ class PlayerManager {
     this.slot = null;      // элемент-место, поверх которого держим плеер
     this.clipRoot = null;  // область, за которую плеер не должен вылезать
     this.channel = null;   // текущий канал, чтобы не перезагружать плеер зря
-    this._rafId = null;
+    this._tracking = false;
+    this._resizeObserver = null;
+    this._pollInterval = null;
+    this._onGeometryChange = null;
     this._lastGeometry = '';
   }
 
@@ -125,6 +128,8 @@ class PlayerManager {
     }
 
     this.ensure();
+    // Слежение всегда перезапускаем: ResizeObserver был подписан на старый слот
+    this._stopTracking();
     this.slot = slot;
     this.clipRoot = this._findClipRoot(slot);
     this._lastGeometry = '';
@@ -155,19 +160,55 @@ class PlayerManager {
     return document.documentElement;
   }
 
+  /**
+   * Слежение за геометрией слота.
+   *
+   * Намеренно НЕ используем постоянный requestAnimationFrame-цикл: приложение
+   * работает часами, и держать renderer в непрерывной перерисовке ради
+   * пересчёта координат — лишний расход процессора. Пересчитываем только по
+   * событиям, которые реально способны сдвинуть слот, плюс редкий страховочный
+   * опрос на случай изменений, не порождающих событий (CSS-анимации соседей).
+   */
   _startTracking() {
-    if (this._rafId !== null) return;
-    const tick = () => {
-      this._sync();
-      this._rafId = requestAnimationFrame(tick);
-    };
-    this._rafId = requestAnimationFrame(tick);
+    if (this._tracking) return;
+    this._tracking = true;
+
+    this._onGeometryChange = () => this._sync();
+
+    window.addEventListener('scroll', this._onGeometryChange, { passive: true, capture: true });
+    window.addEventListener('resize', this._onGeometryChange, { passive: true });
+
+    if (window.ResizeObserver) {
+      this._resizeObserver = new ResizeObserver(this._onGeometryChange);
+      this._resizeObserver.observe(this.slot);
+      this._resizeObserver.observe(document.body);
+    }
+
+    // Страховочный опрос: дёшево (одно чтение прямоугольника) и покрывает
+    // случаи, когда слот сдвинулся без scroll/resize.
+    this._pollInterval = setInterval(this._onGeometryChange, 500);
+
+    this._sync();
   }
 
   _stopTracking() {
-    if (this._rafId !== null) {
-      cancelAnimationFrame(this._rafId);
-      this._rafId = null;
+    if (!this._tracking) return;
+    this._tracking = false;
+
+    if (this._onGeometryChange) {
+      window.removeEventListener('scroll', this._onGeometryChange, { capture: true });
+      window.removeEventListener('resize', this._onGeometryChange);
+      this._onGeometryChange = null;
+    }
+
+    if (this._resizeObserver) {
+      this._resizeObserver.disconnect();
+      this._resizeObserver = null;
+    }
+
+    if (this._pollInterval) {
+      clearInterval(this._pollInterval);
+      this._pollInterval = null;
     }
   }
 

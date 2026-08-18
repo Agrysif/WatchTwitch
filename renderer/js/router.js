@@ -62,16 +62,12 @@ class Router {
   async navigate(page) {
     console.log('[Router] Navigating to page:', page);
     
+    // Гасим уходящую страницу: её таймеры и обработчики иначе продолжают
+    // работать и накапливаются с каждой навигацией.
+    this.destroyCurrentPage(page);
+
     // Сохраняем всю информацию о стриме если покидаем страницу farming
     if (this.currentPage === 'farming' && page !== 'farming') {
-      // Не останавливаем стрим, только чистим интервалы UI, чтобы не плодить дубли
-      try {
-        if (window.farmingPage && window.farmingPage.destroy) {
-          window.farmingPage.destroy();
-        }
-      } catch (e) {
-        console.error('[Router] Error destroying farmingPage intervals:', e);
-      }
 
       // Плеер НЕ трогаем: он живёт вне страницы и продолжает играть.
       // Сохраняем только текстовую информацию для восстановления карточки стрима.
@@ -287,6 +283,39 @@ class Router {
         console.error('Error loading page:', error);
       }
     }, 300);
+  }
+
+  /**
+   * Объекты страниц, живущие в window. Роутер создаёт их заново при каждой
+   * навигации, поэтому уходящий экземпляр обязан освободить свои ресурсы.
+   * Раньше destroy() вызывался только у страницы фарминга, а таймеры
+   * остальных страниц продолжали тикать до самого закрытия приложения.
+   */
+  static get PAGE_INSTANCES() {
+    return {
+      farming: 'farmingPage',
+      drops: 'dropsPage',
+      subscriptions: 'subscriptionsPage',
+      statistics: 'statisticsPage',
+      settings: 'settingsPage'
+    };
+  }
+
+  destroyCurrentPage(nextPage) {
+    if (!this.currentPage || this.currentPage === nextPage) return;
+
+    const key = Router.PAGE_INSTANCES[this.currentPage];
+    if (!key) return;
+
+    const instance = window[key];
+    if (!instance || typeof instance.destroy !== 'function') return;
+
+    try {
+      instance.destroy();
+      console.log('[Router] Освобождена страница:', this.currentPage);
+    } catch (e) {
+      console.error('[Router] Ошибка при освобождении страницы', this.currentPage, e);
+    }
   }
 
   initPageScripts(page) {

@@ -4,17 +4,26 @@ class StatisticsPage {
     this.currentPeriod = 'all';
     this.customStartDate = null;
     this.customEndDate = null;
+    this._abort = new AbortController();
     this.init();
+  }
+
+  destroy() {
+    if (this._abort) {
+      this._abort.abort();
+    }
   }
 
   async init() {
     this.setupEventListeners();
     await this.loadStatistics();
     
-    // Слушаем события обновления статистики в реальном времени
+    // Слушаем события обновления статистики в реальном времени.
+    // Подписка снимается в destroy(), иначе каждый заход на страницу
+    // добавлял ещё один обработчик и лишнюю перерисовку.
     window.addEventListener('statistics-updated', () => {
       this.loadStatistics();
-    });
+    }, { signal: this._abort.signal });
   }
 
   setupEventListeners() {

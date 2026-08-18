@@ -205,12 +205,15 @@ let tray = null;
 // Оно приходит по мере получения чанков и покрывает все webContents, включая webview.
 // Ничего больше трафик не считает: любые дополнительные счётчики (Performance API,
 // перехват fetch/XHR в preload, событие loadingFinished) давали кратное задвоение.
+const RATE_WINDOW_SECONDS = 10;
+
 let trafficData = {
   totalBytes: 0,        // всего с момента запуска приложения
   sessionStartBytes: 0, // отметка на момент старта текущей сессии фарминга
-  currentRate: 0,       // KB/s за последнее окно
-  _windowBytes: 0,
-  _windowStart: Date.now()
+  currentRate: 0,       // KB/s, усреднённые по скользящему окну
+  _buckets: new Array(RATE_WINDOW_SECONDS).fill(0),
+  _bucketIndex: 0,
+  _pendingBytes: 0
 };
 
 const monitoredWebContents = new Set();
@@ -271,18 +274,21 @@ function hasFreshIntegrity() {
 function updateTrafficCounters(bytes) {
   if (!Number.isFinite(bytes) || bytes <= 0) return;
   trafficData.totalBytes += bytes;
-  trafficData._windowBytes += bytes;
+  trafficData._pendingBytes += bytes;
 }
 
-// Пересчёт скорости раз в секунду по скользящему окну.
-// Окно обнуляется всегда, поэтому при простое скорость честно падает до нуля.
+// Скорость считаем как среднее по скользящему окну в RATE_WINDOW_SECONDS секунд.
+//
+// Окно в одну секунду здесь не годится: видео приходит пачками раз в несколько
+// секунд, поэтому в большинстве односекундных окон байтов ровно ноль — и
+// счётчик почти всё время показывал 0 КБ/с при реально идущем стриме.
 setInterval(() => {
-  const now = Date.now();
-  const elapsed = (now - trafficData._windowStart) / 1000;
-  if (elapsed <= 0) return;
-  trafficData.currentRate = trafficData._windowBytes / elapsed / 1024;
-  trafficData._windowBytes = 0;
-  trafficData._windowStart = now;
+  trafficData._buckets[trafficData._bucketIndex] = trafficData._pendingBytes;
+  trafficData._bucketIndex = (trafficData._bucketIndex + 1) % RATE_WINDOW_SECONDS;
+  trafficData._pendingBytes = 0;
+
+  const sum = trafficData._buckets.reduce((a, b) => a + b, 0);
+  trafficData.currentRate = sum / RATE_WINDOW_SECONDS / 1024;
 }, 1000);
 
 function getTrafficSnapshot() {
@@ -526,6 +532,8 @@ function createMainWindow() {
   });
 
   mainWindow.loadFile('renderer/index.html');
+
+
 
   // В dev-режиме дублируем консоль renderer в терминал: без этого ошибки
   // интерфейса видны только в DevTools и легко проходят мимо.
