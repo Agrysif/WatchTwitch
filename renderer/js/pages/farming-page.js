@@ -5,7 +5,8 @@ class FarmingPage {
     this.categories = [];
     this.updateInterval = null;
     this.dropsFilterEnabled = false;
-    this.sessionStartTime = null;
+    // sessionStartTime намеренно НЕ обнуляется: это свойство проксируется
+    // в window.sessionState, который переживает пересоздание страницы.
     this.sessionInterval = null;
     this.statsUpdateInterval = null;
     this.estimatedBandwidth = 0;
@@ -1702,7 +1703,10 @@ class FarmingPage {
     
     // Запускаем трекинг
     this.sessionStartTime = Date.now();
-    
+    this.estimatedBandwidth = 0;
+    this.bandwidthHistory = [];
+    window.electronAPI?.resetTrafficSession?.();
+
     this.updateSessionInfo();
     this.sessionInterval = setInterval(() => {
       this.updateSessionInfo();
@@ -2297,6 +2301,8 @@ class FarmingPage {
     // Запускаем трекинг сессии
     this.sessionStartTime = Date.now();
     this.estimatedBandwidth = 0;
+    this.bandwidthHistory = [];
+    window.electronAPI?.resetTrafficSession?.();
     this.updateSessionInfo();
 
     // Mark global farming active for other modules (e.g., mini-player)
@@ -2469,9 +2475,214 @@ class FarmingPage {
     }
   }
 
+  /**
+   * Приводит название игры к виду, пригодному для сравнения.
+   * Twitch в разных запросах отдаёт то displayName, то name, плюс различаются
+   * регистр, апострофы, тире и лишние пробелы — из-за этого точное сравнение
+   * регулярно промахивалось и дропсы выглядели как отсутствующие.
+   */
+  normalizeGameName(name) {
+    if (!name) return '';
+    return String(name)
+      .toLowerCase()
+      .replace(/^\s*(игра|game)\s*:\s*/i, '')
+      .replace(/[''`’]/g, '')
+      .replace(/[^a-zа-я0-9]+/gi, ' ')
+      .trim();
+  }
+
+  /**
+   * Все активные кампании для указанной игры.
+   * Раньше здесь стоял find() и бралась только первая кампания — если у игры
+   * их несколько (например, две компании со своими наборами наград),
+   * вторая просто не отображалась.
+   */
+  matchCampaignsForGame(campaigns, gameName) {
+    const target = this.normalizeGameName(gameName);
+    if (!target || !Array.isArray(campaigns)) return [];
+
+    const nameOf = (campaign) => this.normalizeGameName(
+      campaign?.game?.displayName || campaign?.game?.name || campaign?.game
+    );
+
+    const exact = campaigns.filter(c => nameOf(c) && nameOf(c) === target);
+    if (exact.length > 0) return exact;
+
+    // Фолбэк по вхождению — названия иногда отличаются суффиксами
+    return campaigns.filter(c => {
+      const candidate = nameOf(c);
+      if (!candidate) return false;
+      return candidate.includes(target) || target.includes(candidate);
+    });
+  }
+
+  /** Дроп считается выполненным, если получен или уже доступен к получению. */
+  isDropEarned(drop) {
+    return !!(
+      drop.claimed ||
+      drop.canClaim ||
+      drop.isClaimable ||
+      drop.claimable ||
+      drop.isUnlocked ||
+      (drop.required > 0 && drop.progress >= drop.required)
+    );
+  }
+
+  /** Человекочитаемый остаток времени кампании. */
+  formatCampaignTimeLeft(endsAt) {
+    if (!endsAt) return '';
+
+    const diff = new Date(endsAt) - new Date();
+    if (diff <= 0) return 'Завершена';
+
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+
+    if (days > 0) return `${days}д ${hours}ч`;
+    if (hours > 0) return `${hours}ч ${minutes}м`;
+    return `${minutes}м`;
+  }
+
+  /** Карточка одного дропа. */
+  renderDropCard(drop, campaign, gameName) {
+    const i18n = this.i18n;
+    const isCompleted = this.isDropEarned(drop);
+    const dropPercent = isCompleted
+      ? 100
+      : (drop.required > 0 ? Math.min(100, Math.floor((drop.progress / drop.required) * 100)) : 0);
+    const remaining = Math.max(0, drop.required - drop.progress);
+    const dropName = drop.benefitName || drop.name || 'Награда';
+
+    const dropData = encodeURIComponent(JSON.stringify({
+      name: dropName,
+      imageUrl: drop.imageURL || '',
+      requiredMinutes: drop.required || 0,
+      progress: dropPercent,
+      benefitEdges: drop.benefitEdges || []
+    }));
+
+    const campaignData = encodeURIComponent(JSON.stringify({
+      name: campaign.name || gameName,
+      game: campaign.game?.displayName || campaign.game?.name || gameName,
+      imageUrl: campaign.game?.boxArtURL || '',
+      startDate: campaign.startAt || '',
+      endDate: campaign.endsAt || campaign.endAt || ''
+    }));
+
+    const accent = isCompleted ? '0, 229, 122' : '145, 71, 255';
+    const accentSolid = isCompleted ? '#00e57a' : '#9147ff';
+
+    return `
+      <div class="drop-progress-card drop-card-clickable"
+           data-drop="${dropData}"
+           data-campaign="${campaignData}"
+           style="
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        padding: 14px;
+        background: rgba(${accent}, 0.08);
+        border: 1px solid rgba(${accent}, 0.3);
+        border-radius: 10px;
+        transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        min-height: 220px;
+        cursor: pointer;
+        ${!isCompleted ? 'animation: pulse-glow 3s ease-in-out infinite;' : ''}
+      "
+      onmouseenter="this.style.transform='translateY(-4px) scale(1.02)'; this.style.boxShadow='0 8px 24px rgba(${accent}, 0.3)'; this.style.borderColor='rgba(${accent}, 0.6)';"
+      onmouseleave="this.style.transform='translateY(0) scale(1)'; this.style.boxShadow='none'; this.style.borderColor='rgba(${accent}, 0.3)';"
+      >
+        <div style="display: flex; align-items: center; justify-content: center; margin-bottom: 10px;">
+          ${drop.imageURL ? `
+            <img src="${drop.imageURL}"
+                 alt="${dropName}"
+                 style="width: 64px; height: 64px; border-radius: 8px; object-fit: cover; opacity: ${isCompleted ? '0.7' : '1'}; transition: all 0.3s ease;">
+          ` : `
+            <div style="width: 64px; height: 64px; border-radius: 8px; background: rgba(145, 71, 255, 0.2); display: flex; align-items: center; justify-content: center;">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="${accentSolid}">
+                <path d="M12 2L15 8H21L16 13L18 19L12 15L6 19L8 13L3 8H9L12 2Z"/>
+              </svg>
+            </div>
+          `}
+        </div>
+        <div style="text-align: center; margin-bottom: 10px;">
+          <div style="display: flex; align-items: center; justify-content: center; gap: 6px; margin-bottom: 8px;">
+            <span style="font-size: 13px; font-weight: 600; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%;" title="${dropName}">${dropName}</span>
+            ${isCompleted ? `
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="#00e57a" style="flex-shrink: 0;">
+                <circle cx="8" cy="8" r="8" fill="rgba(0, 229, 122, 0.2)"/>
+                <path d="M5 8L7 10L11 6" stroke="#00e57a" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            ` : ''}
+          </div>
+          <div style="font-size: 18px; font-weight: 700; color: ${accentSolid}; margin-bottom: 8px;">${dropPercent}%</div>
+        </div>
+        <div style="height: 8px; background: rgba(255, 255, 255, 0.12); border-radius: 4px; overflow: hidden; margin-bottom: 8px;">
+          <div style="height: 100%; width: ${dropPercent}%; background: ${accentSolid} !important; transition: width 0.5s ease;"></div>
+        </div>
+        <div style="font-size: 11px; color: var(--text-secondary); text-align: center;">
+          ${isCompleted
+            ? `<span style="color: #00e57a; font-weight: 600;">✓ ${i18n.t('farming.claimedOrAvailable')}</span>`
+            : `<div>${drop.progress} / ${drop.required} ${i18n.t('farming.min')}</div>${remaining > 0 ? `<div style="margin-top: 4px; color: var(--text-tertiary);">${i18n.t('farming.remaining')}: ${remaining} ${i18n.t('farming.min')}</div>` : ''}`
+          }
+        </div>
+      </div>
+    `;
+  }
+
+  /** Блок одной кампании: заголовок, свой прогресс и сетка дропсов. */
+  renderCampaignSection(campaign, gameName, showHeader) {
+    const drops = campaign.drops || [];
+    const total = drops.length;
+
+    let sum = 0;
+    drops.forEach(drop => {
+      const raw = drop.required > 0 ? Math.floor((drop.progress / drop.required) * 100) : 0;
+      sum += this.isDropEarned(drop) ? 100 : Math.min(100, raw);
+    });
+
+    const percent = total > 0 ? Math.floor(sum / total) : 0;
+    const completed = drops.filter(d => this.isDropEarned(d)).length;
+    const timeLeft = this.formatCampaignTimeLeft(campaign.endsAt || campaign.endAt);
+    const accentSolid = percent === 100 ? '#00e57a' : '#9147ff';
+    const campaignTitle = campaign.name || gameName;
+    const notStarted = campaign.inProgress === false;
+
+    // Заголовок кампании показываем только когда кампаний несколько —
+    // иначе он дублировал бы общий заголовок блока.
+    const header = showHeader ? `
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; padding: 8px 12px; background: rgba(145, 71, 255, 0.06); border: 1px solid rgba(145, 71, 255, 0.18); border-radius: 8px;">
+        <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
+          ${campaign.game?.boxArtURL ? `<img src="${campaign.game.boxArtURL}" alt="" style="width: 24px; height: 32px; border-radius: 4px; object-fit: cover; flex-shrink: 0;">` : ''}
+          <span style="font-size: 13px; font-weight: 700; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${campaignTitle}">${campaignTitle}</span>
+          ${notStarted ? `<span style="flex-shrink: 0; padding: 2px 6px; background: rgba(255, 152, 0, 0.15); color: #ff9800; border-radius: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase;">Не начата</span>` : ''}
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px; flex-shrink: 0;">
+          ${timeLeft ? `<span style="font-size: 11px; color: var(--text-secondary);">${timeLeft}</span>` : ''}
+          <span style="font-size: 13px; font-weight: 700; color: ${accentSolid};">${completed}/${total} · ${percent}%</span>
+        </div>
+      </div>
+    ` : '';
+
+    return {
+      percent,
+      total,
+      completed,
+      html: `
+        <div class="drops-campaign-section" style="margin-bottom: 16px;">
+          ${header}
+          <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; max-width: 100%;">
+            ${drops.map(drop => this.renderDropCard(drop, campaign, gameName)).join('')}
+          </div>
+        </div>
+      `
+    };
+  }
+
   async updateDropsHorizontalProgress() {
     const i18n = this.i18n;
-    
+
     try {
       // Определяем название игры для текущей кампании
       let currentGameName = (this.currentCategory && this.currentCategory.name) ? this.currentCategory.name : '';
@@ -2485,165 +2696,43 @@ class FarmingPage {
 
       const result = await window.electronAPI.fetchDropsInventory();
       if (!result || !result.campaigns) return { hasDrops: false };
-      
-      // Находим кампанию для текущей категории
-      let currentCampaign = result.campaigns.find(c => 
-        c.game && c.game.name && currentGameName && 
-        c.game.name.toLowerCase() === currentGameName.toLowerCase()
-      );
-      // Фолбэк: пытаемся найти по частичному совпадению (иногда названия отличаются)
-      if (!currentCampaign) {
-        currentCampaign = result.campaigns.find(c => 
-          c.game && c.game.name && currentGameName && 
-          c.game.name.toLowerCase().includes(currentGameName.toLowerCase())
-        );
-      }
-      
+
+      // ВСЕ кампании этой игры, а не только первая найденная
+      const matched = this.matchCampaignsForGame(result.campaigns, currentGameName)
+        .filter(c => Array.isArray(c.drops) && c.drops.length > 0);
+
       const horizontal = document.getElementById('drops-progress-horizontal');
       if (!horizontal) return { hasDrops: false };
-      
-      if (!currentCampaign || currentCampaign.drops.length === 0) {
+
+      if (matched.length === 0) {
         horizontal.style.display = 'none';
         return { hasDrops: false };
       }
-      
-      // Показываем блок
-      horizontal.style.display = 'block';
-      
-      // Вычисляем оставшееся время до окончания кампании
-      let timeRemaining = '';
-      if (currentCampaign.endsAt) {
-        const now = new Date();
-        const endDate = new Date(currentCampaign.endsAt);
-        const diff = endDate - now;
-        
-        if (diff > 0) {
-          const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-          const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-          const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-          
-          if (days > 0) {
-            timeRemaining = `${days}д ${hours}ч`;
-          } else if (hours > 0) {
-            timeRemaining = `${hours}ч ${minutes}м`;
-          } else {
-            timeRemaining = `${minutes}м`;
-          }
-        } else {
-          timeRemaining = 'Завершена';
-        }
-      }
-      
-      const isDropEarned = (drop) => {
-        // Считаем дроп завершенным, если он уже получен или доступен к получению
-        return !!(
-          drop.claimed ||
-          drop.canClaim ||
-          drop.isClaimable ||
-          drop.claimable ||
-          drop.isUnlocked ||
-          (drop.required > 0 && drop.progress >= drop.required)
-        );
-      };
 
-      // Вычисляем общий прогресс как сумму процентов всех дропсов
-      const totalDrops = currentCampaign.drops.length;
-      let totalProgress = 0;
-      currentCampaign.drops.forEach(drop => {
-        const earned = isDropEarned(drop);
-        const dropPercentRaw = drop.required > 0 ? Math.floor((drop.progress / drop.required) * 100) : 0;
-        const dropPercent = earned ? 100 : Math.min(100, dropPercentRaw);
-        totalProgress += dropPercent;
-      });
-      const overallPercent = totalDrops > 0 ? Math.floor(totalProgress / totalDrops) : 0;
-      const completedDrops = currentCampaign.drops.filter(isDropEarned).length;
-      
-      // Создаем HTML для всех дропсов
-      const dropsHTML = currentCampaign.drops.map((drop, index) => {
-        const isCompleted = isDropEarned(drop);
-        const dropPercent = isCompleted ? 100 : (drop.required > 0 ? Math.min(100, Math.floor((drop.progress / drop.required) * 100)) : 0);
-        const remaining = Math.max(0, drop.required - drop.progress);
-        
-        // Извлекаем название награды из benefitName или используем имя дропа
-        const dropName = drop.benefitName || drop.name || 'Награда';
-        
-        // Подготавливаем данные для модального окна
-        const dropData = encodeURIComponent(JSON.stringify({
-          name: dropName,
-          imageUrl: drop.imageURL || '',
-          requiredMinutes: drop.required || 0,
-          progress: dropPercent,
-          benefitEdges: drop.benefitEdges || []
-        }));
-        
-        const campaignData = encodeURIComponent(JSON.stringify({
-          name: currentCampaign.name || currentGameName,
-          game: currentCampaign.game?.name || currentGameName,
-          imageUrl: currentCampaign.game?.boxArtURL || '',
-          startDate: currentCampaign.startAt || '',
-          endDate: currentCampaign.endsAt || ''
-        }));
-        
-        return `
-          <div class="drop-progress-card drop-card-clickable" 
-               data-drop="${dropData}" 
-               data-campaign="${campaignData}"
-               style="
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            padding: 14px;
-            background: rgba(255, 255, 255, ${isCompleted ? '0.03' : '0.05'});
-            border-radius: 10px;
-            border: 1px solid ${isCompleted ? 'rgba(0, 229, 122, 0.3)' : 'rgba(145, 71, 255, 0.3)'};
-            opacity: ${isCompleted ? '0.6' : '1'};
-            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-            min-height: 220px;
-            cursor: pointer;
-            ${!isCompleted ? 'animation: pulse-glow 3s ease-in-out infinite;' : ''}
-          "
-          onmouseenter="this.style.transform='translateY(-4px) scale(1.02)'; this.style.boxShadow='0 8px 24px rgba(${isCompleted ? '0, 229, 122' : '145, 71, 255'}, 0.3)'; this.style.borderColor='rgba(${isCompleted ? '0, 229, 122' : '145, 71, 255'}, 0.6)';"
-          onmouseleave="this.style.transform='translateY(0) scale(1)'; this.style.boxShadow='none'; this.style.borderColor='rgba(${isCompleted ? '0, 229, 122' : '145, 71, 255'}, 0.3)';"
-          >
-            <div style="display: flex; align-items: center; justify-content: center; margin-bottom: 10px;">
-              ${drop.imageURL ? `
-                <img src="${drop.imageURL}" 
-                     alt="${dropName}" 
-                     style="width: 64px; height: 64px; border-radius: 8px; object-fit: cover; opacity: ${isCompleted ? '0.7' : '1'}; transition: all 0.3s ease;">
-              ` : `
-                <div style="width: 64px; height: 64px; border-radius: 8px; background: rgba(145, 71, 255, 0.2); display: flex; align-items: center; justify-content: center;">
-                  <svg width="32" height="32" viewBox="0 0 24 24" fill="${isCompleted ? '#00e57a' : '#9147ff'}">
-                    <path d="M12 2L15 8H21L16 13L18 19L12 15L6 19L8 13L3 8H9L12 2Z"/>
-                  </svg>
-                </div>
-              `}
-            </div>
-            <div style="text-align: center; margin-bottom: 10px;">
-              <div style="display: flex; align-items: center; justify-content: center; gap: 6px; margin-bottom: 8px;">
-                <span style="font-size: 13px; font-weight: 600; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%;" title="${dropName}">${dropName}</span>
-                ${isCompleted ? `
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="#00e57a" style="flex-shrink: 0;">
-                    <circle cx="8" cy="8" r="8" fill="rgba(0, 229, 122, 0.2)"/>
-                    <path d="M5 8L7 10L11 6" stroke="#00e57a" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-                  </svg>
-                ` : ''}
-              </div>
-              <div style="font-size: 18px; font-weight: 700; color: ${isCompleted ? '#00e57a' : '#9147ff'}; margin-bottom: 8px;">${dropPercent}%</div>
-            </div>
-            <div style="height: 8px; background: rgba(255, 255, 255, 0.12); border-radius: 4px; overflow: hidden; margin-bottom: 8px;">
-              <div style="height: 100%; width: ${dropPercent}%; background: ${isCompleted ? '#00e57a' : '#9147ff'} !important; transition: width 0.5s ease;"></div>
-            </div>
-            <div style="font-size: 11px; color: var(--text-secondary); text-align: center;">
-              ${isCompleted 
-                ? `<span style="color: #00e57a; font-weight: 600;">✓ ${i18n.t('farming.claimedOrAvailable')}</span>` 
-                : `<div>${drop.progress} / ${drop.required} ${i18n.t('farming.min')}</div>${remaining > 0 ? `<div style="margin-top: 4px; color: var(--text-tertiary);">${i18n.t('farming.remaining')}: ${remaining} ${i18n.t('farming.min')}</div>` : ''}`
-              }
-            </div>
-          </div>
-        `;
-      }).join('');
-      
-      // Обновляем весь блок
+      console.log('[Drops] Кампаний для', currentGameName + ':', matched.length,
+        matched.map(c => c.name).join(' | '));
+
+      horizontal.style.display = 'block';
+
+      const showCampaignHeaders = matched.length > 1;
+      const sections = matched.map(c => this.renderCampaignSection(c, currentGameName, showCampaignHeaders));
+
+      // Общий прогресс — по всем дропсам всех кампаний сразу
+      const totalDrops = sections.reduce((sum, s) => sum + s.total, 0);
+      const completedDrops = sections.reduce((sum, s) => sum + s.completed, 0);
+      const weightedProgress = sections.reduce((sum, s) => sum + s.percent * s.total, 0);
+      const overallPercent = totalDrops > 0 ? Math.floor(weightedProgress / totalDrops) : 0;
+
+      // Ближайшее время окончания среди всех кампаний
+      const soonestEnd = matched
+        .map(c => c.endsAt || c.endAt)
+        .filter(Boolean)
+        .sort((a, b) => new Date(a) - new Date(b))[0];
+      const timeRemaining = this.formatCampaignTimeLeft(soonestEnd);
+
+      const accentSolid = overallPercent === 100 ? '#00e57a' : '#9147ff';
+      const accentRgb = overallPercent === 100 ? '0, 229, 122' : '145, 71, 255';
+
       horizontal.innerHTML = `
         <style>
           @keyframes pulse-glow {
@@ -2663,6 +2752,11 @@ class FarmingPage {
               </svg>
               <span style="font-size: 15px; font-weight: 700; color: var(--text-primary);">${i18n.t('farming.dropsProgress')}</span>
             </div>
+            ${matched.length > 1 ? `
+              <span style="padding: 3px 8px; background: rgba(145, 71, 255, 0.15); border: 1px solid rgba(145, 71, 255, 0.3); border-radius: 10px; font-size: 11px; font-weight: 700; color: #9147ff;">
+                ${matched.length} кампании
+              </span>
+            ` : ''}
             ${timeRemaining ? `
               <div style="display: flex; align-items: center; gap: 6px; padding: 4px 10px; background: rgba(145, 71, 255, 0.15); border-radius: 12px; border: 1px solid rgba(145, 71, 255, 0.3);">
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="#9147ff">
@@ -2673,78 +2767,61 @@ class FarmingPage {
               </div>
             ` : ''}
           </div>
-          <div style="font-size: 20px; font-weight: 800; color: ${overallPercent === 100 ? '#00e57a' : '#9147ff'};">${overallPercent}%</div>
+          <div style="font-size: 20px; font-weight: 800; color: ${accentSolid};">${overallPercent}%</div>
         </div>
         <div style="background: rgba(255, 255, 255, 0.12); height: 12px; border-radius: 6px; overflow: hidden; margin-bottom: 16px;">
-          <div style="height: 100%; background: ${overallPercent === 100 ? '#00e57a' : '#9147ff'} !important; width: ${overallPercent}%; transition: width 0.5s ease;"></div>
+          <div style="height: 100%; background: ${accentSolid} !important; width: ${overallPercent}%; transition: width 0.5s ease;"></div>
         </div>
-        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; max-width: 100%;">
-          ${dropsHTML}
-        </div>
-        <div id="drops-received-footer" style="margin-top: 12px; padding: 12px; background: rgba(${overallPercent === 100 ? '0, 229, 122' : '145, 71, 255'}, 0.1); border-radius: 6px; border: 1px solid rgba(${overallPercent === 100 ? '0, 229, 122' : '145, 71, 255'}, 0.3); font-size: 13px; color: var(--text-secondary); text-align: center;">
-          ${overallPercent === 100 
-            ? `<span style="color: #00e57a; font-weight: 600;">✓ ${i18n.t('farming.allDropsClaimed')}</span>` 
+        ${sections.map(s => s.html).join('')}
+        <div id="drops-received-footer" style="margin-top: 12px; padding: 12px; background: rgba(${accentRgb}, 0.1); border-radius: 6px; border: 1px solid rgba(${accentRgb}, 0.3); font-size: 13px; color: var(--text-secondary); text-align: center;">
+          ${overallPercent === 100
+            ? `<span style="color: #00e57a; font-weight: 600;">✓ ${i18n.t('farming.allDropsClaimed')}</span>`
             : `<span style="color: var(--text-primary); font-weight: 600; cursor: pointer;">${completedDrops}/${totalDrops} ${i18n.t('statistics.dropsReceived')}</span>`
           }
         </div>
       `;
-      
-      // Добавляем обработчик для тестирования уведомлений (DevMode + Shift + Click)
+
+      // Обработчик для тестирования уведомлений (DevMode + Shift + Click)
       setTimeout(() => {
         const footer = document.getElementById('drops-received-footer');
         if (footer && overallPercent < 100) {
-          console.log('[DropsProgress] Footer element found, attaching click handler');
-          
           footer.addEventListener('click', (e) => {
-            if (!e.shiftKey) return; // Если Shift не зажат, ничего не делаем
-            
-            // Проверяем режим разработчика через localStorage напрямую
+            if (!e.shiftKey) return;
+
             let isDeveloperMode = false;
             try {
               const savedSettings = localStorage.getItem('app_settings');
               if (savedSettings) {
-                const settings = JSON.parse(savedSettings);
-                isDeveloperMode = settings.developerMode === true;
+                isDeveloperMode = JSON.parse(savedSettings).developerMode === true;
               }
             } catch (err) {
               console.error('[DropsProgress] Failed to read settings:', err);
             }
-            
-            console.log('[DropsProgress] Developer mode:', isDeveloperMode);
-            
+
             if (isDeveloperMode) {
-              console.log('[DropsProgress] Triggering test notification');
-              
-              // Показываем тестовое уведомление напрямую (обходим проверку настройки)
-              const testDropName = '8x 250 Lucky Envelopes';
-              const testGameName = 'Palia';
-              // Используем рабочий URL изображения (boxArt игры Palia)
-              const testDropIcon = 'https://static-cdn.jtvnw.net/ttv-boxart/1239948690_IGDB-285x380.jpg';
-              
-              // Прямой вызов функции показа уведомления
-              window.showDropNotification(testDropName, testGameName, testDropIcon);
+              window.showDropNotification(
+                '8x 250 Lucky Envelopes',
+                'Palia',
+                'https://static-cdn.jtvnw.net/ttv-boxart/1239948690_IGDB-285x380.jpg'
+              );
               window.utils.showToast('Тестовое уведомление отправлено', 'info');
             } else {
-              console.log('[DropsProgress] Developer mode is OFF');
               window.utils.showToast('Включите "Режим разработчика" в настройках', 'warning');
             }
           });
-        } else {
-          console.log('[DropsProgress] Footer element not found or drops completed');
         }
       }, 200);
-      
+
       // Обновляем статус категории
       if (this.currentCategory) {
         this.currentCategory.dropsCompleted = overallPercent === 100;
         this.currentCategory.dropsProgressPercent = overallPercent;
-        this.currentCategory.dropsEndsAt = currentCampaign.endsAt; // Сохраняем время окончания
+        this.currentCategory.dropsEndsAt = soonestEnd;
         await Storage.saveCategories(this.categories);
         this.renderCategories();
-        
-        // Обновляем миниатюрный прогресс дропсов в header
+
         this.updateMiniDropsProgress(overallPercent);
-        
+
         // Если все дропсы получены - сразу переключаемся
         if (overallPercent === 100 && !this.currentCategory._switchScheduled) {
           if (this.isSingleManualPlayLocked()) {
@@ -2753,7 +2830,7 @@ class FarmingPage {
           }
 
           this.currentCategory._switchScheduled = true;
-          
+
           // Авто-категории удаляем СРАЗУ после завершения
           if (this.currentCategory.autoDrops) {
             console.log('Auto-category completed, removing:', this.currentCategory.name);
@@ -2770,7 +2847,7 @@ class FarmingPage {
             this.renderCategories();
             this.currentCategory = null;
           }
-          
+
           // Переключаемся на следующую категорию
           setTimeout(() => {
             this.switchToNextEnabledCategory();
@@ -2967,11 +3044,12 @@ class FarmingPage {
     // Показываем контейнер обратно и очищаем UI текущего стрима
     const streamInfo = document.getElementById('current-stream-info');
     const playerContainer = document.getElementById('twitch-player-container');
-    const player = document.getElementById('twitch-player');
-    
-    if (streamInfo && playerContainer && player) {
+
+    // Здесь фарминг действительно завершается, поэтому плеер выгружаем полностью
+    window.playerManager?.unload();
+
+    if (streamInfo && playerContainer) {
       playerContainer.style.display = 'none';
-      player.src = '';
       streamInfo.style.display = 'block';
       streamInfo.innerHTML = this.getWaitingStateMarkup();
     }
@@ -2979,26 +3057,54 @@ class FarmingPage {
 
   async updateSessionInfo() {
     if (!this.sessionStartTime) return;
-    
-    const duration = Math.floor((Date.now() - this.sessionStartTime) / 1000);
-    const hours = Math.floor(duration / 3600);
-    const minutes = Math.floor((duration % 3600) / 60);
-    const seconds = duration % 60;
-    
-    // Обновляем таймер в header
-    const sessionTimerDisplay = document.getElementById('session-timer-display');
-    const sessionTimeValue = document.getElementById('session-time-value');
-    if (sessionTimerDisplay && sessionTimeValue) {
-      sessionTimerDisplay.style.display = 'block';
-      sessionTimeValue.textContent = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+
+    // Отрисовкой таймера и трафика занимается SessionState — он тикает
+    // независимо от того, открыта ли сейчас страница фарминга.
+    await window.sessionState?._tick();
+    await this.updateTrafficInfo();
+  }
+
+  /**
+   * Забирает реальный расход трафика из main-процесса.
+   * Источник — CDP Network.dataReceived, единственный счётчик в приложении.
+   */
+  async updateTrafficInfo() {
+    if (!window.electronAPI?.getTrafficStats) return;
+
+    try {
+      const stats = await window.electronAPI.getTrafficStats();
+      if (!stats) return;
+
+      this.estimatedBandwidth = stats.sessionBytes || 0;
+
+      // История скорости для графика в статистике (храним последние 120 замеров)
+      const rate = Math.round(stats.currentRateKBs || 0);
+      this.bandwidthHistory.push(rate);
+      if (this.bandwidthHistory.length > 120) {
+        this.bandwidthHistory = this.bandwidthHistory.slice(-120);
+      }
+
+      const trafficEl = document.getElementById('session-traffic-value');
+      if (trafficEl) {
+        trafficEl.textContent = this.formatBytes(this.estimatedBandwidth);
+      }
+
+      const rateEl = document.getElementById('session-traffic-rate');
+      if (rateEl) {
+        rateEl.textContent = rate > 1024
+          ? `${(rate / 1024).toFixed(1)} МБ/с`
+          : `${rate} КБ/с`;
+      }
+    } catch (error) {
+      console.warn('[Traffic] Не удалось получить статистику трафика:', error?.message);
     }
-    
-    const durationEl = document.getElementById('session-duration');
-    if (durationEl) {
-      durationEl.textContent = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-    }
-    
-    // Скорость интернета в сессии отключена по запросу
+  }
+
+  formatBytes(bytes) {
+    if (!bytes || bytes <= 0) return '0 Б';
+    const units = ['Б', 'КБ', 'МБ', 'ГБ', 'ТБ'];
+    const i = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
+    return `${(bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
   }
 
   async updateLiveStatistics() {
@@ -3098,22 +3204,24 @@ class FarmingPage {
   updateCurrentStreamUI(stream, category) {
     const streamInfo = document.getElementById('current-stream-info');
     const playerContainer = document.getElementById('twitch-player-container');
-    const player = document.getElementById('twitch-player');
+    const player = window.playerManager?.getWebview();
 
     this.registerFarmingWebviewLabels();
-    
+
     if (streamInfo && playerContainer && player) {
       // Скрываем no-stream и показываем плеер
       streamInfo.style.display = 'none';
       playerContainer.style.display = 'block';
-      
-      // Загружаем стрим в webview с низким качеством
-      const embedUrl = `https://player.twitch.tv/?channel=${stream.login}&parent=localhost&muted=true&quality=160p30`;
-      player.src = embedUrl;
-      
+
+      // Загружаем стрим с низким качеством.
+      // load() сам проверит, не тот же ли это канал, и не станет
+      // перезагружать webview впустую.
+      window.playerManager.load(stream.login);
+      window.playerManager.attachTo('farming-player-slot');
+
       // Автоматически обрабатываем mature content warning
       this.setupMatureContentHandler(player);
-      
+
       // Устанавливаем низкое качество при загрузке плеера
       player.addEventListener('dom-ready', () => {
         // Пробуем установить качество через JavaScript injection
@@ -4192,10 +4300,8 @@ class FarmingPage {
       this.currentStream = stream;
       this.resetChannelPointsTracking();
       
-      const player = document.getElementById('twitch-player');
-      if (player) {
-        player.src = `https://player.twitch.tv/?channel=${stream.login}&parent=localhost&muted=true`;
-      }
+      // Смена канала — единственный случай, когда перезагрузка плеера уместна
+      window.playerManager?.load(stream.login);
       
       // Обновляем URL чата (даже если скрыт) для корректной загрузки при открытии
       const chatWebview = document.getElementById('twitch-chat');
@@ -4258,10 +4364,8 @@ class FarmingPage {
       this.currentStream = stream;
       this.resetChannelPointsTracking();
       
-      const player = document.getElementById('twitch-player');
-      if (player) {
-        player.src = `https://player.twitch.tv/?channel=${stream.login}&parent=localhost&muted=true`;
-      }
+      // Смена канала — единственный случай, когда перезагрузка плеера уместна
+      window.playerManager?.load(stream.login);
       
       // Обновляем URL чата (даже если скрыт) для корректной загрузки при открытии
       const chatWebview = document.getElementById('twitch-chat');
@@ -4425,15 +4529,15 @@ class FarmingPage {
   }
 
   async switchToStream(stream) {
-    const player = document.getElementById('twitch-player');
+    const player = window.playerManager?.getWebview();
     if (!player) return;
 
     // Обновляем текущий стрим
     this.currentStream = stream;
     this.resetChannelPointsTracking();
-    
-    // Переключаем плеер (используем player.twitch.tv без чата)
-    player.src = `https://player.twitch.tv/?channel=${stream.login}&parent=localhost&muted=true`;
+
+    // Переключаем плеер на другой канал
+    window.playerManager.load(stream.login);
     
     // Обновляем URL чата (даже если скрыт) для корректной загрузки при открытии
     const chatWebview = document.getElementById('twitch-chat');
@@ -4505,13 +4609,19 @@ class FarmingPage {
       setTimeout(checkMatureContent, 5000);
     }, { once: true });
     
-    // Также проверяем периодически в течение первой минуты
+    // Также проверяем периодически в течение первой минуты.
+    // Плеер теперь постоянный, поэтому старый интервал обязательно гасим —
+    // иначе при каждой смене канала их накапливалось бы всё больше.
+    if (this.matureCheckInterval) {
+      clearInterval(this.matureCheckInterval);
+    }
     let checks = 0;
-    const intervalId = setInterval(() => {
+    this.matureCheckInterval = setInterval(() => {
       checks++;
       checkMatureContent();
       if (checks >= 6) { // 6 проверок = 1 минута
-        clearInterval(intervalId);
+        clearInterval(this.matureCheckInterval);
+        this.matureCheckInterval = null;
       }
     }, 10000);
   }
@@ -4838,8 +4948,8 @@ class FarmingPage {
       if (!this.currentStream || !this.currentCategory) return;
       
       try {
-        const player = document.getElementById('twitch-player');
-        
+        const player = window.playerManager?.getWebview();
+
         if (!player || !player.src) {
           console.warn('Player not found or no src');
           this.streamHealthFailCount++;
@@ -4953,6 +5063,39 @@ class FarmingPage {
     });
   }
 }
+
+/**
+ * sessionStartTime проксируется в глобальный SessionState.
+ *
+ * Так вся существующая логика страницы (а она обращается к этому свойству в
+ * двух десятках мест) продолжает работать без правок, но реальное состояние
+ * сессии больше не умирает вместе с объектом страницы при навигации.
+ */
+Object.defineProperty(FarmingPage.prototype, 'sessionStartTime', {
+  configurable: true,
+  get() {
+    return window.sessionState ? window.sessionState.startTime : null;
+  },
+  set(value) {
+    const state = window.sessionState;
+    if (!state) return;
+
+    if (value === null || value === undefined) {
+      state.stop();
+      return;
+    }
+
+    if (state.isActive()) {
+      // Сессия уже идёт — это сдвиг точки отсчёта при смене категории
+      state.startTime = value;
+    } else {
+      state.restore(value, {
+        categoryName: this.currentCategory?.name,
+        streamLogin: this.currentStream?.login
+      });
+    }
+  }
+});
 
 // Export to window
 window.FarmingPage = FarmingPage;

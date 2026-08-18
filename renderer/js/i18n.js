@@ -13,7 +13,8 @@ const translations = {
       dropsProgress: 'Дропсы',
       session: 'Сессия',
       active: 'Активна',
-      auto: 'Авто'
+      auto: 'Авто',
+      traffic: 'Трафик'
     },
     farming: {
       title: 'Фарминг дропсов',
@@ -307,7 +308,8 @@ const translations = {
       dropsProgress: 'Drops',
       session: 'Session',
       active: 'Active',
-      auto: 'Auto'
+      auto: 'Auto',
+      traffic: 'Traffic'
     },
     farming: {
       title: 'Drops Farming',

@@ -105,10 +105,6 @@ class NotificationService {
       return this.showCustomDropNotification(dropName, gameName, dropIcon);
     }
   }
-        tag: `drop-claimed-${dropName}`
-      }
-    );
-  }
 
   /**
    * Уведомление об ошибке

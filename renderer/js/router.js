@@ -73,14 +73,12 @@ class Router {
         console.error('[Router] Error destroying farmingPage intervals:', e);
       }
 
-      const mainPlayer = document.getElementById('twitch-player');
+      // Плеер НЕ трогаем: он живёт вне страницы и продолжает играть.
+      // Сохраняем только текстовую информацию для восстановления карточки стрима.
       const playerContainer = document.getElementById('twitch-player-container');
-      const bgPlayer = document.getElementById('background-twitch-player');
-      
-      if (mainPlayer && mainPlayer.src && playerContainer && playerContainer.style.display !== 'none') {
-        // Сохраняем полную информацию о текущем стриме
+
+      if (window.playerManager?.hasStream() && playerContainer && playerContainer.style.display !== 'none') {
         window._streamState = {
-          url: mainPlayer.src,
           channel: document.getElementById('stream-channel')?.textContent || '',
           game: document.getElementById('stream-game')?.textContent || '',
           title: document.getElementById('stream-title')?.textContent || '',
@@ -88,30 +86,7 @@ class Router {
           viewers: document.getElementById('stream-viewers')?.textContent || '-',
           uptime: document.getElementById('stream-uptime')?.textContent || '-'
         };
-        console.log('[Router] Saved stream state:', window._streamState);
-
-        // Перекладываем воспроизведение в фоновый webview с добавлением параметров автозапуска
-        if (bgPlayer && window._streamState.url) {
-          try {
-            let bgUrl = window._streamState.url;
-            // Убеждаемся, что URL содержит параметры для автозапуска
-            if (bgUrl.includes('player.twitch.tv')) {
-              if (!bgUrl.includes('muted=true')) {
-                bgUrl += (bgUrl.includes('?') ? '&' : '?') + 'muted=true';
-              }
-              if (!bgUrl.includes('autoplay=true')) {
-                bgUrl += (bgUrl.includes('?') ? '&' : '?') + 'autoplay=true';
-              }
-            }
-            
-            if (!bgPlayer.src || bgPlayer.src !== bgUrl) {
-              bgPlayer.src = bgUrl;
-              console.log('[Router] Background player set to:', bgUrl.substring(0, 100));
-            }
-          } catch (e) {
-            console.error('[Router] Failed to set background player src:', e);
-          }
-        }
+        console.log('[Router] Saved stream info (плеер продолжает играть)');
       }
       
       // Сохраняем HTML дропсов
@@ -231,32 +206,27 @@ class Router {
         // Initialize page-specific logic
         this.initPageScripts(page);
 
-        // Управляем мини-плеером в сайдбаре
+        // Приводим сайдбар в соответствие с реальным состоянием сессии.
+        // Блок «Сессия» и кнопка старт/стоп живут вне страниц, поэтому после
+        // каждой навигации их нужно пересинхронизировать явно.
+        window.sessionState?.syncUI();
+
+        // Управляем положением единственного плеера
         this.manageMiniPlayer(page);
 
-        // Восстанавливаем стрим при возврате на farming (без перезагрузки)
+        // Восстанавливаем карточку стрима при возврате на farming.
+        // Сам плеер не перезагружается — он просто переезжает обратно в свой слот.
         if (page === 'farming' && window._streamState) {
           setTimeout(() => {
-            const mainPlayer = document.getElementById('twitch-player');
             const playerContainer = document.getElementById('twitch-player-container');
             const streamInfo = document.getElementById('current-stream-info');
-            const bgPlayer = document.getElementById('background-twitch-player');
-            
-            if (mainPlayer && playerContainer && streamInfo && window._streamState) {
-              console.log('Restoring stream without reload');
-              
-              // Сначала пробуем вернуть поток из фонового плеера, иначе используем сохранённый URL
-              if (bgPlayer && bgPlayer.src) {
-                mainPlayer.src = bgPlayer.src;
-                try { bgPlayer.src = ''; } catch (e) { console.error('Failed to clear background player:', e); }
-                console.log('Restored stream from background player');
-              } else if (!mainPlayer.src || mainPlayer.src !== window._streamState.url) {
-                mainPlayer.src = window._streamState.url;
-              }
-              
+
+            if (playerContainer && streamInfo && window._streamState) {
+              console.log('[Router] Восстанавливаю карточку стрима без перезагрузки плеера');
+
               playerContainer.style.display = 'block';
               streamInfo.style.display = 'none';
-              
+
               // Восстанавливаем информацию
               const channelEl = document.getElementById('stream-channel');
               const gameEl = document.getElementById('stream-game');
@@ -277,11 +247,6 @@ class Router {
               }
             }
 
-            // Дополнительно убеждаемся, что фоновый плеер очищен
-            if (bgPlayer && bgPlayer.src) {
-              try { bgPlayer.src = ''; } catch (e) { console.error('Failed to clear background player:', e); }
-            }
-            
             // Восстанавливаем баллы канала
             if (window._channelPointsState && window._channelPointsState.visible) {
               console.log('Restoring channel points');
@@ -364,182 +329,70 @@ class Router {
     }
   }
 
+  /**
+   * Решает, где сейчас должен находиться единственный плеер приложения.
+   *
+   * Плеер не пересоздаётся и не перезагружается — меняется только слот,
+   * поверх которого он рисуется. Поэтому переход между страницами больше
+   * не прерывает просмотр и накопление минут для дропсов.
+   */
   manageMiniPlayer(page) {
+    const player = window.playerManager;
+    if (!player) return;
+
     const miniPlayerContainer = document.getElementById('sidebar-mini-player-container');
-    const miniPlayer = document.getElementById('sidebar-mini-player');
-    const bgPlayer = document.getElementById('background-twitch-player');
-    
-    if (!miniPlayerContainer || !miniPlayer) return;
 
-    // Показываем мини-плеер только если:
-    // 1. НЕ на странице фарминга
-    // 2. Есть активная сессия (фарминг запущен)
-    // 3. Есть активный стрим
-    const isFarmingActive = !!(window.streamingManager?.isFarmingActive?.() || window.farmingPage?.sessionStartTime);
-    const hasStream = !!(
-      (window._streamState && window._streamState.url) ||
-      (window._streamState && window._streamState.channel) ||
-      (document.getElementById('twitch-player')?.src) ||
-      (bgPlayer?.src)
-    );
-    
-    console.log('[Router] Mini-player check:', { page, isFarmingActive, hasStream });
-    
-    if (page !== 'farming' && isFarmingActive && hasStream) {
-      // Получаем URL стрима - приоритет: фоновый плеер → основной плеер → сохраненное состояние
-      const bgPlayer = document.getElementById('background-twitch-player');
-      const mainPlayer = document.getElementById('twitch-player');
-      let streamUrl = (bgPlayer && bgPlayer.src) ? bgPlayer.src : 
-                      (mainPlayer && mainPlayer.src) ? mainPlayer.src : 
-                      window._streamState?.url;
+    if (page === 'farming') {
+      // На странице фарминга плеер занимает своё основное место
+      this.hideSidebarMiniPlayer(miniPlayerContainer);
 
-      // Fallback: construct embed URL if only channel name is known
-      if (!streamUrl && window._streamState?.channel) {
-        const channelLogin = window._streamState.channel.replace(/^@/, '').toLowerCase();
-        streamUrl = `https://player.twitch.tv/?channel=${channelLogin}&parent=localhost&muted=true&autoplay=true&quality=160p30`;
-        console.log('[MiniPlayer] Constructed fallback URL from channel:', channelLogin);
+      const slot = document.getElementById('farming-player-slot');
+      if (slot && player.hasStream()) {
+        player.attachTo(slot);
+      } else if (!player.hasStream()) {
+        player.detach();
       }
-      
-      // Убеждаемся, что URL содержит параметры для автозапуска
-      if (streamUrl && streamUrl.includes('player.twitch.tv')) {
-        // Убираем существующие параметры autoplay, чтобы добавить их заново
-        streamUrl = streamUrl.replace(/[?&]autoplay=[^&]*/g, '');
-        streamUrl = streamUrl.replace(/[?&]muted=[^&]*/g, '');
-        streamUrl = streamUrl.replace(/[?&]quality=[^&]*/g, '');
-        
-        // Добавляем параметры правильно
-        const separator = streamUrl.includes('?') ? '&' : '?';
-        streamUrl += separator + 'muted=true&autoplay=true&quality=160p30';
-        
-        console.log('[MiniPlayer] Updated URL with autoplay params:', streamUrl.substring(0, 100));
-      }
-      
-      if (streamUrl && miniPlayer.src !== streamUrl) {
-        console.log('[MiniPlayer] Setting URL:', streamUrl.substring(0, 100));
-        miniPlayer.src = streamUrl;
-        
-        // После загрузки плеера пытаемся запустить его через инъекцию скрипта
-        // Используем 'did-finish-load' событие для лучшего таймирования
-        const onLoadHandler = () => {
-          console.log('[MiniPlayer] Webview loaded, injecting autoplay script');
-          
-          // Инъецируем скрипт который найдет и кликнет play button
-          miniPlayer.executeJavaScript(`
-            (function() {
-              let attemptCount = 0;
-              const maxAttempts = 15; // Увеличиваем количество попыток
-              
-              const startAutoplay = () => {
-                attemptCount++;
-                console.log('[Autoplay] Attempt', attemptCount, 'of', maxAttempts);
-                
-                // Ищем play button с несколькими подходами
-                const selectors = [
-                  'button[aria-label*="Play"]',
-                  '[role="button"][aria-label*="Play"]',
-                  '.player-button--play',
-                  '[data-a-target="play-pause-button"]',
-                  'button[data-a-target*="play"]',
-                  'div[role="button"] svg[class*="play"]',
-                  'button svg[class*="play"]',
-                  '[class*="play-pause"]',
-                  'video' // Прямо видео элемент
-                ];
-                
-                let playBtn = null;
-                let videoEl = null;
-                
-                for (let selector of selectors) {
-                  const el = document.querySelector(selector);
-                  if (el) {
-                    if (selector === 'video') {
-                      videoEl = el;
-                      console.log('[Autoplay] Found video element');
-                    } else {
-                      playBtn = el.closest('button') || el;
-                      console.log('[Autoplay] Found play button with selector:', selector);
-                      break;
-                    }
-                  }
-                }
-                
-                // Пытаемся кликнуть button
-                if (playBtn) {
-                  console.log('[Autoplay] Clicking play button');
-                  playBtn.click();
-                  setTimeout(() => playBtn.click(), 100); // Двойной клик с задержкой
-                  return true; // Успех
-                }
-                
-                // Пытаемся запустить видео напрямую
-                if (videoEl && videoEl.paused) {
-                  console.log('[Autoplay] Trying to play video directly');
-                  videoEl.play().then(() => {
-                    console.log('[Autoplay] Video started successfully');
-                  }).catch(e => {
-                    console.log('[Autoplay] Video play error:', e.message);
-                  });
-                  return true; // Попытка сделана
-                }
-                
-                // Если ничего не найдено и еще есть попытки, повторяем
-                if (attemptCount < maxAttempts) {
-                  console.log('[Autoplay] Nothing found, will retry in 1s');
-                  setTimeout(startAutoplay, 1000);
-                  return false;
-                } else {
-                  console.log('[Autoplay] Max attempts reached, giving up');
-                  return false;
-                }
-              };
-              
-              // Запускаем с разными интервалами для покрытия всех случаев
-              setTimeout(startAutoplay, 100);    // Очень быстро
-              setTimeout(startAutoplay, 500);    // Быстро
-              setTimeout(startAutoplay, 1000);   // Средне
-              setTimeout(startAutoplay, 2000);   // Медленно
-              setTimeout(startAutoplay, 3000);   // Очень медленно
-              setTimeout(startAutoplay, 5000);   // Для очень медленной загрузки
-            })();
-          `).catch(e => {
-            console.log('[MiniPlayer] Script injection error:', e.message);
-          });
-          
-          miniPlayer.removeEventListener('did-finish-load', onLoadHandler);
-        };
-        
-        miniPlayer.addEventListener('did-finish-load', onLoadHandler);
-        
-        // Показываем с анимацией
-        miniPlayerContainer.style.display = 'block';
-        setTimeout(() => {
-          miniPlayerContainer.style.opacity = '1';
-          miniPlayerContainer.style.transform = 'translateY(0)';
-        }, 50);
-        console.log('[MiniPlayer] Mini player shown in sidebar (farming active)');
-
-        if (bgPlayer && bgPlayer.src) {
-          bgPlayer.src = '';
-        }
-      } else if (!streamUrl) {
-        console.log('[MiniPlayer] No stream URL found');
-      }
-    } else {
-      // Скрываем мини-плеер с анимацией исчезновения
-      if (miniPlayerContainer.style.display !== 'none') {
-        console.log('[MiniPlayer] Hiding mini-player', { page, isFarmingActive, hasStream });
-        miniPlayerContainer.style.opacity = '0';
-        miniPlayerContainer.style.transform = 'translateY(-10px)';
-        setTimeout(() => {
-          miniPlayerContainer.style.display = 'none';
-          miniPlayer.src = '';
-        }, 300);
-      }
-
-      if (page === 'farming' && bgPlayer && bgPlayer.src) {
-        bgPlayer.src = '';
-      }
+      return;
     }
+
+    // На остальных страницах — мини-плеер в сайдбаре, но только если
+    // фарминг реально идёт и есть загруженный поток.
+    const isFarmingActive = !!(
+      window.streamingManager?.isFarmingActive?.() ||
+      window.farmingPage?.sessionStartTime ||
+      window.sessionState?.isActive?.()
+    );
+
+    if (!isFarmingActive || !player.hasStream()) {
+      console.log('[MiniPlayer] Прячу мини-плеер', { page, isFarmingActive, hasStream: player.hasStream() });
+      this.hideSidebarMiniPlayer(miniPlayerContainer);
+      player.detach();
+      return;
+    }
+
+    if (miniPlayerContainer) {
+      miniPlayerContainer.style.display = 'block';
+      requestAnimationFrame(() => {
+        miniPlayerContainer.style.opacity = '1';
+        miniPlayerContainer.style.transform = 'translateY(0)';
+      });
+    }
+
+    const sidebarSlot = document.getElementById('sidebar-player-slot');
+    if (sidebarSlot) {
+      player.attachTo(sidebarSlot);
+    }
+  }
+
+  hideSidebarMiniPlayer(container) {
+    const miniPlayerContainer = container || document.getElementById('sidebar-mini-player-container');
+    if (!miniPlayerContainer || miniPlayerContainer.style.display === 'none') return;
+
+    miniPlayerContainer.style.opacity = '0';
+    miniPlayerContainer.style.transform = 'translateY(-10px)';
+    setTimeout(() => {
+      miniPlayerContainer.style.display = 'none';
+    }, 300);
   }
 
   loadScript(src) {
@@ -559,70 +412,15 @@ class Router {
     });
   }
   
-  // Синхронизация фонового плеера с мини-плеером
-  syncBackgroundPlayerToMini() {
-    setInterval(() => {
-      if (this.currentPage !== 'farming') {
-        const bgPlayer = document.getElementById('background-twitch-player');
-        const miniPlayer = document.getElementById('sidebar-mini-player');
-        
-        if (bgPlayer && bgPlayer.src && miniPlayer && miniPlayer.src !== bgPlayer.src) {
-          console.log('[Router] Syncing background player URL to mini player');
-          miniPlayer.src = bgPlayer.src;
-        }
-      }
-    }, 2000); // Проверяем каждые 2 секунды
-  }
 }
 
-// Инициализируем синхронизацию при загрузке
-document.addEventListener('DOMContentLoaded', () => {
-  const syncState = {
-    lastSync: 0,
-    lastAutoplay: 0
-  };
+// Периодическая синхронизация фонового и мини-плеера удалена:
+// раньше два таймера (каждые 2 и каждые 10 секунд) переприсваивали .src
+// между плеерами, из-за чего стрим самопроизвольно перезапускался даже
+// без переходов между страницами. Плеер теперь один и такой синхронизации
+// не требует.
 
-  // Синхронизируем фоновый плеер с мини-плеером каждые 10 секунд
-  setInterval(() => {
-    const bgPlayer = document.getElementById('background-twitch-player');
-    const miniPlayer = document.getElementById('sidebar-mini-player');
-    const isFarmingPage = document.querySelector('.nav-item.active')?.getAttribute('data-page') === 'farming';
-    const now = Date.now();
-    
-    if (bgPlayer && bgPlayer.src && miniPlayer && !isFarmingPage) {
-      if (miniPlayer.src !== bgPlayer.src && now - syncState.lastSync > 8000) {
-        console.log('[Sync] Syncing background player to mini player');
-        miniPlayer.src = bgPlayer.src;
-        syncState.lastSync = now;
-        
-        // Пытаемся запустить воспроизведение после синхронизации
-        if (now - syncState.lastAutoplay > 15000) {
-          syncState.lastAutoplay = now;
-          setTimeout(() => {
-            try {
-              miniPlayer.executeJavaScript(`
-                try {
-                  const buttons = document.querySelectorAll('button, [role="button"]');
-                  let playBtn = null;
-                  for (let btn of buttons) {
-                    const ariaLabel = btn.getAttribute('aria-label') || '';
-                    if (ariaLabel.includes('Play') || btn.title?.includes('Play')) {
-                      playBtn = btn;
-                      break;
-                    }
-                  }
-                  if (playBtn && playBtn.offsetParent !== null) {
-                    playBtn.click();
-                  }
-                } catch (e) {}
-              `, false);
-            } catch (e) {}
-          }, 500);
-        }
-      }
-    }
-  }, 10000);
-  
+document.addEventListener('DOMContentLoaded', () => {
   // Обработчик закрытия mini PiP
   const closeBtn = document.getElementById('close-mini-stream');
   if (closeBtn) {

@@ -25,8 +25,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     console.warn('[Diagnostics] Failed to set main process label', error);
   }
 
-  registerWebviewLabel('background-twitch-player', 'Background Player');
-  registerWebviewLabel('sidebar-mini-player', 'Sidebar Mini Player');
+  // Плеер теперь один на всё приложение (см. core/player-manager.js)
+  registerWebviewLabel('twitch-player', 'Twitch Player');
 
   // Preload paths are now set automatically via will-attach-webview event in main process
   // This ensures preload is applied BEFORE webview loads any content

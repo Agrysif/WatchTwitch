@@ -26,14 +26,10 @@
     <div id="twitch-player-container" style="display: none;">
       <div id="player-chat-grid" style="display: grid; grid-template-columns: 1fr; gap: 12px; transition: grid-template-columns 0.3s ease;">
         <!-- Player 16:9 -->
-        <div style="position: relative; width: 100%; padding-bottom: 56.25%; background: #000; border-radius: 8px; overflow: hidden;">
-          <webview id="twitch-player" 
-                   style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #000;"
-                   partition="persist:twitch"
-                   allowpopups="false"
-                   disablewebsecurity
-                   webpreferences="contextIsolation=false"></webview>
-        </div>
+        <!-- Слот для постоянного плеера. Сам webview живёт в index.html и только
+             позиционируется поверх этого места — см. renderer/js/core/player-manager.js -->
+        <div id="farming-player-slot"
+             style="position: relative; width: 100%; padding-bottom: 56.25%; background: #000; border-radius: 8px; overflow: hidden;"></div>
         
         <!-- Chat -->
         <div id="twitch-chat-container" style="display: none; background: var(--bg-secondary); border-radius: 8px; overflow: hidden; border: 1px solid var(--border-color); opacity: 0; transform: translateX(20px); transition: opacity 0.3s ease, transform 0.3s ease;">
