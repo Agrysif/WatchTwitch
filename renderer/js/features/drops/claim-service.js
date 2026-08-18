@@ -118,8 +118,13 @@ class ClaimService {
             timestamp: new Date()
           });
           
+          // Получаем иконку дропа
+          const dropIcon = drop.benefitEdges?.[0]?.benefit?.imageAssetURL || 
+                          campaign.game?.boxArtURL ||
+                          null;
+          
           // Уведомление об успешном получении
-          window.NotificationService?.notifyDropClaimed(dropName, gameName);
+          window.NotificationService?.notifyDropClaimed(dropName, gameName, dropIcon);
         }
       }
     }

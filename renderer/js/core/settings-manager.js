@@ -17,6 +17,7 @@ class SettingsManager {
       // Уведомления
       desktopNotifications: false,
       toastNotifications: true,
+      notifyOnDropClaimed: true,
       
       // Авто-получение
       autoClaimDrops: true,
@@ -34,7 +35,10 @@ class SettingsManager {
       language: 'ru',
       
       // Тема
-      theme: 'dark'
+      theme: 'dark',
+      
+      // Разработчик
+      developerMode: false
     };
 
     try {
@@ -198,9 +202,9 @@ class SettingsManager {
 }
 
 // Экспорт синглтона
-window.SettingsManager = window.SettingsManager || new SettingsManager();
+window.settings = window.settings || new SettingsManager();
 
 // Применяем настройки при загрузке
 window.addEventListener('DOMContentLoaded', () => {
-  window.SettingsManager.applyAll();
+  window.settings.applyAll();
 });

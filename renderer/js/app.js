@@ -1,5 +1,33 @@
 // Main app initialization
 document.addEventListener('DOMContentLoaded', async () => {
+  const registerWebviewLabel = (id, label) => {
+    const webview = document.getElementById(id);
+    if (!webview || webview.dataset.processLabelSet === 'true') return;
+
+    const setLabel = () => {
+      try {
+        const webContentsId = webview.getWebContentsId?.();
+        if (!webContentsId) return;
+        window.electronAPI.setProcessLabel({ webContentsId, label });
+        webview.dataset.processLabelSet = 'true';
+      } catch (error) {
+        console.warn('[Diagnostics] Failed to set process label for', id, error);
+      }
+    };
+
+    webview.addEventListener('dom-ready', setLabel, { once: true });
+    setTimeout(setLabel, 0);
+  };
+
+  try {
+    window.electronAPI.setProcessLabel({ label: 'Main Renderer' });
+  } catch (error) {
+    console.warn('[Diagnostics] Failed to set main process label', error);
+  }
+
+  registerWebviewLabel('background-twitch-player', 'Background Player');
+  registerWebviewLabel('sidebar-mini-player', 'Sidebar Mini Player');
+
   // Preload paths are now set automatically via will-attach-webview event in main process
   // This ensures preload is applied BEFORE webview loads any content
   
@@ -20,7 +48,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   window.electronAPI.onAppClosing(() => {
     console.log('[App] Application closing, stopping farming session...');
     if (window.farmingPage) {
-      window.farmingPage.stopFarming(false); // false = не показывать toast
+      window.farmingPage.stopFarming(false, true); // preserve active session for auto-start
     }
   });
 
@@ -37,9 +65,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Initialize router
   window.router = new Router();
 
-  // Apply saved theme
-  const settings = await Storage.getSettings();
-  document.body.className = `theme-${settings.theme}`;
+  // Settings manager is already initialized in settings-manager.js
+  // Just ensure it exists
+  if (!window.settings) {
+    console.error('Settings manager not initialized!');
+  }
 
   // Load saved accounts
   const savedAccounts = await window.auth.loadSavedAccounts();
@@ -132,9 +162,21 @@ window.utils = {
       document.body.appendChild(toastContainer);
     }
 
+    // Иконки для разных типов
+    const icons = {
+      info: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>',
+      success: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
+      error: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>',
+      warning: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>'
+    };
+
     const toast = document.createElement('div');
     toast.className = `toast toast-${type}`;
-    toast.textContent = message;
+    toast.innerHTML = `
+      <div class="toast-icon">${icons[type] || icons.info}</div>
+      <div class="toast-message">${message}</div>
+      <div class="toast-progress"></div>
+    `;
     
     toastContainer.appendChild(toast);
     
@@ -273,44 +315,123 @@ style.textContent = `
     z-index: 10000;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 12px;
     pointer-events: none;
   }
 
   .toast {
-    padding: 12px 20px;
-    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 18px;
+    padding-bottom: 10px;
+    border-radius: 12px;
     color: white;
     font-weight: 500;
     font-size: 14px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 
+      0 8px 32px rgba(0, 0, 0, 0.4),
+      0 2px 8px rgba(0, 0, 0, 0.2),
+      inset 0 1px 0 rgba(255, 255, 255, 0.1);
     opacity: 0;
-    transform: translateX(400px);
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transform: translateX(400px) scale(0.95);
+    transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
     pointer-events: auto;
-    max-width: 350px;
+    max-width: 380px;
+    min-width: 280px;
     word-wrap: break-word;
+    position: relative;
+    overflow: hidden;
+    flex-wrap: wrap;
+  }
+
+  .toast::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, rgba(255,255,255,0.4), rgba(255,255,255,0.1));
+  }
+
+  .toast-progress {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    height: 3px;
+    width: 100%;
+    background: rgba(255, 255, 255, 0.3);
+    transform-origin: left;
+    animation: toastProgress 3s linear forwards;
+  }
+
+  @keyframes toastProgress {
+    from {
+      transform: scaleX(1);
+    }
+    to {
+      transform: scaleX(0);
+    }
   }
 
   .toast-show {
     opacity: 1;
-    transform: translateX(0);
+    transform: translateX(0) scale(1);
+  }
+
+  .toast-icon {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.15);
+  }
+
+  .toast-message {
+    flex: 1;
+    line-height: 1.4;
   }
   
   .toast-info {
-    background: var(--accent-color);
+    background: linear-gradient(135deg, rgba(145, 71, 255, 0.95), rgba(119, 44, 232, 0.95));
+    border-color: rgba(145, 71, 255, 0.4);
+  }
+
+  .toast-info .toast-icon {
+    background: rgba(255, 255, 255, 0.2);
   }
   
   .toast-success {
-    background: var(--success-color);
+    background: linear-gradient(135deg, rgba(0, 229, 122, 0.95), rgba(0, 200, 100, 0.95));
+    border-color: rgba(0, 229, 122, 0.4);
+  }
+
+  .toast-success .toast-icon {
+    background: rgba(255, 255, 255, 0.2);
   }
   
   .toast-error {
-    background: var(--error-color);
+    background: linear-gradient(135deg, rgba(232, 17, 35, 0.95), rgba(200, 15, 30, 0.95));
+    border-color: rgba(232, 17, 35, 0.4);
+  }
+
+  .toast-error .toast-icon {
+    background: rgba(255, 255, 255, 0.2);
   }
   
   .toast-warning {
-    background: var(--warning-color);
+    background: linear-gradient(135deg, rgba(255, 159, 67, 0.95), rgba(255, 140, 50, 0.95));
+    border-color: rgba(255, 159, 67, 0.4);
+  }
+
+  .toast-warning .toast-icon {
+    background: rgba(255, 255, 255, 0.2);
   }
 
   .auth-modal {
@@ -319,27 +440,38 @@ style.textContent = `
     left: 0;
     right: 0;
     bottom: 0;
-    z-index: 9999;
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    box-sizing: border-box;
   }
 
   .auth-modal-overlay {
-    position: absolute;
+    position: fixed;
     top: 0;
     left: 0;
     right: 0;
     bottom: 0;
     background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(4px);
+    z-index: 9999;
   }
 
   .auth-modal-content {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
+    position: relative;
+    z-index: 10001;
     background: var(--card-bg);
-    border-radius: 12px;
+    border-radius: 16px;
     border: 1px solid var(--border-color);
     overflow: hidden;
+    max-width: 500px;
+    max-height: 85vh;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
   }
 
   .auth-modal-header {
@@ -348,6 +480,7 @@ style.textContent = `
     display: flex;
     justify-content: space-between;
     align-items: center;
+    flex-shrink: 0;
   }
 
   .auth-modal-header h3 {
@@ -360,18 +493,43 @@ style.textContent = `
     border: none;
     color: var(--text-secondary);
     cursor: pointer;
-    padding: 4px;
+    padding: 8px;
     display: flex;
     align-items: center;
     justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
   }
 
   .close-modal:hover {
+    background: var(--input-bg);
     color: var(--text-primary);
   }
 
   .auth-modal-body {
     padding: 20px;
+    overflow-y: auto;
+    flex: 1;
+  }
+
+  .auth-modal-body::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .auth-modal-body::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .auth-modal-body::-webkit-scrollbar-thumb {
+    background: rgba(145, 71, 255, 0.3);
+    border-radius: 3px;
+  }
+
+  .auth-modal-body::-webkit-scrollbar-thumb:hover {
+    background: rgba(145, 71, 255, 0.5);
   }
 
   .shutdown-modal {

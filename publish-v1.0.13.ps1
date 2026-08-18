@@ -3,9 +3,7 @@ $ErrorActionPreference = "Stop"
 $owner = "Agrysif"
 $repo = "WatchTwitch"
 $distFolder = "c:\Users\egor1\Desktop\old app\WatchTwitch\dist"
-
-# Версии
-$versions = @("1.0.10", "1.0.11")
+$version = "1.0.13"
 
 function Create-Release {
   param(
@@ -16,17 +14,25 @@ function Create-Release {
   $tagName = "v$version"
   $releaseName = "Release $version"
   $body = @"
-WatchTwitch v$version - Auto Update Release
+WatchTwitch v$version
 
-This is an automated release build for testing the auto-update system.
+## Improvements
+- Added tooltip on progress bar hover showing drop images
+- Fixed event listener duplication bug (triple-click modal issue)
+- Improved subscription channel auto-loading
+- Fixed manual categories priority sorting
+- Enhanced UI stability
 
-## Changes
-- Fixed update download and progress tracking
-- Added error handling for failed downloads
-- Improved update UI responsiveness
+## Fixed Issues
+- Modal buttons now respond to single clicks (fixed duplicate event listeners)
+- Manually added categories now farm in correct priority order
+- Subscribed channels with drops auto-load on Farming page
+- Progress bar now displays tooltip with drop images on hover
 
 ## Installation
 Simply run the installer: WatchTwitch Setup $version.exe
+
+Auto-updater will notify existing users to update.
 "@
     
   Write-Host "Creating release for version $version..." -ForegroundColor Green
@@ -70,8 +76,7 @@ function Upload-Assets {
     
   $files = @(
     "WatchTwitch Setup $version.exe",
-    "WatchTwitch Setup $version.exe.blockmap",
-    "latest-$version.yml"
+    "WatchTwitch Setup $version.exe.blockmap"
   )
     
   foreach ($fileName in $files) {
@@ -105,27 +110,28 @@ function Upload-Assets {
   }
 }
 
-# Main execution - используем токен из переменной окружения или параметра
+# Main execution
 $token = $env:GITHUB_TOKEN
 if (-not $token) {
   Write-Host "ERROR: GITHUB_TOKEN environment variable is not set!" -ForegroundColor Red
-  Write-Host "Usage: `$env:GITHUB_TOKEN = 'your_token'; .\create-releases-api.ps1" -ForegroundColor Yellow
+  Write-Host "Usage (in PowerShell):" -ForegroundColor Yellow
+  Write-Host '$env:GITHUB_TOKEN = "your_personal_access_token"' -ForegroundColor Cyan
+  Write-Host ".\publish-v1.0.13.ps1" -ForegroundColor Cyan
   exit 1
 }
 
-Write-Host "GitHub Release Creator for WatchTwitch" -ForegroundColor Cyan
-Write-Host "======================================" -ForegroundColor Cyan
+Write-Host "GitHub Release Publisher for WatchTwitch v$version" -ForegroundColor Cyan
+Write-Host "===================================================" -ForegroundColor Cyan
 Write-Host ""
 
-$successCount = 0
-foreach ($version in $versions) {
-  if (Create-Release -version $version -token $token) {
-    $successCount++
-  }
+if (Create-Release -version $version -token $token) {
   Write-Host ""
-  Start-Sleep -Seconds 2
+  Write-Host "===================================================" -ForegroundColor Cyan
+  Write-Host "✓ Release v$version published successfully!" -ForegroundColor Green
+  Write-Host "View at: https://github.com/$owner/$repo/releases/tag/v$version" -ForegroundColor Cyan
 }
-
-Write-Host "======================================" -ForegroundColor Cyan
-Write-Host "Completed: $successCount/$($versions.Count) releases created!" -ForegroundColor Green
-Write-Host "Check: https://github.com/$owner/$repo/releases" -ForegroundColor Cyan
+else {
+  Write-Host ""
+  Write-Host "===================================================" -ForegroundColor Cyan
+  Write-Host "✗ Failed to publish release" -ForegroundColor Red
+}

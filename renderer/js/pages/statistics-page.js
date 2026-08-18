@@ -10,6 +10,11 @@ class StatisticsPage {
   async init() {
     this.setupEventListeners();
     await this.loadStatistics();
+    
+    // Слушаем события обновления статистики в реальном времени
+    window.addEventListener('statistics-updated', () => {
+      this.loadStatistics();
+    });
   }
 
   setupEventListeners() {
@@ -279,11 +284,12 @@ class StatisticsPage {
   }
 
   renderTopCategories(categories) {
+    const i18n = window.i18n;
     const container = document.getElementById('top-categories-section');
     if (!container) return;
     
     if (categories.length === 0) {
-      container.innerHTML = '<div style="color: var(--text-secondary); text-align: center; padding: 40px;">Нет данных</div>';
+      container.innerHTML = `<div style="color: var(--text-secondary); text-align: center; padding: 40px;">${i18n.t('statistics.noData')}</div>`;
       return;
     }
 
@@ -383,6 +389,7 @@ class StatisticsPage {
   }
 
   updateSessionsTable(sessions) {
+    const i18n = window.i18n;
     const container = document.getElementById('recent-sessions');
     if (!container) return;
     
@@ -392,7 +399,7 @@ class StatisticsPage {
     const recentSessions = sessions.slice(-10).reverse();
     
     if (recentSessions.length === 0) {
-      container.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--text-secondary);">No sessions recorded yet</div>';
+      container.innerHTML = `<div style="text-align: center; padding: 40px; color: var(--text-secondary);">${i18n.t('statistics.noData')}</div>`;
       return;
     }
     
@@ -444,15 +451,15 @@ class StatisticsPage {
         <div class="session-stats-grid">
           <div class="session-stat">
             <div class="session-stat-value">${duration}</div>
-            <div class="session-stat-label">Длительность</div>
+            <div class="session-stat-label">${i18n.t('statistics.duration')}</div>
           </div>
           <div class="session-stat">
             <div class="session-stat-value session-points">+${pointsEarned}</div>
-            <div class="session-stat-label">Баллов</div>
+            <div class="session-stat-label">${i18n.t('statistics.points')}</div>
           </div>
           <div class="session-stat">
             <div class="session-stat-value session-bandwidth">${bandwidth}</div>
-            <div class="session-stat-label">Трафик</div>
+            <div class="session-stat-label">${i18n.t('statistics.traffic')}</div>
           </div>
         </div>
         <div style="position: relative; overflow: hidden; display: none;" class="session-graph-container" data-graph-id="graph-${idx}">
@@ -575,6 +582,7 @@ class StatisticsPage {
       'Rocket League': '30921',
       'Dota 2': '29595',
       'Counter-Strike': '32399',
+      'Counter-Strike 2': '32399',
       'Valorant': '516575',
       'Fortnite': '33214',
       'Minecraft': '27471',
@@ -596,10 +604,33 @@ class StatisticsPage {
       'Spider-Man': '517860',
       'God of War': '6369',
       'The Last of Us': '490639',
-      'Just Chatting': '509658'
+      'Just Chatting': '509658',
+      'Rust': '263490',
+      'Rainbow Six Siege': '460630',
+      'Tom Clancy\'s Rainbow Six Siege': '460630',
+      'THE FINALS': '519272',
+      'Palworld': '1623487072',
+      'Lethal Company': '1966064697',
+      'Teamfight Tactics': '513143',
+      'STALKER 2': '1479742674',
+      'Call of Duty: Black Ops 6': '1678052513',
+      'EA Sports FC 25': '512938',
+      'Warframe': '66170'
     };
     
-    return knownGames[name] || '509658'; // Fallback to Just Chatting
+    // Попытка найти игру по точному совпадению
+    if (knownGames[name]) {
+      return knownGames[name];
+    }
+    
+    // Попытка найти по частичному совпадению (для вариантов типа "Rainbow Six Siege X")
+    for (const [gameName, gameId] of Object.entries(knownGames)) {
+      if (name.includes(gameName) || gameName.includes(name)) {
+        return gameId;
+      }
+    }
+    
+    return '509658'; // Fallback to Just Chatting
   }
   
   getDefaultCoverUrl(categoryName) {

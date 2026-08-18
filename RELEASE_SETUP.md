@@ -37,10 +37,12 @@ cd "c:\Users\egor1\Desktop\old app\WatchTwitch" ; $env:GITHUB_TOKEN = "github_pa
 https://github.com/Agrysif/WatchTwitch/releases
 
 Вы должны увидеть две новые версии:
+
 - v1.0.10
 - v1.0.11
 
 Каждая с тремя файлами:
+
 - WatchTwitch Setup X.X.X.exe (88 MB)
 - WatchTwitch Setup X.X.X.exe.blockmap (98 KB)
 - latest-X.X.X.yml (конфиг)
@@ -50,10 +52,12 @@ https://github.com/Agrysif/WatchTwitch/releases
 ## Требуемые права токена
 
 Если при создании токена спрашивает права:
+
 - ✓ repo (полный доступ к репозиториям)
 - ✓ public_repo (если выбираете конкретные)
 
 Минимально нужны:
+
 - repo (или хотя бы write:packages и read:packages)
 
 ---
@@ -63,6 +67,7 @@ https://github.com/Agrysif/WatchTwitch/releases
 После этого приложение будет проверять обновления и находить версии 1.0.10 и 1.0.11 на GitHub.
 
 **Файлы уже собраны и находятся в `dist/`:**
+
 - ✓ WatchTwitch Setup 1.0.10.exe
 - ✓ WatchTwitch Setup 1.0.11.exe
 - ✓ latest-1.0.10.yml

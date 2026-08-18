@@ -1,11 +1,13 @@
 // Farming page logic
 class FarmingPage {
   constructor() {
+    this.i18n = window.i18n;
     this.categories = [];
     this.updateInterval = null;
     this.dropsFilterEnabled = false;
     this.sessionStartTime = null;
     this.sessionInterval = null;
+    this.statsUpdateInterval = null;
     this.estimatedBandwidth = 0;
     this.sessionBytes = 0;
     this.bandwidthHistory = [];
@@ -15,6 +17,22 @@ class FarmingPage {
     this.currentStream = null;
     this.dropsMissingChecks = 0;
     this.activeSessionResumed = false;
+    this.isEventListenersSetup = false;
+    this.streamInfoClickHandler = null;
+    this.isStreamDetailsOpen = false;
+    this.activeChatChannelLogin = null;
+    this.manualPlayLockCategoryId = null;
+    this.lastAutoDropsSyncAt = 0;
+    this.autoDropsModeEnabled = false;
+
+    this.rarityTiers = [
+      { name: 'common', label: 'Обычный', minMinutes: 0, maxMinutes: 60, minViewers: 50000, color: '#888888', glow: 'rgba(136, 136, 136, 0.4)' },
+      { name: 'uncommon', label: 'Необычный', minMinutes: 61, maxMinutes: 120, minViewers: 30000, color: '#00ff00', glow: 'rgba(0, 255, 0, 0.4)' },
+      { name: 'rare', label: 'Редкий', minMinutes: 121, maxMinutes: 240, minViewers: 15000, color: '#0099ff', glow: 'rgba(0, 153, 255, 0.4)' },
+      { name: 'epic', label: 'Эпический', minMinutes: 241, maxMinutes: 480, minViewers: 8000, color: '#9d00ff', glow: 'rgba(157, 0, 255, 0.4)' },
+      { name: 'legendary', label: 'Легендарный', minMinutes: 481, maxMinutes: 720, minViewers: 3000, color: '#ff8800', glow: 'rgba(255, 136, 0, 0.4)' },
+      { name: 'mythic', label: 'Мифический', minMinutes: 721, maxMinutes: 99999, minViewers: 0, color: '#ff0088', glow: 'rgba(255, 0, 136, 0.4)' }
+    ];
     
     // Channel Points tracking
     this.channelPoints = {
@@ -31,17 +49,21 @@ class FarmingPage {
 
   async init() {
     this.categories = await Storage.getCategories();
+    this.autoDropsModeEnabled = await Storage.get('autoDropsModeEnabled', this.categories.some(cat => cat.autoDrops === true));
     this.renderCategories();
     this.setupEventListeners();
     this.startAutoUpdate();
 
-        // Завершаем сессию при закрытии приложения
+    // Загружаем подписанные каналы и добавляем их в фарминг
+    await this.loadAndAddSubscribedChannels();
+
+        // Завершаем сессию при закрытии приложения (сохраняем активную сессию)
         if (window.electronAPI && typeof window.electronAPI.onAppClosing === 'function') {
           window.electronAPI.onAppClosing(() => {
             if (this.sessionStartTime) {
               this.updateSessionInfo()
                 .catch(() => {})
-                .finally(() => this.stopFarming(false));
+                .finally(() => this.stopFarming(false, true));
             }
           });
         }
@@ -50,7 +72,7 @@ class FarmingPage {
     await this.resumeActiveSession();
 
     // Если есть авто-категории, автоматически запускаем фарминг (если не восстановили активную)
-    if (!this.activeSessionResumed && this.categories.some(cat => cat.autoDrops) && (!window.streamingManager || !window.streamingManager.isFarmingActive || !window.streamingManager.isFarmingActive())) {
+    if (!this.activeSessionResumed && this.categories.some(cat => cat.enabled) && (!window.streamingManager || !window.streamingManager.isFarmingActive || !window.streamingManager.isFarmingActive())) {
       this.startFarming();
     }
 
@@ -59,6 +81,270 @@ class FarmingPage {
         this.showFarmingState();
       }
     }
+  }
+
+  async loadAndAddSubscribedChannels() {
+    try {
+      const subscriptions = await Storage.getSubscriptions();
+      if (!subscriptions || subscriptions.length === 0) {
+        console.log('No subscriptions found');
+        return;
+      }
+
+      let addedCount = 0;
+      for (const sub of subscriptions) {
+        // Проверяем есть ли уже эта категория (по login)
+        const existingCategory = this.categories.find(
+          c => c.name.toLowerCase() === sub.login.toLowerCase()
+        );
+
+        if (!existingCategory) {
+          // Проверяем если у этого канала есть дропсы
+          const hasDrops = await window.electronAPI.checkCategoryDrops(sub.login);
+          
+          // Добавляем категорию только если есть дропсы
+          if (hasDrops) {
+            const newCategory = {
+              id: Date.now().toString() + Math.random(),
+              name: sub.login,
+              enabled: true,
+              autoDrops: false,
+              hasDrops: true,
+              priority: 0,
+              tags: [],
+              viewersCount: 0,
+              dropsCompleted: false
+            };
+
+            this.categories.push(newCategory);
+            addedCount++;
+            console.log('Added subscription channel to farming:', sub.login);
+          }
+        }
+      }
+
+      if (addedCount > 0) {
+        await Storage.saveCategories(this.categories);
+        this.renderCategories();
+        console.log('Added', addedCount, 'subscription channels to farming');
+      }
+    } catch (error) {
+      console.error('Error loading subscriptions:', error);
+    }
+  }
+
+  isSingleManualPlayLocked(category = this.currentCategory) {
+    if (!category || !this.manualPlayLockCategoryId) return false;
+    if (category.id !== this.manualPlayLockCategoryId) return false;
+    if (category.autoDrops) return false;
+
+    const enabledCategories = this.categories.filter(cat => cat.enabled);
+    return enabledCategories.length === 1 && enabledCategories[0].id === category.id;
+  }
+
+  setManualPlayLock(category) {
+    if (!category || category.autoDrops) {
+      this.manualPlayLockCategoryId = null;
+      return;
+    }
+
+    const enabledCategories = this.categories.filter(cat => cat.enabled);
+    const manualCategories = this.categories.filter(cat => !cat.autoDrops);
+
+    if (enabledCategories.length === 1 && enabledCategories[0].id === category.id && manualCategories.length === 1) {
+      this.manualPlayLockCategoryId = category.id;
+      console.log('[ManualPlayLock] Enabled for category:', category.name);
+      return;
+    }
+
+    this.manualPlayLockCategoryId = null;
+  }
+
+  buildActiveCampaignsMapFromCampaigns(campaignsData) {
+    const activeCampaignsMap = new Map();
+    const campaigns = Array.isArray(campaignsData)
+      ? campaignsData
+      : (Array.isArray(campaignsData?.campaigns) ? campaignsData.campaigns : []);
+
+    if (!campaigns || campaigns.length === 0) {
+      return activeCampaignsMap;
+    }
+
+    const now = Date.now();
+
+    for (const campaign of campaigns) {
+      const gameNameRaw = campaign?.game?.name || campaign?.game?.displayName || campaign?.game;
+      if (!gameNameRaw) continue;
+
+      const normalizedGameKey = this.normalizeGameKey(gameNameRaw);
+      if (!normalizedGameKey) continue;
+
+      const startAtRaw = campaign?.startAt || campaign?.startsAt;
+      const endAtRaw = campaign?.endAt || campaign?.endsAt;
+      const startAtMs = startAtRaw ? new Date(startAtRaw).getTime() : null;
+      const endAtMs = endAtRaw ? new Date(endAtRaw).getTime() : null;
+
+      if (startAtMs && startAtMs > now) continue;
+      if (endAtMs && endAtMs <= now) continue;
+
+      const status = String(campaign?.status || '').toUpperCase();
+      if (status === 'EXPIRED') continue;
+
+      const drops = Array.isArray(campaign.timeBasedDrops)
+        ? campaign.timeBasedDrops
+        : (Array.isArray(campaign.drops) ? campaign.drops : []);
+      const totalDrops = drops.length;
+      const completedDrops = drops.filter(drop => {
+        const required = Number(drop.required) || Number(drop.requiredMinutes) || Number(drop.requiredMinutesWatched) || 0;
+        const progress = Number(drop.progress) || 0;
+        return !!drop.claimed || !!drop.isClaimed || (required > 0 && progress >= required);
+      }).length;
+
+      if (totalDrops > 0 && completedDrops >= totalDrops) {
+        continue;
+      }
+
+      const progressPercent = totalDrops > 0
+        ? Math.floor((completedDrops / totalDrops) * 100)
+        : 0;
+
+      activeCampaignsMap.set(normalizedGameKey, {
+        campaign,
+        progress: progressPercent
+      });
+    }
+
+    return activeCampaignsMap;
+  }
+
+  async loadActiveCampaignsMap() {
+    let campaigns = await window.electronAPI.fetchTwitchDrops();
+    let campaignsMap = this.buildActiveCampaignsMapFromCampaigns(campaigns);
+
+    // Fallback: если dashboard недоступен/пустой, используем inventory
+    if (campaignsMap.size === 0) {
+      const inventory = await window.electronAPI.fetchDropsInventory();
+      campaignsMap = this.buildActiveCampaignsMapFromCampaigns(inventory);
+    }
+
+    return campaignsMap;
+  }
+
+  normalizeGameKey(name) {
+    if (!name || typeof name !== 'string') return '';
+    return name
+      .toLowerCase()
+      .trim()
+      .replace(/[’'`]/g, '')
+      .replace(/[^\p{L}\p{N}]+/gu, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  normalizeBoxArtURL(url, size = '52x72') {
+    const fallback = `https://static-cdn.jtvnw.net/ttv-boxart/509658-${size}.jpg`;
+    if (!url || typeof url !== 'string') return fallback;
+
+    let normalized = url.trim();
+    if (!normalized) return fallback;
+
+    if (normalized.startsWith('//')) {
+      normalized = `https:${normalized}`;
+    }
+
+    normalized = normalized.replace(/^http:\/\//i, 'https://');
+    normalized = normalized
+      .replace(/\{width\}x\{height\}/gi, size)
+      .replace(/(-\d+x\d+)(\.[a-z0-9]+)(\?.*)?$/i, `-${size}$2$3`);
+
+    if (!normalized.startsWith('https://static-cdn.jtvnw.net/ttv-boxart/')) {
+      return fallback;
+    }
+
+    return normalized;
+  }
+
+  async syncAutoDropsCategoriesFromInventory(allCategories, activeCampaignsMap = null) {
+    if (!this.autoDropsModeEnabled) return 0;
+
+    const now = Date.now();
+    if (now - this.lastAutoDropsSyncAt < 120000) {
+      return 0;
+    }
+    this.lastAutoDropsSyncAt = now;
+
+    let campaignsMap = activeCampaignsMap;
+    if (!campaignsMap) {
+      campaignsMap = await this.loadActiveCampaignsMap();
+    }
+
+    if (!campaignsMap || campaignsMap.size === 0) {
+      return 0;
+    }
+
+    const categoriesByName = new Map(
+      (allCategories || []).map(cat => [this.normalizeGameKey(cat.name), cat])
+    );
+
+    let addedCount = 0;
+    let changedExisting = false;
+
+    for (const [gameNameKey, campaignInfo] of campaignsMap.entries()) {
+      const existing = this.categories.find(cat => this.normalizeGameKey(cat.name) === gameNameKey);
+      const freshCategory = categoriesByName.get(gameNameKey);
+
+      if (existing) {
+        if (existing.autoDrops) {
+          existing.hasDrops = true;
+          existing.dropsCompleted = false;
+          existing.enabled = true;
+          existing.dropsProgressPercent = campaignInfo.progress;
+          existing.dropsEndsAt = campaignInfo.campaign?.endAt || campaignInfo.campaign?.endsAt;
+          if (freshCategory?.viewersCount !== undefined) {
+            existing.viewersCount = freshCategory.viewersCount;
+          }
+          if (freshCategory?.boxArtURL) {
+            existing.boxArtURL = this.normalizeBoxArtURL(freshCategory.boxArtURL, '52x72');
+          }
+          changedExisting = true;
+        }
+        continue;
+      }
+
+      const newCategory = {
+        id: freshCategory?.id || `${Date.now()}-${Math.random()}`,
+        name: freshCategory?.name || campaignInfo.campaign?.game?.name || campaignInfo.campaign?.game?.displayName || campaignInfo.campaign?.game || gameNameKey,
+        boxArtURL: this.normalizeBoxArtURL(freshCategory?.boxArtURL || campaignInfo.campaign?.imageUrl || campaignInfo.campaign?.game?.boxArtURL, '52x72'),
+        viewersCount: freshCategory?.viewersCount || 0,
+        tags: freshCategory?.tags || [],
+        hasDrops: true,
+        autoDrops: true,
+        enabled: true,
+        priority: this.categories.length + 1,
+        dropsProgressPercent: campaignInfo.progress,
+        dropsEndsAt: campaignInfo.campaign?.endAt || campaignInfo.campaign?.endsAt,
+        dropsCompleted: false
+      };
+
+      this.categories.push(newCategory);
+      addedCount++;
+    }
+
+    if (addedCount > 0 || changedExisting) {
+      await Storage.saveCategories(this.categories);
+      this.renderCategories();
+      this.updateAutoDropsButtonState();
+    }
+
+    if (addedCount > 0) {
+      window.utils.showToast(`Автодобавлено новых категорий с дропсами: ${addedCount}`, 'success');
+
+      if (!this.currentStream && (!window.streamingManager || !window.streamingManager.isFarmingActive || !window.streamingManager.isFarmingActive())) {
+        setTimeout(() => this.startFarming(), 600);
+      }
+    }
+
+    return addedCount;
   }
 
   startAutoUpdate() {
@@ -71,13 +357,15 @@ class FarmingPage {
   }
 
   async updateCategoriesData() {
-    if (this.categories.length === 0) return;
+    if (this.categories.length === 0 && !this.autoDropsModeEnabled) return;
     
     try {
       console.log('Updating categories data...');
       
       // Получаем свежие данные о категориях
       const allCategories = await window.electronAPI.fetchTwitchCategories();
+      const activeCampaignsMap = await this.loadActiveCampaignsMap();
+      const hasInventoryCampaigns = activeCampaignsMap.size > 0;
       
       let updated = false;
       let manualGainedDrops = false;
@@ -97,7 +385,27 @@ class FarmingPage {
         
         // Проверяем наличие дропсов
         const prevHasDrops = !!category.hasDrops;
-        const hasDrops = await window.electronAPI.checkCategoryDrops(category.name);
+        const gameNameKey = this.normalizeGameKey(category.name || '');
+        const campaignInfo = activeCampaignsMap.get(gameNameKey);
+
+        let hasDrops = false;
+        if (campaignInfo) {
+          hasDrops = true;
+
+          const prevProgress = category.dropsProgressPercent;
+          const prevEndsAt = category.dropsEndsAt;
+
+          category.dropsProgressPercent = campaignInfo.progress;
+          category.dropsEndsAt = campaignInfo.campaign?.endAt || campaignInfo.campaign?.endsAt;
+          category.dropsCompleted = false;
+
+          if (prevProgress !== category.dropsProgressPercent || prevEndsAt !== category.dropsEndsAt) {
+            updated = true;
+          }
+        } else if (!hasInventoryCampaigns) {
+          hasDrops = await window.electronAPI.checkCategoryDrops(category.name);
+        }
+
         if (category.hasDrops !== hasDrops) {
           category.hasDrops = hasDrops;
           updated = true;
@@ -127,6 +435,9 @@ class FarmingPage {
         this.renderCategories();
         window.utils?.showToast(`Удалено авто‑категорий без дропсов: ${beforeCount - kept.length}`, 'info');
       }
+
+      // Автоскан: добавляем новые категории с дропсами, пока включён автофарм
+      await this.syncAutoDropsCategoriesFromInventory(allCategories, activeCampaignsMap);
 
       if (updated) {
         // Сохраняем обновленные данные
@@ -161,6 +472,13 @@ class FarmingPage {
   }
 
   setupEventListeners() {
+    // Проверяем, были ли уже установлены обработчики
+    if (this.isEventListenersSetup) {
+      console.log('Event listeners already setup, skipping');
+      return;
+    }
+    this.isEventListenersSetup = true;
+
     // Используем setTimeout для гарантии, что DOM загружен
     setTimeout(() => {
       const addBtn = document.getElementById('add-category-btn');
@@ -263,7 +581,77 @@ class FarmingPage {
           this.toggleNotifications();
         });
       }
+
+      // Обработчик кликов по карточкам дропов
+      document.addEventListener('click', (e) => {
+        const dropCard = e.target.closest('.drop-card-clickable');
+        if (dropCard) {
+          const dropData = dropCard.getAttribute('data-drop');
+          const campaignData = dropCard.getAttribute('data-campaign');
+          
+          if (dropData && campaignData) {
+            try {
+              const drop = JSON.parse(decodeURIComponent(dropData));
+              const campaign = JSON.parse(decodeURIComponent(campaignData));
+
+              if (!drop.imageURL && drop.imageUrl) {
+                drop.imageURL = drop.imageUrl;
+              }
+              if (!drop.required && drop.requiredMinutes) {
+                drop.required = drop.requiredMinutes;
+              }
+              
+              this.showDropDetailModal(drop, campaign);
+            } catch (err) {
+              console.error('Ошибка при открытии модального окна с деталями дропа:', err);
+            }
+          }
+        }
+      });
     }, 100);
+  }
+
+  calculateDropRarity(drop, campaign) {
+    const requiredMinutes = drop.required || drop.requiredMinutesWatched || 0;
+    const viewersCount = campaign?.game?.viewersCount || campaign?.viewersCount || 0;
+
+    let rarity = this.rarityTiers[0];
+
+    for (const tier of this.rarityTiers) {
+      if (requiredMinutes >= tier.minMinutes && requiredMinutes <= tier.maxMinutes) {
+        rarity = tier;
+        break;
+      }
+    }
+
+    if (viewersCount > 0 && viewersCount < rarity.minViewers) {
+      const currentIndex = this.rarityTiers.indexOf(rarity);
+      if (currentIndex < this.rarityTiers.length - 1) {
+        rarity = this.rarityTiers[currentIndex + 1];
+      }
+    }
+
+    const baseOwners = Math.max(viewersCount * 0.3, 10000);
+    const rarityMultiplier = Math.pow(this.rarityTiers.indexOf(rarity) + 1, 2);
+    const estimatedOwners = Math.floor(baseOwners / rarityMultiplier);
+
+    const difficulty = Math.min(10, Math.max(1, Math.ceil(requiredMinutes / 90)));
+
+    return {
+      ...rarity,
+      requiredMinutes,
+      viewersCount,
+      estimatedOwners: estimatedOwners > 1000 ? `${Math.floor(estimatedOwners / 1000)}K+` : `${estimatedOwners}+`,
+      difficulty
+    };
+  }
+
+  showDropDetailModal(drop, campaign) {
+    if (typeof window.showDropDetailModal === 'function') {
+      window.showDropDetailModal(drop, campaign, this);
+    } else {
+      console.error('Drop detail modal script not loaded');
+    }
   }
 
   async resumeActiveSession() {
@@ -308,7 +696,17 @@ class FarmingPage {
         this.sessionInterval = null;
       }
       
-      this.sessionInterval = setInterval(() => this.updateSessionInfo(), 1000);
+      this.sessionInterval = setInterval(() => {
+        this.updateSessionInfo();
+      }, 1000);
+
+      // Запускаем периодическое обновление статистики (каждые 30 секунд)
+      if (this.statsUpdateInterval) {
+        clearInterval(this.statsUpdateInterval);
+      }
+      this.statsUpdateInterval = setInterval(() => {
+        this.updateLiveStatistics();
+      }, 30000); // 30 секунд
 
       // Запускаем сборщик бонусов и проверку здоровья стрима
       this.resetChannelPointsTracking();
@@ -476,12 +874,12 @@ class FarmingPage {
       
       return `
         <div class="game-item-selector ${isAdded ? 'added' : ''}" data-category-id="${cat.id}" style="cursor: pointer;">
-          <img src="${cat.boxArtURL || 'https://static-cdn.jtvnw.net/ttv-boxart/509658-52x72.jpg'}" alt="${cat.name}">
+          <img src="${this.normalizeBoxArtURL(cat.boxArtURL, '52x72')}" alt="${cat.name}" onerror="this.onerror=null;this.src='https://static-cdn.jtvnw.net/ttv-boxart/509658-52x72.jpg';">
           <div class="game-item-info">
             <div class="game-item-name">${cat.name}</div>
             <div class="game-item-viewers" style="display: flex; align-items: center;">
               <span style="color: var(--text-secondary); font-size: 13px;">
-                ${cat.viewersCount ? `${(cat.viewersCount / 1000).toFixed(1)}K зрителей` : ''}
+                ${cat.viewersCount ? `${this.formatViewersCount(cat.viewersCount)} зрителей` : ''}
               </span>
               ${dropsIndicator}
             </div>
@@ -507,7 +905,7 @@ class FarmingPage {
     const newCategory = {
       id: category.id,
       name: category.name,
-      boxArtURL: category.boxArtURL || '',
+      boxArtURL: this.normalizeBoxArtURL(category.boxArtURL, '52x72'),
       viewersCount: category.viewersCount || 0,
       tags: category.tags || [],
       hasDrops: hasDrops,
@@ -524,15 +922,15 @@ class FarmingPage {
   updateAutoDropsButtonState() {
     const btn = document.getElementById('add-all-drops-btn');
     if (!btn) return;
-    const hasAutoDrops = this.categories.some(cat => cat.autoDrops === true);
+    const isAutoMode = this.autoDropsModeEnabled === true;
     const btnText = btn.querySelector('span');
 
-    if (hasAutoDrops) {
+    if (isAutoMode) {
       btn.style.background = 'linear-gradient(135deg, #9147ff, #772ce8)';
       btn.style.color = '#fff';
       btn.style.border = 'none';
       btn.style.opacity = '1';
-      if (btnText) btnText.textContent = 'Отключить автофарм';
+      if (btnText) btnText.textContent = this.i18n.t('farming.disableAutofarming');
     } else {
       btn.style.background = 'rgba(255,255,255,0.08)';
       btn.style.color = 'var(--text-primary)';
@@ -543,14 +941,18 @@ class FarmingPage {
   }
 
   async toggleAutoDropsCategories() {
-    const hasAutoDrops = this.categories.some(cat => cat.autoDrops === true);
-    if (hasAutoDrops) {
+    if (this.autoDropsModeEnabled) {
+      this.autoDropsModeEnabled = false;
+      await Storage.set('autoDropsModeEnabled', false);
       this.categories = this.categories.filter(cat => cat.autoDrops !== true);
       await Storage.saveCategories(this.categories);
       this.renderCategories();
       this.updateAutoDropsButtonState();
       window.utils.showToast('Автофарм дропсов отключен', 'info');
     } else {
+      this.autoDropsModeEnabled = true;
+      await Storage.set('autoDropsModeEnabled', true);
+      this.updateAutoDropsButtonState();
       await this.addAllDropsCategories();
     }
   }
@@ -564,69 +966,80 @@ class FarmingPage {
         return;
       }
 
-      const dropsData = await window.electronAPI.fetchDropsInventory();
-      const activeCampaignsMap = new Map();
-      if (dropsData && dropsData.campaigns) {
-        dropsData.campaigns.forEach(campaign => {
-          if (campaign.game && campaign.game.name) {
-            const totalDrops = campaign.drops.length;
-            let completedDrops = 0;
-            campaign.drops.forEach(drop => {
-              if (drop.claimed || (drop.required > 0 && drop.progress >= drop.required)) {
-                completedDrops++;
-              }
-            });
-            const isCompleted = completedDrops >= totalDrops;
-            if (!isCompleted) {
-              const progress = totalDrops > 0 ? Math.floor((completedDrops / totalDrops) * 100) : 0;
-              activeCampaignsMap.set(campaign.game.name.toLowerCase(), {
-                campaign,
-                progress
-              });
-            }
-          }
-        });
-      }
-
-      const checkPromises = allCategories.map(async (cat) => {
-        if (this.categories.some(c => c.id === cat.id)) return null;
-        const gameName = cat.name.toLowerCase();
-        const campaignInfo = activeCampaignsMap.get(gameName);
-        if (campaignInfo) {
-          return { ...cat, campaignInfo };
-        }
-        const hasDrops = await window.electronAPI.checkCategoryDrops(cat.name);
-        if (hasDrops) return cat;
-        return null;
-      });
-
-      const results = await Promise.all(checkPromises);
-      const validCategories = results.filter(cat => cat !== null);
-      if (validCategories.length === 0) {
-        window.utils.showToast('Не найдено новых категорий с незавершенными дропсами', 'warning');
-        return;
-      }
+      const activeCampaignsMap = await this.loadActiveCampaignsMap();
+      const categoriesByName = new Map(
+        allCategories.map(cat => [this.normalizeGameKey(cat.name), cat])
+      );
 
       let addedCount = 0;
-      for (const category of validCategories) {
-        const newCategory = {
-          id: category.id,
-          name: category.name,
-          boxArtURL: category.boxArtURL || '',
-          viewersCount: category.viewersCount || 0,
-          tags: category.tags || [],
-          hasDrops: true,
-          autoDrops: true,
-          enabled: true,
-          priority: this.categories.length + 1
-        };
-        if (category.campaignInfo) {
-          newCategory.dropsProgressPercent = category.campaignInfo.progress;
-          newCategory.dropsEndsAt = category.campaignInfo.campaign.endsAt;
-          newCategory.dropsCompleted = false;
+
+      if (activeCampaignsMap.size > 0) {
+        for (const [gameKey, campaignInfo] of activeCampaignsMap.entries()) {
+          const existing = this.categories.find(cat => this.normalizeGameKey(cat.name) === gameKey);
+          if (existing) {
+            if (existing.autoDrops) {
+              existing.enabled = true;
+              existing.hasDrops = true;
+              existing.dropsCompleted = false;
+              existing.dropsProgressPercent = campaignInfo.progress;
+              existing.dropsEndsAt = campaignInfo.campaign?.endAt || campaignInfo.campaign?.endsAt;
+            }
+            continue;
+          }
+
+          const freshCategory = categoriesByName.get(gameKey);
+          const campaignGameName = campaignInfo.campaign?.game?.name || campaignInfo.campaign?.game?.displayName || campaignInfo.campaign?.game;
+          const campaignGameId = campaignInfo.campaign?.gameId || campaignInfo.campaign?.game?.id;
+
+          const newCategory = {
+            id: freshCategory?.id || campaignGameId || `${Date.now()}-${Math.random()}`,
+            name: freshCategory?.name || campaignGameName || gameKey,
+            boxArtURL: this.normalizeBoxArtURL(freshCategory?.boxArtURL || campaignInfo.campaign?.imageUrl || campaignInfo.campaign?.game?.boxArtURL, '52x72'),
+            viewersCount: freshCategory?.viewersCount || 0,
+            tags: freshCategory?.tags || [],
+            hasDrops: true,
+            autoDrops: true,
+            enabled: true,
+            priority: this.categories.length + 1,
+            dropsProgressPercent: campaignInfo.progress,
+            dropsEndsAt: campaignInfo.campaign?.endAt || campaignInfo.campaign?.endsAt,
+            dropsCompleted: false
+          };
+
+          this.categories.push(newCategory);
+          addedCount++;
         }
-        this.categories.push(newCategory);
-        addedCount++;
+      } else {
+        const checkPromises = allCategories.map(async (cat) => {
+          if (this.categories.some(c => c.id === cat.id)) return null;
+          const hasDrops = await window.electronAPI.checkCategoryDrops(cat.name);
+          if (hasDrops) return cat;
+          return null;
+        });
+
+        const results = await Promise.all(checkPromises);
+        const validCategories = results.filter(cat => cat !== null);
+
+        for (const category of validCategories) {
+          const newCategory = {
+            id: category.id,
+            name: category.name,
+            boxArtURL: this.normalizeBoxArtURL(category.boxArtURL, '52x72'),
+            viewersCount: category.viewersCount || 0,
+            tags: category.tags || [],
+            hasDrops: true,
+            autoDrops: true,
+            enabled: true,
+            priority: this.categories.length + 1
+          };
+          this.categories.push(newCategory);
+          addedCount++;
+        }
+      }
+
+      if (addedCount === 0) {
+        window.utils.showToast('Не найдено новых категорий с незавершенными дропсами', 'warning');
+        return;
       }
 
       await Storage.saveCategories(this.categories);
@@ -718,7 +1131,7 @@ class FarmingPage {
       const tagsHtml = cat.tags && cat.tags.length > 0 
         ? `<span class="category-tag">${cat.tags[0]}</span>` 
         : '';
-      const autoBadge = cat.autoDrops ? `<span class="category-tag" style="background: rgba(145, 71, 255, 0.2); color: #bda0ff; border: 1px solid rgba(145, 71, 255, 0.4);">Авто</span>` : '';
+      const autoBadge = cat.autoDrops ? `<span class="category-tag" style="background: rgba(145, 71, 255, 0.2); color: #bda0ff; border: 1px solid rgba(145, 71, 255, 0.4);">${this.i18n.t('farming.auto')}</span>` : '';
       
       const dropsStatusHtml = cat.hasDrops ? (
         cat.dropsCompleted 
@@ -726,13 +1139,13 @@ class FarmingPage {
                <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
                  <path d="M3.5 7L1 4.5L1.7 3.8L3.5 5.6L8.3 0.8L9 1.5L3.5 7Z"/>
                </svg>
-               Дропсы получены
+               ${this.i18n.t('farming.dropsCompleted')}
              </span>`
           : `<span class="category-drops-status completed">
                <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
                  <circle cx="5" cy="5" r="5"/>
                </svg>
-               Drops ${cat.dropsProgressPercent !== undefined ? cat.dropsProgressPercent + '%' : 'Включены'}
+               Drops ${cat.dropsProgressPercent !== undefined ? cat.dropsProgressPercent + '%' : this.i18n.t('farming.enabled')}
                ${cat.dropsEndsAt ? this.formatTimeRemaining(cat.dropsEndsAt) : ''}
              </span>`
       ) : '';
@@ -753,12 +1166,12 @@ class FarmingPage {
           </svg>
         </div>
         <div class="category-image">
-          <img src="${cat.boxArtURL || 'https://static-cdn.jtvnw.net/ttv-boxart/509658-52x72.jpg'}" alt="${cat.name}">
+          <img src="${this.normalizeBoxArtURL(cat.boxArtURL, '52x72')}" alt="${cat.name}" onerror="this.onerror=null;this.src='https://static-cdn.jtvnw.net/ttv-boxart/509658-52x72.jpg';">
         </div>
         <div class="category-info">
           <div class="category-name">${cat.name}</div>
           <div class="category-status">
-            <span style="color: var(--text-secondary); font-size: 13px;">${(cat.viewersCount / 1000).toFixed(1)}K зрителей</span>
+            <span style="color: var(--text-secondary); font-size: 13px;">${this.formatViewersCount(cat.viewersCount)} зрителей</span>
             ${tagsHtml}
             ${autoBadge}
             ${dropsStatusHtml}
@@ -789,6 +1202,7 @@ class FarmingPage {
     this.setupRemoveButtons();
     this.setupToggleButtons();
     this.setupPlayButtons();
+    this.setupCategoryImageClick();
     this.updateAutoDropsButtonState();
   }
 
@@ -802,6 +1216,7 @@ class FarmingPage {
         
         if (category) {
           console.log('Manual play category:', category.name);
+          this.setManualPlayLock(category);
           window.utils.showToast(`Запуск категории ${category.name}...`, 'info');
           
           // Останавливаем текущий стрим если есть
@@ -815,6 +1230,417 @@ class FarmingPage {
         }
       });
     });
+  }
+
+  setupCategoryImageClick() {
+    const categoryImages = document.querySelectorAll('.category-image');
+    categoryImages.forEach(img => {
+      img.style.cursor = 'pointer';
+      img.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const categoryItem = e.currentTarget.closest('.category-item');
+        const categoryId = categoryItem?.dataset.categoryId;
+        const category = this.categories.find(c => c.id === categoryId);
+        
+        if (category) {
+          await this.showCategoryDetails(category);
+        }
+      });
+    });
+  }
+
+  async showCategoryDetails(category) {
+    const i18n = window.i18n;
+    
+    // Создаем модальное окно
+    const modal = document.createElement('div');
+    modal.className = 'category-detail-modal';
+    modal.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.8);
+      backdrop-filter: blur(10px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10000;
+      animation: fadeIn 0.2s ease;
+    `;
+
+    const modalContent = document.createElement('div');
+    modalContent.style.cssText = `
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      width: 90%;
+      max-width: 900px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+      animation: slideUp 0.3s ease;
+    `;
+
+    modalContent.innerHTML = `
+      <div style="position: relative; padding: 24px; padding-bottom: 32px;">
+        <button id="close-category-modal" style="position: absolute; top: 16px; right: 16px; background: rgba(255, 255, 255, 0.1); border: none; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; z-index: 10;" onmouseover="this.style.background='rgba(255, 255, 255, 0.2)'" onmouseout="this.style.background='rgba(255, 255, 255, 0.1)'">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" style="color: var(--text-primary);">
+            <path d="M2 2L14 14M14 2L2 14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </button>
+
+        <!-- Двухколоночный layout -->
+        <div style="display: flex; gap: 24px; align-items: start; margin-top: 8px;">
+          
+          <!-- Левая колонка: Карточка категории -->
+          <div style="flex-shrink: 0; width: 280px;">
+            <div style="background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 12px; padding: 20px; position: sticky; top: 0;">
+              <div id="cover-container" style="perspective: 1000px; margin-bottom: 16px;">
+                <img id="category-cover" src="${this.getHighQualityBoxArt(category.boxArtURL)}" 
+                     alt="${category.name}"
+                     style="width: 100%; aspect-ratio: 3/4; border-radius: 8px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3); object-fit: cover; transition: transform 0.1s ease-out, box-shadow 0.3s; transform-style: preserve-3d; cursor: pointer;">
+              </div>
+              
+              <h2 style="color: var(--text-primary); font-size: 22px; font-weight: 700; margin: 0 0 16px; line-height: 1.2;">${category.name}</h2>
+              
+              <div id="category-info-blocks" style="display: flex; flex-direction: column; gap: 12px;">
+                <div style="display: flex; align-items: center; gap: 8px; padding: 10px; background: rgba(145, 71, 255, 0.1); border: 1px solid rgba(145, 71, 255, 0.2); border-radius: 8px;">
+                  <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" style="color: #9147ff; flex-shrink: 0;">
+                    <path d="M8 2a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM4 14c0-2.21 1.79-4 4-4s4 1.79 4 4H4z"/>
+                  </svg>
+                  <div style="flex: 1;">
+                    <div style="font-size: 11px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px;">Зрители</div>
+                    <div style="font-size: 15px; font-weight: 700; color: var(--text-primary);">${this.formatViewersCount(category.viewersCount)}</div>
+                  </div>
+                </div>
+                
+                ${category.hasDrops ? `
+                <div style="display: flex; align-items: center; gap: 8px; padding: 10px; background: rgba(0, 245, 147, 0.1); border: 1px solid rgba(0, 245, 147, 0.2); border-radius: 8px;">
+                  <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" style="color: #00f593; flex-shrink: 0;">
+                    <path d="M8 2L10 6H14L11 9L12 13L8 10.5L4 13L5 9L2 6H6L8 2Z"/>
+                  </svg>
+                  <div style="flex: 1;">
+                    <div style="font-size: 11px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px;">Статус</div>
+                    <div style="font-size: 13px; font-weight: 600; color: #00f593;">Дропсы доступны</div>
+                  </div>
+                </div>` : ''}
+              </div>
+            </div>
+          </div>
+
+          <!-- Правая колонка: Список стримов -->
+          <div style="flex: 1; min-width: 0; margin-right: 40px;">
+            <div id="streams-scroll-container" style="max-height: calc(85vh - 80px); overflow-y: auto; padding-right: 8px; padding-bottom: 8px; scroll-behavior: smooth;">
+              <div id="category-streams-loading" style="text-align: center; padding: 60px 20px; color: var(--text-secondary);">
+                <div style="width: 40px; height: 40px; border: 3px solid rgba(145, 71, 255, 0.3); border-top-color: #9147ff; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 16px;"></div>
+                <div style="font-size: 14px;">Загрузка стримов...</div>
+              </div>
+
+              <div id="category-streams-content" style="display: none;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    modal.appendChild(modalContent);
+    document.body.appendChild(modal);
+
+    // Обработчик закрытия
+    const closeModal = () => {
+      modal.style.opacity = '0';
+      modalContent.style.transform = 'translateY(20px)';
+      setTimeout(() => document.body.removeChild(modal), 200);
+    };
+
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) closeModal();
+    });
+
+    document.getElementById('close-category-modal').addEventListener('click', closeModal);
+
+    // 3D эффект наклона обложки при наведении мыши (как в Resident Evil)
+    const coverContainer = document.getElementById('cover-container');
+    const categoryCover = document.getElementById('category-cover');
+    
+    if (coverContainer && categoryCover) {
+      coverContainer.addEventListener('mousemove', (e) => {
+        const rect = coverContainer.getBoundingClientRect();
+        const x = e.clientX - rect.left; // позиция X относительно контейнера
+        const y = e.clientY - rect.top;  // позиция Y относительно контейнера
+        
+        const centerX = rect.width / 2;
+        const centerY = rect.height / 2;
+        
+        // Вычисляем углы наклона (от -15 до 15 градусов)
+        const rotateX = ((y - centerY) / centerY) * -15; // инвертируем для естественного эффекта
+        const rotateY = ((x - centerX) / centerX) * 15;
+        
+        // Применяем трансформацию
+        categoryCover.style.transform = `perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale(1.05)`;
+        categoryCover.style.boxShadow = '0 20px 40px rgba(0, 0, 0, 0.6)';
+      });
+      
+      coverContainer.addEventListener('mouseleave', () => {
+        // Возвращаем в исходное положение
+        categoryCover.style.transform = 'perspective(1000px) rotateX(0deg) rotateY(0deg) scale(1)';
+        categoryCover.style.boxShadow = '0 4px 16px rgba(0, 0, 0, 0.3)';
+      });
+    }
+
+    // Загружаем стримы с дропсами
+    try {
+      const streams = await window.electronAPI.getStreamsWithDrops(category.name);
+      const loadingEl = document.getElementById('category-streams-loading');
+      const contentEl = document.getElementById('category-streams-content');
+
+      if (!streams || streams.length === 0) {
+        loadingEl.innerHTML = `
+          <div style="padding: 20px; text-align: center;">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--text-secondary); margin-bottom: 12px;">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="12" y1="8" x2="12" y2="12"/>
+              <line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+            <div style="color: var(--text-secondary); font-size: 14px;">Нет стримов с дропсами</div>
+          </div>
+        `;
+        return;
+      }
+
+      // Получаем информацию о всех стримах
+      const topStreams = streams;
+      const accounts = await Storage.getAccounts();
+      const authToken = accounts.find(acc => acc.loginMethod === 'oauth')?.authToken;
+
+      const streamsData = await Promise.all(
+        topStreams.map(async (stream) => {
+          const details = await window.electronAPI.getChannelDetails(authToken, stream.login);
+          console.log(`[CategoryModal] Stream ${stream.login}:`, { 
+            profileImageUrl: details.profileImageUrl, 
+            displayName: stream.display_name || stream.displayName,
+            merged: { ...stream, ...details }
+          });
+          return { ...stream, ...details };
+        })
+      );
+
+      loadingEl.style.display = 'none';
+      contentEl.style.display = 'block';
+      
+      // Обновляем левую колонку с количеством стримеров
+      const categoryInfoBlocks = document.getElementById('category-info-blocks');
+      if (categoryInfoBlocks) {
+        categoryInfoBlocks.innerHTML += `
+          <div style="display: flex; align-items: center; gap: 8px; padding: 10px; background: rgba(255, 87, 51, 0.1); border: 1px solid rgba(255, 87, 51, 0.2); border-radius: 8px;">
+            <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" style="color: #ff5733; flex-shrink: 0;">
+              <path d="M2 2v12h12V2H2zm10 10H4V4h8v8z"/>
+              <circle cx="8" cy="8" r="2" fill="currentColor"/>
+              <path d="M1 4h1v8H1V4zm13 0h1v8h-1V4z"/>
+            </svg>
+            <div style="flex: 1;">
+              <div style="font-size: 11px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px;">Стримеров онлайн</div>
+              <div style="font-size: 15px; font-weight: 700; color: var(--text-primary);">${streams.length}</div>
+            </div>
+          </div>
+        `;
+      }
+
+      contentEl.innerHTML = `
+        <div>
+          <h3 style="color: var(--text-primary); font-size: 18px; font-weight: 700; margin: 0 0 20px; display: flex; align-items: center; gap: 10px;">
+            <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor" style="color: #9147ff;">
+              <path d="M8 2L10 6H14L11 9L12 13L8 10.5L4 13L5 9L2 6H6L8 2Z"/>
+            </svg>
+            Топ стримы с дропсами
+            <span style="background: rgba(145, 71, 255, 0.15); color: #9147ff; padding: 2px 8px; border-radius: 6px; font-size: 13px; font-weight: 700;">${streams.length}</span>
+          </h3>
+          <div style="display: flex; flex-direction: column; gap: 10px;">
+            ${streamsData.map((stream, index) => `
+              <div class="stream-card-clickable" 
+                   style="background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 10px; padding: 14px; display: flex; gap: 14px; align-items: center; transition: all 0.2s; cursor: pointer; position: relative; overflow: hidden;" 
+                   onmouseover="this.style.borderColor='#9147ff'; this.style.boxShadow='0 4px 16px rgba(145, 71, 255, 0.3)'; this.style.transform='translateY(-2px)'" 
+                   onmouseout="this.style.borderColor='var(--border-color)'; this.style.boxShadow='none'; this.style.transform='translateY(0)'"
+                   onclick="window.farmingPage.startStreamFromModal('${stream.login}', '${category.id}')">
+                
+                <!-- Фон gradient при наведении -->
+                <div style="position: absolute; inset: 0; background: linear-gradient(135deg, rgba(145, 71, 255, 0.05), rgba(145, 71, 255, 0)); opacity: 0; transition: opacity 0.2s; pointer-events: none;" class="stream-hover-bg"></div>
+                
+                <!-- Аватар стримера -->
+                <div style="position: relative; flex-shrink: 0; z-index: 1;">
+                  <img src="${stream.profileImageUrl || stream.thumbnail_url?.replace('{width}', '70').replace('{height}', '70') || 'https://static-cdn.jtvnw.net/user-default-pictures-uv/cdd517fe-def4-11e9-948e-784f43822e80-profile_image-70x70.png'}" 
+                       alt="${stream.display_name || stream.user_name || stream.login}"
+                       onerror="this.onerror=null; this.src='https://static-cdn.jtvnw.net/user-default-pictures-uv/cdd517fe-def4-11e9-948e-784f43822e80-profile_image-70x70.png'; console.error('[Avatar] Failed to load for ${stream.login}', this.src);"
+                       onload="console.log('[Avatar] Loaded for ${stream.login}');"
+                       style="width: 64px; height: 64px; border-radius: 50%; border: 3px solid ${index === 0 ? '#ffd700' : 'var(--border-color)'}; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);">
+                  ${stream.isLive ? '<div style="position: absolute; bottom: 2px; right: 2px; width: 16px; height: 16px; background: #ff0000; border: 3px solid var(--bg-primary); border-radius: 50%; box-shadow: 0 0 12px rgba(255, 0, 0, 0.8); animation: pulse-live 2s ease-in-out infinite;"></div>' : ''}
+                  ${index === 0 ? '<div style="position: absolute; top: -6px; left: -6px; background: linear-gradient(135deg, #ffd700, #ffed4e); color: #000; padding: 3px 8px; border-radius: 8px; font-size: 9px; font-weight: 800; box-shadow: 0 2px 6px rgba(255, 215, 0, 0.4);">TOP</div>' : ''}
+                </div>
+                
+                <!-- Информация о стриме -->
+                <div style="flex: 1; min-width: 0; z-index: 1;">
+                  <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px; flex-wrap: wrap;">
+                    <div style="font-weight: 700; font-size: 16px; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${stream.display_name || stream.displayName || stream.user_name || stream.login}</div>
+                    ${stream.isLive ? `
+                    <div style="display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; background: linear-gradient(135deg, rgba(255, 0, 0, 0.2), rgba(255, 0, 0, 0.1)); border: 1px solid rgba(255, 0, 0, 0.4); border-radius: 8px; font-size: 11px; font-weight: 700; color: #ff4444;">
+                      <span style="width: 6px; height: 6px; background: #ff0000; border-radius: 50%; box-shadow: 0 0 4px rgba(255, 0, 0, 0.8);"></span>
+                      LIVE
+                    </div>` : ''}
+                    ${stream.isPartner ? '<svg width="14" height="14" viewBox="0 0 16 16" fill="#9147ff" title="Партнер Twitch"><path d="M12.5 3.5L8 2L3.5 3.5L2 8L3.5 12.5L8 14L12.5 12.5L14 8L12.5 3.5ZM7 11L4 8L5.41 6.59L7 8.17L10.59 4.58L12 6L7 11Z"/></svg>' : ''}
+                  </div>
+                  
+                  <div style="color: var(--text-secondary); font-size: 12px; margin-bottom: 8px; font-family: 'Consolas', monospace;">@${stream.login}</div>
+                  
+                  <!-- Статистика -->
+                  <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
+                    ${stream.viewersCount ? `
+                    <div style="display: flex; align-items: center; gap: 6px; font-size: 13px;">
+                      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style="color: #9147ff;">
+                        <path d="M8 2C4.5 2 1.5 4.5 0 8c1.5 3.5 4.5 6 8 6s6.5-2.5 8-6c-1.5-3.5-4.5-6-8-6zm0 10c-2.2 0-4-1.8-4-4s1.8-4 4-4 4 1.8 4 4-1.8 4-4 4zm0-6.5c-1.4 0-2.5 1.1-2.5 2.5s1.1 2.5 2.5 2.5 2.5-1.1 2.5-2.5-1.1-2.5-2.5-2.5z"/>
+                      </svg>
+                      <span style="color: var(--text-primary); font-weight: 600;">${this.formatViewersCount(stream.viewersCount)}</span>
+                      <span style="color: var(--text-tertiary); font-size: 11px;">зрителей</span>
+                    </div>` : ''}
+                    ${stream.followers ? `
+                    <div style="display: flex; align-items: center; gap: 6px; font-size: 13px;">
+                      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style="color: #e91e63;">
+                        <path d="M8 1.314C12.438-3.248 23.534 4.735 8 15-7.534 4.736 3.562-3.248 8 1.314z"/>
+                      </svg>
+                      <span style="color: var(--text-primary); font-weight: 600;">${this.formatFollowers(stream.followers)}</span>
+                      <span style="color: var(--text-tertiary); font-size: 11px;">подписчиков</span>
+                    </div>` : ''}
+                    ${stream.language ? `
+                    <div style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-tertiary);">
+                      <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor">
+                        <path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8zm7.5-6.923c-.67.204-1.335.82-1.887 1.855A7.97 7.97 0 0 0 5.145 4H7.5V1.077zM4.09 4a9.267 9.267 0 0 1 .64-1.539 6.7 6.7 0 0 1 .597-.933A7.025 7.025 0 0 0 2.255 4H4.09zm-.582 3.5c.03-.877.138-1.718.312-2.5H1.674a6.958 6.958 0 0 0-.656 2.5h2.49zM4.847 5a12.5 12.5 0 0 0-.338 2.5H7.5V5H4.847zM8.5 5v2.5h2.99a12.495 12.495 0 0 0-.337-2.5H8.5zM4.51 8.5a12.5 12.5 0 0 0 .337 2.5H7.5V8.5H4.51zm3.99 0V11h2.653c.187-.765.306-1.608.338-2.5H8.5zM5.145 12c.138.386.295.744.468 1.068.552 1.035 1.218 1.65 1.887 1.855V12H5.145zm.182 2.472a6.696 6.696 0 0 1-.597-.933A9.268 9.268 0 0 1 4.09 12H2.255a7.024 7.024 0 0 0 3.072 2.472zM3.82 11a13.652 13.652 0 0 1-.312-2.5h-2.49c.062.89.291 1.733.656 2.5H3.82zm6.853 3.472A7.024 7.024 0 0 0 13.745 12H11.91a9.27 9.27 0 0 1-.64 1.539 6.688 6.688 0 0 1-.597.933zM8.5 12v2.923c.67-.204 1.335-.82 1.887-1.855.173-.324.33-.682.468-1.068H8.5zm3.68-1h2.146c.365-.767.594-1.61.656-2.5h-2.49a13.65 13.65 0 0 1-.312 2.5zm2.802-3.5a6.959 6.959 0 0 0-.656-2.5H12.18c.174.782.282 1.623.312 2.5h2.49zM11.27 2.461c.247.464.462.98.64 1.539h1.835a7.024 7.024 0 0 0-3.072-2.472c.218.284.418.598.597.933zM10.855 4a7.966 7.966 0 0 0-.468-1.068C9.835 1.897 9.17 1.282 8.5 1.077V4h2.355z"/>
+                      </svg>
+                      ${stream.language.toUpperCase()}
+                    </div>` : ''}
+                  </div>
+                  
+                  ${stream.title ? `
+                  <div style="margin-top: 8px; font-size: 12px; color: var(--text-secondary); line-height: 1.4; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;">
+                    ${stream.title}
+                  </div>` : ''}
+                </div>
+                
+                <!-- Кнопка запуска -->
+                <button style="flex-shrink: 0; background: linear-gradient(135deg, #9147ff, #772ce8); color: white; border: none; padding: 12px 20px; border-radius: 10px; font-size: 14px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: all 0.2s; box-shadow: 0 4px 12px rgba(145, 71, 255, 0.3); z-index: 1;" 
+                        onmouseover="this.style.transform='scale(1.05)'; this.style.boxShadow='0 6px 20px rgba(145, 71, 255, 0.5)'" 
+                        onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='0 4px 12px rgba(145, 71, 255, 0.3)'">
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M4 2L14 8L4 14V2Z"/>
+                  </svg>
+                  Запустить
+                </button>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+
+        ${streamsData[0].description ? `
+        <div style="margin-top: 24px; padding: 16px; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 10px;">
+          <div style="font-size: 13px; font-weight: 700; color: var(--text-primary); margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style="color: #9147ff;">
+              <path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zM7 5h2v2H7V5zm0 3h2v5H7V8z"/>
+            </svg>
+            О канале ${streamsData[0].displayName}
+          </div>
+          <div style="font-size: 13px; line-height: 1.6; color: var(--text-secondary);">${streamsData[0].description}</div>
+        </div>` : ''}
+        
+        <style>
+          .stream-card-clickable:hover .stream-hover-bg {
+            opacity: 1 !important;
+          }
+          
+          /* Кастомный скроллбар для списка стримов */
+          #streams-scroll-container::-webkit-scrollbar {
+            width: 8px;
+          }
+          
+          #streams-scroll-container::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 4px;
+          }
+          
+          #streams-scroll-container::-webkit-scrollbar-thumb {
+            background: linear-gradient(135deg, #9147ff, #772ce8);
+            border-radius: 4px;
+            transition: background 0.2s;
+          }
+          
+          #streams-scroll-container::-webkit-scrollbar-thumb:hover {
+            background: linear-gradient(135deg, #a55fff, #8839f5);
+          }
+        </style>
+      `;
+
+    } catch (error) {
+      console.error('Error loading category details:', error);
+      document.getElementById('category-streams-loading').innerHTML = `
+        <div style="padding: 20px; text-align: center; color: var(--text-secondary);">
+          Ошибка загрузки данных
+        </div>
+      `;
+    }
+  }
+
+  async startStreamFromModal(streamLogin, categoryId) {
+    const modal = document.querySelector('.category-detail-modal');
+    if (modal) {
+      modal.style.opacity = '0';
+      setTimeout(() => modal.remove(), 200);
+    }
+
+    const category = this.categories.find(c => c.id === categoryId);
+    if (!category) return;
+
+    window.utils.showToast(`Запуск стрима ${streamLogin}...`, 'info');
+
+    // Останавливаем текущий стрим если есть
+    if (this.currentStream) {
+      this.stopFarming(false);
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+
+    // Запускаем выбранную категорию
+    await this.startFarmingForCategory(category);
+  }
+
+  formatFollowers(count) {
+    if (count >= 1000000) {
+      return (count / 1000000).toFixed(1) + 'M';
+    } else if (count >= 1000) {
+      return (count / 1000).toFixed(1) + 'K';
+    }
+    return count.toString();
+  }
+
+  formatViewersCount(count) {
+    if (!count) return '—';
+    if (count < 10000) return count.toLocaleString();
+    if (count >= 1000000) {
+      return (count / 1000000).toFixed(1) + 'M';
+    }
+    return (count / 1000).toFixed(1) + 'K';
+  }
+  
+  getHighQualityBoxArt(url) {
+    return this.normalizeBoxArtURL(url, '285x380');
+  }
+
+  getWaitingStateMarkup() {
+    return `
+      <div class="no-stream waiting-state" tabindex="0" role="button" aria-label="Ожидание стрима">
+        <div class="waiting-icon" aria-hidden="true">
+          <span class="waiting-ring waiting-ring-outer"></span>
+          <span class="waiting-ring waiting-ring-inner"></span>
+          <span class="waiting-dot"></span>
+        </div>
+        <p class="waiting-label">Ожидание</p>
+      </div>
+    `;
   }
   
   async startFarmingForCategory(category) {
@@ -877,17 +1703,21 @@ class FarmingPage {
     // Запускаем трекинг
     this.sessionStartTime = Date.now();
     
-    // Сбрасываем счетчик трафика
-    try {
-      await window.electronAPI.resetSessionTraffic();
-    } catch (error) {
-      console.error('Failed to reset session traffic:', error);
-    }
-    
     this.updateSessionInfo();
     this.sessionInterval = setInterval(() => {
       this.updateSessionInfo();
     }, 1000);
+
+    // Запускаем периодическое обновление статистики (каждые 30 секунд)
+    if (this.statsUpdateInterval) {
+      clearInterval(this.statsUpdateInterval);
+    }
+    this.statsUpdateInterval = setInterval(() => {
+      this.updateLiveStatistics();
+    }, 30000); // 30 секунд
+
+    // Создаем начальную сессию в статистике
+    this.updateLiveStatistics();
 
     // Сбрасываем трекинг баллов для нового стрима
     this.resetChannelPointsTracking();
@@ -1041,7 +1871,7 @@ class FarmingPage {
     }
     
     // Находим следующую включенную категорию (пропускаем завершенные)
-    // Приоритет: 1) подписанные каналы с дропсами (если включен приоритет), 2) ручные категории, 3) наличие дропсов, 4) сохранённый порядок/priority
+    // Приоритет: 1) ручные категории, 2) подписанные каналы с дропсами (если включен приоритет), 3) наличие дропсов, 4) сохранённый порядок/priority
     let enabledCategories = this.categories
       .filter(cat => cat.enabled && cat.id !== this.currentCategory?.id && !cat.dropsCompleted);
 
@@ -1052,6 +1882,11 @@ class FarmingPage {
       const subscriptionLogins = subscriptions.map(s => s.login.toLowerCase());
       
       enabledCategories.sort((a, b) => {
+        // Ручные категории имеют наивысший приоритет
+        const aManual = a.autoDrops ? 0 : 1;
+        const bManual = b.autoDrops ? 0 : 1;
+        if (aManual !== bManual) return bManual - aManual;
+        
         // Проверяем есть ли в подписках
         const aIsSubscribed = subscriptionLogins.some(login => a.name.toLowerCase().includes(login) || a.name.toLowerCase() === login);
         const bIsSubscribed = subscriptionLogins.some(login => b.name.toLowerCase().includes(login) || b.name.toLowerCase() === login);
@@ -1059,9 +1894,6 @@ class FarmingPage {
         if (aIsSubscribed !== bIsSubscribed) return aIsSubscribed ? -1 : 1;
         
         // Если оба подписанные или оба нет, сортируем по остальным критериям
-        const aManual = a.autoDrops ? 1 : 0;
-        const bManual = b.autoDrops ? 1 : 0;
-        if (aManual !== bManual) return aManual - bManual;
         const aNoDrops = a.hasDrops ? 0 : 1;
         const bNoDrops = b.hasDrops ? 0 : 1;
         if (aNoDrops !== bNoDrops) return aNoDrops - bNoDrops;
@@ -1070,9 +1902,11 @@ class FarmingPage {
     } else {
       // Обычная сортировка без приоритета подписок
       enabledCategories.sort((a, b) => {
-        const aManual = a.autoDrops ? 1 : 0;
-        const bManual = b.autoDrops ? 1 : 0;
-        if (aManual !== bManual) return aManual - bManual;
+        // Ручные категории имеют наивысший приоритет
+        const aManual = a.autoDrops ? 0 : 1;
+        const bManual = b.autoDrops ? 0 : 1;
+        if (aManual !== bManual) return bManual - aManual;
+        
         const aNoDrops = a.hasDrops ? 0 : 1;
         const bNoDrops = b.hasDrops ? 0 : 1;
         if (aNoDrops !== bNoDrops) return aNoDrops - bNoDrops;
@@ -1083,6 +1917,12 @@ class FarmingPage {
     console.log('Enabled categories:', enabledCategories.map(c => c.name));
     
     if (enabledCategories.length === 0) {
+      if (this.isSingleManualPlayLocked()) {
+        console.log('[ManualPlayLock] No next categories, keeping current category active');
+        window.utils.showToast('Оставляем текущую категорию активной до ручной остановки', 'info');
+        return true;
+      }
+
       window.utils.showToast('Нет доступных категорий для переключения', 'warning');
       
       // Закрываем текущий стрим
@@ -1477,6 +2317,17 @@ class FarmingPage {
       });
     }, 1000);
 
+    // Запускаем периодическое обновление статистики (каждые 30 секунд)
+    if (this.statsUpdateInterval) {
+      clearInterval(this.statsUpdateInterval);
+    }
+    this.statsUpdateInterval = setInterval(() => {
+      this.updateLiveStatistics();
+    }, 30000); // 30 секунд
+
+    // Создаем начальную сессию в статистике
+    this.updateLiveStatistics();
+
     // Сохраняем активную сессию для восстановления
     await this.saveActiveSession(stream, category);
     
@@ -1559,8 +2410,23 @@ class FarmingPage {
           
           <!-- Список дропсов -->
           <div style="display: flex; flex-direction: column; gap: 8px;">
-            ${campaign.drops.map((drop, idx) => `
-              <div style="display: flex; gap: 12px; padding: 12px; background: var(--bg-secondary); border-radius: 6px; align-items: center;">
+            ${campaign.drops.map((drop, idx) => {
+              const dropData = encodeURIComponent(JSON.stringify(drop));
+              const campaignData = encodeURIComponent(JSON.stringify({
+                name: campaign.name,
+                game: campaign.game,
+                imageUrl: campaign.imageUrl,
+                startDate: campaign.startDate,
+                endDate: campaign.endDate
+              }));
+              
+              return `
+              <div class="drop-card-clickable" 
+                   data-drop="${dropData}" 
+                   data-campaign="${campaignData}"
+                   style="display: flex; gap: 12px; padding: 12px; background: var(--bg-secondary); border-radius: 6px; align-items: center; cursor: pointer; transition: all 0.2s ease;"
+                   onmouseover="this.style.background='rgba(145, 71, 255, 0.1)'; this.style.transform='translateX(4px)'"
+                   onmouseout="this.style.background='var(--bg-secondary)'; this.style.transform='translateX(0)'">
                 ${drop.imageUrl ? `
                   <img src="${drop.imageUrl}" 
                        alt="${drop.name}" 
@@ -1579,7 +2445,8 @@ class FarmingPage {
                   ${Math.round(drop.progress || 0)}%
                 </div>
               </div>
-            `).join('')}
+            `;
+            }).join('')}
           </div>
         </div>
       `;
@@ -1603,6 +2470,8 @@ class FarmingPage {
   }
 
   async updateDropsHorizontalProgress() {
+    const i18n = this.i18n;
+    
     try {
       // Определяем название игры для текущей кампании
       let currentGameName = (this.currentCategory && this.currentCategory.name) ? this.currentCategory.name : '';
@@ -1698,8 +2567,28 @@ class FarmingPage {
         // Извлекаем название награды из benefitName или используем имя дропа
         const dropName = drop.benefitName || drop.name || 'Награда';
         
+        // Подготавливаем данные для модального окна
+        const dropData = encodeURIComponent(JSON.stringify({
+          name: dropName,
+          imageUrl: drop.imageURL || '',
+          requiredMinutes: drop.required || 0,
+          progress: dropPercent,
+          benefitEdges: drop.benefitEdges || []
+        }));
+        
+        const campaignData = encodeURIComponent(JSON.stringify({
+          name: currentCampaign.name || currentGameName,
+          game: currentCampaign.game?.name || currentGameName,
+          imageUrl: currentCampaign.game?.boxArtURL || '',
+          startDate: currentCampaign.startAt || '',
+          endDate: currentCampaign.endsAt || ''
+        }));
+        
         return `
-          <div class="drop-progress-card" style="
+          <div class="drop-progress-card drop-card-clickable" 
+               data-drop="${dropData}" 
+               data-campaign="${campaignData}"
+               style="
             display: flex;
             flex-direction: column;
             gap: 10px;
@@ -1746,8 +2635,8 @@ class FarmingPage {
             </div>
             <div style="font-size: 11px; color: var(--text-secondary); text-align: center;">
               ${isCompleted 
-                ? `<span style="color: #00e57a; font-weight: 600;">✓ Получено или доступно</span>` 
-                : `<div>${drop.progress} / ${drop.required} мин</div>${remaining > 0 ? `<div style="margin-top: 4px; color: var(--text-tertiary);">Осталось: ${remaining} мин</div>` : ''}`
+                ? `<span style="color: #00e57a; font-weight: 600;">✓ ${i18n.t('farming.claimedOrAvailable')}</span>` 
+                : `<div>${drop.progress} / ${drop.required} ${i18n.t('farming.min')}</div>${remaining > 0 ? `<div style="margin-top: 4px; color: var(--text-tertiary);">${i18n.t('farming.remaining')}: ${remaining} ${i18n.t('farming.min')}</div>` : ''}`
               }
             </div>
           </div>
@@ -1772,7 +2661,7 @@ class FarmingPage {
               <svg width="18" height="18" viewBox="0 0 16 16" fill="#9147ff">
                 <path d="M8 2L10 6H14L11 9L12 13L8 10.5L4 13L5 9L2 6H6L8 2Z"/>
               </svg>
-              <span style="font-size: 15px; font-weight: 700; color: var(--text-primary);">Прогресс дропсов</span>
+              <span style="font-size: 15px; font-weight: 700; color: var(--text-primary);">${i18n.t('farming.dropsProgress')}</span>
             </div>
             ${timeRemaining ? `
               <div style="display: flex; align-items: center; gap: 6px; padding: 4px 10px; background: rgba(145, 71, 255, 0.15); border-radius: 12px; border: 1px solid rgba(145, 71, 255, 0.3);">
@@ -1792,13 +2681,58 @@ class FarmingPage {
         <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; max-width: 100%;">
           ${dropsHTML}
         </div>
-        <div style="margin-top: 12px; padding: 12px; background: rgba(${overallPercent === 100 ? '0, 229, 122' : '145, 71, 255'}, 0.1); border-radius: 6px; border: 1px solid rgba(${overallPercent === 100 ? '0, 229, 122' : '145, 71, 255'}, 0.3); font-size: 13px; color: var(--text-secondary); text-align: center;">
+        <div id="drops-received-footer" style="margin-top: 12px; padding: 12px; background: rgba(${overallPercent === 100 ? '0, 229, 122' : '145, 71, 255'}, 0.1); border-radius: 6px; border: 1px solid rgba(${overallPercent === 100 ? '0, 229, 122' : '145, 71, 255'}, 0.3); font-size: 13px; color: var(--text-secondary); text-align: center;">
           ${overallPercent === 100 
-            ? '<span style="color: #00e57a; font-weight: 600;">✓ Все дропсы получены!</span>' 
-            : `<span style="color: var(--text-primary); font-weight: 600;">${completedDrops}/${totalDrops} дропсов получено</span>`
+            ? `<span style="color: #00e57a; font-weight: 600;">✓ ${i18n.t('farming.allDropsClaimed')}</span>` 
+            : `<span style="color: var(--text-primary); font-weight: 600; cursor: pointer;">${completedDrops}/${totalDrops} ${i18n.t('statistics.dropsReceived')}</span>`
           }
         </div>
       `;
+      
+      // Добавляем обработчик для тестирования уведомлений (DevMode + Shift + Click)
+      setTimeout(() => {
+        const footer = document.getElementById('drops-received-footer');
+        if (footer && overallPercent < 100) {
+          console.log('[DropsProgress] Footer element found, attaching click handler');
+          
+          footer.addEventListener('click', (e) => {
+            if (!e.shiftKey) return; // Если Shift не зажат, ничего не делаем
+            
+            // Проверяем режим разработчика через localStorage напрямую
+            let isDeveloperMode = false;
+            try {
+              const savedSettings = localStorage.getItem('app_settings');
+              if (savedSettings) {
+                const settings = JSON.parse(savedSettings);
+                isDeveloperMode = settings.developerMode === true;
+              }
+            } catch (err) {
+              console.error('[DropsProgress] Failed to read settings:', err);
+            }
+            
+            console.log('[DropsProgress] Developer mode:', isDeveloperMode);
+            
+            if (isDeveloperMode) {
+              console.log('[DropsProgress] Triggering test notification');
+              
+              // Показываем тестовое уведомление напрямую (обходим проверку настройки)
+              const testDropName = '8x 250 Lucky Envelopes';
+              const testGameName = 'Palia';
+              // Используем рабочий URL изображения (boxArt игры Palia)
+              const testDropIcon = 'https://static-cdn.jtvnw.net/ttv-boxart/1239948690_IGDB-285x380.jpg';
+              
+              // Прямой вызов функции показа уведомления
+              window.showDropNotification(testDropName, testGameName, testDropIcon);
+              window.utils.showToast('Тестовое уведомление отправлено', 'info');
+            } else {
+              console.log('[DropsProgress] Developer mode is OFF');
+              window.utils.showToast('Включите "Режим разработчика" в настройках', 'warning');
+            }
+          });
+        } else {
+          console.log('[DropsProgress] Footer element not found or drops completed');
+        }
+      }, 200);
       
       // Обновляем статус категории
       if (this.currentCategory) {
@@ -1813,6 +2747,11 @@ class FarmingPage {
         
         // Если все дропсы получены - сразу переключаемся
         if (overallPercent === 100 && !this.currentCategory._switchScheduled) {
+          if (this.isSingleManualPlayLocked()) {
+            console.log('[ManualPlayLock] Drops completed, keeping category enabled');
+            return { hasDrops: true, overallPercent };
+          }
+
           this.currentCategory._switchScheduled = true;
           
           // Авто-категории удаляем СРАЗУ после завершения
@@ -1848,6 +2787,13 @@ class FarmingPage {
   async handleCategoryNoDrops() {
     if (!this.currentCategory) return;
 
+    if (this.isSingleManualPlayLocked()) {
+      console.warn('[ManualPlayLock] No drops detected, but keeping manual category active:', this.currentCategory.name);
+      this.dropsMissingChecks = 0;
+      window.utils.showToast('Категория оставлена активной до ручной остановки', 'info');
+      return;
+    }
+
     console.warn('No drops visible for category, disabling from list...', this.currentCategory.name);
     
     // Отключаем категорию без дропсов (не удаляем)
@@ -1877,25 +2823,31 @@ class FarmingPage {
     }
   }
 
-  stopFarming(showToast = true) {
+  stopFarming(showToast = true, preserveSession = false) {
+    this.manualPlayLockCategoryId = null;
+
     if (showToast) {
       window.utils.showToast('Фарминг остановлен', 'info');
     }
-    Storage.delete('activeSession').catch(() => {});
+    if (!preserveSession) {
+      Storage.delete('activeSession').catch(() => {});
+    }
     
-    // Сохраняем сессию в статистику перед остановкой
+    // Останавливаем интервал обновления статистики
+    if (this.statsUpdateInterval) {
+      clearInterval(this.statsUpdateInterval);
+      this.statsUpdateInterval = null;
+    }
+    
+    // Финализируем текущую сессию в статистике
     if (this.sessionStartTime) {
       const duration = Math.floor((Date.now() - this.sessionStartTime) / 60000); // в минутах
       const durationMs = Date.now() - this.sessionStartTime; // в миллисекундах
       
-      Storage.addSession({
-        timestamp: this.sessionStartTime,
+      Storage.finalizeCurrentSession({
         duration: duration,
-        category: this.currentCategory?.name || 'Unknown',
-        channel: this.currentStream?.displayName || 'Unknown',
         bandwidth: this.estimatedBandwidth,
-        bandwidthHistory: this.bandwidthHistory, // для графика
-        categoryBoxArtURL: this.currentCategory?.box_art_url || '', // URL обложки категории
+        bandwidthHistory: this.bandwidthHistory,
         pointsEarned: this.channelPoints.earnedThisStream || 0,
         chestsCollected: this.channelPoints.chestsCollected || 0
       });
@@ -2021,15 +2973,7 @@ class FarmingPage {
       playerContainer.style.display = 'none';
       player.src = '';
       streamInfo.style.display = 'block';
-      streamInfo.innerHTML = `
-        <div class="no-stream">
-          <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="opacity: 0.3;">
-            <rect x="2" y="2" width="20" height="20" rx="2" stroke-width="2"/>
-            <path d="M2 8h20M8 2v20" stroke-width="2"/>
-          </svg>
-          <p style="color: var(--text-secondary); margin-top: 16px;">Ожидание</p>
-        </div>
-      `;
+      streamInfo.innerHTML = this.getWaitingStateMarkup();
     }
   }
 
@@ -2054,46 +2998,29 @@ class FarmingPage {
       durationEl.textContent = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
     }
     
-    // Получаем реальные данные трафика из main процесса
-    try {
-      const trafficData = await window.electronAPI.getTrafficData();
-      const currentRate = trafficData.currentRate || 0; // в KB/s
-      const sessionBytes = trafficData.sessionBytes || 0;
+    // Скорость интернета в сессии отключена по запросу
+  }
 
-      this.sessionBytes = sessionBytes;
-      this.estimatedBandwidth = sessionBytes;
-      
-      // Сохраняем в историю
-      if (currentRate > 0) {
-        this.bandwidthHistory.push(currentRate);
-        if (this.bandwidthHistory.length > 100) {
-          this.bandwidthHistory.shift();
-        }
-      }
-      
-      const bandwidthEl = document.getElementById('session-bandwidth');
-      if (bandwidthEl) {
-        // Переводим байты в читабельный формат
-        let totalText = '';
-        const totalKB = sessionBytes / 1024;
-        
-        if (totalKB < 1024) {
-          totalText = `${Math.round(totalKB)} KB`;
-        } else if (totalKB < 1024 * 1024) {
-          totalText = `${(totalKB / 1024).toFixed(1)} MB`;
-        } else {
-          totalText = `${(totalKB / (1024 * 1024)).toFixed(2)} GB`;
-        }
-        
-        const rateText = currentRate >= 1024
-          ? `${(currentRate / 1024).toFixed(1)} MB/s`
-          : `${Math.round(currentRate)} KB/s`;
-        
-        bandwidthEl.textContent = `${totalText} | ${rateText}`;
-      }
-    } catch (error) {
-      console.error('Failed to get traffic data:', error);
-    }
+  async updateLiveStatistics() {
+    if (!this.sessionStartTime) return;
+    
+    const duration = Math.floor((Date.now() - this.sessionStartTime) / 60000); // в минутах
+    
+    await Storage.updateCurrentSession({
+      timestamp: this.sessionStartTime,
+      duration: duration,
+      category: this.currentCategory?.name || 'Unknown',
+      channel: this.currentStream?.displayName || 'Unknown',
+      bandwidth: this.estimatedBandwidth,
+      bandwidthHistory: this.bandwidthHistory,
+      categoryBoxArtURL: this.currentCategory?.boxArtURL || '',
+      pointsEarned: this.channelPoints.earnedThisStream || 0,
+      chestsCollected: this.channelPoints.chestsCollected || 0,
+      dropsCollected: 0 // TODO: track drops collected during session
+    });
+    
+    // Отправляем событие об обновлении статистики
+    window.dispatchEvent(new CustomEvent('statistics-updated'));
   }
 
 
@@ -2172,6 +3099,8 @@ class FarmingPage {
     const streamInfo = document.getElementById('current-stream-info');
     const playerContainer = document.getElementById('twitch-player-container');
     const player = document.getElementById('twitch-player');
+
+    this.registerFarmingWebviewLabels();
     
     if (streamInfo && playerContainer && player) {
       // Скрываем no-stream и показываем плеер
@@ -2266,6 +3195,349 @@ class FarmingPage {
       
       // Проверяем статус подписки
       this.checkFollowingStatus();
+      
+      // Добавляем обработчик клика на информацию о стриме
+      this.setupStreamInfoClick();
+    }
+  }
+
+  registerFarmingWebviewLabels() {
+    const registerWebviewLabel = (id, label) => {
+      const webview = document.getElementById(id);
+      if (!webview || webview.dataset.processLabelSet === 'true') return;
+
+      const setLabel = () => {
+        try {
+          const webContentsId = webview.getWebContentsId?.();
+          if (!webContentsId) return;
+          window.electronAPI.setProcessLabel({ webContentsId, label });
+          webview.dataset.processLabelSet = 'true';
+        } catch (error) {
+          console.warn('[Diagnostics] Failed to set process label for', id, error);
+        }
+      };
+
+      webview.addEventListener('dom-ready', setLabel, { once: true });
+      setTimeout(setLabel, 0);
+    };
+
+    registerWebviewLabel('twitch-player', 'Twitch Player (Main)');
+    registerWebviewLabel('twitch-chat', 'Twitch Chat');
+    registerWebviewLabel('drops-data-extractor', 'Drops Data Extractor');
+  }
+
+  setupStreamInfoClick() {
+    const streamDetails = document.getElementById('stream-details');
+    if (streamDetails) {
+      streamDetails.style.cursor = 'pointer';
+
+      if (this.streamInfoClickHandler) {
+        streamDetails.removeEventListener('click', this.streamInfoClickHandler);
+      }
+      
+      // Клик на блок с информацией о стриме
+      this.streamInfoClickHandler = async (e) => {
+        // Игнорируем клик на кнопку чата
+        if (e.target.closest('#toggle-chat-btn')) return;
+
+        if (!this.currentStream || !this.currentCategory) return;
+        if (this.isStreamDetailsOpen) return;
+        if (document.querySelector('.category-detail-modal')) return;
+
+        this.isStreamDetailsOpen = true;
+        await this.showCurrentStreamDetails();
+      };
+
+      streamDetails.addEventListener('click', this.streamInfoClickHandler);
+    }
+  }
+
+  async showCurrentStreamDetails() {
+    if (!this.currentStream || !this.currentCategory) return;
+    if (document.querySelector('.category-detail-modal')) return;
+
+    this.isStreamDetailsOpen = true;
+
+    const i18n = window.i18n;
+    const stream = this.currentStream;
+    const category = this.currentCategory;
+
+    // Создаем модальное окно
+    const modal = document.createElement('div');
+    modal.className = 'category-detail-modal';
+    modal.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.8);
+      backdrop-filter: blur(10px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10000;
+      animation: fadeIn 0.2s ease;
+    `;
+
+    const modalContent = document.createElement('div');
+    modalContent.style.cssText = `
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      width: 90%;
+      max-width: 800px;
+      max-height: 85vh;
+      overflow-y: auto;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+      animation: slideUp 0.3s ease;
+    `;
+
+    // Получаем полную информацию о канале
+    const accounts = await Storage.getAccounts();
+    
+    // Пытаемся найти токен: сначала из кук (authToken), потом OAuth (accessToken)
+    let authToken = '';
+    let account = null;
+    
+    // Приоритет 1: auth-token из кук
+    for (const acc of accounts) {
+      if (acc.cookies) {
+        try {
+          const cookies = JSON.parse(acc.cookies);
+          const authTokenCookie = cookies.find(c => c.name === 'auth-token');
+          if (authTokenCookie?.value) {
+            authToken = authTokenCookie.value;
+            account = acc;
+            console.log('[StreamDetails] Using auth-token from cookies');
+            break;
+          }
+        } catch (e) {
+          console.warn('[StreamDetails] Failed to parse cookies:', e);
+        }
+      }
+    }
+    
+    // Приоритет 2: OAuth accessToken если auth-token не найден
+    if (!authToken) {
+      account = accounts.find(acc => acc.accessToken);
+      authToken = account?.accessToken || '';
+      if (authToken) {
+        console.log('[StreamDetails] Using OAuth accessToken');
+      }
+    }
+    
+    console.log('[StreamDetails] Found accounts:', accounts.length);
+    console.log('[StreamDetails] Selected account:', account?.username || 'none');
+    console.log('[StreamDetails] Auth token available:', !!authToken);
+    
+    let channelDetails = {
+      profileImageUrl: '',
+      description: '',
+      followers: 0,
+      isLive: false
+    };
+    let streamStats = {
+      viewers: 0,
+      uptime: '',
+      points: 0
+    };
+    
+    try {
+      // Загружаем данные параллельно
+      const promises = [
+        window.electronAPI.getStreamStats(stream.login)
+      ];
+      
+      // getChannelDetails требует токен
+      if (authToken) {
+        promises.push(window.electronAPI.getChannelDetails(authToken, stream.login));
+      }
+      
+      const results = await Promise.all(promises);
+      streamStats = results[0] || streamStats;
+      
+      if (results.length > 1) {
+        channelDetails = results[1] || channelDetails;
+      }
+      
+      console.log('[StreamDetails] Channel details:', channelDetails);
+      console.log('[StreamDetails] Channel details JSON:', JSON.stringify(channelDetails, null, 2));
+      console.log('[StreamDetails] Stream stats:', streamStats);
+      console.log('[StreamDetails] Stream stats JSON:', JSON.stringify(streamStats, null, 2));
+      console.log('[StreamDetails] profileImageUrl:', channelDetails.profileImageUrl);
+      console.log('[StreamDetails] followers:', channelDetails.followers);
+      console.log('[StreamDetails] description:', channelDetails.description);
+    } catch (error) {
+      console.error('[StreamDetails] Error fetching details:', error);
+    }
+
+    // Фоллбэк для аватарки
+    const profileImageUrl = channelDetails.profileImageUrl || 
+      `https://static-cdn.jtvnw.net/user-default-pictures-uv/cdd517fe-def4-11e9-948e-784f43822e80-profile_image-300x300.png`;
+    
+    console.log('[StreamDetails] Profile image URL:', profileImageUrl);
+    
+    // Функция форматирования зрителей
+    const formatViewers = (count) => {
+      if (!count) return '—';
+      if (count < 10000) return count.toLocaleString();
+      return (count / 1000).toFixed(1) + 'K';
+    };
+
+    modalContent.innerHTML = `
+      <div style="position: relative;">
+        <button id="close-stream-modal" style="position: absolute; top: 16px; right: 16px; background: rgba(255, 255, 255, 0.1); border: none; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; z-index: 10;" onmouseover="this.style.background='rgba(255, 255, 255, 0.2)'" onmouseout="this.style.background='rgba(255, 255, 255, 0.1)'">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" style="color: var(--text-primary);">
+            <path d="M2 2L14 14M14 2L2 14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </button>
+
+        <!-- Header with blur background -->
+        <div style="position: relative; height: 180px; overflow: hidden; border-radius: 16px 16px 0 0;">
+          <div style="position: absolute; inset: 0; background: url('${profileImageUrl}'); background-size: cover; background-position: center; filter: blur(40px) brightness(0.6); transform: scale(1.2);"></div>
+          <div style="position: absolute; inset: 0; background: linear-gradient(to bottom, rgba(0,0,0,0.3), rgba(0,0,0,0.7));"></div>
+          
+          <div style="position: relative; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px; text-align: center;">
+            <div style="position: relative; margin-bottom: 12px;">
+              <img src="${profileImageUrl}" 
+                   alt="${stream.displayName}"
+                   onerror="this.onerror=null; this.src='https://static-cdn.jtvnw.net/user-default-pictures-uv/cdd517fe-def4-11e9-948e-784f43822e80-profile_image-300x300.png';"
+                   style="width: 80px; height: 80px; border-radius: 50%; border: 3px solid white; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);">
+              ${channelDetails.isLive ? '<div style="position: absolute; bottom: 0; right: 0; width: 24px; height: 24px; background: #ff0000; border: 3px solid white; border-radius: 50%; box-shadow: 0 0 12px rgba(255, 0, 0, 0.8);"></div>' : ''}
+            </div>
+            <h2 style="color: white; font-size: 26px; font-weight: 700; margin: 0 0 4px; text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);">${stream.displayName}</h2>
+            <div style="color: rgba(255, 255, 255, 0.8); font-size: 14px; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);">@${stream.login}</div>
+          </div>
+        </div>
+
+        <!-- Content -->
+        <div style="padding: 24px;">
+          <!-- Stats Grid -->
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 24px;">
+            ${channelDetails.followers ? `
+            <div style="background: linear-gradient(135deg, rgba(255, 215, 0, 0.1), rgba(255, 165, 0, 0.1)); border: 1px solid rgba(255, 215, 0, 0.2); border-radius: 12px; padding: 16px; text-align: center;">
+              <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; color: rgba(255, 215, 0, 0.8); margin-bottom: 6px; letter-spacing: 0.5px;">Подписчиков</div>
+              <div style="font-size: 20px; font-weight: 700; color: var(--text-primary);">${this.formatFollowers(channelDetails.followers)}</div>
+            </div>` : ''}
+            ${streamStats.viewers ? `
+            <div style="background: linear-gradient(135deg, rgba(145, 71, 255, 0.1), rgba(119, 44, 232, 0.1)); border: 1px solid rgba(145, 71, 255, 0.2); border-radius: 12px; padding: 16px; text-align: center;">
+              <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; color: rgba(145, 71, 255, 0.8); margin-bottom: 6px; letter-spacing: 0.5px;">Зрителей</div>
+              <div style="font-size: 20px; font-weight: 700; color: var(--text-primary);">${formatViewers(streamStats.viewers)}</div>
+            </div>` : ''}
+            ${streamStats.uptime ? `
+            <div style="background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(37, 99, 235, 0.1)); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: 12px; padding: 16px; text-align: center;">
+              <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; color: rgba(59, 130, 246, 0.8); margin-bottom: 6px; letter-spacing: 0.5px;">В эфире</div>
+              <div style="font-size: 20px; font-weight: 700; color: var(--text-primary);">${streamStats.uptime}</div>
+            </div>` : ''}
+            ${streamStats.points ? `
+            <div style="background: linear-gradient(135deg, rgba(0, 229, 122, 0.1), rgba(0, 200, 100, 0.1)); border: 1px solid rgba(0, 229, 122, 0.2); border-radius: 12px; padding: 16px; text-align: center;">
+              <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; color: rgba(0, 229, 122, 0.8); margin-bottom: 6px; letter-spacing: 0.5px;">Очки канала</div>
+              <div style="font-size: 20px; font-weight: 700; color: var(--text-primary);">${streamStats.points.toLocaleString()}</div>
+            </div>` : ''}
+          </div>
+
+          <!-- Stream Title -->
+          <div style="background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 12px; padding: 16px; margin-bottom: 16px;">
+            <div style="font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="stroke-width: 2;">
+                <rect x="2" y="3" width="20" height="14" rx="2"/>
+                <path d="M8 21h8M12 17v4"/>
+              </svg>
+              Название стрима
+            </div>
+            <div id="stream-title-text" style="font-size: 15px; line-height: 1.5; color: var(--text-primary); font-weight: 500; cursor: pointer; padding: 8px; margin: -8px; border-radius: 6px; transition: all 0.2s;" onmouseover="this.style.background='rgba(145, 71, 255, 0.1)'" onmouseout="this.style.background='transparent'" onclick="
+              navigator.clipboard.writeText('${(stream.title || 'Без названия').replace(/'/g, "\\'")}').then(() => {
+                window.utils.showToast('Название скопировано', 'success');
+              }).catch(() => {
+                window.utils.showToast('Ошибка копирования', 'error');
+              });
+            ">${stream.title || 'Без названия'}</div>
+          </div>
+
+          <!-- Category Info -->
+          <div style="background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 12px; padding: 16px; margin-bottom: 16px;">
+            <div style="font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="stroke-width: 2;">
+                <rect x="6" y="2" width="12" height="20" rx="2"/>
+                <path d="M12 6h.01M10 10h4M10 14h4"/>
+              </svg>
+              Категория
+            </div>
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <img src="${category.boxArtURL || 'https://static-cdn.jtvnw.net/ttv-boxart/509658-60x84.jpg'}" 
+                   alt="${category.name}"
+                   style="width: 48px; height: 67px; border-radius: 8px; object-fit: cover; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);">
+              <div style="flex: 1;">
+                <div style="font-size: 15px; font-weight: 600; color: var(--text-primary); margin-bottom: 4px;">${category.name}</div>
+                <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                  <span style="color: var(--text-secondary); font-size: 12px; display: flex; align-items: center; gap: 4px;">
+                    <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" style="color: #9147ff;">
+                      <path d="M8 2C4.5 2 1.5 4.5 0 8c1.5 3.5 4.5 6 8 6s6.5-2.5 8-6c-1.5-3.5-4.5-6-8-6zm0 10c-2.2 0-4-1.8-4-4s1.8-4 4-4 4 1.8 4 4-1.8 4-4 4zm0-6.5c-1.4 0-2.5 1.1-2.5 2.5s1.1 2.5 2.5 2.5 2.5-1.1 2.5-2.5-1.1-2.5-2.5-2.5z"/>
+                    </svg>
+                    ${this.formatViewersCount(category.viewersCount)} зрителей
+                  </span>
+                  ${category.hasDrops ? `
+                  <span style="display: flex; align-items: center; gap: 4px; padding: 3px 8px; background: rgba(145, 71, 255, 0.15); border: 1px solid rgba(145, 71, 255, 0.3); border-radius: 10px; font-size: 11px; font-weight: 600; color: #9147ff;">
+                    <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor">
+                      <path d="M8 2L10 6H14L11 9L12 13L8 10.5L4 13L5 9L2 6H6L8 2Z"/>
+                    </svg>
+                    Дропсы
+                  </span>` : ''}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          ${channelDetails.description ? `
+          <!-- Channel Description -->
+          <div style="background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 12px; padding: 16px; margin-bottom: 16px;">
+            <div style="font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="stroke-width: 2;">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M12 16v-4M12 8h.01"/>
+              </svg>
+              О канале
+            </div>
+            <div style="font-size: 13px; line-height: 1.6; color: var(--text-primary);">${channelDetails.description}</div>
+          </div>` : ''}
+
+          <!-- Action Buttons -->
+          <div style="display: flex; gap: 12px; margin-top: 20px;">
+            <button onclick="window.electronAPI.openExternal('https://twitch.tv/${stream.login}')" style="flex: 1; padding: 12px 20px; background: linear-gradient(135deg, #9147ff, #772ce8); color: white; border: none; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 8px;" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(145, 71, 255, 0.4)'" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                <path d="M2 1h12l1 1v10l-1 1h-3v2l-2-2H6l-2 2v-2H2l-1-1V2l1-1z"/>
+                <path d="M5 4h1v4H5V4zm4 0h1v4H9V4z" fill="#9147ff"/>
+              </svg>
+              Открыть на Twitch
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    modal.appendChild(modalContent);
+    document.body.appendChild(modal);
+
+    // Обработчик закрытия
+    const closeModal = () => {
+      modal.style.opacity = '0';
+      modalContent.style.transform = 'translateY(20px)';
+      setTimeout(() => {
+        document.body.removeChild(modal);
+        this.isStreamDetailsOpen = false;
+      }, 200);
+    };
+
+    // Закрытие по клику на overlay
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) closeModal();
+    });
+
+    // Закрытие по клику на кнопку
+    const closeBtn = modal.querySelector('#close-stream-modal');
+    if (closeBtn) {
+      closeBtn.addEventListener('click', closeModal);
     }
   }
 
@@ -3401,10 +4673,10 @@ class FarmingPage {
             console.log('👀 Observer attached to:', chatRoot.className || 'body');
           }, 1000);
           
-          // Интервал как запасной вариант (проверяем каждые 5 секунд)
-          setInterval(clickBonusButton, 5000);
+          // Интервал как запасной вариант (проверяем каждые 15 секунд)
+          setInterval(clickBonusButton, 15000);
           
-          console.log('✨ Bonus auto-collector initialized (checking every 5s + on DOM changes)');
+          console.log('✨ Bonus auto-collector initialized (checking every 15s + on DOM changes)');
         })();
       `;
       
@@ -3412,6 +4684,7 @@ class FarmingPage {
       chatWebview.executeJavaScript(collectorScript)
         .then(() => {
           console.log('Bonus collector script injected successfully');
+          chatWebview.dataset.bonusCollectorReady = 'true';
         })
         .catch(err => {
           console.error('Failed to inject bonus collector:', err);
@@ -3433,6 +4706,17 @@ class FarmingPage {
       console.error('Chat webview not found');
       return;
     }
+
+    const hasSameChannel = chatWebview.dataset.activeChannel === channelLogin;
+    const collectorReady = chatWebview.dataset.bonusCollectorReady === 'true';
+    if (hasSameChannel && collectorReady) {
+      this.startPointsPolling(chatWebview);
+      console.log('Bonus collector already active for', channelLogin);
+      return;
+    }
+
+    chatWebview.dataset.activeChannel = channelLogin;
+    chatWebview.dataset.bonusCollectorReady = 'false';
     
     // Загружаем чат в фоне (даже если он не показан)
     chatWebview.src = `https://www.twitch.tv/embed/${channelLogin}/chat?parent=localhost&darkpopout`;
@@ -3452,15 +4736,15 @@ class FarmingPage {
       clearInterval(this.pointsPollingInterval);
     }
     
-    // Опрашиваем баллы каждые 10 секунд
+    // Опрашиваем баллы каждые 20 секунд
     this.pointsPollingInterval = setInterval(() => {
       this.pollChannelPoints(chatWebview);
-    }, 10000);
+    }, 20000);
     
-    // Первый опрос через 5 секунд после загрузки
+    // Первый опрос через 8 секунд после загрузки
     setTimeout(() => {
       this.pollChannelPoints(chatWebview);
-    }, 5000);
+    }, 8000);
   }
   
   async pollChannelPoints(chatWebview) {
@@ -3672,3 +4956,17 @@ class FarmingPage {
 
 // Export to window
 window.FarmingPage = FarmingPage;
+
+// Глобальная функция для показа кастомных уведомлений о дропах
+window.showDropNotification = function(dropName, gameName, dropIcon = null) {
+  // Используем Electron API для показа уведомления на экране (не внутри приложения)
+  if (window.electronAPI && window.electronAPI.showDropNotification) {
+    window.electronAPI.showDropNotification(dropName, gameName, dropIcon);
+  } else {
+    console.error('[DropNotification] electronAPI.showDropNotification not available');
+  }
+};
+
+window.hideDropNotification = function(notificationId) {
+  // Не нужно - Electron окно закрывается само
+};

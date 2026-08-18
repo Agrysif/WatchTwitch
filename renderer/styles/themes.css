@@ -2,6 +2,7 @@
 .theme-dark {
   --bg-primary: #0e0e10;
   --bg-secondary: #18181b;
+  --bg-tertiary: #1f1f23;
   --sidebar-bg: #1f1f23;
   --card-bg: #18181b;
   --titlebar-bg: #18181b;
@@ -38,6 +39,7 @@
 .theme-light {
   --bg-primary: #f7f7f8;
   --bg-secondary: #ffffff;
+  --bg-tertiary: #f0f0f1;
   --sidebar-bg: #ffffff;
   --card-bg: #ffffff;
   --titlebar-bg: #ffffff;

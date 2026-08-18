@@ -17,11 +17,11 @@
       <button class="btn btn-secondary period-btn" data-period="custom">
         <span data-i18n="statistics.custom">Настраиваемый</span>
       </button>
-      <button class="btn btn-primary" id="export-stats-btn" style="margin-left: auto;">
+      <button class="btn btn-primary" id="export-stats-btn" style="margin-left: auto; display: flex; align-items: center; gap: 8px; background: linear-gradient(135deg, #9147ff, #772ce8); border: none; box-shadow: 0 2px 8px rgba(145, 71, 255, 0.3); transition: all 0.2s ease; color: white;">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
           <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" stroke-width="2"/>
         </svg>
-        <span data-i18n="statistics.export">Экспорт</span>
+        <span data-i18n="statistics.export" style="font-weight: 600; color: white;">Экспорт</span>
       </button>
     </div>
     
@@ -54,11 +54,11 @@
             <input type="date" id="end-date" style="position: absolute; opacity: 0; pointer-events: none;">
           </div>
         </div>
-        <button class="btn btn-primary" id="apply-date-range" style="margin-top: 20px;">
+        <button class="btn btn-primary" id="apply-date-range" style="margin-top: 20px; background: linear-gradient(135deg, #9147ff, #772ce8); border: none; box-shadow: 0 2px 8px rgba(145, 71, 255, 0.3); color: white;">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
             <path d="M20 6L9 17l-5-5"/>
           </svg>
-          Применить
+          <span data-i18n="common.save">Применить</span>
         </button>
       </div>
     </div>
@@ -87,7 +87,7 @@
         </svg>
       </div>
       <div class="stat-content">
-        <div class="stat-label">Заработано баллов</div>
+        <div class="stat-label" data-i18n="statistics.pointsEarned">Заработано баллов</div>
         <div class="stat-value" id="total-points">0</div>
       </div>
     </div>
@@ -100,7 +100,7 @@
         </svg>
       </div>
       <div class="stat-content">
-        <div class="stat-label">Сундучков собрано</div>
+        <div class="stat-label" data-i18n="statistics.chestsCollected">Сундучков собрано</div>
         <div class="stat-value" id="total-chests">0</div>
       </div>
     </div>
@@ -113,7 +113,7 @@
         </svg>
       </div>
       <div class="stat-content">
-        <div class="stat-label">Дропсов получено</div>
+        <div class="stat-label" data-i18n="statistics.dropsReceived">Дропсов получено</div>
         <div class="stat-value" id="drops-collected">0</div>
       </div>
     </div>
@@ -126,7 +126,7 @@
         <circle cx="12" cy="8" r="7"/>
         <path d="M8 15h8M9 20h6M7 20h10"/>
       </svg>
-      Топ категорий
+      <span data-i18n="statistics.topCategories">Топ категорий</span>
     </div>
     <div id="top-categories-section" style="min-height: 220px;">
       <div style="text-align: center; padding: 40px; color: var(--text-secondary);">Загрузка...</div>
@@ -453,7 +453,7 @@
         <path d="M12 8v4l2 2"/>
         <circle cx="12" cy="12" r="10"/>
       </svg>
-      Последние сессии
+      <span data-i18n="statistics.recentSessions">Последние сессии</span>
     </div>
     <div id="recent-sessions">
       <div style="text-align: center; padding: 40px; color: var(--text-secondary);">

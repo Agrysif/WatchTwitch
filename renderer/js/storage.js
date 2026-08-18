@@ -66,9 +66,55 @@ class Storage {
     }
     stats.sessions.push({
       ...session,
-      timestamp: Date.now()
+      timestamp: session.timestamp || Date.now(),
+      isActive: session.isActive || false
     });
     await this.set('statistics', stats);
+  }
+
+  static async updateCurrentSession(sessionData) {
+    const stats = await this.getStatistics();
+    if (!stats.sessions) {
+      stats.sessions = [];
+    }
+    
+    // Находим активную сессию
+    const activeIndex = stats.sessions.findIndex(s => s.isActive === true);
+    
+    if (activeIndex >= 0) {
+      // Обновляем существующую активную сессию
+      stats.sessions[activeIndex] = {
+        ...stats.sessions[activeIndex],
+        ...sessionData,
+        isActive: true
+      };
+    } else {
+      // Создаем новую активную сессию
+      stats.sessions.push({
+        ...sessionData,
+        timestamp: sessionData.timestamp || Date.now(),
+        isActive: true
+      });
+    }
+    
+    await this.set('statistics', stats);
+  }
+
+  static async finalizeCurrentSession(finalData) {
+    const stats = await this.getStatistics();
+    if (!stats.sessions) return;
+    
+    // Находим активную сессию и завершаем её
+    const activeIndex = stats.sessions.findIndex(s => s.isActive === true);
+    
+    if (activeIndex >= 0) {
+      stats.sessions[activeIndex] = {
+        ...stats.sessions[activeIndex],
+        ...finalData,
+        isActive: false
+      };
+      await this.set('statistics', stats);
+    }
   }
 
   static async getSettings() {

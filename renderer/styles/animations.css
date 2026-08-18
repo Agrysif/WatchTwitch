@@ -218,6 +218,115 @@
   animation-delay: -0.32s;
 }
 
+.waiting-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 26px 18px;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  transition: none;
+}
+
+.waiting-icon {
+  width: 64px;
+  height: 64px;
+  position: relative;
+  display: grid;
+  place-items: center;
+  transition: filter 0.2s ease;
+}
+
+.waiting-icon:hover {
+  cursor: pointer;
+  filter: drop-shadow(0 0 10px rgba(145, 71, 255, 0.45));
+}
+
+.waiting-icon:hover .waiting-ring-outer {
+  animation-duration: 1.25s;
+  opacity: 0.62;
+}
+
+.waiting-icon:hover .waiting-ring-inner {
+  animation-duration: 0.95s;
+  opacity: 0.8;
+}
+
+.waiting-icon:hover .waiting-dot {
+  animation-duration: 0.6s;
+}
+
+.waiting-ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 2px solid var(--accent-color);
+}
+
+.waiting-ring-outer {
+  width: 64px;
+  height: 64px;
+  opacity: 0.24;
+  animation: waitingPulseOuter 2.2s ease-in-out infinite;
+}
+
+.waiting-ring-inner {
+  width: 44px;
+  height: 44px;
+  opacity: 0.45;
+  animation: waitingPulseInner 1.6s ease-in-out infinite;
+}
+
+.waiting-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--accent-color);
+  animation: waitingDotBlink 1.4s ease-in-out infinite;
+}
+
+.waiting-label {
+  margin: 0;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+@keyframes waitingPulseOuter {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.24;
+  }
+  50% {
+    transform: scale(1.08);
+    opacity: 0.55;
+  }
+}
+
+@keyframes waitingPulseInner {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.35;
+  }
+  50% {
+    transform: scale(0.92);
+    opacity: 0.7;
+  }
+}
+
+@keyframes waitingDotBlink {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.55;
+    transform: scale(1.25);
+  }
+}
+
 .loading-dots span:nth-child(2) {
   animation-delay: -0.16s;
 }
@@ -291,4 +400,38 @@
 
 .slide-out-right {
   animation: slideOutRight 0.3s ease-in;
+}
+
+/* Slide Up Animation */
+@keyframes slideUp {
+  from {
+    transform: translateY(30px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* Spin Animation (for loaders) */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Pulse Live Animation (for live indicators) */
+@keyframes pulse-live {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(0.95);
+  }
 }

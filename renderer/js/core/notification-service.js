@@ -42,12 +42,35 @@ class NotificationService {
   }
 
   /**
-   * Показать desktop уведомление (отключено по умолчанию)
+   * Показать desktop уведомление
    */
   async showDesktopNotification(title, body, options = {}) {
-    // Desktop уведомления отключены - используем только toast внутри приложения
-    console.log('Desktop notification (disabled):', title, body);
-    return null;
+    console.log('[NotificationService] showDesktopNotification called:', { title, body, options, hasElectronAPI: !!window.electronAPI });
+    
+    try {
+      if (window.electronAPI && window.electronAPI.showNotification) {
+        console.log('[NotificationService] Calling electronAPI.showNotification');
+        window.electronAPI.showNotification(title, body, options.icon || null);
+      } else {
+        console.warn('[NotificationService] electronAPI not available. Notification:', title, body);
+      }
+    } catch (error) {
+      console.error('[NotificationService] Failed to show desktop notification:', error);
+    }
+  }
+
+  /**
+   * Показать кастомное уведомление о дропе (в стиле приложения)
+   */
+  showCustomDropNotification(dropName, gameName, dropIcon = null) {
+    // Используем Electron API для показа уведомления на экране (не внутри приложения)
+    if (window.electronAPI && window.electronAPI.showDropNotification) {
+      window.electronAPI.showDropNotification(dropName, gameName, dropIcon);
+    } else if (typeof window.showDropNotification === 'function') {
+      window.showDropNotification(dropName, gameName, dropIcon);
+    } else {
+      console.error('[NotificationService] No method available to show drop notification');
+    }
   }
 
   /**
@@ -67,12 +90,21 @@ class NotificationService {
   /**
    * Уведомление об успешном получении дропа
    */
-  notifyDropClaimed(dropName, gameName) {
-    return this.showDesktopNotification(
-      '✅ Дроп получен!',
-      `${dropName}\n${gameName}`,
-      { 
-        icon: '../assets/icon.png',
+  notifyDropClaimed(dropName, gameName, dropIcon = null) {
+    // Проверяем настройку перед показом уведомления
+    const settings = window.SettingsManager;
+    if (!settings || !settings.get('notifyOnDropClaimed')) {
+      return;
+    }
+    
+    // Показываем кастомное уведомление в стиле приложения
+    // Используем глобальную функцию если доступна, иначе собственную
+    if (typeof window.showDropNotification === 'function') {
+      return window.showDropNotification(dropName, gameName, dropIcon);
+    } else {
+      return this.showCustomDropNotification(dropName, gameName, dropIcon);
+    }
+  }
         tag: `drop-claimed-${dropName}`
       }
     );
