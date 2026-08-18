@@ -14,6 +14,10 @@
       this.campaigns = [];
       this.claimedDrops = [];
       this.updateTimer = null;
+      // Обработчики на document переживают уничтожение страницы,
+      // поэтому снимаем их централизованно в destroy()
+      this._abort = new AbortController();
+      this._destroyed = false;
       this.inventoryPage = 1;
       this.inventoryPageSize = 20;
       this.inventoryFilter = 'all'; // all, game, time
@@ -197,7 +201,7 @@
             console.error('Error parsing drop data:', error);
           }
         }
-      });
+      }, { signal: this._abort.signal });
     }
 
     async loadDrops() {
@@ -1097,6 +1101,10 @@
     }
 
     startAutoRefresh() {
+      // init() асинхронный, поэтому сюда можно попасть уже после destroy():
+      // без этой проверки каждый заход на страницу оставлял вечный таймер.
+      if (this._destroyed) return;
+
       // Обновляем каждые 5 минут
       if (this.updateTimer) {
         clearInterval(this.updateTimer);
@@ -1107,9 +1115,15 @@
     }
 
     destroy() {
+      this._destroyed = true;
       if (this.updateTimer) {
         clearInterval(this.updateTimer);
         this.updateTimer = null;
+      }
+      // Контроллер не обнуляем: отменённый сигнал делает поздние
+      // addEventListener безвредными пустышками.
+      if (this._abort) {
+        this._abort.abort();
       }
     }
   }

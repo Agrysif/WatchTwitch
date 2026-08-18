@@ -72,13 +72,10 @@
         } else {
           setupPreloads();
         }
-        
-        // Also monitor for ipc-message events from webviews to log traffic
-        document.addEventListener('ipc-message', (event) => {
-          if (event.channel === 'webview-traffic') {
-            console.log('[FarmingPage] WebView traffic event:', event.args[0], 'bytes');
-          }
-        });
+
+        // Слушатель канала 'webview-traffic' удалён: этого канала больше нет
+        // (трафик считается в main-процессе), а сам обработчик вешался на
+        // document при каждом заходе на страницу и никогда не снимался.
       </script>
       
       <div style="display: flex; gap: 12px; margin-top: 10px;">

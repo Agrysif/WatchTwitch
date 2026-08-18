@@ -19,6 +19,7 @@ class FarmingPage {
     this.dropsMissingChecks = 0;
     this.activeSessionResumed = false;
     this.isEventListenersSetup = false;
+    this._destroyed = false;
     this.streamInfoClickHandler = null;
     this.isStreamDetailsOpen = false;
     this.activeChatChannelLogin = null;
@@ -58,16 +59,22 @@ class FarmingPage {
     // Загружаем подписанные каналы и добавляем их в фарминг
     await this.loadAndAddSubscribedChannels();
 
-        // Завершаем сессию при закрытии приложения (сохраняем активную сессию)
-        if (window.electronAPI && typeof window.electronAPI.onAppClosing === 'function') {
-          window.electronAPI.onAppClosing(() => {
-            if (this.sessionStartTime) {
-              this.updateSessionInfo()
-                .catch(() => {})
-                .finally(() => this.stopFarming(false, true));
-            }
-          });
+    // Завершаем сессию при закрытии приложения (сохраняем активную сессию).
+    // Подписка одна на всё приложение: страница пересоздаётся при каждой
+    // навигации, а ipcRenderer.on не имеет автоснятия — иначе обработчики
+    // копились бы бесконечно.
+    if (!window._appClosingHooked &&
+        window.electronAPI && typeof window.electronAPI.onAppClosing === 'function') {
+      window._appClosingHooked = true;
+      window.electronAPI.onAppClosing(() => {
+        const page = window.farmingPage;
+        if (page && page.sessionStartTime) {
+          page.updateSessionInfo()
+            .catch(() => {})
+            .finally(() => page.stopFarming(false, true));
         }
+      });
+    }
 
     // Восстанавливаем активную сессию после перезапуска/переключения вкладок
     await this.resumeActiveSession();
@@ -349,6 +356,9 @@ class FarmingPage {
   }
 
   startAutoUpdate() {
+    // Страница могла быть уничтожена, пока выполнялся асинхронный init()
+    if (this._destroyed) return;
+
     if (this.updateInterval) {
       clearInterval(this.updateInterval);
     }
@@ -473,12 +483,29 @@ class FarmingPage {
   }
 
   setupEventListeners() {
+    // init() асинхронный — страница могла быть уничтожена, пока он выполнялся
+    if (this._destroyed) return;
+
     // Проверяем, были ли уже установлены обработчики
     if (this.isEventListenersSetup) {
       console.log('Event listeners already setup, skipping');
       return;
     }
     this.isEventListenersSetup = true;
+
+    // Все обработчики регистрируем через AbortController.
+    // Часть целей (кнопки сайдбара, document) живёт вне страницы и переживает
+    // навигацию — без снятия обработчиков каждый повторный заход на страницу
+    // фарминга добавлял ещё один комплект: клик срабатывал многократно,
+    // а старые экземпляры страницы не освобождались.
+    if (this._listenerAbort) {
+      this._listenerAbort.abort();
+    }
+    this._listenerAbort = new AbortController();
+    const listenerSignal = this._listenerAbort.signal;
+    const on = (el, type, handler) => {
+      if (el) el.addEventListener(type, handler, { signal: listenerSignal });
+    };
 
     // Используем setTimeout для гарантии, что DOM загружен
     setTimeout(() => {
@@ -493,7 +520,7 @@ class FarmingPage {
       const toggleChatBtn = document.getElementById('toggle-chat-btn');
 
       if (dropsFilterBtn) {
-        dropsFilterBtn.addEventListener('click', () => {
+        on(dropsFilterBtn, 'click', () => {
           this.dropsFilterEnabled = !this.dropsFilterEnabled;
           
           if (this.dropsFilterEnabled) {
@@ -512,7 +539,7 @@ class FarmingPage {
 
       if (addAllDropsBtn) {
         this.updateAutoDropsButtonState();
-        addAllDropsBtn.addEventListener('click', async () => {
+        on(addAllDropsBtn, 'click', async () => {
           await this.toggleAutoDropsCategories();
         });
       } else {
@@ -520,7 +547,7 @@ class FarmingPage {
       }
 
       if (addBtn) {
-        addBtn.addEventListener('click', () => {
+        on(addBtn, 'click', () => {
           this.showCategorySelector();
         });
       } else {
@@ -528,41 +555,41 @@ class FarmingPage {
       }
 
       if (startBtn) {
-        startBtn.addEventListener('click', () => {
+        on(startBtn, 'click', () => {
           this.startFarming();
         });
       }
 
       if (stopBtn) {
-        stopBtn.addEventListener('click', () => {
+        on(stopBtn, 'click', () => {
           this.stopFarming();
         });
       }
 
       // Навигация: следующий стрим
       if (nextStreamBtn) {
-        nextStreamBtn.addEventListener('click', () => {
+        on(nextStreamBtn, 'click', () => {
           this.switchToNextStream();
         });
       }
 
       // Навигация: предыдущая категория
       if (prevCategoryBtn) {
-        prevCategoryBtn.addEventListener('click', () => {
+        on(prevCategoryBtn, 'click', () => {
           this.switchToPrevCategory();
         });
       }
 
       // Навигация: следующая категория
       if (nextCategoryBtn) {
-        nextCategoryBtn.addEventListener('click', () => {
+        on(nextCategoryBtn, 'click', () => {
           this.switchToNextCategory();
         });
       }
 
       // Показать/скрыть чат
       if (toggleChatBtn) {
-        toggleChatBtn.addEventListener('click', () => {
+        on(toggleChatBtn, 'click', () => {
           this.toggleChat();
         });
       }
@@ -570,7 +597,7 @@ class FarmingPage {
       // Подписаться на канал
       const followBtn = document.getElementById('follow-channel-btn');
       if (followBtn) {
-        followBtn.addEventListener('click', () => {
+        on(followBtn, 'click', () => {
           this.followCurrentChannel();
         });
       }
@@ -578,13 +605,13 @@ class FarmingPage {
       // Уведомления
       const notificationsBtn = document.getElementById('notifications-btn');
       if (notificationsBtn) {
-        notificationsBtn.addEventListener('click', () => {
+        on(notificationsBtn, 'click', () => {
           this.toggleNotifications();
         });
       }
 
       // Обработчик кликов по карточкам дропов
-      document.addEventListener('click', (e) => {
+      on(document, 'click', (e) => {
         const dropCard = e.target.closest('.drop-card-clickable');
         if (dropCard) {
           const dropData = dropCard.getAttribute('data-drop');
@@ -5047,13 +5074,17 @@ class FarmingPage {
 
   destroy() {
     console.log('🧹 FarmingPage destroy: очищаю интервалы');
+    this._destroyed = true;
     const intervals = [
       'updateInterval',
-      'sessionInterval', 
+      'sessionInterval',
+      'statsUpdateInterval',
       'streamStatsInterval',
       'dropsProgressInterval',
       'pointsPollingInterval',
-      'streamHealthCheckInterval'
+      'streamHealthCheckInterval',
+      'matureCheckInterval',
+      'bonusCollectorInterval'
     ];
     intervals.forEach(key => {
       if (this[key]) {
@@ -5061,6 +5092,17 @@ class FarmingPage {
         delete this[key];
       }
     });
+
+    // Снимаем все обработчики событий этого экземпляра страницы.
+    // Без этого обработчики на кнопках сайдбара и на document оставались
+    // висеть после каждой навигации вместе со всем объектом страницы.
+    // Контроллер намеренно НЕ обнуляем: addEventListener с уже отменённым
+    // сигналом ничего не делает, поэтому обработчики, зарегистрированные
+    // асинхронным кодом уже после уничтожения страницы, просто не появятся.
+    if (this._listenerAbort) {
+      this._listenerAbort.abort();
+    }
+    this.isEventListenersSetup = false;
   }
 }
 

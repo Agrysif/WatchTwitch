@@ -1,7 +1,19 @@
 // Settings Page with i18n support
 class SettingsPage {
   constructor() {
+    // Обработчики на document не исчезают вместе со страницей —
+    // снимаем их разом в destroy()
+    this._abort = new AbortController();
     this.init();
+  }
+
+  destroy() {
+    // Контроллер не обнуляем: render() асинхронный, и setupEventListeners
+    // может отработать уже после уничтожения страницы — отменённый сигнал
+    // не даст обработчикам закрепиться на document.
+    if (this._abort) {
+      this._abort.abort();
+    }
   }
 
   async init() {
@@ -533,7 +545,7 @@ class SettingsPage {
       // Закрытие при клике вне dropdown
       document.addEventListener('click', () => {
         languageSelect.classList.remove('open');
-      });
+      }, { signal: this._abort.signal });
     }
 
     // Тема (кастомный select)
@@ -575,7 +587,7 @@ class SettingsPage {
       // Закрытие при клике вне dropdown
       document.addEventListener('click', () => {
         themeSelect.classList.remove('open');
-      });
+      }, { signal: this._abort.signal });
     }
 
     // Сброс настроек
