@@ -200,72 +200,102 @@ let splashWindow;
 let powerSaveBlockerId;
 let tray = null;
 
-// Мониторинг сетевого трафика
+// ===== МОНИТОРИНГ СЕТЕВОГО ТРАФИКА =====
+// Единственный источник цифр — CDP-событие Network.dataReceived (см. setupTrafficMonitoring).
+// Оно приходит по мере получения чанков и покрывает все webContents, включая webview.
+// Ничего больше трафик не считает: любые дополнительные счётчики (Performance API,
+// перехват fetch/XHR в preload, событие loadingFinished) давали кратное задвоение.
 let trafficData = {
-  totalBytes: 0,
-  lastBytes: 0,
-  lastUpdate: Date.now(),
-  currentRate: 0,
-  sessionStartBytes: 0
+  totalBytes: 0,        // всего с момента запуска приложения
+  sessionStartBytes: 0, // отметка на момент старта текущей сессии фарминга
+  currentRate: 0,       // KB/s за последнее окно
+  _windowBytes: 0,
+  _windowStart: Date.now()
 };
-let streamTrafficInterval = null;
 
 const monitoredWebContents = new Set();
 
-function updateTrafficCounters(bytes) {
-  if (!bytes || bytes <= 0) return;
-  trafficData.totalBytes += bytes;
-  const now = Date.now();
-  const timeDiff = (now - trafficData.lastUpdate) / 1000;
-  if (timeDiff >= 1) {
-    const bytesDiff = trafficData.totalBytes - trafficData.lastBytes;
-    trafficData.currentRate = bytesDiff / timeDiff / 1024; // KB/s
-    trafficData.lastBytes = trafficData.totalBytes;
-    trafficData.lastUpdate = now;
+/**
+ * Заголовки, подсмотренные у собственных GraphQL-запросов Twitch внутри webview.
+ * Client-Integrity выдаётся клиенту Twitch после прохождения его проверки и
+ * живёт несколько часов; без него запрос списка кампаний дропсов возвращает
+ * IntegrityCheckFailed, из-за чего доступные (но ещё не начатые) дропсы
+ * невозможно было увидеть.
+ */
+let twitchGqlHeaders = {
+  integrity: null,
+  deviceId: null,
+  clientVersion: null,
+  sessionId: null,
+  capturedAt: 0
+};
+
+function captureTwitchGqlHeaders(params) {
+  try {
+    const url = params?.request?.url || '';
+    if (!url.includes('gql.twitch.tv')) return;
+
+    const headers = params.request.headers || {};
+    const pick = (name) => {
+      const key = Object.keys(headers).find(h => h.toLowerCase() === name);
+      return key ? headers[key] : null;
+    };
+
+    const integrity = pick('client-integrity');
+    if (!integrity) return;
+
+    const hadIntegrity = !!twitchGqlHeaders.integrity;
+    twitchGqlHeaders = {
+      integrity,
+      deviceId: pick('x-device-id') || pick('device-id') || twitchGqlHeaders.deviceId,
+      clientVersion: pick('client-version') || twitchGqlHeaders.clientVersion,
+      sessionId: pick('client-session-id') || twitchGqlHeaders.sessionId,
+      capturedAt: Date.now()
+    };
+
+    // Twitch подписывает каждый запрос заново, поэтому сообщаем только о первом
+    // перехвате — иначе лог заполняется одинаковыми строками.
+    if (!hadIntegrity) {
+      console.log('[Twitch] Перехвачен Client-Integrity — гейтед-запросы дропсов теперь доступны');
+    }
+  } catch (e) {
+    // перехват заголовков не критичен
   }
 }
 
-// Проверяем не идет ли "dead time" без трафика
+function hasFreshIntegrity() {
+  // Токен живёт порядка нескольких часов, берём с запасом
+  return !!twitchGqlHeaders.integrity && (Date.now() - twitchGqlHeaders.capturedAt) < 2 * 60 * 60 * 1000;
+}
+
+function updateTrafficCounters(bytes) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return;
+  trafficData.totalBytes += bytes;
+  trafficData._windowBytes += bytes;
+}
+
+// Пересчёт скорости раз в секунду по скользящему окну.
+// Окно обнуляется всегда, поэтому при простое скорость честно падает до нуля.
 setInterval(() => {
-  const timeSinceLastUpdate = (Date.now() - trafficData.lastUpdate) / 1000;
-  if (timeSinceLastUpdate > 3 && trafficData.currentRate > 0) {
-    trafficData.currentRate = 0;
-  }
-}, 2000);
+  const now = Date.now();
+  const elapsed = (now - trafficData._windowStart) / 1000;
+  if (elapsed <= 0) return;
+  trafficData.currentRate = trafficData._windowBytes / elapsed / 1024;
+  trafficData._windowBytes = 0;
+  trafficData._windowStart = now;
+}, 1000);
 
-function startStreamTrafficSampling(webContents) {
-  if (!webContents || webContents.isDestroyed()) return;
+function getTrafficSnapshot() {
+  return {
+    totalBytes: trafficData.totalBytes,
+    sessionBytes: Math.max(0, trafficData.totalBytes - trafficData.sessionStartBytes),
+    currentRateKBs: trafficData.currentRate
+  };
+}
 
-  if (streamTrafficInterval) {
-    clearInterval(streamTrafficInterval);
-    streamTrafficInterval = null;
-  }
-
-  let lastEntryCount = 0;
-
-  streamTrafficInterval = setInterval(async () => {
-    if (!webContents || webContents.isDestroyed()) return;
-    try {
-      const result = await webContents.executeJavaScript(`
-        (() => {
-          const entries = performance.getEntriesByType('resource');
-          let total = 0;
-          for (const e of entries) {
-            if (typeof e.transferSize === 'number' && e.transferSize > 0) total += e.transferSize;
-          }
-          return { total, entryCount: entries.length };
-        })();
-      `, true);
-
-      if (result && result.total > 0) {
-        console.log('[Stream Traffic] Performance API:', result.total, 'bytes from', result.entryCount, 'entries');
-        updateTrafficCounters(result.total);
-        lastEntryCount = result.entryCount;
-      }
-    } catch (e) {
-      // ignore sampling errors
-    }
-  }, 1000);
+function resetTrafficSession() {
+  trafficData.sessionStartBytes = trafficData.totalBytes;
+  return getTrafficSnapshot();
 }
 
 function setupTrafficMonitoring(webContents) {
@@ -277,14 +307,20 @@ function setupTrafficMonitoring(webContents) {
       webContents.debugger.attach('1.3');
     }
     webContents.debugger.sendCommand('Network.enable');
-    webContents.debugger.sendCommand('Network.setCacheDisabled', { cacheDisabled: true });
 
     webContents.debugger.on('message', (_event, method, params) => {
+      // Считаем ТОЛЬКО dataReceived: encodedDataLength здесь — размер конкретного
+      // чанка. Событие loadingFinished отдаёт encodedDataLength всего запроса
+      // целиком, поэтому учитывать оба — значит посчитать каждый байт дважды.
       if (method === 'Network.dataReceived') {
         updateTrafficCounters(params.encodedDataLength || params.dataLength || 0);
       }
-      if (method === 'Network.loadingFinished') {
-        updateTrafficCounters(params.encodedDataLength || 0);
+
+      // Попутно перехватываем заголовки, которые Twitch подставляет своим
+      // собственным GraphQL-запросам. Без Client-Integrity часть операций
+      // (в частности список кампаний дропсов) отвечает IntegrityCheckFailed.
+      if (method === 'Network.requestWillBeSent') {
+        captureTwitchGqlHeaders(params);
       }
     });
 
@@ -407,12 +443,13 @@ ipcMain.handle('get-webview-preload-path', () => {
   return pathToFileURL(preloadPath).toString();
 });
 
-ipcMain.on('webview-traffic', (_event, bytes) => {
-  bytes = Number(bytes) || 0;
-  if (bytes > 0) {
-    updateTrafficCounters(bytes);
-  }
-});
+// Текущие показатели трафика для интерфейса.
+// Раньше trafficData жил только в main-процессе и в renderer не отдавался вообще —
+// поэтому в статистике всегда было пусто.
+ipcMain.handle('get-traffic-stats', () => getTrafficSnapshot());
+
+// Вызывается при старте сессии фарминга, чтобы считать расход от этой точки.
+ipcMain.handle('reset-traffic-session', () => resetTrafficSession());
 
 // Обработка автоматического сбора сундуков
 ipcMain.on('chest-claimed', (_event, data) => {
@@ -489,6 +526,17 @@ function createMainWindow() {
   });
 
   mainWindow.loadFile('renderer/index.html');
+
+  // В dev-режиме дублируем консоль renderer в терминал: без этого ошибки
+  // интерфейса видны только в DevTools и легко проходят мимо.
+  if (!app.isPackaged) {
+    mainWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+      if (level >= 2) { // предупреждения и ошибки
+        const source = (sourceId || '').split('/').pop();
+        console.log(`[Renderer:${level === 3 ? 'error' : 'warn'}] ${message} (${source}:${line})`);
+      }
+    });
+  }
 
   // Настраиваем реальный мониторинг трафика через CDP (включая webview)
   setupTrafficMonitoring(mainWindow.webContents);
@@ -1033,8 +1081,6 @@ async function createStreamView(url, account = null) {
   streamView.webContents.once('did-finish-load', () => {
     console.log('Stream loaded, setting up quality...');
 
-    startStreamTrafficSampling(streamView.webContents);
-
     // Если есть OAuth токен, инжектим его в localStorage
     const oauth = store.get('oauth');
     if (oauth && oauth.accessToken) {
@@ -1089,12 +1135,6 @@ async function createStreamView(url, account = null) {
     console.error('Stream failed to load:', errorCode, errorDescription);
   });
 
-  streamView.webContents.on('destroyed', () => {
-    if (streamTrafficInterval) {
-      clearInterval(streamTrafficInterval);
-      streamTrafficInterval = null;
-    }
-  });
 
   // Перерисовка при изменении размера окна
   mainWindow.on('resize', () => {
@@ -2706,6 +2746,129 @@ async function getStreamCountForGame(gameName, authToken) {
   });
 }
 
+/**
+ * Кампании из ViewerDropsDashboard — все активные кампании аккаунта.
+ * Нужны потому, что inventory.dropCampaignsInProgress отдаёт ТОЛЬКО те кампании,
+ * где уже накоплена хотя бы минута просмотра. Пока фарм не начался, доступные
+ * дропсы там отсутствуют — и приложение делало вид, что дропсов нет вообще.
+ * Возвращает сырые кампании в том же виде, что и inventory (game — объект).
+ */
+function fetchViewerDropsDashboardCampaigns(authToken) {
+  const https = require('https');
+
+  return new Promise((resolve) => {
+    if (!authToken) {
+      resolve([]);
+      return;
+    }
+
+    // Без Client-Integrity запрос гарантированно вернёт IntegrityCheckFailed,
+    // поэтому не тратим на него сеть и время.
+    if (!hasFreshIntegrity()) {
+      console.log('[Drops] Client-Integrity ещё не перехвачен — пропускаю запрос списка кампаний');
+      resolve([]);
+      return;
+    }
+
+    // Полный запрос вместо persisted query: хэши persisted-запросов Twitch
+    // периодически меняет, и старый хэш начинает молча возвращать пустоту.
+    const postData = JSON.stringify({
+      operationName: 'ViewerDropsDashboard',
+      variables: {},
+      query: `query ViewerDropsDashboard {
+        currentUser {
+          id
+          dropCampaigns {
+            id
+            name
+            status
+            startAt
+            endAt
+            game {
+              id
+              name
+              displayName
+              boxArtURL
+            }
+            timeBasedDrops {
+              id
+              name
+              requiredMinutesWatched
+              benefitEdges {
+                benefit {
+                  id
+                  name
+                  imageAssetURL
+                }
+              }
+              self {
+                currentMinutesWatched
+                isClaimed
+                dropInstanceID
+              }
+            }
+          }
+        }
+      }`
+    });
+
+    const headers = {
+      'Client-ID': 'kimne78kx3ncx6brgo4mv6wki5h1ko',
+      'Authorization': `OAuth ${authToken}`,
+      'Content-Type': 'text/plain;charset=UTF-8',
+      'Client-Integrity': twitchGqlHeaders.integrity
+    };
+    if (twitchGqlHeaders.deviceId) headers['X-Device-Id'] = twitchGqlHeaders.deviceId;
+    if (twitchGqlHeaders.clientVersion) headers['Client-Version'] = twitchGqlHeaders.clientVersion;
+    if (twitchGqlHeaders.sessionId) headers['Client-Session-Id'] = twitchGqlHeaders.sessionId;
+
+    const req = https.request({
+      hostname: 'gql.twitch.tv',
+      port: 443,
+      path: '/gql',
+      method: 'POST',
+      headers
+    }, (res) => {
+      let data = '';
+      res.on('data', (chunk) => { data += chunk; });
+      res.on('end', () => {
+        try {
+          const response = JSON.parse(data);
+          const root = Array.isArray(response) ? response[0] : response;
+
+          if (root?.errors) {
+            console.warn('[Drops] Dashboard GraphQL errors:', JSON.stringify(root.errors).slice(0, 200));
+          }
+
+          const campaigns = root?.data?.currentUser?.dropCampaigns || [];
+          const now = new Date();
+
+          const active = campaigns.filter(campaign => {
+            if (campaign.status === 'EXPIRED') return false;
+            if (campaign.endAt && new Date(campaign.endAt) < now) return false;
+            if (campaign.startAt && new Date(campaign.startAt) > now) return false;
+            return true;
+          });
+
+          console.log('[Drops] Dashboard campaigns:', active.length, 'of', campaigns.length);
+          resolve(active);
+        } catch (e) {
+          console.warn('[Drops] Dashboard parse error:', e.message);
+          resolve([]);
+        }
+      });
+    });
+
+    req.on('error', (e) => {
+      console.warn('[Drops] Dashboard request error:', e.message);
+      resolve([]);
+    });
+
+    req.write(postData);
+    req.end();
+  });
+}
+
 // Fetch Drops Inventory (full inventory with progress tracking)
 ipcMain.handle('fetch-drops-inventory', async () => {
   const https = require('https');
@@ -2836,6 +2999,22 @@ ipcMain.handle('fetch-drops-inventory', async () => {
               inProgress: true
             });
           });
+
+          // Добавляем кампании, по которым просмотр ещё не начинался.
+          // Без этого дропсы появлялись в интерфейсе только после первой засчитанной
+          // минуты, из-за чего казалось, что приложение их «не видит».
+          const dashboardCampaigns = await fetchViewerDropsDashboardCampaigns(authToken);
+          dashboardCampaigns.forEach(campaign => {
+            if (!campaign?.id || campaignsMap.has(campaign.id)) return;
+            campaignsMap.set(campaign.id, {
+              ...campaign,
+              inProgress: false
+            });
+          });
+
+          console.log('[Drops] Кампаний всего:', campaignsMap.size,
+            '(в прогрессе:', ongoingCampaigns.length,
+            ', ещё не начатых:', campaignsMap.size - ongoingCampaigns.length, ')');
 
           // Format campaigns with stream count - claimedDrops уже объявлен выше
           const campaigns = await Promise.all(Array.from(campaignsMap.values()).map(async campaign => {

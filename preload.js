@@ -76,6 +76,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   getWebviewPreloadPath: () => ipcRenderer.invoke('get-webview-preload-path'),
 
+  // Сетевой трафик
+  getTrafficStats: () => ipcRenderer.invoke('get-traffic-stats'),
+  resetTrafficSession: () => ipcRenderer.invoke('reset-traffic-session'),
+
   // Diagnostics
   setProcessLabel: (payload) => ipcRenderer.invoke('set-process-label', payload),
   getProcessMetrics: () => ipcRenderer.invoke('get-process-metrics')
