@@ -4346,11 +4346,8 @@ class FarmingPage {
       // Смена канала — единственный случай, когда перезагрузка плеера уместна
       window.playerManager?.load(stream.login);
       
-      // Обновляем URL чата (даже если скрыт) для корректной загрузки при открытии
-      const chatWebview = document.getElementById('twitch-chat');
-      if (chatWebview) {
-        chatWebview.src = `https://www.twitch.tv/embed/${stream.login}/chat?parent=localhost&darkpopout`;
-      }
+      // Чат переводим на новый канал (он живёт вне страницы и не перезагружается зря)
+      window.chatManager?.load(stream.login);
       
       this.updateCurrentStreamUI(stream, prevCategory);
       this.startStreamStatsUpdate(stream.login);
@@ -4410,11 +4407,8 @@ class FarmingPage {
       // Смена канала — единственный случай, когда перезагрузка плеера уместна
       window.playerManager?.load(stream.login);
       
-      // Обновляем URL чата (даже если скрыт) для корректной загрузки при открытии
-      const chatWebview = document.getElementById('twitch-chat');
-      if (chatWebview) {
-        chatWebview.src = `https://www.twitch.tv/embed/${stream.login}/chat?parent=localhost&darkpopout`;
-      }
+      // Чат переводим на новый канал (он живёт вне страницы и не перезагружается зря)
+      window.chatManager?.load(stream.login);
       
       this.updateCurrentStreamUI(stream, nextCategory);
       this.startStreamStatsUpdate(stream.login);
@@ -4430,10 +4424,10 @@ class FarmingPage {
     // Сначала проверяем наличие необходимых элементов
     const playerContainer = document.getElementById('twitch-player-container');
     const chatContainer = document.getElementById('twitch-chat-container');
-    const chatWebview = document.getElementById('twitch-chat');
+    const chatSlot = document.getElementById('farming-chat-slot');
     const grid = document.getElementById('player-chat-grid');
-    
-    if (!playerContainer || !chatContainer || !chatWebview || !grid) {
+
+    if (!playerContainer || !chatContainer || !chatSlot || !grid) {
       window.utils.showToast('Чат не найден', 'error');
       return;
     }
@@ -4456,16 +4450,12 @@ class FarmingPage {
       // Показываем чат с анимацией
       chatContainer.style.display = 'block';
       grid.style.gridTemplateColumns = '1fr 340px'; // Плеер + Чат
-      
-      // Загружаем/перезагружаем чат если он не загружен
-      const chatUrl = `https://www.twitch.tv/embed/${channel}/chat?parent=localhost&darkpopout`;
-      if (!chatWebview.src || chatWebview.src !== chatUrl) {
-        chatWebview.src = chatUrl;
-      } else {
-        // Если URL одинаковый, перезагружаем webview
-        chatWebview.reload?.();
-      }
-      
+
+      // Чат уже загружен в фоне ради автосбора сундуков — здесь его достаточно
+      // показать. Перезагрузка сбросила бы сборщик и накопленное состояние.
+      window.chatManager?.load(channel);
+      window.chatManager?.attachTo(chatSlot);
+
       // Запускаем анимацию появления
       setTimeout(() => {
         chatContainer.style.opacity = '1';
@@ -4481,7 +4471,9 @@ class FarmingPage {
       
       setTimeout(() => {
         chatContainer.style.display = 'none';
-        // НЕ очищаем src, чтобы автосбор бонусов продолжал работать в фоне
+        // Отвязываем от слота, но НЕ выгружаем: автосбор сундуков
+        // должен продолжать работать в фоне
+        window.chatManager?.detach();
       }, 300); // Ждем завершения анимации
       
       window.utils.showToast('Чат скрыт', 'info');
@@ -4582,11 +4574,8 @@ class FarmingPage {
     // Переключаем плеер на другой канал
     window.playerManager.load(stream.login);
     
-    // Обновляем URL чата (даже если скрыт) для корректной загрузки при открытии
-    const chatWebview = document.getElementById('twitch-chat');
-    if (chatWebview) {
-      chatWebview.src = `https://www.twitch.tv/embed/${stream.login}/chat?parent=localhost&darkpopout`;
-    }
+    // Чат переводим на новый канал
+    window.chatManager?.load(stream.login);
     
     // Обновляем информацию о стриме
     this.updateCurrentStreamUI(stream, this.currentCategory);
@@ -4669,20 +4658,14 @@ class FarmingPage {
     }, 10000);
   }
 
-  startBonusAutoCollector(chatWebview) {
-    if (!chatWebview) return;
-    
-    // Останавливаем предыдущий интервал если есть
-    if (this.bonusCollectorInterval) {
-      clearInterval(this.bonusCollectorInterval);
-    }
-    
-    // Ждем загрузки чата
-    const setupCollector = () => {
-      console.log('Setting up bonus auto-collector...');
-      
-      // Скрипт для автоматического сбора бонусов
-      const collectorScript = `
+  /**
+   * Формирует скрипт автосбора бонусных сундуков и отдаёт его ChatManager.
+   *
+   * Само внедрение делает ChatManager при каждой загрузке чата: инъекция
+   * пропадает после смены канала, а чат теперь переживает навигацию.
+   */
+  startBonusAutoCollector() {
+    const collectorScript = `
         (function() {
           // Инициализируем счетчик если его нет
           if (typeof window.__chestsCollectedCount === 'undefined') {
@@ -4831,56 +4814,32 @@ class FarmingPage {
           
           console.log('✨ Bonus auto-collector initialized (checking every 15s + on DOM changes)');
         })();
-      `;
-      
-      // Выполняем скрипт в WebView после загрузки
-      chatWebview.executeJavaScript(collectorScript)
-        .then(() => {
-          console.log('Bonus collector script injected successfully');
-          chatWebview.dataset.bonusCollectorReady = 'true';
-        })
-        .catch(err => {
-          console.error('Failed to inject bonus collector:', err);
-        });
-    };
-    
-    // Пробуем запустить после небольшой задержки
-    chatWebview.addEventListener('dom-ready', () => {
-      setTimeout(setupCollector, 3000);
-    }, { once: true });
+    `;
+
+    window.chatManager?.setCollectorScript(collectorScript);
   }
 
   startBackgroundBonusCollector(channelLogin) {
-    console.log('Starting background bonus collector for', channelLogin);
-    
-    // Используем скрытый WebView для чата
-    const chatWebview = document.getElementById('twitch-chat');
-    if (!chatWebview) {
-      console.error('Chat webview not found');
+    const chat = window.chatManager;
+    if (!chat) {
+      console.error('[Chest] ChatManager недоступен');
       return;
     }
 
-    const hasSameChannel = chatWebview.dataset.activeChannel === channelLogin;
-    const collectorReady = chatWebview.dataset.bonusCollectorReady === 'true';
-    if (hasSameChannel && collectorReady) {
+    if (chat.isReadyFor(channelLogin)) {
       this.startPointsPolling();
-      console.log('Bonus collector already active for', channelLogin);
+      console.log('[Chest] Сборщик уже работает для', channelLogin);
       return;
     }
 
-    chatWebview.dataset.activeChannel = channelLogin;
-    chatWebview.dataset.bonusCollectorReady = 'false';
-    
-    // Загружаем чат в фоне (даже если он не показан)
-    chatWebview.src = `https://www.twitch.tv/embed/${channelLogin}/chat?parent=localhost&darkpopout`;
-    
-    // Запускаем автосбор
-    this.startBonusAutoCollector(chatWebview);
-    
-    // Запускаем регулярный опрос баллов
+    console.log('[Chest] Запускаю фоновый сборщик сундуков для', channelLogin);
+
+    // Скрипт регистрируем до загрузки: ChatManager внедрит его сам,
+    // как только документ чата будет готов
+    this.startBonusAutoCollector();
+    chat.load(channelLogin);
+
     this.startPointsPolling();
-    
-    console.log('Background bonus collector started');
   }
   
   /**

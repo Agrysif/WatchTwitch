@@ -32,12 +32,12 @@
              style="position: relative; width: 100%; padding-bottom: 56.25%; background: #000; border-radius: 8px; overflow: hidden;"></div>
         
         <!-- Chat -->
+        <!-- Слот для постоянного чата. Сам webview живёт вне страницы и только
+             позиционируется поверх этого места — см. renderer/js/core/chat-manager.js.
+             Внутри страницы он держаться не может: роутер перерисовывает её через
+             innerHTML, и вместе с чатом умирал автосбор бонусных сундуков. -->
         <div id="twitch-chat-container" style="display: none; background: var(--bg-secondary); border-radius: 8px; overflow: hidden; border: 1px solid var(--border-color); opacity: 0; transform: translateX(20px); transition: opacity 0.3s ease, transform 0.3s ease;">
-          <webview id="twitch-chat"
-                   style="width: 100%; height: 450px; background: #18181b;"
-                   partition="persist:twitch"
-                   allowpopups="false"
-                   webpreferences="contextIsolation=false"></webview>
+          <div id="farming-chat-slot" style="width: 100%; height: 450px; background: #18181b;"></div>
         </div>
       </div>
       
