@@ -306,6 +306,15 @@ class SettingsPage {
               ${i18n.t('settings.resetSettings')}
             </button>
             
+            <button class="btn btn-secondary" id="clear-statistics-btn">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 6h18"></path>
+                <path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"></path>
+                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+              </svg>
+              ${i18n.t('settings.clearStatistics')}
+            </button>
+
             <button class="btn btn-secondary" id="export-settings-btn">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
@@ -591,6 +600,23 @@ class SettingsPage {
     }
 
     // Сброс настроек
+    const clearStatsBtn = document.getElementById('clear-statistics-btn');
+    if (clearStatsBtn) {
+      clearStatsBtn.addEventListener('click', async () => {
+        if (!confirm(i18n.t('settings.clearStatisticsConfirm'))) return;
+
+        try {
+          await Storage.clearStatistics();
+          // Страница статистики слушает это событие и перерисуется сама
+          window.dispatchEvent(new CustomEvent('statistics-updated'));
+          window.utils.showToast(i18n.t('settings.clearStatisticsDone'), 'success');
+        } catch (error) {
+          console.error('[Settings] Не удалось очистить статистику:', error);
+          window.utils.showToast('Не удалось очистить статистику', 'error');
+        }
+      }, { signal: this._abort.signal });
+    }
+
     const resetBtn = document.getElementById('reset-settings-btn');
     if (resetBtn) {
       resetBtn.addEventListener('click', () => {

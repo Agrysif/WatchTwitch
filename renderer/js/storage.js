@@ -117,6 +117,26 @@ class Storage {
     }
   }
 
+  /**
+   * Полная очистка накопленной статистики.
+   *
+   * Нужна потому, что до исправления счётчиков в сессии писались неверные
+   * значения: вместо нафармленного за сессию сохранялись баллы текущего
+   * стрима, а количество дропсов вообще было заглушкой с нулём. Эти записи
+   * уже лежат в хранилище, и пересчитать их задним числом неоткуда —
+   * исходных данных не сохранилось.
+   */
+  static async clearStatistics() {
+    await this.set('statistics', {
+      totalWatchTime: 0,
+      totalDrops: 0,
+      categoriesCompleted: 0,
+      sessions: []
+    });
+    await this.saveWatchTimeStats({});
+    console.log('[Storage] Статистика очищена');
+  }
+
   static async getSettings() {
     return await this.get('settings', {
       language: 'ru',
