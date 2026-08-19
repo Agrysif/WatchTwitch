@@ -1,94 +1,118 @@
 ﻿# Публикация релиза на GitHub.
 #
-# Скрипт сам достаёт токен из fix-release.ps1 (файл в .gitignore и в
-# репозиторий не попадает), кладёт его в переменную окружения только на
-# время запуска и передаёт сборщику. Токен нигде не печатается.
+# Использует GitHub CLI (tools\gh\bin\gh.exe), который уже авторизован под
+# вашим аккаунтом — токен лежит в хранилище Windows, вводить его не нужно.
 #
-# Запуск: правый клик по файлу -> "Выполнить с помощью PowerShell",
-# либо в терминале из папки проекта:   .\publish.ps1
+# Запуск: правый клик по файлу -> "Выполнить с помощью PowerShell".
+# Окно не закроется само: в конце всегда ждёт нажатия клавиши, поэтому
+# сообщение об ошибке можно прочитать.
 
 $ErrorActionPreference = "Stop"
 
-Write-Host ""
-Write-Host "  Публикация WatchTwitch" -ForegroundColor Cyan
-Write-Host "  ----------------------" -ForegroundColor DarkGray
-Write-Host ""
-
-# --- Версия из package.json ---
-$pkg = Get-Content (Join-Path $PSScriptRoot "package.json") -Raw | ConvertFrom-Json
-$version = $pkg.version
-Write-Host "  Версия для выпуска: $version" -ForegroundColor White
-
-# --- Заметки о выпуске ---
-$notesPath = Join-Path $PSScriptRoot "RELEASE_NOTES.md"
-if (-not (Test-Path $notesPath)) {
-  Write-Host "  ! RELEASE_NOTES.md не найден — релиз уйдёт без описания." -ForegroundColor Yellow
-}
-else {
-  Write-Host "  Описание изменений: RELEASE_NOTES.md" -ForegroundColor White
-}
-
-# --- Токен ---
-$token = $null
-$tokenFile = Join-Path $PSScriptRoot "fix-release.ps1"
-
-if (Test-Path $tokenFile) {
-  $found = Select-String -Path $tokenFile -Pattern '\$token\s*=\s*"([^"]+)"' | Select-Object -First 1
-  if ($found) {
-    $token = $found.Matches[0].Groups[1].Value
-    Write-Host "  Токен: взят из fix-release.ps1" -ForegroundColor White
-  }
-}
-
-if (-not $token) {
+function Pause-AndExit([int]$code) {
   Write-Host ""
-  Write-Host "  Токен в файлах не найден." -ForegroundColor Yellow
-  Write-Host "  Создать новый: https://github.com/settings/tokens (права: repo)" -ForegroundColor DarkGray
-  Write-Host ""
-  $secure = Read-Host "  Вставьте токен" -AsSecureString
-  $token = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
-    [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure))
-}
-
-if (-not $token) {
-  Write-Host "  Без токена публикация невозможна." -ForegroundColor Red
-  exit 1
-}
-
-# --- Сборка и загрузка ---
-Write-Host ""
-Write-Host "  Собираю и загружаю. Это займёт несколько минут..." -ForegroundColor Cyan
-Write-Host ""
-
-$env:GH_TOKEN = $token
-
-try {
-  npm run release
-  $code = $LASTEXITCODE
-}
-finally {
-  # Не оставляем токен в переменных окружения этой сессии
-  Remove-Item Env:\GH_TOKEN -ErrorAction SilentlyContinue
-  $token = $null
-}
-
-Write-Host ""
-
-if ($code -ne 0) {
-  Write-Host "  Публикация не удалась (код $code)." -ForegroundColor Red
-  Write-Host "  Частые причины: истёк токен, нет права repo, пропала сеть." -ForegroundColor DarkGray
+  Write-Host "  Нажмите любую клавишу, чтобы закрыть окно..." -ForegroundColor DarkGray
+  try { $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown") } catch { Start-Sleep -Seconds 30 }
   exit $code
 }
 
-Write-Host "  Готово. Релиз создан ЧЕРНОВИКОМ." -ForegroundColor Green
-Write-Host ""
-Write-Host "  Осталось одно действие:" -ForegroundColor White
-Write-Host "  1. Откройте https://github.com/Agrysif/WatchTwitch/releases" -ForegroundColor Gray
-Write-Host "  2. Убедитесь, что в черновике v$version три файла:" -ForegroundColor Gray
-Write-Host "     WatchTwitch-Setup-$version.exe" -ForegroundColor DarkGray
-Write-Host "     WatchTwitch-Setup-$version.exe.blockmap" -ForegroundColor DarkGray
-Write-Host "     latest.yml" -ForegroundColor DarkGray
-Write-Host "  3. Нажмите Publish release" -ForegroundColor Gray
-Write-Host ""
-Write-Host "  Пока релиз в черновиках, установленные копии его не видят." -ForegroundColor DarkGray
-Write-Host ""
+try {
+  $root = Split-Path -Parent $MyInvocation.MyCommand.Path
+  Set-Location $root
+
+  Write-Host ""
+  Write-Host "  Публикация WatchTwitch" -ForegroundColor Cyan
+  Write-Host "  ----------------------" -ForegroundColor DarkGray
+  Write-Host ""
+
+  # --- Что выпускаем ---
+  $pkg = Get-Content (Join-Path $root "package.json") -Raw | ConvertFrom-Json
+  $version = $pkg.version
+  $tag = "v$version"
+  Write-Host "  Версия: $version" -ForegroundColor White
+
+  $notes = Join-Path $root "RELEASE_NOTES.md"
+  if (-not (Test-Path $notes)) {
+    Write-Host "  Нет файла RELEASE_NOTES.md — описание обязательно." -ForegroundColor Red
+    Pause-AndExit 1
+  }
+
+  # --- GitHub CLI ---
+  $gh = Join-Path $root "tools\gh\bin\gh.exe"
+  if (-not (Test-Path $gh)) {
+    $cmd = Get-Command gh -ErrorAction SilentlyContinue
+    if ($cmd) { $gh = $cmd.Source }
+    else {
+      Write-Host "  GitHub CLI не найден (ожидался tools\gh\bin\gh.exe)." -ForegroundColor Red
+      Pause-AndExit 1
+    }
+  }
+
+  & $gh auth status 2>&1 | Out-Null
+  if ($LASTEXITCODE -ne 0) {
+    Write-Host "  GitHub CLI не авторизован. Выполните: gh auth login" -ForegroundColor Red
+    Pause-AndExit 1
+  }
+  Write-Host "  GitHub CLI: авторизован" -ForegroundColor White
+
+  # --- Сборка ---
+  Write-Host ""
+  Write-Host "  Собираю установщик. Это несколько минут..." -ForegroundColor Cyan
+  Write-Host ""
+
+  & npm run build:win
+  if ($LASTEXITCODE -ne 0) {
+    Write-Host "  Сборка не удалась." -ForegroundColor Red
+    Pause-AndExit $LASTEXITCODE
+  }
+
+  # --- Проверка файлов перед загрузкой ---
+  $exe = Join-Path $root "dist\WatchTwitch-Setup-$version.exe"
+  $map = "$exe.blockmap"
+  $yml = Join-Path $root "dist\latest.yml"
+
+  foreach ($f in @($exe, $map, $yml)) {
+    if (-not (Test-Path $f)) {
+      Write-Host "  Не найден файл сборки: $f" -ForegroundColor Red
+      Pause-AndExit 1
+    }
+  }
+
+  # Имя внутри latest.yml обязано совпадать с именем файла — из-за
+  # расхождения здесь обновления ломались раньше
+  $ymlName = (Select-String -Path $yml -Pattern 'url:\s*(\S+)' | Select-Object -First 1).Matches[0].Groups[1].Value
+  if ($ymlName -ne "WatchTwitch-Setup-$version.exe") {
+    Write-Host "  latest.yml ссылается на '$ymlName', а файл называется иначе." -ForegroundColor Red
+    Write-Host "  Публикация остановлена: обновление не нашлось бы у пользователей." -ForegroundColor Red
+    Pause-AndExit 1
+  }
+  Write-Host "  Проверка latest.yml: имя совпадает" -ForegroundColor Green
+
+  # --- Загрузка ---
+  Write-Host ""
+  Write-Host "  Создаю черновик релиза и загружаю файлы..." -ForegroundColor Cyan
+
+  & $gh release create $tag --draft --target main --title "WatchTwitch $version" --notes-file $notes $exe $map $yml
+  if ($LASTEXITCODE -ne 0) {
+    Write-Host "  Не удалось создать релиз. Возможно, тег $tag уже существует." -ForegroundColor Red
+    Pause-AndExit $LASTEXITCODE
+  }
+
+  Write-Host ""
+  Write-Host "  Готово. Релиз создан ЧЕРНОВИКОМ." -ForegroundColor Green
+  Write-Host ""
+  Write-Host "  Осталось одно действие:" -ForegroundColor White
+  Write-Host "  1. Откройте https://github.com/Agrysif/WatchTwitch/releases" -ForegroundColor Gray
+  Write-Host "  2. Откройте черновик $tag" -ForegroundColor Gray
+  Write-Host "  3. Нажмите Publish release" -ForegroundColor Gray
+  Write-Host ""
+  Write-Host "  Пока релиз в черновиках, установленные копии его не видят." -ForegroundColor DarkGray
+
+  Pause-AndExit 0
+}
+catch {
+  Write-Host ""
+  Write-Host "  Ошибка: $($_.Exception.Message)" -ForegroundColor Red
+  Write-Host "  $($_.InvocationInfo.PositionMessage)" -ForegroundColor DarkGray
+  Pause-AndExit 1
+}
