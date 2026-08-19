@@ -137,26 +137,15 @@ class Storage {
     console.log('[Storage] Статистика очищена');
   }
 
-  static async getSettings() {
-    return await this.get('settings', {
-      language: 'ru',
-      theme: 'dark',
-      autostart: false,
-      notifications: true,
-      soundAlerts: true,
-      streamQuality: 'lowest',
-      checkInterval: 1,
-      preferredLanguage: 'russian',
-      enableShutdown: false,
-      shutdownAction: 'shutdown',
-      enableLogging: false,
-      minimizeToTray: false
-    });
-  }
-
-  static async saveSettings(settings) {
-    await this.set('settings', settings);
-  }
+  /**
+   * Настройки приложения живут в SettingsManager (window.settings) и
+   * зеркалируются в electron-store для main-процесса.
+   *
+   * Здесь раньше был третий, независимый набор настроек со своими
+   * значениями по умолчанию. Он читался только из drops.js, который в
+   * index.html был отключён, — то есть расходился с интерфейсом и никого
+   * не обслуживал. Убран, чтобы источник настроек остался один.
+   */
 
   static async getBlacklist() {
     return await this.get('blacklist', []);

@@ -15,7 +15,11 @@ class SettingsManager {
       soundVolume: 0.5,
       
       // Уведомления
-      desktopNotifications: false,
+      // Системные уведомления Windows. Ключ назван так же, как его читает
+      // main-процесс (store.get('settings.notifications')): раньше здесь
+      // лежал desktopNotifications, который не совпадал с ним ни именем,
+      // ни значением по умолчанию.
+      notifications: true,
       toastNotifications: true,
       notifyOnDropClaimed: true,
       
