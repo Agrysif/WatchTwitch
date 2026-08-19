@@ -409,7 +409,7 @@ class Router {
 
     const sidebarSlot = document.getElementById('sidebar-player-slot');
     if (sidebarSlot) {
-      player.attachTo(sidebarSlot);
+      player.attachTo(sidebarSlot, { interactive: false });
     }
   }
 

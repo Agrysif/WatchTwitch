@@ -18,8 +18,35 @@ class SessionState {
     this.streamLogin = null;
     this.tickInterval = null;
 
+    // Учёт баллов канала живёт здесь, а не на странице фарминга.
+    // Опрос принадлежал объекту страницы, и destroy() гасил его при уходе с
+    // неё — баллы копились только пока страница открыта, а в статистику
+    // попадали огрызки.
+    this.points = SessionState.emptyPoints();
+    this.pointsPollInterval = null;
+    this.dropsCollected = 0;
+
     // Тикаем всегда: если сессии нет, _tick просто ничего не рисует.
     this._startTicking();
+  }
+
+  // Сундук даёт разовую крупную прибавку (Twitch выдаёт 50 и больше),
+  // пассивный просмотр начисляет мелкими порциями
+  static get CHEST_THRESHOLD() {
+    return 50;
+  }
+
+  static emptyPoints() {
+    return {
+      initialized: false,
+      startTotal: 0,
+      currentTotal: 0,
+      earnedThisStream: 0,
+      sessionEarned: 0,
+      passiveEarned: 0,
+      chestsCollected: 0,
+      chestsPoints: 0
+    };
   }
 
   static get() {
@@ -40,6 +67,7 @@ class SessionState {
     this.streamLogin = meta.streamLogin || null;
 
     window.electronAPI?.resetTrafficSession?.();
+    this.resetPoints();
     this.showFarmingUI();
     this._tick();
 
@@ -62,9 +90,123 @@ class SessionState {
     this.startTime = null;
     this.categoryName = null;
     this.streamLogin = null;
+    this.stopPointsPolling();
     this.hideFarmingUI();
 
     console.log('[SessionState] Сессия остановлена');
+  }
+
+  // ===== БАЛЛЫ КАНАЛА =====
+
+  /** Полный сброс — новая сессия фарминга. */
+  resetPoints() {
+    this.points = SessionState.emptyPoints();
+    this.dropsCollected = 0;
+    this.renderPoints();
+  }
+
+  /**
+   * Переход на другой стрим: счётчики текущего стрима обнуляются,
+   * накопленное за сессию сохраняется.
+   */
+  onStreamChanged(streamLogin) {
+    const carried = this.points;
+    this.points = {
+      ...SessionState.emptyPoints(),
+      sessionEarned: carried.sessionEarned || 0,
+      passiveEarned: carried.passiveEarned || 0,
+      chestsCollected: carried.chestsCollected || 0,
+      chestsPoints: carried.chestsPoints || 0
+    };
+    this.streamLogin = streamLogin || this.streamLogin;
+    this.renderPoints();
+
+    if (this.streamLogin) this.startPointsPolling(this.streamLogin);
+  }
+
+  startPointsPolling(streamLogin) {
+    if (!streamLogin) return;
+    this.streamLogin = streamLogin;
+
+    this.stopPointsPolling();
+
+    // Первый опрос с задержкой: сразу после запуска стрима Twitch ещё не
+    // отдаёт корректный баланс
+    setTimeout(() => this.pollPoints(), 8000);
+    this.pointsPollInterval = setInterval(() => this.pollPoints(), 20000);
+  }
+
+  stopPointsPolling() {
+    if (this.pointsPollInterval) {
+      clearInterval(this.pointsPollInterval);
+      this.pointsPollInterval = null;
+    }
+  }
+
+  async pollPoints() {
+    if (!this.streamLogin || !window.electronAPI?.getChannelPoints) return;
+
+    try {
+      const result = await window.electronAPI.getChannelPoints(this.streamLogin);
+      if (!result || result.error || typeof result.points !== 'number') return;
+
+      const newTotal = result.points;
+
+      // Первое измерение только задаёт точку отсчёта.
+      // Флаг нужен отдельно от нуля: баланс канала честно может быть 0,
+      // и раньше в этом случае отсчёт переинициализировался бесконечно.
+      if (!this.points.initialized) {
+        this.points.initialized = true;
+        this.points.startTotal = newTotal;
+        this.points.currentTotal = newTotal;
+        this.renderPoints();
+        return;
+      }
+
+      const diff = newTotal - this.points.currentTotal;
+      this.points.currentTotal = newTotal;
+
+      if (diff > 0) {
+        // Накапливаем приросты, а не разницу с началом: если баллы потратить,
+        // разница уедет в минус и обнулит показания.
+        this.points.earnedThisStream += diff;
+        this.points.sessionEarned += diff;
+
+        if (diff >= SessionState.CHEST_THRESHOLD) {
+          this.points.chestsCollected += 1;
+          this.points.chestsPoints += diff;
+          console.log('[SessionState] Сундук: +' + diff);
+        } else {
+          this.points.passiveEarned += diff;
+        }
+      }
+
+      this.renderPoints();
+    } catch (error) {
+      console.warn('[SessionState] Не удалось опросить баллы:', error?.message);
+    }
+  }
+
+  /** Отрисовка карточки «Баллы канала». Элементы есть только на странице фарминга. */
+  renderPoints() {
+    const p = this.points;
+    const set = (id, value) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = value;
+    };
+
+    // Колонка 1 — нафармлено за сессию, ниже текущий баланс канала
+    set('channel-points-total', p.sessionEarned > 0 ? `+${p.sessionEarned.toLocaleString()}` : '0');
+    set('channel-points-earned', p.initialized
+      ? `Баланс: ${p.currentTotal.toLocaleString()}`
+      : 'Ожидание данных...');
+
+    // Колонка 2 — сундуки: количество и суммарные бонусные баллы
+    set('bonus-chests-count', p.chestsCollected.toLocaleString());
+    set('bonus-chests-points', p.chestsPoints > 0 ? `+${p.chestsPoints.toLocaleString()} баллов` : '-');
+
+    // Колонка 3 — начислено на текущем стриме
+    set('passive-points-earned', p.earnedThisStream > 0 ? `+${p.earnedThisStream.toLocaleString()}` : '0');
   }
 
   getDurationMs() {
@@ -197,6 +339,7 @@ class SessionState {
   syncUI() {
     if (this.isActive()) {
       this.showFarmingUI();
+      this.renderPoints();
       this._tick();
     } else {
       this.hideFarmingUI();

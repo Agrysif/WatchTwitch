@@ -24,6 +24,7 @@ class PlayerManager {
     this._pollInterval = null;
     this._onGeometryChange = null;
     this._lastGeometry = '';
+    this._parked = false;
   }
 
   static get() {
@@ -94,7 +95,9 @@ class PlayerManager {
     }
 
     const quality = options.quality || '160p30';
-    const url = `https://player.twitch.tv/?channel=${login}&parent=localhost&muted=true&autoplay=true&quality=${quality}`;
+    // controls=false убирает панель управления и наложенную поверх видео
+    // подпись с названием стрима — для фонового просмотра они не нужны.
+    const url = `https://player.twitch.tv/?channel=${login}&parent=localhost&muted=true&autoplay=true&controls=false&quality=${quality}`;
 
     console.log('[PlayerManager] Загружаю канал:', login);
     this.channel = login;
@@ -118,7 +121,7 @@ class PlayerManager {
    * Привязывает плеер к слоту. Сам webview при этом не трогается —
    * меняются только его координаты на экране.
    */
-  attachTo(slotOrId) {
+  attachTo(slotOrId, options = {}) {
     const slot = typeof slotOrId === 'string' ? document.getElementById(slotOrId) : slotOrId;
 
     if (!slot) {
@@ -135,6 +138,11 @@ class PlayerManager {
     this._lastGeometry = '';
     this._startTracking();
 
+    // В сайдбаре плеер декоративный: без реакции на мышь Twitch не показывает
+    // всплывающие оверлеи с названием стрима и кнопками.
+    const interactive = options.interactive !== false;
+    this.host.style.pointerEvents = interactive ? 'auto' : 'none';
+
     console.log('[PlayerManager] Плеер привязан к слоту:', slot.id || slot.className);
   }
 
@@ -143,9 +151,23 @@ class PlayerManager {
     this.slot = null;
     this.clipRoot = null;
     this._stopTracking();
-    if (this.host) {
-      this.host.style.display = 'none';
-    }
+    this._park();
+  }
+
+  /**
+   * Убирает плеер с глаз, уводя его за пределы экрана.
+   *
+   * Раньше здесь стоял display: none — и это оказалось причиной того, что
+   * стрим в сайдбаре постоянно вставал на паузу: скрытый таким образом
+   * документ Chromium считает невидимым, и плеер Twitch по Page Visibility API
+   * останавливает воспроизведение. Смещение за экран оставляет плеер живым.
+   */
+  _park() {
+    if (!this.host || this._parked) return;
+    this._parked = true;
+    this._lastGeometry = '';
+    this.host.style.display = 'block';
+    this.host.style.transform = 'translate(-100000px, -100000px)';
   }
 
   /** Ближайший предок с прокруткой — за его границы плеер вылезать не должен. */
@@ -226,13 +248,13 @@ class PlayerManager {
     if (!this.slot || !this.host) return;
 
     if (!this._isVisible(this.slot)) {
-      if (this.host.style.display !== 'none') this.host.style.display = 'none';
+      this._park();
       return;
     }
 
     const rect = this.slot.getBoundingClientRect();
     if (rect.width < 1 || rect.height < 1) {
-      if (this.host.style.display !== 'none') this.host.style.display = 'none';
+      this._park();
       return;
     }
 
@@ -248,7 +270,7 @@ class PlayerManager {
     const bottom = Math.min(rect.bottom, clip.bottom);
 
     if (right - left < 1 || bottom - top < 1) {
-      if (this.host.style.display !== 'none') this.host.style.display = 'none';
+      this._park();
       return;
     }
 
@@ -256,7 +278,9 @@ class PlayerManager {
     if (geometry === this._lastGeometry) return;
     this._lastGeometry = geometry;
 
+    this._parked = false;
     this.host.style.display = 'block';
+    this.host.style.transform = '';
     this.host.style.left = `${left}px`;
     this.host.style.top = `${top}px`;
     this.host.style.width = `${right - left}px`;

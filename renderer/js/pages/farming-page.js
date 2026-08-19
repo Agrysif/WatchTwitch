@@ -36,15 +36,14 @@ class FarmingPage {
       { name: 'mythic', label: 'Мифический', minMinutes: 721, maxMinutes: 99999, minViewers: 0, color: '#ff0088', glow: 'rgba(255, 0, 136, 0.4)' }
     ];
     
-    // Channel Points tracking
-    this.channelPoints = {
-      startTotal: 0,
-      currentTotal: 0,
-      earnedThisStream: 0,
-      passiveEarned: 0,
-      chestsCollected: 0,
-      chestsPoints: 0
-    };
+    // Учёт баллов канала.
+    //
+    // Разделяем три величины, потому что интерфейс показывает разное:
+    //   sessionEarned     — накоплено за всю сессию фарминга (переживает смену стрима)
+    //   earnedThisStream  — накоплено на текущем стриме
+    //   chests*/passive*  — разбивка по источнику: разовые сундуки против просмотра
+    // channelPoints и sessionDropsCollected проксируются в window.sessionState:
+    // учёт баллов должен переживать пересоздание страницы.
 
     this.init();
   }
@@ -1733,6 +1732,7 @@ class FarmingPage {
     this.estimatedBandwidth = 0;
     this.bandwidthHistory = [];
     window.electronAPI?.resetTrafficSession?.();
+    this.resetSessionPointsTracking();
 
     this.updateSessionInfo();
     this.sessionInterval = setInterval(() => {
@@ -2330,6 +2330,7 @@ class FarmingPage {
     this.estimatedBandwidth = 0;
     this.bandwidthHistory = [];
     window.electronAPI?.resetTrafficSession?.();
+    this.resetSessionPointsTracking();
     this.updateSessionInfo();
 
     // Mark global farming active for other modules (e.g., mini-player)
@@ -2739,6 +2740,8 @@ class FarmingPage {
       console.log('[Drops] Кампаний для', currentGameName + ':', matched.length,
         matched.map(c => c.name).join(' | '));
 
+      this.trackSessionDrops(matched);
+
       horizontal.style.display = 'block';
 
       const showCampaignHeaders = matched.length > 1;
@@ -2952,8 +2955,9 @@ class FarmingPage {
         duration: duration,
         bandwidth: this.estimatedBandwidth,
         bandwidthHistory: this.bandwidthHistory,
-        pointsEarned: this.channelPoints.earnedThisStream || 0,
-        chestsCollected: this.channelPoints.chestsCollected || 0
+        pointsEarned: this.channelPoints.sessionEarned || 0,
+        chestsCollected: this.channelPoints.chestsCollected || 0,
+        dropsCollected: this.sessionDropsCollected || 0
       });
       
       // Сохраняем статистику по категории
@@ -3037,12 +3041,10 @@ class FarmingPage {
       try { window.streamingManager.isFarming = false; } catch (e) {}
     }
     
-    // Останавливаем polling баллов
-    if (this.pointsPollingInterval) {
-      clearInterval(this.pointsPollingInterval);
-      this.pointsPollingInterval = null;
-    }
-    
+    // Останавливаем polling баллов (владелец — SessionState)
+    window.sessionState?.stopPointsPolling();
+
+
     // Останавливаем проверку состояния трансляции
     if (this.streamHealthCheckInterval) {
       clearInterval(this.streamHealthCheckInterval);
@@ -3147,9 +3149,9 @@ class FarmingPage {
       bandwidth: this.estimatedBandwidth,
       bandwidthHistory: this.bandwidthHistory,
       categoryBoxArtURL: this.currentCategory?.boxArtURL || '',
-      pointsEarned: this.channelPoints.earnedThisStream || 0,
+      pointsEarned: this.channelPoints.sessionEarned || 0,
       chestsCollected: this.channelPoints.chestsCollected || 0,
-      dropsCollected: 0 // TODO: track drops collected during session
+      dropsCollected: this.sessionDropsCollected || 0
     });
     
     // Отправляем событие об обновлении статистики
@@ -3303,13 +3305,14 @@ class FarmingPage {
       document.getElementById('stream-game').textContent = `Игра: ${category.name}`;
       document.getElementById('stream-title').textContent = stream.title || 'Без названия';
       
-// Отображаем теги если они есть
-          const categoryEl = document.getElementById('stream-category');
-          if (categoryEl && stream.tags && stream.tags.length > 0) {
-            categoryEl.textContent = stream.tags.join(' · ');
-            categoryEl.style.display = 'inline-block';
-          } else if (categoryEl) {
-            categoryEl.style.display = 'none';
+      // Теги стрима. Видимостью управляет CSS через :not(:empty),
+      // поэтому здесь достаточно записать текст или очистить его.
+      const categoryEl = document.getElementById('stream-category');
+      if (categoryEl) {
+        const tags = Array.isArray(stream.tags)
+          ? stream.tags.filter(tag => tag && String(tag).trim())
+          : [];
+        categoryEl.textContent = tags.join(' · ');
       }
       
       // Отображаем обложку игры
@@ -4847,7 +4850,7 @@ class FarmingPage {
     const hasSameChannel = chatWebview.dataset.activeChannel === channelLogin;
     const collectorReady = chatWebview.dataset.bonusCollectorReady === 'true';
     if (hasSameChannel && collectorReady) {
-      this.startPointsPolling(chatWebview);
+      this.startPointsPolling();
       console.log('Bonus collector already active for', channelLogin);
       return;
     }
@@ -4862,104 +4865,72 @@ class FarmingPage {
     this.startBonusAutoCollector(chatWebview);
     
     // Запускаем регулярный опрос баллов
-    this.startPointsPolling(chatWebview);
+    this.startPointsPolling();
     
     console.log('Background bonus collector started');
   }
   
-  startPointsPolling(chatWebview) {
-    // Останавливаем предыдущий интервал
-    if (this.pointsPollingInterval) {
-      clearInterval(this.pointsPollingInterval);
-    }
-    
-    // Опрашиваем баллы каждые 20 секунд
-    this.pointsPollingInterval = setInterval(() => {
-      this.pollChannelPoints(chatWebview);
-    }, 20000);
-    
-    // Первый опрос через 8 секунд после загрузки
-    setTimeout(() => {
-      this.pollChannelPoints(chatWebview);
-    }, 8000);
-  }
-  
-  async pollChannelPoints(chatWebview) {
-    if (!this.currentStream) return;
-    
-    try {
-      // Используем новый API метод вместо парсинга DOM
-      const result = await window.electronAPI.getChannelPoints(this.currentStream.login);
-      
-      if (result && !result.error && typeof result.points === 'number') {
-        const newTotal = result.points;
-        
-        // Если это первое значение, просто сохраняем
-        if (this.channelPoints.startTotal === 0 && this.channelPoints.currentTotal === 0) {
-          this.channelPoints.startTotal = newTotal;
-          this.channelPoints.currentTotal = newTotal;
-          console.log('Initial channel points:', newTotal);
-          this.updateChannelPointsUI();
-        } else if (newTotal !== this.channelPoints.currentTotal) {
-          // Обновляем текущее значение
-          const earnedSinceStart = newTotal - this.channelPoints.startTotal;
-          this.channelPoints.currentTotal = newTotal;
-          this.channelPoints.earnedThisStream = Math.max(0, earnedSinceStart);
-          
-          console.log('Channel points updated:', {
-            total: newTotal,
-            earned: this.channelPoints.earnedThisStream
-          });
-          
-          // Обновляем UI
-          this.updateChannelPointsUI();
-        }
-      }
-    } catch (error) {
-      console.error('Error polling channel points:', error);
-    }
+  /**
+   * Опрос баллов ведёт SessionState — он переживает навигацию.
+   * Раньше интервал принадлежал странице и гасился её destroy(), поэтому
+   * баллы начислялись только пока страница фарминга открыта.
+   */
+  startPointsPolling() {
+    window.sessionState?.startPointsPolling(this.currentStream?.login);
   }
   
   updateChannelPointsUI() {
-    const totalEl = document.getElementById('channel-points-total');
-    const earnedEl = document.getElementById('channel-points-earned');
-    const passiveEl = document.getElementById('passive-points-earned');
-    
-    if (totalEl) {
-      totalEl.textContent = this.channelPoints.currentTotal > 0 
-        ? this.channelPoints.currentTotal.toLocaleString() 
-        : '-';
-    }
-    
-    if (earnedEl) {
-      if (this.channelPoints.earnedThisStream > 0) {
-        earnedEl.textContent = `+${this.channelPoints.earnedThisStream.toLocaleString()} за этот стрим`;
-      } else {
-        earnedEl.textContent = 'Ожидание данных...';
-      }
-    }
-    
-    if (passiveEl) {
-      if (this.channelPoints.earnedThisStream > 0) {
-        passiveEl.textContent = `+${this.channelPoints.passiveEarned.toLocaleString()} баллов`;
-      } else {
-        passiveEl.textContent = '-';
-      }
-    }
+    window.sessionState?.renderPoints();
   }
-  
+
+  /** Смена стрима: счётчики текущего стрима обнуляются, сессионные остаются. */
   resetChannelPointsTracking() {
-    this.channelPoints = {
-      startTotal: 0,
-      currentTotal: 0,
-      earnedThisStream: 0,
-      passiveEarned: 0,
-      chestsCollected: 0,
-      chestsPoints: 0
-    };
-    this.updateChannelPointsUI();
+    window.sessionState?.onStreamChanged(this.currentStream?.login);
   }
-  
+
+  /** Полный сброс — только при старте новой сессии фарминга. */
+  resetSessionPointsTracking() {
+    window.sessionState?.resetPoints();
+    this._sessionDropsBaseline = null;
+    this._sessionCountedDrops = null;
+  }
+
+  /**
+   * Считает дропсы, полученные именно в этой сессии.
+   *
+   * Первый проход только запоминает уже полученное ранее, иначе весь
+   * накопленный за месяцы инвентарь засчитался бы как добытый сейчас.
+   * Раньше в статистику писался жёсткий ноль (стояла заглушка с TODO),
+   * поэтому счётчик «Дропсов получено» ничего не отражал.
+   */
+  trackSessionDrops(campaigns) {
+    const firstPass = !this._sessionDropsBaseline;
+    if (firstPass) {
+      this._sessionDropsBaseline = new Set();
+      this._sessionCountedDrops = new Set();
+    }
+
+    campaigns.forEach(campaign => {
+      (campaign.drops || []).forEach(drop => {
+        if (!this.isDropEarned(drop)) return;
+
+        const id = drop.id || `${campaign.id}:${drop.name}`;
+
+        if (firstPass) {
+          this._sessionDropsBaseline.add(id);
+          return;
+        }
+
+        if (this._sessionDropsBaseline.has(id) || this._sessionCountedDrops.has(id)) return;
+
+        this._sessionCountedDrops.add(id);
+        this.sessionDropsCollected = (this.sessionDropsCollected || 0) + 1;
+        console.log('[Drops] Получен дроп за сессию:', drop.benefitName || drop.name,
+          '(всего за сессию:', this.sessionDropsCollected + ')');
+      });
+    });
+  }
+
   // Проверка состояния трансляции
   startStreamHealthCheck() {
     // Останавливаем предыдущий интервал если есть
@@ -5081,7 +5052,6 @@ class FarmingPage {
       'statsUpdateInterval',
       'streamStatsInterval',
       'dropsProgressInterval',
-      'pointsPollingInterval',
       'streamHealthCheckInterval',
       'matureCheckInterval',
       'bonusCollectorInterval'
@@ -5113,6 +5083,27 @@ class FarmingPage {
  * двух десятках мест) продолжает работать без правок, но реальное состояние
  * сессии больше не умирает вместе с объектом страницы при навигации.
  */
+/**
+ * channelPoints и sessionDropsCollected тоже проксируются в SessionState,
+ * чтобы существующий код страницы читал и писал единое состояние сессии.
+ */
+Object.defineProperty(FarmingPage.prototype, 'channelPoints', {
+  configurable: true,
+  get() {
+    return window.sessionState ? window.sessionState.points : SessionState.emptyPoints();
+  }
+});
+
+Object.defineProperty(FarmingPage.prototype, 'sessionDropsCollected', {
+  configurable: true,
+  get() {
+    return window.sessionState ? window.sessionState.dropsCollected : 0;
+  },
+  set(value) {
+    if (window.sessionState) window.sessionState.dropsCollected = value;
+  }
+});
+
 Object.defineProperty(FarmingPage.prototype, 'sessionStartTime', {
   configurable: true,
   get() {

@@ -292,6 +292,25 @@ class StatisticsPage {
     }
   }
 
+  /**
+   * Приводит URL обложки Twitch к крупному размеру.
+   * Ссылки приходят либо шаблоном {width}x{height}, либо уже с конкретным
+   * размером в имени файла — обрабатываем оба случая.
+   */
+  upscaleBoxArt(url, size = '285x380') {
+    if (!url || typeof url !== 'string') return '';
+
+    let normalized = url.trim();
+    if (!normalized) return '';
+
+    if (normalized.startsWith('//')) normalized = `https:${normalized}`;
+    normalized = normalized.replace(/^http:\/\//i, 'https://');
+
+    return normalized
+      .replace(/\{width\}x\{height\}/gi, size)
+      .replace(/-\d+x\d+(\.[a-z0-9]+)(\?.*)?$/i, `-${size}$1$2`);
+  }
+
   renderTopCategories(categories) {
     const i18n = window.i18n;
     const container = document.getElementById('top-categories-section');
@@ -315,7 +334,9 @@ class StatisticsPage {
     topThree.forEach((cat, idx) => {
       const offset = idx * 12;
       const gameId = this.getCategoryIdFromName(cat.name);
-      const boxUrl = cat.box || `https://static-cdn.jtvnw.net/ttv-boxart/${gameId}-272x380.jpg`;
+      // В сессиях обложка сохраняется в размере 52x72 (миниатюра для списка
+      // категорий), а здесь она рисуется крупно — отсюда мыло. Поднимаем размер.
+      const boxUrl = this.upscaleBoxArt(cat.box) || `https://static-cdn.jtvnw.net/ttv-boxart/${gameId}-272x380.jpg`;
       html += `
         <div class="stack-cover-wrapper" style="transform: translate(${offset * 2}px, ${offset}px); z-index: ${10 - idx};">
           <img src="${boxUrl}" 
