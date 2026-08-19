@@ -2536,11 +2536,24 @@ class FarmingPage {
     const exact = campaigns.filter(c => nameOf(c) && nameOf(c) === target);
     if (exact.length > 0) return exact;
 
-    // Фолбэк по вхождению — названия иногда отличаются суффиксами
+    // Фолбэк: сравниваем по словам, а НЕ по вхождению подстроки.
+    //
+    // Подстрока здесь опасна: в «albion online» содержится «line», в «rust» —
+    // «us», поэтому кампания игры с коротким названием могла прицепиться к
+    // чужой игре. Риск вырос после того, как в список стали попадать все
+    // доступные кампании аккаунта (сотня вместо пары).
+    //
+    // Совпадением считаем только случай, когда одно название целиком является
+    // началом другого по словам: «Albion» ↔ «Albion Online» — да,
+    // «Line» ↔ «Albion Online» — нет.
+    const targetTokens = target.split(' ').filter(Boolean);
+    const isTokenPrefix = (short, long) =>
+      short.length > 0 && short.length <= long.length && short.every((t, i) => t === long[i]);
+
     return campaigns.filter(c => {
-      const candidate = nameOf(c);
-      if (!candidate) return false;
-      return candidate.includes(target) || target.includes(candidate);
+      const tokens = nameOf(c).split(' ').filter(Boolean);
+      if (tokens.length === 0) return false;
+      return isTokenPrefix(tokens, targetTokens) || isTokenPrefix(targetTokens, tokens);
     });
   }
 
