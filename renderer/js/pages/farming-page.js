@@ -24,6 +24,9 @@ class FarmingPage {
     this.isStreamDetailsOpen = false;
     this.activeChatChannelLogin = null;
     this.manualPlayLockCategoryId = null;
+    // Категория, запущенная пользователем вручную. Приложение не переключает
+    // её самостоятельно — только предлагает.
+    this.manualCategoryId = null;
     this.lastAutoDropsSyncAt = 0;
     this.autoDropsModeEnabled = false;
 
@@ -1141,6 +1144,8 @@ class FarmingPage {
       categoriesToRender.sort((a, b) => {
         const aEnabled = a.enabled !== false;
         const bEnabled = b.enabled !== false;
+        // Закреплённые всегда наверху, независимо от остального
+        if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;
         const aCompleted = !!(a.dropsCompleted && a.hasDrops);
         const bCompleted = !!(b.dropsCompleted && b.hasDrops);
         
@@ -1155,7 +1160,14 @@ class FarmingPage {
       });
     }
 
+    // Граница между закреплёнными и остальными: рисуем разделитель перед
+    // первой незакреплённой категорией, но только если закреплённые есть
+    const pinnedCount = categoriesToRender.filter(cat => cat.pinned).length;
+
     container.innerHTML = categoriesToRender.map((cat, index) => {
+      const divider = (pinnedCount > 0 && index === pinnedCount)
+        ? `<div class="pinned-divider"><span>${this.i18n.t('farming.pinnedDivider')}</span></div>`
+        : '';
       const tagsHtml = cat.tags && cat.tags.length > 0 
         ? `<span class="category-tag">${cat.tags[0]}</span>` 
         : '';
@@ -1182,7 +1194,14 @@ class FarmingPage {
       const isCompleted = cat.dropsCompleted && cat.hasDrops;
       
       return `
-      <div class="category-item ${isDisabled ? 'disabled' : ''} ${isCompleted ? 'drops-completed' : ''}" draggable="true" data-category-id="${cat.id}">
+      ${divider}
+      <div class="category-item ${isDisabled ? 'disabled' : ''} ${isCompleted ? 'drops-completed' : ''} ${cat.pinned ? 'pinned' : ''}" draggable="true" data-category-id="${cat.id}">
+        <button class="category-pin-btn ${cat.pinned ? 'active' : ''}" data-category-id="${cat.id}"
+                title="${cat.pinned ? 'Открепить категорию' : 'Закрепить категорию'}">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M14 4V2H10v2H8v6l-2 2v2h5v6l1 2 1-2v-6h5v-2l-2-2V4h-2z"/>
+          </svg>
+        </button>
         <div class="category-drag-handle">
           <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
             <circle cx="7" cy="5" r="1.5"/>
@@ -1226,12 +1245,88 @@ class FarmingPage {
       `;
     }).join('');
 
+    this.setupPinControls();
     this.setupDragAndDrop();
     this.setupRemoveButtons();
     this.setupToggleButtons();
     this.setupPlayButtons();
     this.setupCategoryImageClick();
     this.updateAutoDropsButtonState();
+  }
+
+  /**
+   * Закрепление категорий.
+   *
+   * Значок закрепления появляется после удержания карточки около секунды —
+   * так он не мешает обычной работе со списком и не конфликтует с
+   * перетаскиванием. У уже закреплённых категорий значок виден всегда,
+   * иначе открепить их было бы неочевидно.
+   */
+  setupPinControls() {
+    const LONG_PRESS_MS = 700;
+
+    document.querySelectorAll('.category-item').forEach(card => {
+      let timer = null;
+
+      const cancel = () => {
+        if (timer) {
+          clearTimeout(timer);
+          timer = null;
+        }
+      };
+
+      card.addEventListener('pointerdown', (event) => {
+        // Не мешаем кнопкам и переключателю внутри карточки
+        if (event.target.closest('button, label, input')) return;
+
+        timer = setTimeout(() => {
+          card.classList.add('pin-revealed');
+          timer = null;
+        }, LONG_PRESS_MS);
+      });
+
+      ['pointerup', 'pointerleave', 'pointercancel', 'dragstart'].forEach(type => {
+        card.addEventListener(type, cancel);
+      });
+    });
+
+    document.querySelectorAll('.category-pin-btn').forEach(btn => {
+      btn.addEventListener('click', async (event) => {
+        event.stopPropagation();
+        await this.togglePinned(btn.dataset.categoryId);
+      });
+    });
+
+    // Клик мимо карточек убирает показанные значки
+    document.addEventListener('click', this._hidePinAffordances = (event) => {
+      if (event.target.closest('.category-item')) return;
+      document.querySelectorAll('.category-item.pin-revealed')
+        .forEach(card => card.classList.remove('pin-revealed'));
+    });
+  }
+
+  async togglePinned(categoryId) {
+    const category = this.categories.find(cat => cat.id === categoryId);
+    if (!category) return;
+
+    category.pinned = !category.pinned;
+
+    // Закреплённые держим в начале массива: порядок массива задаёт
+    // очередь фарминга, и после перезапуска он должен сохраниться
+    this.categories.sort((a, b) => {
+      if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;
+      return 0;
+    });
+
+    await Storage.saveCategories(this.categories);
+    this.renderCategories();
+
+    window.utils.showToast(
+      category.pinned
+        ? `${category.name} закреплена`
+        : `${category.name} откреплена`,
+      'success'
+    );
   }
 
   setupPlayButtons() {
@@ -1244,6 +1339,9 @@ class FarmingPage {
         
         if (category) {
           console.log('Manual play category:', category.name);
+          // Отметка ручного запуска: пока она стоит, автопереключение
+          // этой категории не трогает
+          this.manualCategoryId = category.id;
           this.setManualPlayLock(category);
           window.utils.showToast(`Запуск категории ${category.name}...`, 'info');
           
@@ -1981,6 +2079,8 @@ class FarmingPage {
       const subscriptionLogins = subscriptions.map(s => s.login.toLowerCase());
       
       enabledCategories.sort((a, b) => {
+        // Закреплённые всегда впереди
+        if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;
         // Ручные категории имеют наивысший приоритет
         const aManual = a.autoDrops ? 0 : 1;
         const bManual = b.autoDrops ? 0 : 1;
@@ -2003,6 +2103,8 @@ class FarmingPage {
     } else {
       // Обычная сортировка без приоритета подписок
       enabledCategories.sort((a, b) => {
+        // Закреплённые всегда впереди
+        if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;
         // Ручные категории имеют наивысший приоритет
         const aManual = a.autoDrops ? 0 : 1;
         const bManual = b.autoDrops ? 0 : 1;
@@ -2350,6 +2452,8 @@ class FarmingPage {
     const enabledCategories = this.categories
       .filter(c => c.enabled !== false && !c.dropsCompleted)
       .sort((a, b) => {
+        // Закреплённые проверяются на дропсы и фармятся в первую очередь
+        if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;
         const aManual = a.autoDrops ? 1 : 0;
         const bManual = b.autoDrops ? 1 : 0;
         if (aManual !== bManual) return aManual - bManual;
@@ -3001,13 +3105,84 @@ class FarmingPage {
     }
   }
 
+  /**
+   * Предложение переключиться, когда в вручную запущенной категории нет дропсов.
+   *
+   * Показывается на месте блока прогресса дропсов — там, где пользователь и
+   * ожидает увидеть их состояние. Решение остаётся за ним: приложение не
+   * трогает категорию, которую он выбрал сам.
+   */
+  showSwitchOffer() {
+    const container = document.getElementById('drops-progress-horizontal');
+    if (!container) return;
+
+    const candidate = this.categories.find(cat =>
+      cat.enabled !== false &&
+      cat.hasDrops &&
+      !cat.dropsCompleted &&
+      cat.id !== this.currentCategory?.id
+    );
+
+    const categoryName = this.currentCategory?.name || '';
+
+    container.style.display = 'block';
+    container.innerHTML = `
+      <div class="switch-offer">
+        <div class="switch-offer-text">
+          <div class="switch-offer-title">В категории «${categoryName}» дропсов нет</div>
+          <div class="switch-offer-sub">
+            ${candidate
+              ? `Категория запущена вручную, поэтому переключать её сами не будем. Есть дропсы в «${candidate.name}».`
+              : 'Категория запущена вручную и останется активной. Других категорий с дропсами сейчас нет.'}
+          </div>
+        </div>
+        ${candidate ? `
+          <div class="switch-offer-actions">
+            <button class="btn btn-secondary" id="switch-offer-stay">Остаться</button>
+            <button class="btn btn-primary" id="switch-offer-go" data-category-id="${candidate.id}">
+              Перейти в «${candidate.name}»
+            </button>
+          </div>
+        ` : ''}
+      </div>
+    `;
+
+    const stay = container.querySelector('#switch-offer-stay');
+    if (stay) {
+      stay.addEventListener('click', () => {
+        container.innerHTML = '';
+        container.style.display = 'none';
+      });
+    }
+
+    const go = container.querySelector('#switch-offer-go');
+    if (go) {
+      go.addEventListener('click', async () => {
+        const target = this.categories.find(cat => cat.id === go.dataset.categoryId);
+        if (!target) return;
+
+        // Пользователь согласился — отметку ручного запуска снимаем
+        this.manualCategoryId = null;
+        this.manualPlayLockCategoryId = null;
+        container.innerHTML = '';
+        container.style.display = 'none';
+
+        await this.startFarmingForCategory(target);
+      });
+    }
+  }
+
   async handleCategoryNoDrops() {
     if (!this.currentCategory) return;
 
-    if (this.isSingleManualPlayLocked()) {
-      console.warn('[ManualPlayLock] No drops detected, but keeping manual category active:', this.currentCategory.name);
+    // Категорию, запущенную вручную, приложение не переключает само.
+    // Прежняя блокировка срабатывала только когда включена ровно одна
+    // категория и она же единственная ручная — то есть почти никогда.
+    // Теперь достаточно того, что пользователь сам нажал Play.
+    if (this.manualCategoryId && this.currentCategory.id === this.manualCategoryId) {
+      console.log('[Ручной запуск] Дропсов нет, но категорию не меняем:', this.currentCategory.name);
       this.dropsMissingChecks = 0;
-      window.utils.showToast('Категория оставлена активной до ручной остановки', 'info');
+      this.showSwitchOffer();
       return;
     }
 
@@ -3042,6 +3217,7 @@ class FarmingPage {
 
   stopFarming(showToast = true, preserveSession = false) {
     this.manualPlayLockCategoryId = null;
+    this.manualCategoryId = null;
 
     if (showToast) {
       window.utils.showToast('Фарминг остановлен', 'info');
