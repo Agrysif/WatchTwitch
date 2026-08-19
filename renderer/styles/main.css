@@ -3007,31 +3007,60 @@ body.no-animations * {
 
 /* ===== ЗАКРЕПЛЁННЫЕ КАТЕГОРИИ ===== */
 
-/* Кнопка стоит рядом с Play и проявляется при наведении на карточку.
-   У закреплённых категорий она видна всегда — иначе открепить
-   было бы неочевидно. */
+/* Кнопка закрепления не занимает места, пока скрыта: у карточки
+   display:flex с gap:12px, поэтому даже нулевая ширина съедала бы
+   промежуток — он гасится отрицательным margin-left.
+
+   При наведении кнопка раскрывается через секунду, и ровно на её
+   ширину влево уезжает Play: место под кнопку появляется само,
+   а не держится пустым всё время. Сворачивается мгновенно. */
 .category-pin-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
   flex-shrink: 0;
+  box-sizing: border-box;
+  width: 0;
+  height: 30px;
+  margin-left: -12px;
   padding: 0;
-  margin-left: 6px;
-  border: 1px solid var(--border-color);
+  overflow: hidden;
+  border: 0 solid var(--border-color);
   border-radius: var(--radius-ctl);
   background: var(--button-secondary-bg);
   color: var(--text-tertiary);
   cursor: pointer;
   opacity: 0;
-  transition: opacity var(--transition-fast), background var(--transition-fast), color var(--transition-fast);
+  transition: width var(--transition-base),
+              margin-left var(--transition-base),
+              opacity var(--transition-fast),
+              background var(--transition-fast),
+              color var(--transition-fast);
+  transition-delay: 0s;
 }
 
 .category-item:hover .category-pin-btn,
-.category-pin-btn:focus-visible,
-.category-pin-btn.active {
+.category-pin-btn:focus-visible {
+  width: 30px;
+  margin-left: 0;
+  border-width: 1px;
   opacity: 1;
+  /* Секунда наведения — чтобы кнопка не мелькала при простом
+     перемещении курсора по списку */
+  transition-delay: 1s;
+}
+
+/* Закреплённые видны всегда и без задержки: иначе открепить
+   было бы неочевидно */
+.category-pin-btn.active {
+  width: 30px;
+  margin-left: 0;
+  border-width: 1px;
+  opacity: 1;
+  transition-delay: 0s;
+  background: var(--accent-quiet);
+  border-color: var(--accent-color);
+  color: var(--accent-color);
 }
 
 .category-pin-btn:hover {
@@ -3039,10 +3068,9 @@ body.no-animations * {
   color: var(--text-primary);
 }
 
-.category-pin-btn.active {
-  background: var(--accent-quiet);
-  border-color: var(--accent-color);
-  color: var(--accent-color);
+.category-pin-btn.active:hover {
+  background: var(--accent-color);
+  color: #fff;
 }
 
 .category-item.pinned {
