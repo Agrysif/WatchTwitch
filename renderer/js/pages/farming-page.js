@@ -3089,15 +3089,16 @@ class FarmingPage {
       this.streamHealthCheckInterval = null;
     }
     
-    // Сбрасываем счетчики баллов
-    this.channelPoints = {
-      startTotal: 0,
-      currentTotal: 0,
-      earnedThisStream: 0,
-      passiveEarned: 0,
-      chestsCollected: 0,
-      chestsPoints: 0
-    };
+    // Сбрасываем счетчики баллов.
+    //
+    // Раньше здесь стояло присваивание в this.channelPoints. После переноса
+    // учёта в SessionState это свойство стало вычисляемым, а тело метода
+    // класса выполняется в строгом режиме — присваивание выбрасывало
+    // TypeError и обрывало stopFarming ровно посередине: уведомление и
+    // скрытие сессии успевали произойти, а закрытие стрима и выгрузка
+    // плеера, стоящие ниже, — уже нет. Стрим продолжал играть, а запуск
+    // другой категории падал вместе с обработчиком.
+    window.sessionState?.resetPoints();
     
     // Закрываем стрим
     window.electronAPI.closeStream();
@@ -5088,6 +5089,14 @@ Object.defineProperty(FarmingPage.prototype, 'channelPoints', {
   configurable: true,
   get() {
     return window.sessionState ? window.sessionState.points : SessionState.emptyPoints();
+  },
+  // Сеттер нужен именно как страховка: файл большой и legacy, присваивание
+  // может встретиться там, где его не ждут. Без сеттера любое такое место
+  // валит метод целиком, потому что классы работают в строгом режиме.
+  set(value) {
+    if (window.sessionState && value && typeof value === 'object') {
+      window.sessionState.points = value;
+    }
   }
 });
 

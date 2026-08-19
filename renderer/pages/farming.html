@@ -164,42 +164,44 @@
         <span data-i18n="farming.channelPoints">Баллы канала</span>
       </div>
       
-      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 16px;">
-        <!-- Всего баллов -->
-        <div style="padding: 14px; background: var(--bg-secondary); border-radius: var(--radius-md); border: 1px solid var(--border-color);">
-          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2">
+      <!-- Метрики без отдельных рамок: три вложенных блока внутри карточки
+           давали лишний визуальный шум. Разделяем вертикальными линиями. -->
+      <div class="points-grid">
+        <!-- За сессию -->
+        <div class="points-cell">
+          <div class="points-head">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="10"/>
-              <text x="12" y="16" font-size="12" fill="var(--text-secondary)" text-anchor="middle" font-weight="bold">$</text>
+              <path d="M12 7v10M9.5 9.5h4a1.5 1.5 0 010 3h-3a1.5 1.5 0 000 3h4"/>
             </svg>
-            <div style="font-size: 11px; color: var(--text-tertiary); text-transform: uppercase;" data-i18n="farming.sessionPoints">За сессию</div>
+            <span data-i18n="farming.sessionPoints">За сессию</span>
           </div>
-          <div id="channel-points-total" style="font-size: 20px; font-weight: 700; color: var(--text-primary); margin-bottom: 4px;">-</div>
-          <div id="channel-points-earned" style="font-size: 12px; color: #35d08a; font-weight: 600;">-</div>
+          <div id="channel-points-total" class="points-value">-</div>
+          <div id="channel-points-earned" class="points-sub points-sub-accent">-</div>
         </div>
-        
+
         <!-- Сундучки -->
-        <div style="padding: 14px; background: var(--bg-secondary); border-radius: var(--radius-md); border: 1px solid var(--border-color);">
-          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2">
+        <div class="points-cell">
+          <div class="points-head">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <rect x="3" y="8" width="18" height="12" rx="2"/>
               <path d="M3 11h18M12 8V4M8 8V6M16 8V6"/>
             </svg>
-            <div style="font-size: 11px; color: var(--text-tertiary); text-transform: uppercase;" data-i18n="farming.chests">Сундучки</div>
+            <span data-i18n="farming.chests">Сундучки</span>
           </div>
-          <div id="bonus-chests-count" style="font-size: 20px; font-weight: 700; color: var(--text-primary); margin-bottom: 4px;">-</div>
-          <div id="bonus-chests-points" style="font-size: 12px; color: var(--text-secondary);">-</div>
+          <div id="bonus-chests-count" class="points-value">-</div>
+          <div id="bonus-chests-points" class="points-sub">-</div>
         </div>
-        
-        <!-- За просмотр -->
-        <div style="padding: 14px; background: var(--bg-secondary); border-radius: var(--radius-md); border: 1px solid var(--border-color);">
-          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2">
+
+        <!-- За этот стрим -->
+        <div class="points-cell">
+          <div class="points-head">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
             </svg>
-            <div style="font-size: 11px; color: var(--text-tertiary); text-transform: uppercase;" data-i18n="farming.thisStream">За этот стрим</div>
+            <span data-i18n="farming.thisStream">За этот стрим</span>
           </div>
-          <div id="passive-points-earned" style="font-size: 20px; font-weight: 700; color: var(--text-primary);">-</div>
+          <div id="passive-points-earned" class="points-value">-</div>
         </div>
       </div>
     </div>
