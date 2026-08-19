@@ -131,6 +131,29 @@ class SettingsPage {
               <span class="settings-slider"></span>
             </label>
           </div>
+
+          <div class="settings-item">
+            <div class="settings-item-info">
+              <div class="settings-item-label">${i18n.t('settings.enableShutdown')}</div>
+              <div class="settings-item-description">${i18n.t('settings.enableShutdownDesc')}</div>
+            </div>
+            <label class="settings-toggle">
+              <input type="checkbox" id="setting-shutdown" ${settings.get('enableShutdown') ? 'checked' : ''}>
+              <span class="settings-slider"></span>
+            </label>
+          </div>
+
+          <div class="settings-item" id="shutdown-action-row" style="${settings.get('enableShutdown') ? '' : 'display: none;'}">
+            <div class="settings-item-info">
+              <div class="settings-item-label">${i18n.t('settings.shutdownAction')}</div>
+              <div class="settings-item-description">${i18n.t('settings.shutdownActionDesc')}</div>
+            </div>
+            <select class="input-field" id="setting-shutdown-action" style="width: 190px; flex-shrink: 0;">
+              <option value="shutdown" ${settings.get('shutdownAction') === 'shutdown' ? 'selected' : ''}>${i18n.t('settings.shutdownPC')}</option>
+              <option value="sleep" ${settings.get('shutdownAction') === 'sleep' ? 'selected' : ''}>${i18n.t('settings.sleep')}</option>
+              <option value="hibernate" ${settings.get('shutdownAction') === 'hibernate' ? 'selected' : ''}>${i18n.t('settings.hibernate')}</option>
+            </select>
+          </div>
         </div>
 
         <!-- Отображение -->
@@ -446,6 +469,29 @@ class SettingsPage {
           'info'
         );
       });
+    }
+
+    // Автовыключение после сбора всех дропсов
+    const shutdownToggle = document.getElementById('setting-shutdown');
+    if (shutdownToggle) {
+      shutdownToggle.addEventListener('change', (e) => {
+        settings.set('enableShutdown', e.target.checked);
+
+        const row = document.getElementById('shutdown-action-row');
+        if (row) row.style.display = e.target.checked ? '' : 'none';
+
+        window.utils.showToast(
+          e.target.checked ? i18n.t('settings.shutdownEnabled') : i18n.t('settings.shutdownDisabled'),
+          e.target.checked ? 'warning' : 'info'
+        );
+      }, { signal: this._abort.signal });
+    }
+
+    const shutdownActionSelect = document.getElementById('setting-shutdown-action');
+    if (shutdownActionSelect) {
+      shutdownActionSelect.addEventListener('change', (e) => {
+        settings.set('shutdownAction', e.target.value);
+      }, { signal: this._abort.signal });
     }
 
     // Автопереключение

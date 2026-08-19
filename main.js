@@ -1837,6 +1837,20 @@ ipcMain.handle('open-auth-window-old', async () => {
 });
 
 // Сохранение данных
+/**
+ * Слияние настроек интерфейса в electron-store.
+ *
+ * Именно слияние, а не запись целиком: в этом же ключе main-процесс держит
+ * свои поля (settings.autostart для автозапуска, settings.notifications),
+ * которых в настройках интерфейса нет. Перезапись объекта их стирала бы.
+ */
+ipcMain.handle('settings-merge', (event, partial) => {
+  if (!partial || typeof partial !== 'object') return false;
+  const current = store.get('settings', {});
+  store.set('settings', { ...current, ...partial });
+  return true;
+});
+
 ipcMain.handle('store-get', (event, key) => {
   return store.get(key);
 });

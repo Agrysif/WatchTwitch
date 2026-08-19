@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Хранилище данных
   storeGet: (key) => ipcRenderer.invoke('store-get', key),
   storeSet: (key, value) => ipcRenderer.invoke('store-set', key, value),
+  settingsMerge: (partial) => ipcRenderer.invoke('settings-merge', partial),
   storeDelete: (key) => ipcRenderer.invoke('store-delete', key),
   
   // Локальные файлы
