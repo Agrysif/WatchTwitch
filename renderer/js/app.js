@@ -162,6 +162,52 @@ window.utils = {
       document.body.appendChild(toastContainer);
     }
 
+    // Реестр показанных уведомлений: одинаковое сообщение не должно
+    // складываться в стопку. Если такое уже висит на экране — продлеваем ему
+    // жизнь вместо создания копии. Это страхует от любых повторных вызовов,
+    // а не только от тех, что уже найдены и исправлены по месту.
+    if (!window._toastRegistry) window._toastRegistry = new Map();
+    const registry = window._toastRegistry;
+    const key = type + '|' + message;
+
+    const scheduleRemoval = (entry) => {
+      clearTimeout(entry.hideTimer);
+      clearTimeout(entry.removeTimer);
+
+      // Перезапуск анимации полосы: иначе продлённое уведомление
+      // исчезло бы при полосе, досчитавшей до конца ещё в прошлый раз
+      const progress = entry.el.querySelector('.toast-progress');
+      if (progress) {
+        progress.style.animation = 'none';
+        void progress.offsetWidth;
+        progress.style.animation = '';
+      }
+
+      entry.hideTimer = setTimeout(() => {
+        entry.el.classList.remove('toast-show');
+        entry.removeTimer = setTimeout(() => {
+          if (entry.el.parentNode) entry.el.parentNode.removeChild(entry.el);
+          registry.delete(key);
+          const container = document.getElementById('toast-container');
+          if (container && container.children.length === 0 && container.parentNode) {
+            container.parentNode.removeChild(container);
+          }
+        }, 300);
+      }, 3000);
+    };
+
+    const existing = registry.get(key);
+    if (existing && existing.el.isConnected) {
+      existing.count += 1;
+      const counter = existing.el.querySelector('.toast-count');
+      if (counter) {
+        counter.textContent = '×' + existing.count;
+        counter.style.display = 'inline-block';
+      }
+      scheduleRemoval(existing);
+      return;
+    }
+
     // Иконки для разных типов
     const icons = {
       info: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>',
@@ -175,29 +221,19 @@ window.utils = {
     toast.innerHTML = `
       <div class="toast-icon">${icons[type] || icons.info}</div>
       <div class="toast-message">${message}</div>
+      <span class="toast-count" style="display: none;"></span>
       <div class="toast-progress"></div>
     `;
-    
+
     toastContainer.appendChild(toast);
-    
-    // Анимация появления
+
     setTimeout(() => {
       toast.classList.add('toast-show');
     }, 10);
-    
-    // Удаление через 3 секунды
-    setTimeout(() => {
-      toast.classList.remove('toast-show');
-      setTimeout(() => {
-        if (toast.parentNode) {
-          toastContainer.removeChild(toast);
-        }
-        // Удаляем контейнер если пустой
-        if (toastContainer.children.length === 0) {
-          document.body.removeChild(toastContainer);
-        }
-      }, 300);
-    }, 3000);
+
+    const entry = { el: toast, count: 1, hideTimer: null, removeTimer: null };
+    registry.set(key, entry);
+    scheduleRemoval(entry);
   },
 
   showConfirmation(title, message = '') {
@@ -397,6 +433,18 @@ style.textContent = `
     flex: 1;
     line-height: 1.4;
   }
+
+  /* Счётчик повторов: показывается, когда одно и то же сообщение
+     пришло несколько раз подряд — вместо стопки одинаковых плашек */
+  .toast-count {
+    flex-shrink: 0;
+    font-size: 12px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    padding: 2px 7px;
+    border-radius: var(--radius-sm);
+    background: rgba(255, 255, 255, 0.22);
+  }
   
   .toast-info {
     background: rgba(124, 92, 255, 0.95);
@@ -417,8 +465,8 @@ style.textContent = `
   }
   
   .toast-error {
-    background: rgba(232, 17, 35, 0.95);
-    border-color: rgba(232, 17, 35, 0.4);
+    background: rgba(240, 85, 95, 0.95);
+    border-color: rgba(240, 85, 95, 0.4);
   }
 
   .toast-error .toast-icon {
@@ -426,8 +474,8 @@ style.textContent = `
   }
   
   .toast-warning {
-    background: rgba(255, 159, 67, 0.95);
-    border-color: rgba(255, 159, 67, 0.4);
+    background: rgba(240, 168, 60, 0.95);
+    border-color: rgba(240, 168, 60, 0.4);
   }
 
   .toast-warning .toast-icon {
