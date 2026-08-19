@@ -58,7 +58,12 @@ class PlayerManager extends SlottedWebview {
       return;
     }
 
-    const quality = options.quality || '160p30';
+    // Качество берём из настроек: это прямой рычаг расхода трафика.
+    // Раньше значение было прибито в коде, а настройка в интерфейсе
+    // отсутствовала вовсе.
+    const quality = options.quality
+      || window.settings?.get('preferredStreamQuality')
+      || '160p30';
     // controls=false убирает панель управления и наложенную поверх видео
     // подпись с названием стрима — для фонового просмотра они не нужны.
     const url = `https://player.twitch.tv/?channel=${login}&parent=localhost&muted=true&autoplay=true&controls=false&quality=${quality}`;
