@@ -3006,34 +3006,32 @@ body.no-animations * {
 }
 
 /* ===== ЗАКРЕПЛЁННЫЕ КАТЕГОРИИ ===== */
-.category-item {
-  position: relative;
-}
 
-/* Значок появляется после удержания карточки, а у закреплённых виден
-   всегда — иначе открепить было бы неочевидно */
+/* Кнопка стоит рядом с Play и проявляется при наведении на карточку.
+   У закреплённых категорий она видна всегда — иначе открепить
+   было бы неочевидно. */
 .category-pin-btn {
-  position: absolute;
-  top: 6px;
-  left: 6px;
-  z-index: 2;
-  display: none;
+  display: flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
   padding: 0;
+  margin-left: 6px;
   border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  background: var(--bg-tertiary);
-  color: var(--text-secondary);
+  border-radius: var(--radius-ctl);
+  background: var(--button-secondary-bg);
+  color: var(--text-tertiary);
   cursor: pointer;
-  transition: background var(--transition-fast), color var(--transition-fast);
+  opacity: 0;
+  transition: opacity var(--transition-fast), background var(--transition-fast), color var(--transition-fast);
 }
 
-.category-item.pin-revealed .category-pin-btn,
+.category-item:hover .category-pin-btn,
+.category-pin-btn:focus-visible,
 .category-pin-btn.active {
-  display: flex;
+  opacity: 1;
 }
 
 .category-pin-btn:hover {

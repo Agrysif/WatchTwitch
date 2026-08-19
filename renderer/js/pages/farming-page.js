@@ -1196,12 +1196,7 @@ class FarmingPage {
       return `
       ${divider}
       <div class="category-item ${isDisabled ? 'disabled' : ''} ${isCompleted ? 'drops-completed' : ''} ${cat.pinned ? 'pinned' : ''}" draggable="true" data-category-id="${cat.id}">
-        <button class="category-pin-btn ${cat.pinned ? 'active' : ''}" data-category-id="${cat.id}"
-                title="${cat.pinned ? 'Открепить категорию' : 'Закрепить категорию'}">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M14 4V2H10v2H8v6l-2 2v2h5v6l1 2 1-2v-6h5v-2l-2-2V4h-2z"/>
-          </svg>
-        </button>
+
         <div class="category-drag-handle">
           <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
             <circle cx="7" cy="5" r="1.5"/>
@@ -1229,6 +1224,12 @@ class FarmingPage {
             <path d="M3 1L10 6L3 11V1Z"/>
           </svg>
           Play
+        </button>
+        <button class="category-pin-btn ${cat.pinned ? 'active' : ''}" data-category-id="${cat.id}"
+                title="${cat.pinned ? 'Открепить категорию' : 'Закрепить категорию'}">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M14 4V2H10v2H8v6l-2 2v2h5v6l1 2 1-2v-6h5v-2l-2-2V4h-2z"/>
+          </svg>
         </button>
         <div class="category-priority">#${index + 1}</div>
         <label class="category-toggle-switch ${!isDisabled ? 'checked' : ''}" data-category-id="${cat.id}">
@@ -1262,46 +1263,17 @@ class FarmingPage {
    * перетаскиванием. У уже закреплённых категорий значок виден всегда,
    * иначе открепить их было бы неочевидно.
    */
+  /**
+   * Кнопка закрепления показывается при наведении на карточку (это делает
+   * CSS) и постоянно — у уже закреплённых категорий, иначе открепить их
+   * было бы неочевидно. Здесь остаётся только сам обработчик нажатия.
+   */
   setupPinControls() {
-    const LONG_PRESS_MS = 700;
-
-    document.querySelectorAll('.category-item').forEach(card => {
-      let timer = null;
-
-      const cancel = () => {
-        if (timer) {
-          clearTimeout(timer);
-          timer = null;
-        }
-      };
-
-      card.addEventListener('pointerdown', (event) => {
-        // Не мешаем кнопкам и переключателю внутри карточки
-        if (event.target.closest('button, label, input')) return;
-
-        timer = setTimeout(() => {
-          card.classList.add('pin-revealed');
-          timer = null;
-        }, LONG_PRESS_MS);
-      });
-
-      ['pointerup', 'pointerleave', 'pointercancel', 'dragstart'].forEach(type => {
-        card.addEventListener(type, cancel);
-      });
-    });
-
     document.querySelectorAll('.category-pin-btn').forEach(btn => {
       btn.addEventListener('click', async (event) => {
         event.stopPropagation();
         await this.togglePinned(btn.dataset.categoryId);
       });
-    });
-
-    // Клик мимо карточек убирает показанные значки
-    document.addEventListener('click', this._hidePinAffordances = (event) => {
-      if (event.target.closest('.category-item')) return;
-      document.querySelectorAll('.category-item.pin-revealed')
-        .forEach(card => card.classList.remove('pin-revealed'));
     });
   }
 
@@ -1471,31 +1443,48 @@ class FarmingPage {
     window.shutdownManager?.onDropsCompleted();
   }
 
-  async pickPreferredStream(streams) {
+  /**
+   * Выбирает канал для просмотра в категории.
+   *
+   * Ключевой момент: Twitch отдаёт по игре только топ-20 стримов по числу
+   * зрителей. Избранные каналы — как правило небольшие, и в эту выдачу они
+   * почти никогда не попадают. Поэтому искать их в списке бесполезно:
+   * сначала спрашиваем напрямую, в эфире ли они и в той ли игре.
+   *
+   * Порядок предпочтения:
+   *   1. избранные каналы, идущие сейчас по нужной игре;
+   *   2. остальные подписки, если включён приоритет подписок;
+   *   3. избранные/подписки, попавшие в выдачу Twitch;
+   *   4. первый из выдачи.
+   */
+  async pickPreferredStream(streams, categoryName) {
     if (!Array.isArray(streams) || streams.length === 0) return null;
 
-    const login = (value) => String(value || '').replace(/^@/, '').toLowerCase();
+    const norm = (value) => String(value || '').replace(/^@/, '').toLowerCase();
 
     try {
       const subscriptions = (await Storage.getSubscriptions()) || [];
 
-      const favorites = new Set(
-        subscriptions.filter(sub => sub.isFavorite).map(sub => login(sub.login))
-      );
+      if (subscriptions.length > 0) {
+        const priorityEnabled = await Storage.getItem('subscriptions_priority_enabled');
 
-      const favorite = streams.find(stream => favorites.has(login(stream.login)));
-      if (favorite) {
-        console.log('[Выбор стрима] Избранный канал в эфире:', favorite.displayName || favorite.login);
-        return favorite;
-      }
+        // Избранные вперёд, внутри группы — по заданному пользователем порядку
+        const ordered = subscriptions
+          .filter(sub => sub.isFavorite || priorityEnabled)
+          .sort((a, b) => {
+            if (!!a.isFavorite !== !!b.isFavorite) return a.isFavorite ? -1 : 1;
+            return (a.priority ?? 9999) - (b.priority ?? 9999);
+          });
 
-      const priorityEnabled = await Storage.getItem('subscriptions_priority_enabled');
-      if (priorityEnabled) {
-        const subscribed = new Set(subscriptions.map(sub => login(sub.login)));
-        const match = streams.find(stream => subscribed.has(login(stream.login)));
-        if (match) {
-          console.log('[Выбор стрима] Канал из подписок:', match.displayName || match.login);
-          return match;
+        const direct = await this.findLivePreferredChannel(ordered, categoryName);
+        if (direct) return direct;
+
+        // Подстраховка: вдруг подписка всё же попала в выдачу
+        const known = new Set(ordered.map(sub => norm(sub.login)));
+        const inList = streams.find(stream => known.has(norm(stream.login)));
+        if (inList) {
+          console.log('[Выбор стрима] Канал из подписок в выдаче:', inList.displayName || inList.login);
+          return inList;
         }
       }
     } catch (error) {
@@ -1503,6 +1492,63 @@ class FarmingPage {
     }
 
     return streams[0];
+  }
+
+  /**
+   * Спрашивает у Twitch напрямую, идёт ли кто-то из приоритетных каналов
+   * по нужной игре. Проверяем ограниченное число каналов и параллельно,
+   * чтобы не задерживать запуск стрима.
+   */
+  async findLivePreferredChannel(orderedSubscriptions, categoryName) {
+    if (!categoryName || orderedSubscriptions.length === 0) return null;
+    if (!window.electronAPI?.getStreamStats) return null;
+
+    const MAX_CHECKS = 12;
+    const candidates = orderedSubscriptions.slice(0, MAX_CHECKS);
+
+    const checked = await Promise.all(candidates.map(async (sub) => {
+      try {
+        const stats = await window.electronAPI.getStreamStats(sub.login);
+        // stats === null означает, что канал сейчас не в эфире
+        if (!stats || !stats.gameName) return null;
+        if (!this.isSameGame(stats.gameName, categoryName)) return null;
+
+        return {
+          login: sub.login,
+          displayName: sub.displayName || sub.login,
+          title: stats.title || '',
+          viewers: stats.viewers || 0,
+          fromSubscription: true,
+          isFavorite: !!sub.isFavorite
+        };
+      } catch (error) {
+        return null;
+      }
+    }));
+
+    // Порядок массива сохраняется, поэтому первый непустой — самый приоритетный
+    const match = checked.find(Boolean);
+    if (match) {
+      console.log('[Выбор стрима] %s канал в эфире по нужной игре: %s',
+        match.isFavorite ? 'Избранный' : 'Подписанный', match.displayName);
+    }
+    return match || null;
+  }
+
+  /**
+   * Сравнение названий игр по словам.
+   * Подстрока здесь опасна: в «albion online» содержится «line».
+   */
+  isSameGame(a, b) {
+    const tokens = (value) => this.normalizeGameName(value).split(' ').filter(Boolean);
+    const left = tokens(a);
+    const right = tokens(b);
+    if (left.length === 0 || right.length === 0) return false;
+
+    const isPrefix = (short, long) =>
+      short.length <= long.length && short.every((t, i) => t === long[i]);
+
+    return isPrefix(left, right) || isPrefix(right, left);
   }
 
   async startFarmingForCategory(category) {
@@ -1521,7 +1567,7 @@ class FarmingPage {
     }
     
     // Выбираем первый стрим
-    const stream = await this.pickPreferredStream(streams);
+    const stream = await this.pickPreferredStream(streams, category.name);
     const streamUrl = `https://www.twitch.tv/${stream.login}`;
     
     console.log('Starting stream:', stream.displayName, streamUrl);
@@ -1705,7 +1751,7 @@ class FarmingPage {
         return;
       }
 
-      const stream = await this.pickPreferredStream(streams);
+      const stream = await this.pickPreferredStream(streams, channelLogin);
       
       // Переключаемся на стрим
       await window.electronAPI.openStream(`https://www.twitch.tv/${stream.login}`, account);
@@ -1846,7 +1892,7 @@ class FarmingPage {
         await window.electronAPI.closeStream();
         
         // Берём первый стрим
-        const stream = await this.pickPreferredStream(streams);
+        const stream = await this.pickPreferredStream(streams, nextCategory.name);
         console.log('Selected stream:', stream.displayName);
         
         // Открываем стрим
@@ -2148,7 +2194,7 @@ class FarmingPage {
     }
     
     // Выбираем первый стрим
-    const stream = await this.pickPreferredStream(streams);
+    const stream = await this.pickPreferredStream(streams, category.name);
     const streamUrl = `https://www.twitch.tv/${stream.login}`;
     
     console.log('Starting stream:', stream.displayName, streamUrl);
@@ -3912,7 +3958,7 @@ class FarmingPage {
           }
           
           // Берём первый стрим
-          const stream = await this.pickPreferredStream(streams);
+          const stream = await this.pickPreferredStream(streams, nextCategory.name);
           
           // Открываем стрим
           await window.electronAPI.openStream(`https://www.twitch.tv/${stream.login}`);
@@ -4055,7 +4101,7 @@ class FarmingPage {
       }
       
       // Запускаем первый стрим
-      const stream = await this.pickPreferredStream(streams);
+      const stream = await this.pickPreferredStream(streams, prevCategory.name);
       this.currentCategory = prevCategory;
       this.currentStream = stream;
       this.resetChannelPointsTracking();
@@ -4116,7 +4162,7 @@ class FarmingPage {
       }
       
       // Запускаем первый стрим
-      const stream = await this.pickPreferredStream(streams);
+      const stream = await this.pickPreferredStream(streams, nextCategory.name);
       this.currentCategory = nextCategory;
       this.currentStream = stream;
       this.resetChannelPointsTracking();

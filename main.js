@@ -1301,7 +1301,7 @@ ipcMain.handle('get-stream-stats', async (event, channelLogin) => {
 
   return new Promise((resolve) => {
     const postData = JSON.stringify({
-      query: 'query { user(login: "' + channelLogin + '") { stream { viewersCount createdAt game { name } } channel { self { communityPoints { balance } } } } }'
+      query: 'query { user(login: "' + channelLogin + '") { stream { title viewersCount createdAt game { name } } channel { self { communityPoints { balance } } } } }'
     });
 
     const options = {
@@ -1333,6 +1333,10 @@ ipcMain.handle('get-stream-stats', async (event, channelLogin) => {
           if (stream) {
             const uptime = calculateUptime(stream.createdAt);
             resolve({
+              // title нужен, когда канал выбран напрямую из подписок и не
+              // попал в выдачу по игре: иначе карточка стрима осталась бы
+              // без названия
+              title: stream.title || '',
               viewers: stream.viewersCount || 0,
               points: points || 0,
               uptime: uptime,
