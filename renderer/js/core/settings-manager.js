@@ -41,6 +41,8 @@ class SettingsManager {
       // Завершение работы
       enableShutdown: false,
       shutdownAction: 'shutdown',
+      shutdownTrigger: 'drops',
+      shutdownDelayMinutes: 5,
 
       // Разработчик
       developerMode: false
