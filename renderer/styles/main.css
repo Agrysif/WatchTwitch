@@ -3004,3 +3004,107 @@ body.no-animations * {
   color: var(--warning-color);
   letter-spacing: -0.02em;
 }
+
+/* ===== ЗАКРЕПЛЁННЫЕ КАТЕГОРИИ ===== */
+.category-item {
+  position: relative;
+}
+
+/* Значок появляется после удержания карточки, а у закреплённых виден
+   всегда — иначе открепить было бы неочевидно */
+.category-pin-btn {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 2;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.category-item.pin-revealed .category-pin-btn,
+.category-pin-btn.active {
+  display: flex;
+}
+
+.category-pin-btn:hover {
+  background: var(--button-secondary-hover);
+  color: var(--text-primary);
+}
+
+.category-pin-btn.active {
+  background: var(--accent-quiet);
+  border-color: var(--accent-color);
+  color: var(--accent-color);
+}
+
+.category-item.pinned {
+  border-left: 2px solid var(--accent-color);
+}
+
+.pinned-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 6px 0 10px;
+  color: var(--text-tertiary);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.pinned-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border-color);
+}
+
+/* ===== ПРЕДЛОЖЕНИЕ СМЕНИТЬ КАТЕГОРИЮ =====
+ * Показывается на месте прогресса дропсов, когда в запущенной вручную
+ * категории дропсов нет. Решение остаётся за пользователем.
+ */
+.switch-offer {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 14px 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--warning-color);
+  border-radius: var(--radius-md);
+}
+
+.switch-offer-text {
+  flex: 1;
+  min-width: 220px;
+}
+
+.switch-offer-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.switch-offer-sub {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+.switch-offer-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
