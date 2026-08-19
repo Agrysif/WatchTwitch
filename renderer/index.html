@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>WatchTwitch</title>
+  <link rel="stylesheet" href="styles/fonts.css">
   <link rel="stylesheet" href="styles/main.css">
   <link rel="stylesheet" href="styles/themes.css">
   <link rel="stylesheet" href="styles/animations.css">
@@ -89,34 +90,34 @@
       <!-- Farming Controls -->
       <div class="sidebar-farming">
         <!-- Mini Twitch Player (16:9) - показывается когда активна сессия и не на странице фарминга -->
-        <div id="sidebar-mini-player-container" style="display: none; margin-bottom: 8px; border-radius: 8px; overflow: hidden; border: 1px solid var(--border-color); opacity: 0; transform: translateY(-10px); transition: opacity 0.3s ease, transform 0.3s ease;">
+        <div id="sidebar-mini-player-container" style="display: none; margin-bottom: 8px; border-radius: var(--radius-md); overflow: hidden; border: 1px solid var(--border-color); opacity: 0; transform: translateY(-10px); transition: opacity 0.3s ease, transform 0.3s ease;">
           <!-- Слот для того же самого постоянного плеера, что и на странице фарминга -->
           <div id="sidebar-player-slot" style="position: relative; width: 100%; padding-bottom: 56.25%; background: #000;"></div>
         </div>
         
         <!-- Mini Drops Progress -->
-        <div id="sidebar-drops-progress" style="display: none; padding: 12px 14px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; margin-bottom: 6px; opacity: 0; transform: translateY(-10px); transition: all 0.3s ease;">
+        <div id="sidebar-drops-progress" style="display: none; padding: 12px 14px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius-md); margin-bottom: 6px; opacity: 0; transform: translateY(-10px); transition: all 0.3s ease;">
           <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
             <div style="display: flex; align-items: center; gap: 8px;">
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="#9147ff">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="#7c5cff">
                 <path d="M8 2L10 6H14L11 9L12 13L8 10.5L4 13L5 9L2 6H6L8 2Z"/>
               </svg>
               <span style="font-size: 11px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;" data-i18n="sidebar.dropsProgress">Дропсы</span>
             </div>
             <span id="sidebar-drops-percent" style="font-size: 16px; font-weight: 700; color: var(--text-primary);">0%</span>
           </div>
-          <div style="background: rgba(145, 71, 255, 0.1); height: 6px; border-radius: 3px; overflow: hidden;">
-            <div id="sidebar-drops-bar" style="height: 100%; background: #9147ff; width: 0%; transition: width 0.5s ease;"></div>
+          <div style="background: rgba(124, 92, 255, 0.1); height: 6px; border-radius: var(--radius-sm); overflow: hidden;">
+            <div id="sidebar-drops-bar" style="height: 100%; background: #7c5cff; width: 0%; transition: width 0.5s ease;"></div>
           </div>
         </div>
         
-        <div id="farming-session-info" style="display: none; padding: 16px; background: var(--bg-secondary); border-radius: 8px; margin-bottom: 8px; border: 1px solid var(--border-color); opacity: 0; transform: translateY(-10px); transition: opacity 0.3s ease, transform 0.3s ease;">
+        <div id="farming-session-info" style="display: none; padding: 16px; background: var(--bg-secondary); border-radius: var(--radius-md); margin-bottom: 8px; border: 1px solid var(--border-color); opacity: 0; transform: translateY(-10px); transition: opacity 0.3s ease, transform 0.3s ease;">
           <div style="font-size: 11px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 8px; letter-spacing: 0.5px;" data-i18n="sidebar.session">Сессия</div>
           <div style="display: flex; flex-direction: column; gap: 6px;">
             <div style="display: flex; align-items: center; gap: 8px;">
-              <div style="width: 6px; height: 6px; background: #00f593; border-radius: 50%; animation: pulse 2s infinite;"></div>
+              <div style="width: 6px; height: 6px; background: #35d08a; border-radius: var(--radius-circle); animation: pulse 2s infinite;"></div>
               <span class="session-status" style="font-size: 12px; color: var(--text-secondary);" data-i18n="sidebar.active">Активна</span>
-              <span class="session-auto-badge" style="display: none; padding: 2px 6px; background: rgba(255, 152, 0, 0.15); color: #ff9800; border-radius: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase;" data-i18n="sidebar.auto">Авто</span>
+              <span class="session-auto-badge" style="display: none; padding: 2px 6px; background: rgba(255, 152, 0, 0.15); color: #ff9800; border-radius: var(--radius-sm); font-size: 10px; font-weight: 700; text-transform: uppercase;" data-i18n="sidebar.auto">Авто</span>
             </div>
             <div style="font-size: 13px; color: var(--text-primary); font-weight: 600;" id="session-duration">00:00:00</div>
             <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-top: 6px; border-top: 1px solid var(--border-color);">

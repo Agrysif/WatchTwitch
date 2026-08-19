@@ -150,7 +150,7 @@
       <!-- Загрузка -->
       <div id="subscriptions-loading" style="text-align: center; padding: 40px 20px;">
         <div
-          style="display: inline-block; width: 40px; height: 40px; border: 3px solid rgba(145, 71, 255, 0.2); border-top-color: #9147ff; border-radius: 50%; animation: spin 0.8s linear infinite;">
+          style="display: inline-block; width: 40px; height: 40px; border: 3px solid rgba(124, 92, 255, 0.2); border-top-color: #7c5cff; border-radius: var(--radius-circle); animation: spin 0.8s linear infinite;">
         </div>
         <p style="color: var(--text-secondary); margin-top: 16px;" data-i18n="subscriptions.loadingSubscriptions">Загрузка подписок...</p>
       </div>
@@ -161,7 +161,7 @@
   <div id="channel-detail-modal"
     style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.7); z-index: 1000; align-items: center; justify-content: center;">
     <div
-      style="background: var(--bg-primary); border-radius: 12px; max-width: 500px; width: 90%; max-height: 80vh; overflow-y: auto; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5); padding: 24px; position: relative;">
+      style="background: var(--bg-primary); border-radius: var(--radius-md); max-width: 500px; width: 90%; max-height: 80vh; overflow-y: auto; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5); padding: 24px; position: relative;">
       <button id="close-modal-btn"
         style="position: absolute; top: 16px; right: 16px; background: none; border: none; color: var(--text-secondary); cursor: pointer; font-size: 24px; line-height: 1; padding: 0;">×</button>
 
@@ -176,7 +176,7 @@
     .priority-toggle-card {
       background: var(--bg-secondary);
       border: 1px solid var(--border-color);
-      border-radius: 8px;
+      border-radius: var(--radius-md);
       padding: 12px 14px;
     }
 
@@ -214,7 +214,7 @@
       bottom: 0;
       background-color: rgba(150, 150, 150, 0.3);
       transition: background-color 0.3s;
-      border-radius: 24px;
+      border-radius: var(--radius-md);
       overflow: hidden;
     }
 
@@ -227,7 +227,7 @@
       bottom: 3px;
       background-color: white;
       transition: transform 0.3s;
-      border-radius: 50%;
+      border-radius: var(--radius-circle);
     }
 
     .priority-toggle input:checked+.toggle-slider {
@@ -254,7 +254,7 @@
       padding: 8px 12px 8px 38px;
       background: var(--bg-secondary);
       border: 1px solid var(--border-color);
-      border-radius: 6px;
+      border-radius: var(--radius-sm);
       color: var(--text-primary);
       font-size: 13px;
       outline: none;
@@ -276,7 +276,7 @@
       background: var(--bg-secondary);
       border: 1px solid var(--border-color);
       color: var(--text-secondary);
-      border-radius: 6px;
+      border-radius: var(--radius-sm);
       padding: 8px;
       cursor: pointer;
       transition: all 0.2s ease;
@@ -287,7 +287,7 @@
 
     .filter-icon-btn:hover {
       border-color: var(--accent-color);
-      background: rgba(145, 71, 255, 0.1);
+      background: rgba(124, 92, 255, 0.1);
       color: var(--accent-color);
     }
 
@@ -297,7 +297,7 @@
       border: 1px solid var(--border-color);
       color: var(--text-secondary);
       padding: 8px 14px;
-      border-radius: 8px;
+      border-radius: var(--radius-md);
       cursor: pointer;
       font-size: 13px;
       font-weight: 500;
@@ -309,7 +309,7 @@
 
     .filter-btn:hover {
       border-color: var(--accent-color);
-      background: rgba(145, 71, 255, 0.05);
+      background: rgba(124, 92, 255, 0.05);
     }
 
     .filter-btn.active {
@@ -324,7 +324,7 @@
       gap: 4px;
       background: var(--bg-secondary);
       border: 1px solid var(--border-color);
-      border-radius: 6px;
+      border-radius: var(--radius-sm);
       padding: 2px;
     }
 
@@ -332,7 +332,7 @@
       background: transparent;
       border: none;
       color: var(--text-secondary);
-      border-radius: 4px;
+      border-radius: var(--radius-sm);
       padding: 6px;
       cursor: pointer;
       transition: all 0.2s ease;
@@ -347,7 +347,7 @@
     }
 
     .view-toggle-btn:not(.active):hover {
-      background: rgba(145, 71, 255, 0.1);
+      background: rgba(124, 92, 255, 0.1);
       color: var(--accent-color);
     }
 
@@ -359,7 +359,7 @@
       padding: 14px;
       background: var(--bg-secondary);
       border: 1px solid var(--border-color);
-      border-radius: 10px;
+      border-radius: var(--radius-md);
       transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
       cursor: pointer;
       position: relative;
@@ -369,7 +369,7 @@
     }
 
     .subscription-card.favorite {
-      background: linear-gradient(135deg, rgba(255, 107, 157, 0.05) 0%, var(--bg-secondary) 100%);
+      background: rgba(255, 107, 157, 0.05);
       border-color: transparent;
     }
 
@@ -385,20 +385,20 @@
       left: 0;
       right: 0;
       height: 2px;
-      background: linear-gradient(90deg, transparent, var(--accent-color), transparent);
+      background: transparent;
       opacity: 0;
       transition: opacity 0.3s ease;
     }
 
     .subscription-card.favorite::before {
-      background: linear-gradient(90deg, transparent, #ff6b9d, transparent);
+      background: transparent;
       opacity: 1;
     }
 
     .subscription-card:hover {
       transform: translateY(-2px);
-      border-color: rgba(145, 71, 255, 0.5);
-      box-shadow: 0 8px 24px rgba(145, 71, 255, 0.15);
+      border-color: rgba(124, 92, 255, 0.5);
+      box-shadow: none;
     }
 
     .subscription-card:hover::before {
@@ -425,14 +425,14 @@
     .subscription-card-avatar {
       width: 54px;
       height: 54px;
-      border-radius: 50%;
+      border-radius: var(--radius-circle);
       object-fit: cover;
-      border: 2px solid rgba(145, 71, 255, 0.3);
+      border: 2px solid rgba(124, 92, 255, 0.3);
       transition: all 0.3s ease;
     }
 
     .subscription-card:hover .subscription-card-avatar {
-      border-color: rgba(145, 71, 255, 0.6);
+      border-color: rgba(124, 92, 255, 0.6);
     }
 
     .subscription-card-live-indicator {
@@ -443,7 +443,7 @@
       height: 14px;
       background: #ff0000;
       border: 2px solid var(--bg-secondary);
-      border-radius: 50%;
+      border-radius: var(--radius-circle);
       animation: pulse-live 2s ease-in-out infinite;
     }
 
@@ -457,7 +457,7 @@
       align-items: center;
       gap: 3px;
       padding: 4px 8px;
-      border-radius: 6px;
+      border-radius: var(--radius-sm);
       font-size: 11px;
       font-weight: 600;
       cursor: help;
@@ -472,7 +472,7 @@
       align-items: center;
       gap: 5px;
       padding: 4px 8px;
-      border-radius: 6px;
+      border-radius: var(--radius-sm);
       font-size: 11px;
       font-weight: 600;
       background: rgba(0, 0, 0, 0.7);
@@ -480,7 +480,7 @@
     }
 
     .subscription-card-status-overlay.live {
-      color: #00e57a;
+      color: #35d08a;
     }
 
     .subscription-card-status-overlay.offline {
@@ -498,7 +498,7 @@
       padding: 6px 8px;
       background: rgba(0, 0, 0, 0.7);
       backdrop-filter: blur(10px);
-      border-radius: 6px;
+      border-radius: var(--radius-sm);
     }
 
     .subscription-card-stats-overlay .subscription-stat {
@@ -550,7 +550,7 @@
       align-items: center;
       gap: 3px;
       padding: 4px 8px;
-      border-radius: 6px;
+      border-radius: var(--radius-sm);
       font-size: 11px;
       font-weight: 600;
       flex-shrink: 0;
@@ -559,8 +559,8 @@
 
     .subscription-card-rating-inline.good,
     .subscription-card-rating.good {
-      background: rgba(0, 229, 122, 0.15);
-      color: #00e57a;
+      background: rgba(53, 208, 138, 0.15);
+      color: #35d08a;
     }
 
     .subscription-card-rating-inline.neutral,
@@ -572,7 +572,7 @@
     .subscription-card-rating-inline.bad,
     .subscription-card-rating.bad {
       background: rgba(255, 107, 107, 0.15);
-      color: #ff6b6b;
+      color: #f0555f;
     }
 
     .subscription-card-status {
@@ -586,7 +586,7 @@
     }
 
     .subscription-card-status.live {
-      color: #00e57a;
+      color: #35d08a;
     }
 
     .subscription-card-status.offline {
@@ -619,7 +619,7 @@
     .status-dot {
       width: 6px;
       height: 6px;
-      border-radius: 50%;
+      border-radius: var(--radius-circle);
       background: currentColor;
     }
 
@@ -646,7 +646,7 @@
       color: var(--text-secondary);
       background: rgba(0, 0, 0, 0.3);
       padding: 2px 6px;
-      border-radius: 4px;
+      border-radius: var(--radius-sm);
       margin-left: 4px;
     }
 
@@ -686,7 +686,7 @@
       background: var(--bg-primary);
       border: 1px solid var(--border-color);
       color: var(--text-secondary);
-      border-radius: 8px;
+      border-radius: var(--radius-md);
       padding: 8px;
       cursor: pointer;
       transition: all 0.2s ease;
@@ -712,21 +712,21 @@
     }
 
     .subscription-action-btn.twitch-btn:hover {
-      background: rgba(145, 71, 255, 0.1);
-      border-color: #9147ff;
-      color: #9147ff;
+      background: rgba(124, 92, 255, 0.1);
+      border-color: #7c5cff;
+      color: #7c5cff;
     }
 
     .subscription-action-btn.farm-btn:hover {
-      background: rgba(0, 229, 122, 0.1);
-      border-color: #00e57a;
-      color: #00e57a;
+      background: rgba(53, 208, 138, 0.1);
+      border-color: #35d08a;
+      color: #35d08a;
     }
 
     .subscription-action-btn.unsub-btn:hover {
       background: rgba(255, 107, 107, 0.1);
-      border-color: #ff6b6b;
-      color: #ff6b6b;
+      border-color: #f0555f;
+      color: #f0555f;
     }
 
     /* Разделитель */
@@ -771,7 +771,7 @@
     .subscriptions-grid-view .subscription-card {
       padding: 0;
       overflow: hidden;
-      border-radius: 12px;
+      border-radius: var(--radius-md);
     }
 
     .subscriptions-grid-view .subscription-card-main {
@@ -821,7 +821,7 @@
       width: 140px;
       height: 140px;
       object-fit: cover;
-      border-radius: 50%;
+      border-radius: var(--radius-circle);
       border: none;
       z-index: 2;
       box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
@@ -858,7 +858,7 @@
       left: 0;
       right: 0;
       height: 50%;
-      background: linear-gradient(to bottom, transparent 0%, var(--bg-secondary) 100%);
+      background: transparent;
       pointer-events: none;
       z-index: 1;
     }
@@ -1022,7 +1022,7 @@
 
     .subscription-card.drag-over {
       border: 2px dashed var(--accent-color) !important;
-      background: rgba(145, 71, 255, 0.05);
+      background: rgba(124, 92, 255, 0.05);
     }
   </style>
 </div>

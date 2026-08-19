@@ -953,7 +953,7 @@ class FarmingPage {
     const btnText = btn.querySelector('span');
 
     if (isAutoMode) {
-      btn.style.background = 'linear-gradient(135deg, #9147ff, #772ce8)';
+      btn.style.background = '#7c5cff';
       btn.style.color = '#fff';
       btn.style.border = 'none';
       btn.style.opacity = '1';
@@ -1158,7 +1158,7 @@ class FarmingPage {
       const tagsHtml = cat.tags && cat.tags.length > 0 
         ? `<span class="category-tag">${cat.tags[0]}</span>` 
         : '';
-      const autoBadge = cat.autoDrops ? `<span class="category-tag" style="background: rgba(145, 71, 255, 0.2); color: #bda0ff; border: 1px solid rgba(145, 71, 255, 0.4);">${this.i18n.t('farming.auto')}</span>` : '';
+      const autoBadge = cat.autoDrops ? `<span class="category-tag" style="background: rgba(124, 92, 255, 0.2); color: #bda0ff; border: 1px solid rgba(124, 92, 255, 0.4);">${this.i18n.t('farming.auto')}</span>` : '';
       
       const dropsStatusHtml = cat.hasDrops ? (
         cat.dropsCompleted 
@@ -1301,7 +1301,7 @@ class FarmingPage {
     modalContent.style.cssText = `
       background: var(--bg-secondary);
       border: 1px solid var(--border-color);
-      border-radius: 16px;
+      border-radius: var(--radius-md);
       width: 90%;
       max-width: 900px;
       box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
@@ -1310,7 +1310,7 @@ class FarmingPage {
 
     modalContent.innerHTML = `
       <div style="position: relative; padding: 24px; padding-bottom: 32px;">
-        <button id="close-category-modal" style="position: absolute; top: 16px; right: 16px; background: rgba(255, 255, 255, 0.1); border: none; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; z-index: 10;" onmouseover="this.style.background='rgba(255, 255, 255, 0.2)'" onmouseout="this.style.background='rgba(255, 255, 255, 0.1)'">
+        <button id="close-category-modal" style="position: absolute; top: 16px; right: 16px; background: rgba(255, 255, 255, 0.1); border: none; width: 32px; height: 32px; border-radius: var(--radius-circle); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; z-index: 10;" onmouseover="this.style.background='rgba(255, 255, 255, 0.2)'" onmouseout="this.style.background='rgba(255, 255, 255, 0.1)'">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" style="color: var(--text-primary);">
             <path d="M2 2L14 14M14 2L2 14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
           </svg>
@@ -1321,18 +1321,18 @@ class FarmingPage {
           
           <!-- Левая колонка: Карточка категории -->
           <div style="flex-shrink: 0; width: 280px;">
-            <div style="background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 12px; padding: 20px; position: sticky; top: 0;">
+            <div style="background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 20px; position: sticky; top: 0;">
               <div id="cover-container" style="perspective: 1000px; margin-bottom: 16px;">
                 <img id="category-cover" src="${this.getHighQualityBoxArt(category.boxArtURL)}" 
                      alt="${category.name}"
-                     style="width: 100%; aspect-ratio: 3/4; border-radius: 8px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3); object-fit: cover; transition: transform 0.1s ease-out, box-shadow 0.3s; transform-style: preserve-3d; cursor: pointer;">
+                     style="width: 100%; aspect-ratio: 3/4; border-radius: var(--radius-md); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3); object-fit: cover; transition: transform 0.1s ease-out, box-shadow 0.3s; transform-style: preserve-3d; cursor: pointer;">
               </div>
               
               <h2 style="color: var(--text-primary); font-size: 22px; font-weight: 700; margin: 0 0 16px; line-height: 1.2;">${category.name}</h2>
               
               <div id="category-info-blocks" style="display: flex; flex-direction: column; gap: 12px;">
-                <div style="display: flex; align-items: center; gap: 8px; padding: 10px; background: rgba(145, 71, 255, 0.1); border: 1px solid rgba(145, 71, 255, 0.2); border-radius: 8px;">
-                  <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" style="color: #9147ff; flex-shrink: 0;">
+                <div style="display: flex; align-items: center; gap: 8px; padding: 10px; background: rgba(124, 92, 255, 0.1); border: 1px solid rgba(124, 92, 255, 0.2); border-radius: var(--radius-md);">
+                  <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" style="color: #7c5cff; flex-shrink: 0;">
                     <path d="M8 2a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM4 14c0-2.21 1.79-4 4-4s4 1.79 4 4H4z"/>
                   </svg>
                   <div style="flex: 1;">
@@ -1342,13 +1342,13 @@ class FarmingPage {
                 </div>
                 
                 ${category.hasDrops ? `
-                <div style="display: flex; align-items: center; gap: 8px; padding: 10px; background: rgba(0, 245, 147, 0.1); border: 1px solid rgba(0, 245, 147, 0.2); border-radius: 8px;">
-                  <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" style="color: #00f593; flex-shrink: 0;">
+                <div style="display: flex; align-items: center; gap: 8px; padding: 10px; background: rgba(53, 208, 138, 0.1); border: 1px solid rgba(53, 208, 138, 0.2); border-radius: var(--radius-md);">
+                  <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" style="color: #35d08a; flex-shrink: 0;">
                     <path d="M8 2L10 6H14L11 9L12 13L8 10.5L4 13L5 9L2 6H6L8 2Z"/>
                   </svg>
                   <div style="flex: 1;">
                     <div style="font-size: 11px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px;">Статус</div>
-                    <div style="font-size: 13px; font-weight: 600; color: #00f593;">Дропсы доступны</div>
+                    <div style="font-size: 13px; font-weight: 600; color: #35d08a;">Дропсы доступны</div>
                   </div>
                 </div>` : ''}
               </div>
@@ -1359,7 +1359,7 @@ class FarmingPage {
           <div style="flex: 1; min-width: 0; margin-right: 40px;">
             <div id="streams-scroll-container" style="max-height: calc(85vh - 80px); overflow-y: auto; padding-right: 8px; padding-bottom: 8px; scroll-behavior: smooth;">
               <div id="category-streams-loading" style="text-align: center; padding: 60px 20px; color: var(--text-secondary);">
-                <div style="width: 40px; height: 40px; border: 3px solid rgba(145, 71, 255, 0.3); border-top-color: #9147ff; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 16px;"></div>
+                <div style="width: 40px; height: 40px; border: 3px solid rgba(124, 92, 255, 0.3); border-top-color: #7c5cff; border-radius: var(--radius-circle); animation: spin 1s linear infinite; margin: 0 auto 16px;"></div>
                 <div style="font-size: 14px;">Загрузка стримов...</div>
               </div>
 
@@ -1459,7 +1459,7 @@ class FarmingPage {
       const categoryInfoBlocks = document.getElementById('category-info-blocks');
       if (categoryInfoBlocks) {
         categoryInfoBlocks.innerHTML += `
-          <div style="display: flex; align-items: center; gap: 8px; padding: 10px; background: rgba(255, 87, 51, 0.1); border: 1px solid rgba(255, 87, 51, 0.2); border-radius: 8px;">
+          <div style="display: flex; align-items: center; gap: 8px; padding: 10px; background: rgba(255, 87, 51, 0.1); border: 1px solid rgba(255, 87, 51, 0.2); border-radius: var(--radius-md);">
             <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" style="color: #ff5733; flex-shrink: 0;">
               <path d="M2 2v12h12V2H2zm10 10H4V4h8v8z"/>
               <circle cx="8" cy="8" r="2" fill="currentColor"/>
@@ -1476,22 +1476,22 @@ class FarmingPage {
       contentEl.innerHTML = `
         <div>
           <h3 style="color: var(--text-primary); font-size: 18px; font-weight: 700; margin: 0 0 20px; display: flex; align-items: center; gap: 10px;">
-            <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor" style="color: #9147ff;">
+            <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor" style="color: #7c5cff;">
               <path d="M8 2L10 6H14L11 9L12 13L8 10.5L4 13L5 9L2 6H6L8 2Z"/>
             </svg>
             Топ стримы с дропсами
-            <span style="background: rgba(145, 71, 255, 0.15); color: #9147ff; padding: 2px 8px; border-radius: 6px; font-size: 13px; font-weight: 700;">${streams.length}</span>
+            <span style="background: rgba(124, 92, 255, 0.15); color: #7c5cff; padding: 2px 8px; border-radius: var(--radius-sm); font-size: 13px; font-weight: 700;">${streams.length}</span>
           </h3>
           <div style="display: flex; flex-direction: column; gap: 10px;">
             ${streamsData.map((stream, index) => `
               <div class="stream-card-clickable" 
-                   style="background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 10px; padding: 14px; display: flex; gap: 14px; align-items: center; transition: all 0.2s; cursor: pointer; position: relative; overflow: hidden;" 
-                   onmouseover="this.style.borderColor='#9147ff'; this.style.boxShadow='0 4px 16px rgba(145, 71, 255, 0.3)'; this.style.transform='translateY(-2px)'" 
+                   style="background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 14px; display: flex; gap: 14px; align-items: center; transition: all 0.2s; cursor: pointer; position: relative; overflow: hidden;" 
+                   onmouseover="this.style.borderColor='#7c5cff'; this.style.boxShadow='0 4px 16px rgba(124, 92, 255, 0.3)'; this.style.transform='translateY(-2px)'" 
                    onmouseout="this.style.borderColor='var(--border-color)'; this.style.boxShadow='none'; this.style.transform='translateY(0)'"
                    onclick="window.farmingPage.startStreamFromModal('${stream.login}', '${category.id}')">
                 
                 <!-- Фон gradient при наведении -->
-                <div style="position: absolute; inset: 0; background: linear-gradient(135deg, rgba(145, 71, 255, 0.05), rgba(145, 71, 255, 0)); opacity: 0; transition: opacity 0.2s; pointer-events: none;" class="stream-hover-bg"></div>
+                <div style="position: absolute; inset: 0; background: rgba(124, 92, 255, 0.05); opacity: 0; transition: opacity 0.2s; pointer-events: none;" class="stream-hover-bg"></div>
                 
                 <!-- Аватар стримера -->
                 <div style="position: relative; flex-shrink: 0; z-index: 1;">
@@ -1499,9 +1499,9 @@ class FarmingPage {
                        alt="${stream.display_name || stream.user_name || stream.login}"
                        onerror="this.onerror=null; this.src='https://static-cdn.jtvnw.net/user-default-pictures-uv/cdd517fe-def4-11e9-948e-784f43822e80-profile_image-70x70.png'; console.error('[Avatar] Failed to load for ${stream.login}', this.src);"
                        onload="console.log('[Avatar] Loaded for ${stream.login}');"
-                       style="width: 64px; height: 64px; border-radius: 50%; border: 3px solid ${index === 0 ? '#ffd700' : 'var(--border-color)'}; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);">
-                  ${stream.isLive ? '<div style="position: absolute; bottom: 2px; right: 2px; width: 16px; height: 16px; background: #ff0000; border: 3px solid var(--bg-primary); border-radius: 50%; box-shadow: 0 0 12px rgba(255, 0, 0, 0.8); animation: pulse-live 2s ease-in-out infinite;"></div>' : ''}
-                  ${index === 0 ? '<div style="position: absolute; top: -6px; left: -6px; background: linear-gradient(135deg, #ffd700, #ffed4e); color: #000; padding: 3px 8px; border-radius: 8px; font-size: 9px; font-weight: 800; box-shadow: 0 2px 6px rgba(255, 215, 0, 0.4);">TOP</div>' : ''}
+                       style="width: 64px; height: 64px; border-radius: var(--radius-circle); border: 3px solid ${index === 0 ? '#ffd700' : 'var(--border-color)'}; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);">
+                  ${stream.isLive ? '<div style="position: absolute; bottom: 2px; right: 2px; width: 16px; height: 16px; background: #ff0000; border: 3px solid var(--bg-primary); border-radius: var(--radius-circle); box-shadow: 0 0 12px rgba(255, 0, 0, 0.8); animation: pulse-live 2s ease-in-out infinite;"></div>' : ''}
+                  ${index === 0 ? '<div style="position: absolute; top: -6px; left: -6px; background: #ffd700; color: #000; padding: 3px 8px; border-radius: var(--radius-md); font-size: 9px; font-weight: 800; box-shadow: 0 2px 6px rgba(255, 215, 0, 0.4);">TOP</div>' : ''}
                 </div>
                 
                 <!-- Информация о стриме -->
@@ -1509,11 +1509,11 @@ class FarmingPage {
                   <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px; flex-wrap: wrap;">
                     <div style="font-weight: 700; font-size: 16px; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${stream.display_name || stream.displayName || stream.user_name || stream.login}</div>
                     ${stream.isLive ? `
-                    <div style="display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; background: linear-gradient(135deg, rgba(255, 0, 0, 0.2), rgba(255, 0, 0, 0.1)); border: 1px solid rgba(255, 0, 0, 0.4); border-radius: 8px; font-size: 11px; font-weight: 700; color: #ff4444;">
-                      <span style="width: 6px; height: 6px; background: #ff0000; border-radius: 50%; box-shadow: 0 0 4px rgba(255, 0, 0, 0.8);"></span>
+                    <div style="display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; background: rgba(255, 0, 0, 0.2); border: 1px solid rgba(255, 0, 0, 0.4); border-radius: var(--radius-md); font-size: 11px; font-weight: 700; color: #ff4444;">
+                      <span style="width: 6px; height: 6px; background: #ff0000; border-radius: var(--radius-circle); box-shadow: 0 0 4px rgba(255, 0, 0, 0.8);"></span>
                       LIVE
                     </div>` : ''}
-                    ${stream.isPartner ? '<svg width="14" height="14" viewBox="0 0 16 16" fill="#9147ff" title="Партнер Twitch"><path d="M12.5 3.5L8 2L3.5 3.5L2 8L3.5 12.5L8 14L12.5 12.5L14 8L12.5 3.5ZM7 11L4 8L5.41 6.59L7 8.17L10.59 4.58L12 6L7 11Z"/></svg>' : ''}
+                    ${stream.isPartner ? '<svg width="14" height="14" viewBox="0 0 16 16" fill="#7c5cff" title="Партнер Twitch"><path d="M12.5 3.5L8 2L3.5 3.5L2 8L3.5 12.5L8 14L12.5 12.5L14 8L12.5 3.5ZM7 11L4 8L5.41 6.59L7 8.17L10.59 4.58L12 6L7 11Z"/></svg>' : ''}
                   </div>
                   
                   <div style="color: var(--text-secondary); font-size: 12px; margin-bottom: 8px; font-family: 'Consolas', monospace;">@${stream.login}</div>
@@ -1522,7 +1522,7 @@ class FarmingPage {
                   <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
                     ${stream.viewersCount ? `
                     <div style="display: flex; align-items: center; gap: 6px; font-size: 13px;">
-                      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style="color: #9147ff;">
+                      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style="color: #7c5cff;">
                         <path d="M8 2C4.5 2 1.5 4.5 0 8c1.5 3.5 4.5 6 8 6s6.5-2.5 8-6c-1.5-3.5-4.5-6-8-6zm0 10c-2.2 0-4-1.8-4-4s1.8-4 4-4 4 1.8 4 4-1.8 4-4 4zm0-6.5c-1.4 0-2.5 1.1-2.5 2.5s1.1 2.5 2.5 2.5 2.5-1.1 2.5-2.5-1.1-2.5-2.5-2.5z"/>
                       </svg>
                       <span style="color: var(--text-primary); font-weight: 600;">${this.formatViewersCount(stream.viewersCount)}</span>
@@ -1552,9 +1552,9 @@ class FarmingPage {
                 </div>
                 
                 <!-- Кнопка запуска -->
-                <button style="flex-shrink: 0; background: linear-gradient(135deg, #9147ff, #772ce8); color: white; border: none; padding: 12px 20px; border-radius: 10px; font-size: 14px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: all 0.2s; box-shadow: 0 4px 12px rgba(145, 71, 255, 0.3); z-index: 1;" 
-                        onmouseover="this.style.transform='scale(1.05)'; this.style.boxShadow='0 6px 20px rgba(145, 71, 255, 0.5)'" 
-                        onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='0 4px 12px rgba(145, 71, 255, 0.3)'">
+                <button style="flex-shrink: 0; background: #7c5cff; color: white; border: none; padding: 12px 20px; border-radius: var(--radius-md); font-size: 14px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: all 0.2s; box-shadow: none; z-index: 1;" 
+                        onmouseover="this.style.boxShadow='0 6px 20px rgba(124, 92, 255, 0.5)'" 
+                        onmouseout="this.style.boxShadow='0 4px 12px rgba(124, 92, 255, 0.3)'">
                   <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
                     <path d="M4 2L14 8L4 14V2Z"/>
                   </svg>
@@ -1566,9 +1566,9 @@ class FarmingPage {
         </div>
 
         ${streamsData[0].description ? `
-        <div style="margin-top: 24px; padding: 16px; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 10px;">
+        <div style="margin-top: 24px; padding: 16px; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: var(--radius-md);">
           <div style="font-size: 13px; font-weight: 700; color: var(--text-primary); margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style="color: #9147ff;">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style="color: #7c5cff;">
               <path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zM7 5h2v2H7V5zm0 3h2v5H7V8z"/>
             </svg>
             О канале ${streamsData[0].displayName}
@@ -1588,17 +1588,17 @@ class FarmingPage {
           
           #streams-scroll-container::-webkit-scrollbar-track {
             background: rgba(255, 255, 255, 0.05);
-            border-radius: 4px;
+            border-radius: var(--radius-sm);
           }
           
           #streams-scroll-container::-webkit-scrollbar-thumb {
-            background: linear-gradient(135deg, #9147ff, #772ce8);
-            border-radius: 4px;
+            background: #7c5cff;
+            border-radius: var(--radius-sm);
             transition: background 0.2s;
           }
           
           #streams-scroll-container::-webkit-scrollbar-thumb:hover {
-            background: linear-gradient(135deg, #a55fff, #8839f5);
+            background: #a55fff;
           }
         </style>
       `;
@@ -2156,7 +2156,7 @@ class FarmingPage {
             <p style="color: var(--text-secondary); margin-bottom: 16px;">
               Для корректной работы фарминга необходимо авторизоваться через Twitch OAuth.
             </p>
-            <div style="background: rgba(145, 71, 255, 0.1); border: 1px solid rgba(145, 71, 255, 0.3); border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+            <div style="background: rgba(124, 92, 255, 0.1); border: 1px solid rgba(124, 92, 255, 0.3); border-radius: var(--radius-md); padding: 16px; margin-bottom: 16px;">
               <div style="font-weight: 600; margin-bottom: 8px; color: var(--text-primary);">Что нужно сделать:</div>
               <ol style="margin: 0; padding-left: 20px; color: var(--text-secondary); font-size: 14px;">
                 <li style="margin-bottom: 6px;">Перейдите на вкладку "Аккаунты"</li>
@@ -2210,7 +2210,7 @@ class FarmingPage {
             <p style="color: var(--text-secondary); margin-bottom: 16px;">
               Для фарминга дропсов и баллов канала необходимо войти в Twitch через приложение.
             </p>
-            <div style="background: rgba(145, 71, 255, 0.1); border: 1px solid rgba(145, 71, 255, 0.3); border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+            <div style="background: rgba(124, 92, 255, 0.1); border: 1px solid rgba(124, 92, 255, 0.3); border-radius: var(--radius-md); padding: 16px; margin-bottom: 16px;">
               <div style="font-weight: 600; margin-bottom: 8px; color: var(--text-primary);">Что нужно сделать:</div>
               <ol style="margin: 0; padding-left: 20px; color: var(--text-secondary); font-size: 14px;">
                 <li style="margin-bottom: 6px;">Перейдите на вкладку "Аккаунты"</li>
@@ -2420,17 +2420,17 @@ class FarmingPage {
       const completedDrops = campaign.drops.filter(d => d.progress >= 100).length;
       
       return `
-        <div style="margin-bottom: 16px; padding: 16px; background: var(--bg-primary); border-radius: 8px; border: 1px solid var(--border-color);">
+        <div style="margin-bottom: 16px; padding: 16px; background: var(--bg-primary); border-radius: var(--radius-md); border: 1px solid var(--border-color);">
           <div style="display: flex; gap: 12px; margin-bottom: 12px;">
             <img src="${campaign.imageUrl}" 
                  alt="${campaign.name}" 
-                 style="width: 60px; height: 80px; border-radius: 6px; object-fit: cover; flex-shrink: 0;"
+                 style="width: 60px; height: 80px; border-radius: var(--radius-sm); object-fit: cover; flex-shrink: 0;"
                  onerror="this.style.display='none'">
             <div style="flex: 1;">
               <div style="font-size: 15px; font-weight: 600; color: var(--text-primary); margin-bottom: 6px;">${campaign.name}</div>
               <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 8px;">${campaign.game}</div>
               <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-                <span style="font-size: 12px; padding: 4px 8px; background: ${campaign.isActive ? 'rgba(0, 245, 147, 0.15)' : 'rgba(239, 68, 68, 0.15)'}; color: ${campaign.isActive ? '#00f593' : '#ef4444'}; border-radius: 4px; font-weight: 600;">
+                <span style="font-size: 12px; padding: 4px 8px; background: ${campaign.isActive ? 'rgba(53, 208, 138, 0.15)' : 'rgba(239, 68, 68, 0.15)'}; color: ${campaign.isActive ? '#35d08a' : '#ef4444'}; border-radius: var(--radius-sm); font-weight: 600;">
                   ${campaign.isActive ? 'Активно' : 'Завершено'}
                 </span>
                 ${campaign.isActive ? `
@@ -2458,21 +2458,21 @@ class FarmingPage {
               <div class="drop-card-clickable" 
                    data-drop="${dropData}" 
                    data-campaign="${campaignData}"
-                   style="display: flex; gap: 12px; padding: 12px; background: var(--bg-secondary); border-radius: 6px; align-items: center; cursor: pointer; transition: all 0.2s ease;"
-                   onmouseover="this.style.background='rgba(145, 71, 255, 0.1)'; this.style.transform='translateX(4px)'"
+                   style="display: flex; gap: 12px; padding: 12px; background: var(--bg-secondary); border-radius: var(--radius-sm); align-items: center; cursor: pointer; transition: all 0.2s ease;"
+                   onmouseover="this.style.background='rgba(124, 92, 255, 0.1)'; this.style.transform='translateX(4px)'"
                    onmouseout="this.style.background='var(--bg-secondary)'; this.style.transform='translateX(0)'">
                 ${drop.imageUrl ? `
                   <img src="${drop.imageUrl}" 
                        alt="${drop.name}" 
-                       style="width: 48px; height: 48px; border-radius: 6px; object-fit: cover; flex-shrink: 0;">
+                       style="width: 48px; height: 48px; border-radius: var(--radius-sm); object-fit: cover; flex-shrink: 0;">
                 ` : ''}
                 <div style="flex: 1; min-width: 0;">
                   <div style="font-size: 13px; font-weight: 600; color: var(--text-primary); margin-bottom: 4px;">${drop.name}</div>
                   <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 6px;">
                     Смотреть ${drop.requiredMinutes} мин
                   </div>
-                  <div style="height: 6px; background: var(--bg-primary); border-radius: 3px; overflow: hidden;">
-                    <div style="height: 100%; width: ${drop.progress || 0}%; background: linear-gradient(90deg, var(--accent-color), var(--accent-hover)); transition: width 0.5s ease;"></div>
+                  <div style="height: 6px; background: var(--bg-primary); border-radius: var(--radius-sm); overflow: hidden;">
+                    <div style="height: 100%; width: ${drop.progress || 0}%; background: var(--accent-color); transition: width 0.5s ease;"></div>
                   </div>
                 </div>
                 <div style="font-size: 14px; font-weight: 700; color: ${drop.progress >= 100 ? 'var(--success-color)' : 'var(--accent-color)'}; min-width: 45px; text-align: right;">
@@ -2611,8 +2611,8 @@ class FarmingPage {
       endDate: campaign.endsAt || campaign.endAt || ''
     }));
 
-    const accent = isCompleted ? '0, 229, 122' : '145, 71, 255';
-    const accentSolid = isCompleted ? '#00e57a' : '#9147ff';
+    const accent = isCompleted ? '53, 208, 138' : '124, 92, 255';
+    const accentSolid = isCompleted ? '#35d08a' : '#7c5cff';
 
     return `
       <div class="drop-progress-card drop-card-clickable"
@@ -2625,22 +2625,22 @@ class FarmingPage {
         padding: 14px;
         background: rgba(${accent}, 0.08);
         border: 1px solid rgba(${accent}, 0.3);
-        border-radius: 10px;
+        border-radius: var(--radius-md);
         transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
         min-height: 220px;
         cursor: pointer;
         ${!isCompleted ? 'animation: pulse-glow 3s ease-in-out infinite;' : ''}
       "
-      onmouseenter="this.style.transform='translateY(-4px) scale(1.02)'; this.style.boxShadow='0 8px 24px rgba(${accent}, 0.3)'; this.style.borderColor='rgba(${accent}, 0.6)';"
+      onmouseenter="this.style.boxShadow='0 8px 24px rgba(${accent}, 0.3)'; this.style.borderColor='rgba(${accent}, 0.6)';"
       onmouseleave="this.style.transform='translateY(0) scale(1)'; this.style.boxShadow='none'; this.style.borderColor='rgba(${accent}, 0.3)';"
       >
         <div style="display: flex; align-items: center; justify-content: center; margin-bottom: 10px;">
           ${drop.imageURL ? `
             <img src="${drop.imageURL}"
                  alt="${dropName}"
-                 style="width: 64px; height: 64px; border-radius: 8px; object-fit: cover; opacity: ${isCompleted ? '0.7' : '1'}; transition: all 0.3s ease;">
+                 style="width: 64px; height: 64px; border-radius: var(--radius-md); object-fit: cover; opacity: ${isCompleted ? '0.7' : '1'}; transition: all 0.3s ease;">
           ` : `
-            <div style="width: 64px; height: 64px; border-radius: 8px; background: rgba(145, 71, 255, 0.2); display: flex; align-items: center; justify-content: center;">
+            <div style="width: 64px; height: 64px; border-radius: var(--radius-md); background: rgba(124, 92, 255, 0.2); display: flex; align-items: center; justify-content: center;">
               <svg width="32" height="32" viewBox="0 0 24 24" fill="${accentSolid}">
                 <path d="M12 2L15 8H21L16 13L18 19L12 15L6 19L8 13L3 8H9L12 2Z"/>
               </svg>
@@ -2651,20 +2651,20 @@ class FarmingPage {
           <div style="display: flex; align-items: center; justify-content: center; gap: 6px; margin-bottom: 8px;">
             <span style="font-size: 13px; font-weight: 600; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%;" title="${dropName}">${dropName}</span>
             ${isCompleted ? `
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="#00e57a" style="flex-shrink: 0;">
-                <circle cx="8" cy="8" r="8" fill="rgba(0, 229, 122, 0.2)"/>
-                <path d="M5 8L7 10L11 6" stroke="#00e57a" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="#35d08a" style="flex-shrink: 0;">
+                <circle cx="8" cy="8" r="8" fill="rgba(53, 208, 138, 0.2)"/>
+                <path d="M5 8L7 10L11 6" stroke="#35d08a" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
               </svg>
             ` : ''}
           </div>
           <div style="font-size: 18px; font-weight: 700; color: ${accentSolid}; margin-bottom: 8px;">${dropPercent}%</div>
         </div>
-        <div style="height: 8px; background: rgba(255, 255, 255, 0.12); border-radius: 4px; overflow: hidden; margin-bottom: 8px;">
+        <div style="height: 8px; background: rgba(255, 255, 255, 0.12); border-radius: var(--radius-sm); overflow: hidden; margin-bottom: 8px;">
           <div style="height: 100%; width: ${dropPercent}%; background: ${accentSolid} !important; transition: width 0.5s ease;"></div>
         </div>
         <div style="font-size: 11px; color: var(--text-secondary); text-align: center;">
           ${isCompleted
-            ? `<span style="color: #00e57a; font-weight: 600;">✓ ${i18n.t('farming.claimedOrAvailable')}</span>`
+            ? `<span style="color: #35d08a; font-weight: 600;">✓ ${i18n.t('farming.claimedOrAvailable')}</span>`
             : `<div>${drop.progress} / ${drop.required} ${i18n.t('farming.min')}</div>${remaining > 0 ? `<div style="margin-top: 4px; color: var(--text-tertiary);">${i18n.t('farming.remaining')}: ${remaining} ${i18n.t('farming.min')}</div>` : ''}`
           }
         </div>
@@ -2686,18 +2686,18 @@ class FarmingPage {
     const percent = total > 0 ? Math.floor(sum / total) : 0;
     const completed = drops.filter(d => this.isDropEarned(d)).length;
     const timeLeft = this.formatCampaignTimeLeft(campaign.endsAt || campaign.endAt);
-    const accentSolid = percent === 100 ? '#00e57a' : '#9147ff';
+    const accentSolid = percent === 100 ? '#35d08a' : '#7c5cff';
     const campaignTitle = campaign.name || gameName;
     const notStarted = campaign.inProgress === false;
 
     // Заголовок кампании показываем только когда кампаний несколько —
     // иначе он дублировал бы общий заголовок блока.
     const header = showHeader ? `
-      <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; padding: 8px 12px; background: rgba(145, 71, 255, 0.06); border: 1px solid rgba(145, 71, 255, 0.18); border-radius: 8px;">
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; padding: 8px 12px; background: rgba(124, 92, 255, 0.06); border: 1px solid rgba(124, 92, 255, 0.18); border-radius: var(--radius-md);">
         <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
-          ${campaign.game?.boxArtURL ? `<img src="${campaign.game.boxArtURL}" alt="" style="width: 24px; height: 32px; border-radius: 4px; object-fit: cover; flex-shrink: 0;">` : ''}
+          ${campaign.game?.boxArtURL ? `<img src="${campaign.game.boxArtURL}" alt="" style="width: 24px; height: 32px; border-radius: var(--radius-sm); object-fit: cover; flex-shrink: 0;">` : ''}
           <span style="font-size: 13px; font-weight: 700; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${campaignTitle}">${campaignTitle}</span>
-          ${notStarted ? `<span style="flex-shrink: 0; padding: 2px 6px; background: rgba(255, 152, 0, 0.15); color: #ff9800; border-radius: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase;">Не начата</span>` : ''}
+          ${notStarted ? `<span style="flex-shrink: 0; padding: 2px 6px; background: rgba(255, 152, 0, 0.15); color: #ff9800; border-radius: var(--radius-sm); font-size: 10px; font-weight: 700; text-transform: uppercase;">Не начата</span>` : ''}
         </div>
         <div style="display: flex; align-items: center; gap: 10px; flex-shrink: 0;">
           ${timeLeft ? `<span style="font-size: 11px; color: var(--text-secondary);">${timeLeft}</span>` : ''}
@@ -2773,14 +2773,14 @@ class FarmingPage {
         .sort((a, b) => new Date(a) - new Date(b))[0];
       const timeRemaining = this.formatCampaignTimeLeft(soonestEnd);
 
-      const accentSolid = overallPercent === 100 ? '#00e57a' : '#9147ff';
-      const accentRgb = overallPercent === 100 ? '0, 229, 122' : '145, 71, 255';
+      const accentSolid = overallPercent === 100 ? '#35d08a' : '#7c5cff';
+      const accentRgb = overallPercent === 100 ? '53, 208, 138' : '124, 92, 255';
 
       horizontal.innerHTML = `
         <style>
           @keyframes pulse-glow {
-            0%, 100% { box-shadow: 0 0 0 rgba(145, 71, 255, 0); }
-            50% { box-shadow: 0 0 20px rgba(145, 71, 255, 0.3); }
+            0%, 100% { box-shadow: none; }
+            50% { box-shadow: none; }
           }
           .drop-progress-card {
             transform: translateY(0) scale(1);
@@ -2790,35 +2790,35 @@ class FarmingPage {
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
           <div style="display: flex; align-items: center; gap: 12px;">
             <div style="display: flex; align-items: center; gap: 8px;">
-              <svg width="18" height="18" viewBox="0 0 16 16" fill="#9147ff">
+              <svg width="18" height="18" viewBox="0 0 16 16" fill="#7c5cff">
                 <path d="M8 2L10 6H14L11 9L12 13L8 10.5L4 13L5 9L2 6H6L8 2Z"/>
               </svg>
               <span style="font-size: 15px; font-weight: 700; color: var(--text-primary);">${i18n.t('farming.dropsProgress')}</span>
             </div>
             ${matched.length > 1 ? `
-              <span style="padding: 3px 8px; background: rgba(145, 71, 255, 0.15); border: 1px solid rgba(145, 71, 255, 0.3); border-radius: 10px; font-size: 11px; font-weight: 700; color: #9147ff;">
+              <span style="padding: 3px 8px; background: rgba(124, 92, 255, 0.15); border: 1px solid rgba(124, 92, 255, 0.3); border-radius: var(--radius-md); font-size: 11px; font-weight: 700; color: #7c5cff;">
                 ${matched.length} кампании
               </span>
             ` : ''}
             ${timeRemaining ? `
-              <div style="display: flex; align-items: center; gap: 6px; padding: 4px 10px; background: rgba(145, 71, 255, 0.15); border-radius: 12px; border: 1px solid rgba(145, 71, 255, 0.3);">
-                <svg width="14" height="14" viewBox="0 0 16 16" fill="#9147ff">
-                  <circle cx="8" cy="8" r="7" stroke="#9147ff" stroke-width="1.5" fill="none"/>
-                  <path d="M8 3.5V8L11 10" stroke="#9147ff" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+              <div style="display: flex; align-items: center; gap: 6px; padding: 4px 10px; background: rgba(124, 92, 255, 0.15); border-radius: var(--radius-md); border: 1px solid rgba(124, 92, 255, 0.3);">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="#7c5cff">
+                  <circle cx="8" cy="8" r="7" stroke="#7c5cff" stroke-width="1.5" fill="none"/>
+                  <path d="M8 3.5V8L11 10" stroke="#7c5cff" stroke-width="1.5" stroke-linecap="round" fill="none"/>
                 </svg>
-                <span style="font-size: 12px; font-weight: 600; color: #9147ff;">${timeRemaining}</span>
+                <span style="font-size: 12px; font-weight: 600; color: #7c5cff;">${timeRemaining}</span>
               </div>
             ` : ''}
           </div>
           <div style="font-size: 20px; font-weight: 800; color: ${accentSolid};">${overallPercent}%</div>
         </div>
-        <div style="background: rgba(255, 255, 255, 0.12); height: 12px; border-radius: 6px; overflow: hidden; margin-bottom: 16px;">
+        <div style="background: rgba(255, 255, 255, 0.12); height: 12px; border-radius: var(--radius-sm); overflow: hidden; margin-bottom: 16px;">
           <div style="height: 100%; background: ${accentSolid} !important; width: ${overallPercent}%; transition: width 0.5s ease;"></div>
         </div>
         ${sections.map(s => s.html).join('')}
-        <div id="drops-received-footer" style="margin-top: 12px; padding: 12px; background: rgba(${accentRgb}, 0.1); border-radius: 6px; border: 1px solid rgba(${accentRgb}, 0.3); font-size: 13px; color: var(--text-secondary); text-align: center;">
+        <div id="drops-received-footer" style="margin-top: 12px; padding: 12px; background: rgba(${accentRgb}, 0.1); border-radius: var(--radius-sm); border: 1px solid rgba(${accentRgb}, 0.3); font-size: 13px; color: var(--text-secondary); text-align: center;">
           ${overallPercent === 100
-            ? `<span style="color: #00e57a; font-weight: 600;">✓ ${i18n.t('farming.allDropsClaimed')}</span>`
+            ? `<span style="color: #35d08a; font-weight: 600;">✓ ${i18n.t('farming.allDropsClaimed')}</span>`
             : `<span style="color: var(--text-primary); font-weight: 600; cursor: pointer;">${completedDrops}/${totalDrops} ${i18n.t('statistics.dropsReceived')}</span>`
           }
         </div>
@@ -3190,11 +3190,11 @@ class FarmingPage {
         
         // Меняем цвет в зависимости от прогресса
         if (percent === 100) {
-          sidebarProgress.style.borderColor = 'rgba(0, 229, 122, 0.4)';
-          sidebarBar.style.background = '#00e57a';
+          sidebarProgress.style.borderColor = 'rgba(53, 208, 138, 0.4)';
+          sidebarBar.style.background = '#35d08a';
         } else {
           sidebarProgress.style.borderColor = 'var(--border-color)';
-          sidebarBar.style.background = '#9147ff';
+          sidebarBar.style.background = '#7c5cff';
         }
       } else {
         sidebarProgress.style.opacity = '0';
@@ -3435,7 +3435,7 @@ class FarmingPage {
     modalContent.style.cssText = `
       background: var(--bg-secondary);
       border: 1px solid var(--border-color);
-      border-radius: 16px;
+      border-radius: var(--radius-md);
       width: 90%;
       max-width: 800px;
       max-height: 85vh;
@@ -3538,7 +3538,7 @@ class FarmingPage {
 
     modalContent.innerHTML = `
       <div style="position: relative;">
-        <button id="close-stream-modal" style="position: absolute; top: 16px; right: 16px; background: rgba(255, 255, 255, 0.1); border: none; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; z-index: 10;" onmouseover="this.style.background='rgba(255, 255, 255, 0.2)'" onmouseout="this.style.background='rgba(255, 255, 255, 0.1)'">
+        <button id="close-stream-modal" style="position: absolute; top: 16px; right: 16px; background: rgba(255, 255, 255, 0.1); border: none; width: 32px; height: 32px; border-radius: var(--radius-circle); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; z-index: 10;" onmouseover="this.style.background='rgba(255, 255, 255, 0.2)'" onmouseout="this.style.background='rgba(255, 255, 255, 0.1)'">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" style="color: var(--text-primary);">
             <path d="M2 2L14 14M14 2L2 14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
           </svg>
@@ -3547,15 +3547,15 @@ class FarmingPage {
         <!-- Header with blur background -->
         <div style="position: relative; height: 180px; overflow: hidden; border-radius: 16px 16px 0 0;">
           <div style="position: absolute; inset: 0; background: url('${profileImageUrl}'); background-size: cover; background-position: center; filter: blur(40px) brightness(0.6); transform: scale(1.2);"></div>
-          <div style="position: absolute; inset: 0; background: linear-gradient(to bottom, rgba(0,0,0,0.3), rgba(0,0,0,0.7));"></div>
+          <div style="position: absolute; inset: 0; background: rgba(0,0,0,0.3);"></div>
           
           <div style="position: relative; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px; text-align: center;">
             <div style="position: relative; margin-bottom: 12px;">
               <img src="${profileImageUrl}" 
                    alt="${stream.displayName}"
                    onerror="this.onerror=null; this.src='https://static-cdn.jtvnw.net/user-default-pictures-uv/cdd517fe-def4-11e9-948e-784f43822e80-profile_image-300x300.png';"
-                   style="width: 80px; height: 80px; border-radius: 50%; border: 3px solid white; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);">
-              ${channelDetails.isLive ? '<div style="position: absolute; bottom: 0; right: 0; width: 24px; height: 24px; background: #ff0000; border: 3px solid white; border-radius: 50%; box-shadow: 0 0 12px rgba(255, 0, 0, 0.8);"></div>' : ''}
+                   style="width: 80px; height: 80px; border-radius: var(--radius-circle); border: 3px solid white; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);">
+              ${channelDetails.isLive ? '<div style="position: absolute; bottom: 0; right: 0; width: 24px; height: 24px; background: #ff0000; border: 3px solid white; border-radius: var(--radius-circle); box-shadow: 0 0 12px rgba(255, 0, 0, 0.8);"></div>' : ''}
             </div>
             <h2 style="color: white; font-size: 26px; font-weight: 700; margin: 0 0 4px; text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);">${stream.displayName}</h2>
             <div style="color: rgba(255, 255, 255, 0.8); font-size: 14px; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);">@${stream.login}</div>
@@ -3567,29 +3567,29 @@ class FarmingPage {
           <!-- Stats Grid -->
           <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 24px;">
             ${channelDetails.followers ? `
-            <div style="background: linear-gradient(135deg, rgba(255, 215, 0, 0.1), rgba(255, 165, 0, 0.1)); border: 1px solid rgba(255, 215, 0, 0.2); border-radius: 12px; padding: 16px; text-align: center;">
+            <div style="background: rgba(255, 215, 0, 0.1); border: 1px solid rgba(255, 215, 0, 0.2); border-radius: var(--radius-md); padding: 16px; text-align: center;">
               <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; color: rgba(255, 215, 0, 0.8); margin-bottom: 6px; letter-spacing: 0.5px;">Подписчиков</div>
               <div style="font-size: 20px; font-weight: 700; color: var(--text-primary);">${this.formatFollowers(channelDetails.followers)}</div>
             </div>` : ''}
             ${streamStats.viewers ? `
-            <div style="background: linear-gradient(135deg, rgba(145, 71, 255, 0.1), rgba(119, 44, 232, 0.1)); border: 1px solid rgba(145, 71, 255, 0.2); border-radius: 12px; padding: 16px; text-align: center;">
-              <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; color: rgba(145, 71, 255, 0.8); margin-bottom: 6px; letter-spacing: 0.5px;">Зрителей</div>
+            <div style="background: rgba(124, 92, 255, 0.1); border: 1px solid rgba(124, 92, 255, 0.2); border-radius: var(--radius-md); padding: 16px; text-align: center;">
+              <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; color: rgba(124, 92, 255, 0.8); margin-bottom: 6px; letter-spacing: 0.5px;">Зрителей</div>
               <div style="font-size: 20px; font-weight: 700; color: var(--text-primary);">${formatViewers(streamStats.viewers)}</div>
             </div>` : ''}
             ${streamStats.uptime ? `
-            <div style="background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(37, 99, 235, 0.1)); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: 12px; padding: 16px; text-align: center;">
+            <div style="background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: var(--radius-md); padding: 16px; text-align: center;">
               <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; color: rgba(59, 130, 246, 0.8); margin-bottom: 6px; letter-spacing: 0.5px;">В эфире</div>
               <div style="font-size: 20px; font-weight: 700; color: var(--text-primary);">${streamStats.uptime}</div>
             </div>` : ''}
             ${streamStats.points ? `
-            <div style="background: linear-gradient(135deg, rgba(0, 229, 122, 0.1), rgba(0, 200, 100, 0.1)); border: 1px solid rgba(0, 229, 122, 0.2); border-radius: 12px; padding: 16px; text-align: center;">
-              <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; color: rgba(0, 229, 122, 0.8); margin-bottom: 6px; letter-spacing: 0.5px;">Очки канала</div>
+            <div style="background: rgba(53, 208, 138, 0.1); border: 1px solid rgba(53, 208, 138, 0.2); border-radius: var(--radius-md); padding: 16px; text-align: center;">
+              <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; color: rgba(53, 208, 138, 0.8); margin-bottom: 6px; letter-spacing: 0.5px;">Очки канала</div>
               <div style="font-size: 20px; font-weight: 700; color: var(--text-primary);">${streamStats.points.toLocaleString()}</div>
             </div>` : ''}
           </div>
 
           <!-- Stream Title -->
-          <div style="background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 12px; padding: 16px; margin-bottom: 16px;">
+          <div style="background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 16px; margin-bottom: 16px;">
             <div style="font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="stroke-width: 2;">
                 <rect x="2" y="3" width="20" height="14" rx="2"/>
@@ -3597,7 +3597,7 @@ class FarmingPage {
               </svg>
               Название стрима
             </div>
-            <div id="stream-title-text" style="font-size: 15px; line-height: 1.5; color: var(--text-primary); font-weight: 500; cursor: pointer; padding: 8px; margin: -8px; border-radius: 6px; transition: all 0.2s;" onmouseover="this.style.background='rgba(145, 71, 255, 0.1)'" onmouseout="this.style.background='transparent'" onclick="
+            <div id="stream-title-text" style="font-size: 15px; line-height: 1.5; color: var(--text-primary); font-weight: 500; cursor: pointer; padding: 8px; margin: -8px; border-radius: var(--radius-sm); transition: all 0.2s;" onmouseover="this.style.background='rgba(124, 92, 255, 0.1)'" onmouseout="this.style.background='transparent'" onclick="
               navigator.clipboard.writeText('${(stream.title || 'Без названия').replace(/'/g, "\\'")}').then(() => {
                 window.utils.showToast('Название скопировано', 'success');
               }).catch(() => {
@@ -3607,7 +3607,7 @@ class FarmingPage {
           </div>
 
           <!-- Category Info -->
-          <div style="background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 12px; padding: 16px; margin-bottom: 16px;">
+          <div style="background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 16px; margin-bottom: 16px;">
             <div style="font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="stroke-width: 2;">
                 <rect x="6" y="2" width="12" height="20" rx="2"/>
@@ -3618,18 +3618,18 @@ class FarmingPage {
             <div style="display: flex; align-items: center; gap: 12px;">
               <img src="${category.boxArtURL || 'https://static-cdn.jtvnw.net/ttv-boxart/509658-60x84.jpg'}" 
                    alt="${category.name}"
-                   style="width: 48px; height: 67px; border-radius: 8px; object-fit: cover; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);">
+                   style="width: 48px; height: 67px; border-radius: var(--radius-md); object-fit: cover; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);">
               <div style="flex: 1;">
                 <div style="font-size: 15px; font-weight: 600; color: var(--text-primary); margin-bottom: 4px;">${category.name}</div>
                 <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
                   <span style="color: var(--text-secondary); font-size: 12px; display: flex; align-items: center; gap: 4px;">
-                    <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" style="color: #9147ff;">
+                    <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" style="color: #7c5cff;">
                       <path d="M8 2C4.5 2 1.5 4.5 0 8c1.5 3.5 4.5 6 8 6s6.5-2.5 8-6c-1.5-3.5-4.5-6-8-6zm0 10c-2.2 0-4-1.8-4-4s1.8-4 4-4 4 1.8 4 4-1.8 4-4 4zm0-6.5c-1.4 0-2.5 1.1-2.5 2.5s1.1 2.5 2.5 2.5 2.5-1.1 2.5-2.5-1.1-2.5-2.5-2.5z"/>
                     </svg>
                     ${this.formatViewersCount(category.viewersCount)} зрителей
                   </span>
                   ${category.hasDrops ? `
-                  <span style="display: flex; align-items: center; gap: 4px; padding: 3px 8px; background: rgba(145, 71, 255, 0.15); border: 1px solid rgba(145, 71, 255, 0.3); border-radius: 10px; font-size: 11px; font-weight: 600; color: #9147ff;">
+                  <span style="display: flex; align-items: center; gap: 4px; padding: 3px 8px; background: rgba(124, 92, 255, 0.15); border: 1px solid rgba(124, 92, 255, 0.3); border-radius: var(--radius-md); font-size: 11px; font-weight: 600; color: #7c5cff;">
                     <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor">
                       <path d="M8 2L10 6H14L11 9L12 13L8 10.5L4 13L5 9L2 6H6L8 2Z"/>
                     </svg>
@@ -3642,7 +3642,7 @@ class FarmingPage {
 
           ${channelDetails.description ? `
           <!-- Channel Description -->
-          <div style="background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 12px; padding: 16px; margin-bottom: 16px;">
+          <div style="background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 16px; margin-bottom: 16px;">
             <div style="font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="stroke-width: 2;">
                 <circle cx="12" cy="12" r="10"/>
@@ -3655,10 +3655,10 @@ class FarmingPage {
 
           <!-- Action Buttons -->
           <div style="display: flex; gap: 12px; margin-top: 20px;">
-            <button onclick="window.electronAPI.openExternal('https://twitch.tv/${stream.login}')" style="flex: 1; padding: 12px 20px; background: linear-gradient(135deg, #9147ff, #772ce8); color: white; border: none; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 8px;" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(145, 71, 255, 0.4)'" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'">
+            <button onclick="window.electronAPI.openExternal('https://twitch.tv/${stream.login}')" style="flex: 1; padding: 12px 20px; background: #7c5cff; color: white; border: none; border-radius: var(--radius-md); font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 8px;" onmouseover="this.style.boxShadow='0 4px 12px rgba(124, 92, 255, 0.4)'" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'">
               <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
                 <path d="M2 1h12l1 1v10l-1 1h-3v2l-2-2H6l-2 2v-2H2l-1-1V2l1-1z"/>
-                <path d="M5 4h1v4H5V4zm4 0h1v4H9V4z" fill="#9147ff"/>
+                <path d="M5 4h1v4H5V4zm4 0h1v4H9V4z" fill="#7c5cff"/>
               </svg>
               Открыть на Twitch
             </button>
@@ -3723,7 +3723,7 @@ class FarmingPage {
           : `${campaign.hoursRemaining} ${campaign.hoursRemaining === 1 ? 'час' : campaign.hoursRemaining < 5 ? 'часа' : 'часов'}`;
         
         const endingBadge = campaign.isEnding 
-          ? `<span style="background: rgba(255, 59, 48, 0.2); color: #ff3b30; padding: 2px 6px; border-radius: 3px; font-size: 10px; font-weight: 600; margin-left: 6px;">⏰ Заканчивается</span>`
+          ? `<span style="background: rgba(255, 59, 48, 0.2); color: #ff3b30; padding: 2px 6px; border-radius: var(--radius-sm); font-size: 10px; font-weight: 600; margin-left: 6px;">⏰ Заканчивается</span>`
           : '';
         
         const dropsItems = campaign.drops.map(drop => {
@@ -3733,7 +3733,7 @@ class FarmingPage {
           
           return `
             <div style="display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.05);">
-              ${drop.imageUrl ? `<img src="${drop.imageUrl}" alt="${drop.name}" style="width: 28px; height: 28px; border-radius: 4px; object-fit: cover;">` : '<div style="width: 28px; height: 28px; background: rgba(145, 71, 255, 0.2); border-radius: 4px; display: flex; align-items: center; justify-content: center;"><svg width="14" height="14" viewBox="0 0 16 16" fill="#9147ff"><path d="M8 2L10 6H14L11 9L12 13L8 10.5L4 13L5 9L2 6H6L8 2Z"/></svg></div>'}
+              ${drop.imageUrl ? `<img src="${drop.imageUrl}" alt="${drop.name}" style="width: 28px; height: 28px; border-radius: var(--radius-sm); object-fit: cover;">` : '<div style="width: 28px; height: 28px; background: rgba(124, 92, 255, 0.2); border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center;"><svg width="14" height="14" viewBox="0 0 16 16" fill="#7c5cff"><path d="M8 2L10 6H14L11 9L12 13L8 10.5L4 13L5 9L2 6H6L8 2Z"/></svg></div>'}
               <div style="flex: 1; min-width: 0;">
                 <div style="font-size: 12px; color: var(--text-primary); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${drop.name}</div>
                 <div style="font-size: 10px; color: var(--text-tertiary);">⏱ ${timeText}</div>
@@ -3906,7 +3906,7 @@ class FarmingPage {
     // Рендерим каждую кампанию
     dropsData.campaigns.forEach(campaign => {
       const campaignEl = document.createElement('div');
-      campaignEl.style.cssText = 'margin-bottom: 16px; padding: 16px; background: rgba(255, 255, 255, 0.03); border-radius: 6px; border: 1px solid var(--border-color);';
+      campaignEl.style.cssText = 'margin-bottom: 16px; padding: 16px; background: rgba(255, 255, 255, 0.03); border-radius: var(--radius-sm); border: 1px solid var(--border-color);';
       
       // Заголовок кампании
       let headerHTML = `
@@ -3914,7 +3914,7 @@ class FarmingPage {
       `;
       
       if (campaign.game && campaign.game.boxArtURL) {
-        headerHTML += `<img src="${campaign.game.boxArtURL}" alt="${campaign.game.name}" style="width: 40px; height: 56px; border-radius: 4px; object-fit: cover;">`;
+        headerHTML += `<img src="${campaign.game.boxArtURL}" alt="${campaign.game.name}" style="width: 40px; height: 56px; border-radius: var(--radius-sm); object-fit: cover;">`;
       }
       
       headerHTML += `
@@ -3929,20 +3929,20 @@ class FarmingPage {
       // Дропсы
       let dropsHTML = '';
       campaign.drops.forEach(drop => {
-        const progressColor = drop.claimed ? '#00f593' : '#9147ff';
+        const progressColor = drop.claimed ? '#35d08a' : '#7c5cff';
         const statusText = drop.claimed ? 'Получено' : `${drop.progress}/${drop.required} мин`;
         
         dropsHTML += `
           <div style="margin-bottom: 12px; ${drop === campaign.drops[campaign.drops.length - 1] ? '' : 'padding-bottom: 12px; border-bottom: 1px solid rgba(255, 255, 255, 0.05);'}">
             <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 6px;">
-              ${drop.imageURL ? `<img src="${drop.imageURL}" alt="${drop.name}" style="width: 32px; height: 32px; border-radius: 4px; object-fit: cover;">` : ''}
+              ${drop.imageURL ? `<img src="${drop.imageURL}" alt="${drop.name}" style="width: 32px; height: 32px; border-radius: var(--radius-sm); object-fit: cover;">` : ''}
               <div style="flex: 1;">
                 <div style="font-size: 13px; color: var(--text-primary); margin-bottom: 2px;">${drop.name}</div>
                 <div style="font-size: 11px; color: var(--text-tertiary);">${statusText}</div>
               </div>
               <div style="font-size: 13px; font-weight: 600; color: ${progressColor};">${drop.percentage}%</div>
             </div>
-            <div style="width: 100%; height: 4px; background: rgba(255, 255, 255, 0.1); border-radius: 2px; overflow: hidden;">
+            <div style="width: 100%; height: 4px; background: rgba(255, 255, 255, 0.1); border-radius: var(--radius-sm); overflow: hidden;">
               <div style="width: ${drop.percentage}%; height: 100%; background: ${progressColor}; transition: width 0.3s ease;"></div>
             </div>
           </div>
@@ -4131,9 +4131,9 @@ class FarmingPage {
     
     // Создаем градиент для заливки
     const gradient = ctx.createLinearGradient(0, chartTop, 0, chartBottom);
-    gradient.addColorStop(0, 'rgba(145, 71, 255, 0.35)');
-    gradient.addColorStop(0.6, 'rgba(145, 71, 255, 0.15)');
-    gradient.addColorStop(1, 'rgba(145, 71, 255, 0.02)');
+    gradient.addColorStop(0, 'rgba(124, 92, 255, 0.35)');
+    gradient.addColorStop(0.6, 'rgba(124, 92, 255, 0.15)');
+    gradient.addColorStop(1, 'rgba(124, 92, 255, 0.02)');
     
     // Сетка
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)';
@@ -4173,11 +4173,11 @@ class FarmingPage {
     ctx.fill();
     
     // Рисуем плавную линию
-    ctx.strokeStyle = '#9147ff';
+    ctx.strokeStyle = '#7c5cff';
     ctx.lineWidth = 3;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    ctx.shadowColor = 'rgba(145, 71, 255, 0.5)';
+    ctx.shadowColor = 'rgba(124, 92, 255, 0.5)';
     ctx.shadowBlur = 8;
     ctx.beginPath();
     
@@ -4202,7 +4202,7 @@ class FarmingPage {
     // Заголовок
     ctx.font = '700 16px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#9147ff';
+    ctx.fillStyle = '#7c5cff';
     ctx.fillText('📊 Зрители', width / 2, outerPadding + 18);
 
     // Нижняя панель со значениями
@@ -4227,13 +4227,13 @@ class FarmingPage {
     };
 
     drawRoundRect(barX, barY, barWidth, barHeight, 10);
-    ctx.fillStyle = 'rgba(145, 71, 255, 0.1)';
+    ctx.fillStyle = 'rgba(124, 92, 255, 0.1)';
     ctx.fill();
-    ctx.strokeStyle = 'rgba(145, 71, 255, 0.3)';
+    ctx.strokeStyle = 'rgba(124, 92, 255, 0.3)';
     ctx.lineWidth = 1.5;
     ctx.stroke();
 
-    ctx.strokeStyle = 'rgba(145, 71, 255, 0.2)';
+    ctx.strokeStyle = 'rgba(124, 92, 255, 0.2)';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.moveTo(barX + segment, barY + 4);
@@ -4244,9 +4244,9 @@ class FarmingPage {
 
     const current = this.viewersHistory[this.viewersHistory.length - 1];
     const stats = [
-      { label: 'Макс', value: max.toLocaleString(), color: '#adadb8' },
-      { label: 'Мин', value: min.toLocaleString(), color: '#adadb8' },
-      { label: 'Сейчас', value: current.count.toLocaleString(), color: '#00e57a' }
+      { label: 'Макс', value: max.toLocaleString(), color: '#848d9b' },
+      { label: 'Мин', value: min.toLocaleString(), color: '#848d9b' },
+      { label: 'Сейчас', value: current.count.toLocaleString(), color: '#35d08a' }
     ];
 
     stats.forEach((item, i) => {

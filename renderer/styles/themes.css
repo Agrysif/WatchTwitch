@@ -1,75 +1,114 @@
-/* Dark Theme (Twitch Style) */
+/* ===== ТОКЕНЫ ОФОРМЛЕНИЯ =====
+ *
+ * Единая точка управления обликом. Раньше значения были рассыпаны по коду:
+ * около 350 объявлений border-radius и сотни цветов, причём две трети —
+ * инлайновыми стилями в HTML и в шаблонных строках JS, мимо CSS. Поменять
+ * внешний вид точечной правкой было невозможно.
+ *
+ * Текущее направление — «Чёткий»: выраженные границы, плотная сетка,
+ * мелкие скругления. Смысл в том, что каждый блок явно очерчен и взгляд
+ * быстро находит нужное.
+ */
+:root {
+  /* Скругления */
+  --radius-sm: 4px;      /* значки, метки, мелкие элементы */
+  --radius-ctl: 6px;     /* кнопки, поля ввода */
+  --radius-md: 8px;      /* карточки, панели, модальные окна */
+  --radius-pill: 999px;  /* полосы прогресса */
+  --radius-circle: 50%;  /* аватары и индикаторы — остаются круглыми осознанно */
+
+  /* Плотность: направление «Чёткий» предполагает компактную сетку */
+  --pad-card: 14px;
+  --pad-control: 9px 13px;
+  --gap-tight: 8px;
+  --gap-base: 12px;
+
+  /* Тени только функциональные — отделить всплывающий слой от фона.
+     Разделение блоков в этом направлении делают границы, а не свечения. */
+  --shadow-none: none;
+  --shadow-overlay: 0 12px 32px rgba(0, 0, 0, 0.5);
+
+  --transition-fast: 0.12s ease;
+  --transition-base: 0.18s ease;
+}
+
+/* Dark Theme */
 .theme-dark {
-  --bg-primary: #0e0e10;
-  --bg-secondary: #18181b;
-  --bg-tertiary: #1f1f23;
-  --sidebar-bg: #1f1f23;
-  --card-bg: #18181b;
-  --titlebar-bg: #18181b;
-  
-  --text-primary: #efeff1;
-  --text-secondary: #adadb8;
-  --text-tertiary: #6c6c77;
-  
-  --accent-color: #9147ff;
-  --accent-hover: #772ce8;
-  --accent-shadow: rgba(145, 71, 255, 0.2);
-  
-  --border-color: #2e2e35;
-  --hover-bg: rgba(255, 255, 255, 0.06);
-  
-  --button-secondary-bg: #2e2e35;
-  --button-secondary-hover: #3a3a44;
-  
-  --input-bg: #18181b;
-  --progress-bg: #2e2e35;
-  
-  --toggle-bg: #53535f;
-  
-  --scrollbar-track: #18181b;
-  --scrollbar-thumb: #464649;
-  --scrollbar-thumb-hover: #5c5c62;
-  
-  --success-color: #00f593;
-  --warning-color: #ffb31a;
-  --error-color: #e81123;
+  --bg-primary: #0a0b0d;
+  --bg-secondary: #13161a;
+  --bg-tertiary: #1a1e23;
+  --sidebar-bg: #0e1013;
+  --card-bg: #13161a;
+  --titlebar-bg: #0e1013;
+
+  --text-primary: #e4e8ee;
+  --text-secondary: #848d9b;
+  --text-tertiary: #626b78;
+
+  --accent-color: #7c5cff;
+  --accent-hover: #6b49f0;
+  --accent-quiet: rgba(124, 92, 255, 0.15);
+  --accent-shadow: rgba(124, 92, 255, 0.2);
+
+  /* Границы заметные — на них держится вся структура интерфейса */
+  --border-color: rgba(255, 255, 255, 0.10);
+  --border-strong: rgba(255, 255, 255, 0.16);
+  --hover-bg: rgba(255, 255, 255, 0.05);
+
+  --button-secondary-bg: #1a1e23;
+  --button-secondary-hover: #222730;
+
+  --input-bg: #0e1013;
+  --progress-bg: rgba(255, 255, 255, 0.08);
+
+  --toggle-bg: #333a44;
+
+  --scrollbar-track: transparent;
+  --scrollbar-thumb: #2a3039;
+  --scrollbar-thumb-hover: #3a424e;
+
+  --success-color: #35d08a;
+  --warning-color: #f0a83c;
+  --error-color: #f0555f;
 }
 
 /* Light Theme */
 .theme-light {
-  --bg-primary: #f7f7f8;
+  --bg-primary: #f5f6f8;
   --bg-secondary: #ffffff;
-  --bg-tertiary: #f0f0f1;
+  --bg-tertiary: #eef0f4;
   --sidebar-bg: #ffffff;
   --card-bg: #ffffff;
   --titlebar-bg: #ffffff;
-  
-  --text-primary: #0e0e10;
-  --text-secondary: #53535f;
-  --text-tertiary: #adadb8;
-  
-  --accent-color: #9147ff;
-  --accent-hover: #772ce8;
-  --accent-shadow: rgba(145, 71, 255, 0.2);
-  
-  --border-color: #e5e5e8;
-  --hover-bg: rgba(0, 0, 0, 0.04);
-  
-  --button-secondary-bg: #f7f7f8;
-  --button-secondary-hover: #e5e5e8;
-  
+
+  --text-primary: #12151a;
+  --text-secondary: #5a6472;
+  --text-tertiary: #858e9c;
+
+  --accent-color: #6b49f0;
+  --accent-hover: #5a37e0;
+  --accent-quiet: rgba(107, 73, 240, 0.10);
+  --accent-shadow: rgba(107, 73, 240, 0.18);
+
+  --border-color: rgba(16, 20, 28, 0.12);
+  --border-strong: rgba(16, 20, 28, 0.20);
+  --hover-bg: rgba(16, 20, 28, 0.04);
+
+  --button-secondary-bg: #eef0f4;
+  --button-secondary-hover: #e3e6ec;
+
   --input-bg: #ffffff;
-  --progress-bg: #e5e5e8;
-  
-  --toggle-bg: #dadada;
-  
-  --scrollbar-track: #f7f7f8;
-  --scrollbar-thumb: #bfbfc4;
-  --scrollbar-thumb-hover: #9e9ea6;
-  
-  --success-color: #00a86b;
-  --warning-color: #ff8c00;
-  --error-color: #c70000;
+  --progress-bg: rgba(16, 20, 28, 0.09);
+
+  --toggle-bg: #c8cdd6;
+
+  --scrollbar-track: transparent;
+  --scrollbar-thumb: #c8cdd6;
+  --scrollbar-thumb-hover: #aab1bd;
+
+  --success-color: #17a673;
+  --warning-color: #c47a10;
+  --error-color: #d63b45;
 }
 
 /* Status Colors */
@@ -88,28 +127,29 @@
 /* Badge */
 .badge {
   display: inline-block;
-  padding: 4px 8px;
-  border-radius: 4px;
-  font-size: 12px;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
   font-weight: 600;
+  letter-spacing: 0.01em;
 }
 
 .badge-success {
-  background: rgba(0, 245, 147, 0.15);
+  background: rgba(53, 208, 138, 0.14);
   color: var(--success-color);
 }
 
 .badge-warning {
-  background: rgba(255, 179, 26, 0.15);
+  background: rgba(240, 168, 60, 0.14);
   color: var(--warning-color);
 }
 
 .badge-error {
-  background: rgba(232, 17, 35, 0.15);
+  background: rgba(240, 85, 95, 0.14);
   color: var(--error-color);
 }
 
 .badge-info {
-  background: rgba(145, 71, 255, 0.15);
+  background: var(--accent-quiet);
   color: var(--accent-color);
 }

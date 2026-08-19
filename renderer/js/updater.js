@@ -46,14 +46,14 @@ class UpdateManager {
       }
 
       .update-window {
-        background: linear-gradient(135deg, #0e0e10 0%, #1a1a2e 100%);
-        border-radius: 16px;
+        background: #0a0b0d;
+        border-radius: var(--radius-md);
         padding: 32px;
         width: 90%;
         max-width: 500px;
         box-shadow: 0 25px 50px rgba(0, 0, 0, 0.8);
         animation: slideUp 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-        border: 1px solid rgba(145, 71, 255, 0.2);
+        border: 1px solid rgba(124, 92, 255, 0.2);
       }
 
       @keyframes slideUp {
@@ -70,13 +70,13 @@ class UpdateManager {
       .update-logo {
         width: 80px;
         height: 80px;
-        background: linear-gradient(135deg, #9147ff 0%, #772ce8 100%);
-        border-radius: 16px;
+        background: #7c5cff;
+        border-radius: var(--radius-md);
         display: flex;
         align-items: center;
         justify-content: center;
         margin: 0 auto 24px;
-        box-shadow: 0 15px 40px rgba(145, 71, 255, 0.3);
+        box-shadow: none;
       }
 
       .update-logo svg {
@@ -88,26 +88,26 @@ class UpdateManager {
       .update-title {
         font-size: 24px;
         font-weight: 700;
-        color: #efeff1;
+        color: #e4e8ee;
         margin-bottom: 8px;
         text-align: center;
       }
 
       .update-subtitle {
         font-size: 14px;
-        color: #adadb8;
+        color: #848d9b;
         text-align: center;
         margin-bottom: 24px;
       }
 
       .update-version {
         font-size: 13px;
-        color: #9147ff;
+        color: #7c5cff;
         text-align: center;
         margin-bottom: 24px;
         padding: 8px 12px;
-        background: rgba(145, 71, 255, 0.1);
-        border-radius: 8px;
+        background: rgba(124, 92, 255, 0.1);
+        border-radius: var(--radius-md);
         display: inline-block;
         width: 100%;
       }
@@ -122,25 +122,25 @@ class UpdateManager {
         align-items: center;
         margin-bottom: 12px;
         font-size: 13px;
-        color: #adadb8;
+        color: #848d9b;
       }
 
       .update-progress-bar {
         width: 100%;
         height: 6px;
-        background: rgba(145, 71, 255, 0.1);
-        border-radius: 3px;
+        background: rgba(124, 92, 255, 0.1);
+        border-radius: var(--radius-sm);
         overflow: hidden;
         position: relative;
       }
 
       .update-progress-fill {
         height: 100%;
-        background: linear-gradient(90deg, #9147ff 0%, #00e57a 100%);
-        border-radius: 3px;
+        background: #7c5cff;
+        border-radius: var(--radius-sm);
         width: 0%;
         transition: width 0.3s ease-out;
-        box-shadow: 0 0 12px rgba(145, 71, 255, 0.6);
+        box-shadow: none;
       }
 
       .update-actions {
@@ -151,7 +151,7 @@ class UpdateManager {
 
       .update-btn {
         padding: 12px 24px;
-        border-radius: 8px;
+        border-radius: var(--radius-md);
         border: none;
         font-size: 14px;
         font-weight: 600;
@@ -161,14 +161,14 @@ class UpdateManager {
       }
 
       .update-btn-primary {
-        background: linear-gradient(135deg, #9147ff 0%, #772ce8 100%);
+        background: #7c5cff;
         color: white;
-        box-shadow: 0 8px 24px rgba(145, 71, 255, 0.3);
+        box-shadow: none;
       }
 
       .update-btn-primary:hover:not(:disabled) {
         transform: translateY(-2px);
-        box-shadow: 0 12px 32px rgba(145, 71, 255, 0.4);
+        box-shadow: none;
       }
 
       .update-btn-primary:disabled {
@@ -177,25 +177,25 @@ class UpdateManager {
       }
 
       .update-btn-secondary {
-        background: rgba(145, 71, 255, 0.1);
-        color: #9147ff;
-        border: 1px solid rgba(145, 71, 255, 0.3);
+        background: rgba(124, 92, 255, 0.1);
+        color: #7c5cff;
+        border: 1px solid rgba(124, 92, 255, 0.3);
       }
 
       .update-btn-secondary:hover:not(:disabled) {
-        background: rgba(145, 71, 255, 0.2);
-        border-color: rgba(145, 71, 255, 0.5);
+        background: rgba(124, 92, 255, 0.2);
+        border-color: rgba(124, 92, 255, 0.5);
       }
 
       .update-status {
         text-align: center;
         font-size: 13px;
-        color: #adadb8;
+        color: #848d9b;
         margin-bottom: 16px;
       }
 
       .update-status.success {
-        color: #00e57a;
+        color: #35d08a;
       }
 
       .update-status.error {
@@ -206,9 +206,9 @@ class UpdateManager {
         display: inline-block;
         width: 14px;
         height: 14px;
-        border: 2px solid rgba(145, 71, 255, 0.3);
-        border-top-color: #9147ff;
-        border-radius: 50%;
+        border: 2px solid rgba(124, 92, 255, 0.3);
+        border-top-color: #7c5cff;
+        border-radius: var(--radius-circle);
         animation: spin 0.8s linear infinite;
       }
 

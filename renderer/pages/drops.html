@@ -92,7 +92,7 @@
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px;">
                 <div class="card-title" data-i18n="drops.activeDrops">Активные дропсы</div>
                 <div style="display: flex; gap: 10px;">
-                    <button id="claimAllButton" class="btn btn-primary" style="display: flex; align-items: center; gap: 6px; background: linear-gradient(135deg, #9147ff, #772ce8); border: none; box-shadow: 0 2px 8px rgba(145, 71, 255, 0.3); color: white;">
+                    <button id="claimAllButton" class="btn btn-primary" style="display: flex; align-items: center; gap: 6px; background: #7c5cff; border: none; box-shadow: none; color: white;">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
                             <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
                         </svg>
@@ -153,7 +153,7 @@
     left: 0;
     right: 0;
     height: 3px;
-    background: linear-gradient(90deg, #9147ff, #00f593, #9147ff);
+    background: #7c5cff;
     background-size: 200% 100%;
     animation: gradientShift 3s ease infinite;
 }
@@ -187,10 +187,10 @@
 .drops-user-avatar {
     width: 56px;
     height: 56px;
-    border-radius: 50%;
+    border-radius: var(--radius-circle);
     border: 3px solid transparent;
-    background: linear-gradient(var(--bg-primary), var(--bg-primary)) padding-box,
-                linear-gradient(135deg, #9147ff, #00f593) border-box;
+    background: var(--bg-primary) padding-box,
+                #7c5cff border-box;
     transition: all 0.3s ease;
 }
 
@@ -200,8 +200,8 @@
     left: -4px;
     right: -4px;
     bottom: -4px;
-    border-radius: 50%;
-    background: linear-gradient(135deg, #9147ff, #00f593);
+    border-radius: var(--radius-circle);
+    background: #7c5cff;
     opacity: 0;
     filter: blur(12px);
     transition: opacity 0.3s ease;
@@ -240,7 +240,7 @@
     gap: 28px;
     align-items: center;
     padding: 0 28px;
-    border-left: 2px solid rgba(145, 71, 255, 0.2);
+    border-left: 2px solid rgba(124, 92, 255, 0.2);
 }
 
 .drops-stat-item {
@@ -263,31 +263,31 @@
 }
 
 .drops-stat-purple {
-    color: #9147ff;
-    text-shadow: 0 0 8px rgba(145, 71, 255, 0.3);
+    color: #7c5cff;
+    text-shadow: 0 0 8px rgba(124, 92, 255, 0.3);
 }
 
 .drops-stat-green {
-    color: #00f593;
-    text-shadow: 0 0 8px rgba(0, 245, 147, 0.3);
+    color: #35d08a;
+    text-shadow: 0 0 8px rgba(53, 208, 138, 0.3);
 }
 
 .drops-stat-red {
-    color: #ff6b6b;
+    color: #f0555f;
     text-shadow: 0 0 8px rgba(255, 107, 107, 0.3);
 }
 
 .drops-stat-divider {
     width: 2px;
     height: 40px;
-    background: linear-gradient(to bottom, transparent, var(--border-color), transparent);
+    background: transparent;
 }
 
 .drops-logout-btn {
     flex-shrink: 0;
     padding: 10px 24px;
     font-weight: 600;
-    border-radius: 10px;
+    border-radius: var(--radius-md);
     transition: all 0.2s ease;
 }
 
@@ -305,7 +305,7 @@
     gap: 12px;
     background: var(--bg-secondary);
     padding: 6px;
-    border-radius: 12px;
+    border-radius: var(--radius-md);
     border: 1.5px solid var(--border-color);
 }
 
@@ -318,7 +318,7 @@
     padding: 12px 20px;
     background: transparent;
     border: none;
-    border-radius: 10px;
+    border-radius: var(--radius-md);
     color: var(--text-secondary);
     cursor: pointer;
     transition: all 0.2s ease;
@@ -339,7 +339,7 @@
 }
 
 .drops-tab-button:hover:not(.active) {
-    background: rgba(145, 71, 255, 0.1);
+    background: rgba(124, 92, 255, 0.1);
     color: var(--text-primary);
 }
 
@@ -348,9 +348,9 @@
 }
 
 .drops-tab-button.active {
-    background: linear-gradient(135deg, #9147ff 0%, #7c3aed 100%);
+    background: #7c5cff;
     color: white;
-    box-shadow: 0 4px 12px rgba(145, 71, 255, 0.4);
+    box-shadow: none;
 }
 
 .drops-tab-button.active .drops-tab-icon {
@@ -377,7 +377,7 @@
     cursor: pointer;
     display: flex;
     align-items: center;
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     transition: all 0.2s;
 }
 
@@ -393,14 +393,14 @@
 
 .campaign-card {
     background: rgba(0, 0, 0, 0.2);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     overflow: hidden;
     transition: transform 0.2s, box-shadow 0.2s;
 }
 
 .campaign-card:hover {
     transform: translateY(-2px);
-    box-shadow: 0 4px 20px rgba(145, 71, 255, 0.3);
+    box-shadow: none;
 }
 
 .campaign-header {
@@ -421,7 +421,7 @@
     left: 10px;
     background: rgba(0, 0, 0, 0.8);
     padding: 6px 12px;
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     font-size: 12px;
     font-weight: 600;
     color: white;
@@ -433,7 +433,7 @@
 .campaign-game img {
     width: 24px;
     height: 32px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     object-fit: cover;
 }
 
@@ -453,7 +453,7 @@
     margin-bottom: 12px;
     padding: 12px;
     background: rgba(255, 255, 255, 0.05);
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
 }
 
 .campaign-progress-header {
@@ -476,13 +476,13 @@
 .campaign-progress-bar {
     background: rgba(255, 255, 255, 0.1);
     height: 8px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     overflow: hidden;
 }
 
 .campaign-progress-fill {
     height: 100%;
-    background: linear-gradient(90deg, #9147ff, #00e57a);
+    background: #7c5cff;
     transition: width 0.3s;
 }
 
@@ -502,7 +502,7 @@
 
 .drop-item {
     background: rgba(0, 0, 0, 0.3);
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     padding: 12px;
     margin-bottom: 10px;
     display: flex;
@@ -511,14 +511,14 @@
 }
 
 .drop-item.claimed {
-    background: rgba(0, 229, 122, 0.1);
-    border: 1px solid rgba(0, 229, 122, 0.3);
+    background: rgba(53, 208, 138, 0.1);
+    border: 1px solid rgba(53, 208, 138, 0.3);
 }
 
 .drop-image {
     width: 50px;
     height: 50px;
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     object-fit: cover;
     flex-shrink: 0;
 }
@@ -541,19 +541,19 @@
 .drop-progress {
     background: rgba(255, 255, 255, 0.1);
     height: 6px;
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     overflow: hidden;
     margin-bottom: 4px;
 }
 
 .drop-progress-fill {
     height: 100%;
-    background: linear-gradient(90deg, #9147ff, #b380ff);
+    background: #7c5cff;
     transition: width 0.3s;
 }
 
 .drop-progress-fill.completed {
-    background: #00e57a;
+    background: #35d08a;
 }
 
 .drop-progress-text {
@@ -563,7 +563,7 @@
 
 .inventory-item {
     background: rgba(0, 0, 0, 0.3);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     overflow: hidden;
     cursor: pointer;
     transition: transform 0.2s, box-shadow 0.2s;
@@ -573,7 +573,7 @@
 
 .inventory-item:hover {
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(145, 71, 255, 0.2);
+    box-shadow: none;
 }
 
 .inventory-item-image {
@@ -619,12 +619,12 @@
 }
 
 .theme-light .drops-tab-button:hover:not(.active) {
-    background: rgba(145, 71, 255, 0.08);
+    background: rgba(124, 92, 255, 0.08);
 }
 
 .theme-light .drops-tab-button.active {
-    background: linear-gradient(135deg, #9147ff 0%, #772ce8 100%);
-    box-shadow: 0 4px 12px rgba(145, 71, 255, 0.25);
+    background: #7c5cff;
+    box-shadow: none;
 }
 
 .theme-light .card {

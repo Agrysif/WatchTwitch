@@ -29,15 +29,15 @@
         <!-- Слот для постоянного плеера. Сам webview живёт в index.html и только
              позиционируется поверх этого места — см. renderer/js/core/player-manager.js -->
         <div id="farming-player-slot"
-             style="position: relative; width: 100%; padding-bottom: 56.25%; background: #000; border-radius: 8px; overflow: hidden;"></div>
+             style="position: relative; width: 100%; padding-bottom: 56.25%; background: #000; border-radius: var(--radius-md); overflow: hidden;"></div>
         
         <!-- Chat -->
         <!-- Слот для постоянного чата. Сам webview живёт вне страницы и только
              позиционируется поверх этого места — см. renderer/js/core/chat-manager.js.
              Внутри страницы он держаться не может: роутер перерисовывает её через
              innerHTML, и вместе с чатом умирал автосбор бонусных сундуков. -->
-        <div id="twitch-chat-container" style="display: none; background: var(--bg-secondary); border-radius: 8px; overflow: hidden; border: 1px solid var(--border-color); opacity: 0; transform: translateX(20px); transition: opacity 0.3s ease, transform 0.3s ease;">
-          <div id="farming-chat-slot" style="width: 100%; height: 450px; background: #18181b;"></div>
+        <div id="twitch-chat-container" style="display: none; background: var(--bg-secondary); border-radius: var(--radius-md); overflow: hidden; border: 1px solid var(--border-color); opacity: 0; transform: translateX(20px); transition: opacity 0.3s ease, transform 0.3s ease;">
+          <div id="farming-chat-slot" style="width: 100%; height: 450px; background: #13161a;"></div>
         </div>
       </div>
       
@@ -121,13 +121,13 @@
 
       <!-- Quick Actions Bar - Redesigned -->
       <div style="display: flex; gap: 8px; margin-top: 8px;">
-        <button class="btn btn-secondary" id="prev-category-btn" style="flex: 1; height: 42px; font-size: 13px; display: flex; align-items: center; justify-content: center; gap: 8px; background: linear-gradient(135deg, var(--bg-secondary), rgba(145, 71, 255, 0.05)); border: 1px solid var(--border-color); transition: all 0.2s ease;" title="Предыдущая категория">
+        <button class="btn btn-secondary" id="prev-category-btn" style="flex: 1; height: 42px; font-size: 13px; display: flex; align-items: center; justify-content: center; gap: 8px; background: var(--bg-secondary); border: 1px solid var(--border-color); transition: all 0.2s ease;" title="Предыдущая категория">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
             <path d="M15 18l-6-6 6-6"/>
           </svg>
           <span style="font-weight: 500;" data-i18n="farming.back">Назад</span>
         </button>
-        <button class="btn btn-primary" id="next-stream-btn" style="flex: 2; height: 42px; font-size: 13px; display: flex; align-items: center; justify-content: center; gap: 8px; background: linear-gradient(135deg, #9147ff, #772ce8); border: none; box-shadow: 0 2px 8px rgba(145, 71, 255, 0.3); transition: all 0.2s ease; color: white;" title="Следующий стрим">
+        <button class="btn btn-primary" id="next-stream-btn" style="flex: 2; height: 42px; font-size: 13px; display: flex; align-items: center; justify-content: center; gap: 8px; background: #7c5cff; border: none; box-shadow: none; transition: all 0.2s ease; color: white;" title="Следующий стрим">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
             <path d="M5 3l14 9-14 9V3z"/>
           </svg>
@@ -137,7 +137,7 @@
             <path d="M6 17l5-5-5-5v10z"/>
           </svg>
         </button>
-        <button class="btn btn-secondary" id="next-category-btn" style="flex: 1; height: 42px; font-size: 13px; display: flex; align-items: center; justify-content: center; gap: 8px; background: linear-gradient(135deg, var(--bg-secondary), rgba(0, 229, 122, 0.05)); border: 1px solid var(--border-color); transition: all 0.2s ease;" title="Следующая категория">
+        <button class="btn btn-secondary" id="next-category-btn" style="flex: 1; height: 42px; font-size: 13px; display: flex; align-items: center; justify-content: center; gap: 8px; background: var(--bg-secondary); border: 1px solid var(--border-color); transition: all 0.2s ease;" title="Следующая категория">
           <span style="font-weight: 500;" data-i18n="farming.forward">Вперед</span>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
             <path d="M9 18l6-6-6-6"/>
@@ -146,11 +146,11 @@
       </div>
       
       <!-- Canvas for viewers chart -->
-      <canvas id="viewers-chart" width="400" height="240" style="position: fixed; display: none; pointer-events: auto; z-index: 10000; background: rgba(14, 14, 16, 0.99); border: 1px solid var(--border-color); border-radius: 12px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8); padding: 16px;"></canvas>
+      <canvas id="viewers-chart" width="400" height="240" style="position: fixed; display: none; pointer-events: auto; z-index: 10000; background: rgba(14, 14, 16, 0.99); border: 1px solid var(--border-color); border-radius: var(--radius-md); box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8); padding: 16px;"></canvas>
     </div>
     
     <!-- Drops Progress Horizontal Block -->
-    <div id="drops-progress-horizontal" style="display: none; margin-top: 12px; padding: 16px; background: linear-gradient(135deg, rgba(145, 71, 255, 0.08) 0%, rgba(0, 229, 122, 0.08) 100%); border-radius: 12px; border: 1px solid rgba(145, 71, 255, 0.25); box-shadow: 0 4px 16px rgba(145, 71, 255, 0.1);">
+    <div id="drops-progress-horizontal" style="display: none; margin-top: 12px; padding: 16px; background: rgba(124, 92, 255, 0.08); border-radius: var(--radius-md); border: 1px solid rgba(124, 92, 255, 0.25); box-shadow: none;">
       <!-- Контент генерируется динамически в updateDropsHorizontalProgress() -->
     </div>
     
@@ -166,7 +166,7 @@
       
       <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 16px;">
         <!-- Всего баллов -->
-        <div style="padding: 14px; background: var(--bg-secondary); border-radius: 8px; border: 1px solid var(--border-color);">
+        <div style="padding: 14px; background: var(--bg-secondary); border-radius: var(--radius-md); border: 1px solid var(--border-color);">
           <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2">
               <circle cx="12" cy="12" r="10"/>
@@ -175,11 +175,11 @@
             <div style="font-size: 11px; color: var(--text-tertiary); text-transform: uppercase;" data-i18n="farming.sessionPoints">За сессию</div>
           </div>
           <div id="channel-points-total" style="font-size: 20px; font-weight: 700; color: var(--text-primary); margin-bottom: 4px;">-</div>
-          <div id="channel-points-earned" style="font-size: 12px; color: #00f593; font-weight: 600;">-</div>
+          <div id="channel-points-earned" style="font-size: 12px; color: #35d08a; font-weight: 600;">-</div>
         </div>
         
         <!-- Сундучки -->
-        <div style="padding: 14px; background: var(--bg-secondary); border-radius: 8px; border: 1px solid var(--border-color);">
+        <div style="padding: 14px; background: var(--bg-secondary); border-radius: var(--radius-md); border: 1px solid var(--border-color);">
           <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2">
               <rect x="3" y="8" width="18" height="12" rx="2"/>
@@ -192,7 +192,7 @@
         </div>
         
         <!-- За просмотр -->
-        <div style="padding: 14px; background: var(--bg-secondary); border-radius: 8px; border: 1px solid var(--border-color);">
+        <div style="padding: 14px; background: var(--bg-secondary); border-radius: var(--radius-md); border: 1px solid var(--border-color);">
           <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2">
               <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
@@ -205,7 +205,7 @@
     </div>
     
     <!-- Drops Progress -->
-    <div id="drops-progress-container" style="display: none; margin-top: 16px; padding: 16px; background: var(--bg-secondary); border-radius: 8px; border: 1px solid var(--border-color);">
+    <div id="drops-progress-container" style="display: none; margin-top: 16px; padding: 16px; background: var(--bg-secondary); border-radius: var(--radius-md); border: 1px solid var(--border-color);">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
         <h3 style="margin: 0; font-size: 16px; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
@@ -218,7 +218,7 @@
       
       <div id="drops-campaigns-list"></div>
       
-      <div id="drops-time-remaining" style="margin-top: 12px; padding: 12px; background: rgba(145, 71, 255, 0.1); border-radius: 6px; border: 1px solid rgba(145, 71, 255, 0.3); font-size: 13px; color: var(--text-secondary); text-align: center; display: none;"></div>
+      <div id="drops-time-remaining" style="margin-top: 12px; padding: 12px; background: rgba(124, 92, 255, 0.1); border-radius: var(--radius-sm); border: 1px solid rgba(124, 92, 255, 0.3); font-size: 13px; color: var(--text-secondary); text-align: center; display: none;"></div>
     </div>
   </div>
 
@@ -235,7 +235,7 @@
         </button>
       </div>
       <div style="display: flex; gap: 8px;">
-        <button class="btn btn-primary" id="add-all-drops-btn" style="height: 36px; background: linear-gradient(135deg, #9147ff, #772ce8); border: none;">
+        <button class="btn btn-primary" id="add-all-drops-btn" style="height: 36px; background: #7c5cff; border: none;">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
             <path d="M8 2L10 6H14L11 9L12 13L8 10.5L4 13L5 9L2 6H6L8 2Z"/>
           </svg>
@@ -265,8 +265,8 @@
   .stream-info-card {
     flex: 1;
     padding: 14px 18px;
-    background: linear-gradient(135deg, var(--bg-secondary) 0%, rgba(145, 71, 255, 0.05) 100%);
-    border-radius: 12px;
+    background: var(--bg-secondary);
+    border-radius: var(--radius-md);
     border: 1.5px solid var(--border-color);
     display: flex;
     gap: 14px;
@@ -283,7 +283,7 @@
     left: 0;
     right: 0;
     height: 2px;
-    background: linear-gradient(90deg, transparent, #00f593, transparent);
+    background: transparent;
     opacity: 0.8;
   }
 
@@ -295,7 +295,7 @@
     position: relative;
     flex-shrink: 0;
     overflow: hidden;
-    border-radius: 8px;
+    border-radius: var(--radius-md);
   }
 
   .stream-cover-wrapper::before {
@@ -305,7 +305,7 @@
     left: -50%;
     width: 200%;
     height: 200%;
-    background: linear-gradient(45deg, transparent 30%, rgba(255, 255, 255, 0.4) 50%, transparent 70%);
+    background: transparent;
     transform: translateX(-100%) translateY(-100%) rotate(45deg);
     transition: transform 0.6s;
     z-index: 1;
@@ -318,7 +318,7 @@
   .stream-game-cover {
     width: 50px;
     height: 68px;
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     object-fit: cover;
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
     position: relative;
@@ -327,10 +327,10 @@
   .stream-live-indicator {
     width: 8px;
     height: 8px;
-    background: #00f593;
-    border-radius: 50%;
+    background: #35d08a;
+    border-radius: var(--radius-circle);
     animation: pulse 2s infinite;
-    box-shadow: 0 0 8px #00f593;
+    box-shadow: 0 0 8px #35d08a;
   }
 
   .stream-channel-name {
@@ -362,11 +362,11 @@
   .stream-category-tag {
     display: none;
     font-size: 10px;
-    color: #adadb8;
+    color: #848d9b;
     padding: 4px 10px;
     background: rgba(173, 173, 184, 0.15);
     border: 1px solid rgba(173, 173, 184, 0.25);
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     font-weight: 500;
   }
 
@@ -404,7 +404,7 @@
   .stream-stat-divider {
     width: 1px;
     height: 32px;
-    background: linear-gradient(to bottom, transparent, var(--border-color), transparent);
+    background: transparent;
   }
 
   .stream-chat-toggle {
@@ -415,7 +415,7 @@
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    border-radius: 10px;
+    border-radius: var(--radius-md);
     transition: all 0.2s ease;
   }
 
@@ -435,7 +435,7 @@
   .stream-card {
     padding: 16px;
     background: var(--bg-secondary);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     border: 1px solid var(--border-color);
   }
 
@@ -449,7 +449,7 @@
   .status-indicator {
     width: 12px;
     height: 12px;
-    border-radius: 50%;
+    border-radius: var(--radius-circle);
     animation: pulse 2s infinite;
   }
 
@@ -460,7 +460,7 @@
   }
 
   .stream-preview {
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     overflow: hidden;
   }
 
@@ -473,7 +473,7 @@
   .category-item {
     padding: 16px;
     background: var(--bg-secondary);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     border: 1px solid var(--border-color);
     margin-bottom: 12px;
     cursor: grab;
@@ -494,16 +494,16 @@
   }
 
   .category-item:hover {
-    background: rgba(145, 71, 255, 0.05);
+    background: rgba(124, 92, 255, 0.05);
   }
 
   .category-item.drops-completed {
-    border-color: rgba(0, 229, 122, 0.3);
-    background: rgba(0, 229, 122, 0.05);
+    border-color: rgba(53, 208, 138, 0.3);
+    background: rgba(53, 208, 138, 0.05);
   }
 
   .category-item.drops-completed .category-status {
-    color: #00e57a;
+    color: #35d08a;
   }
 
   .category-drag-handle {
@@ -522,7 +522,7 @@
   .category-image {
     width: 50px;
     height: 70px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     overflow: hidden;
     flex-shrink: 0;
   }
@@ -572,7 +572,7 @@
     align-items: center;
     gap: 4px;
     padding: 2px 8px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     background: var(--bg-primary);
     font-size: 12px;
     font-weight: 500;
@@ -596,7 +596,7 @@
     background: var(--accent-color);
     color: white;
     padding: 6px 12px;
-    border-radius: 12px;
+    border-radius: var(--radius-md);
     font-size: 13px;
     font-weight: 600;
     flex-shrink: 0;
@@ -610,7 +610,7 @@
     color: var(--text-secondary);
     cursor: pointer;
     padding: 8px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     transition: all 0.2s;
     flex-shrink: 0;
     display: flex;
@@ -619,12 +619,12 @@
   }
 
   .category-play-btn {
-    background: rgba(145, 71, 255, 0.1);
-    border: 1px solid rgba(145, 71, 255, 0.3);
-    color: #9147ff;
+    background: rgba(124, 92, 255, 0.1);
+    border: 1px solid rgba(124, 92, 255, 0.3);
+    color: #7c5cff;
     cursor: pointer;
     padding: 8px 12px;
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     transition: all 0.2s;
     flex-shrink: 0;
     display: flex;
@@ -636,8 +636,8 @@
   }
 
   .category-play-btn:hover {
-    background: rgba(145, 71, 255, 0.2);
-    border-color: rgba(145, 71, 255, 0.5);
+    background: rgba(124, 92, 255, 0.2);
+    border-color: rgba(124, 92, 255, 0.5);
     transform: scale(1.05);
   }
 
@@ -646,20 +646,20 @@
     align-items: center;
     gap: 6px;
     padding: 4px 10px;
-    border-radius: 12px;
+    border-radius: var(--radius-md);
     font-size: 11px;
     font-weight: 600;
     text-transform: uppercase;
   }
 
   .category-drops-status.active {
-    background: rgba(145, 71, 255, 0.15);
-    color: #9147ff;
+    background: rgba(124, 92, 255, 0.15);
+    color: #7c5cff;
   }
 
   .category-drops-status.completed {
-    background: rgba(0, 229, 122, 0.15);
-    color: #00e57a;
+    background: rgba(53, 208, 138, 0.15);
+    color: #35d08a;
   }
 
   .category-remove:hover {
@@ -670,14 +670,14 @@
   .drop-progress-item {
     padding: 20px;
     background: var(--bg-secondary);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     border: 1px solid var(--border-color);
     margin-bottom: 12px;
   }
 
   .drop-progress-item.drop-completed {
     border-color: var(--success-color);
-    background: rgba(0, 245, 147, 0.05);
+    background: rgba(53, 208, 138, 0.05);
   }
 
   .drop-header {
@@ -707,21 +707,21 @@
     position: relative;
     height: 32px;
     background: var(--progress-bg);
-    border-radius: 16px;
+    border-radius: var(--radius-md);
     overflow: visible;
     margin-top: 8px;
   }
 
   .drop-progress-fill {
     height: 100%;
-    background: linear-gradient(90deg, var(--accent-color), var(--accent-hover));
-    border-radius: 16px;
+    background: var(--accent-color);
+    border-radius: var(--radius-md);
     transition: width 0.5s ease;
     position: relative;
   }
 
   .drop-completed .drop-progress-fill {
-    background: linear-gradient(90deg, var(--success-color), #00d67d);
+    background: var(--success-color);
   }
 
   .drop-checkpoints {
@@ -742,7 +742,7 @@
     height: 16px;
     background: var(--card-bg);
     border: 3px solid var(--progress-bg);
-    border-radius: 50%;
+    border-radius: var(--radius-circle);
     transition: all 0.3s;
   }
 
@@ -773,7 +773,7 @@
 
   #stream-drops-list > div:hover {
     background: rgba(255, 255, 255, 0.04) !important;
-    border-color: rgba(145, 71, 255, 0.4) !important;
+    border-color: rgba(124, 92, 255, 0.4) !important;
   }
 
   /* Drops items animation */
