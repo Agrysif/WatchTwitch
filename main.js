@@ -533,8 +533,6 @@ function createMainWindow() {
 
   mainWindow.loadFile('renderer/index.html');
 
-
-
   // В dev-режиме дублируем консоль renderer в терминал: без этого ошибки
   // интерфейса видны только в DevTools и легко проходят мимо.
   if (!app.isPackaged) {

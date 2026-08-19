@@ -1,0 +1,256 @@
+/**
+ * SlottedWebview — webview, который живёт вне страниц и позиционируется поверх
+ * «слота» (пустого div-а) на текущей странице.
+ *
+ * Зачем такой механизм вообще нужен. Роутер перерисовывает содержимое страницы
+ * через innerHTML, поэтому любой webview внутри страницы уничтожается при уходе
+ * с неё. Перенести узел в другое место DOM тоже нельзя — webview при этом
+ * перезагружается. Значит, единственный способ сохранить живой Twitch-плеер и
+ * живой чат между страницами — держать их в <body> и двигать по экрану, а не по
+ * дереву документа.
+ *
+ * Класс отвечает только за геометрию и жизненный цикл узла. Что именно грузится
+ * внутрь — дело наследников (PlayerManager, ChatManager).
+ */
+class SlottedWebview {
+  /**
+   * @param {object} options
+   * @param {string} options.logName    префикс для логов
+   * @param {string} options.hostId     id контейнера-обрезателя
+   * @param {string} options.webviewId  id самого webview
+   * @param {object} options.attributes атрибуты webview (partition, preload и т.п.)
+   * @param {number} options.zIndex     слой относительно интерфейса
+   */
+  constructor(options = {}) {
+    this.logName = options.logName || 'SlottedWebview';
+    this.hostId = options.hostId;
+    this.webviewId = options.webviewId;
+    this.attributes = options.attributes || {};
+    this.zIndex = options.zIndex === undefined ? 5 : options.zIndex;
+
+    this.host = null;
+    this.webview = null;
+    this.slot = null;
+    this.clipRoot = null;
+
+    this._tracking = false;
+    this._resizeObserver = null;
+    this._pollInterval = null;
+    this._onGeometryChange = null;
+    this._lastGeometry = '';
+    this._parked = false;
+  }
+
+  /** Создаёт узел один раз за всё время жизни приложения. */
+  ensure() {
+    if (this.webview) return this.webview;
+
+    const host = document.createElement('div');
+    host.id = this.hostId;
+    host.style.cssText = [
+      'position: fixed',
+      'overflow: hidden',
+      'background: #000',
+      `z-index: ${this.zIndex}`,
+      'display: none',
+      'pointer-events: auto'
+    ].join(';');
+
+    const webview = document.createElement('webview');
+    webview.id = this.webviewId;
+    Object.entries(this.attributes).forEach(([name, value]) => {
+      webview.setAttribute(name, value);
+    });
+    webview.style.cssText = 'position: absolute; left: 0; top: 0; background: #000; border: none;';
+
+    host.appendChild(webview);
+    document.body.appendChild(host);
+
+    this.host = host;
+    this.webview = webview;
+
+    console.log(`[${this.logName}] Постоянный webview создан`);
+    this.onCreated(webview);
+
+    return webview;
+  }
+
+  /** Точка расширения для наследников: вызывается сразу после создания узла. */
+  onCreated() {}
+
+  getWebview() {
+    return this.ensure();
+  }
+
+  /**
+   * Привязывает webview к слоту. Сам узел при этом не трогается —
+   * меняются только его координаты на экране.
+   */
+  attachTo(slotOrId, options = {}) {
+    const slot = typeof slotOrId === 'string' ? document.getElementById(slotOrId) : slotOrId;
+
+    if (!slot) {
+      console.warn(`[${this.logName}] Слот не найден:`, slotOrId);
+      this.detach();
+      return;
+    }
+
+    this.ensure();
+    // Слежение всегда перезапускаем: ResizeObserver был подписан на старый слот
+    this._stopTracking();
+    this.slot = slot;
+    this.clipRoot = this._findClipRoot(slot);
+    this._lastGeometry = '';
+    this._startTracking();
+
+    const interactive = options.interactive !== false;
+    this.host.style.pointerEvents = interactive ? 'auto' : 'none';
+
+    console.log(`[${this.logName}] Привязан к слоту:`, slot.id || slot.className);
+  }
+
+  /** Убирает с глаз, НЕ выгружая содержимое. */
+  detach() {
+    this.slot = null;
+    this.clipRoot = null;
+    this._stopTracking();
+    this._park();
+  }
+
+  /**
+   * Прячет узел, уводя его за пределы экрана.
+   *
+   * Здесь принципиально не используется display: none. Скрытый так документ
+   * Chromium считает невидимым, и страница внутри webview реагирует на это через
+   * Page Visibility API: плеер Twitch встаёт на паузу, чат перестаёт получать
+   * сообщения (а значит, и бонусные сундуки). Смещение за экран оставляет
+   * содержимое полностью живым.
+   */
+  _park() {
+    if (!this.host || this._parked) return;
+    this._parked = true;
+    this._lastGeometry = '';
+    this.host.style.display = 'block';
+    this.host.style.transform = 'translate(-100000px, -100000px)';
+  }
+
+  /** Ближайший предок с прокруткой — за его границы вылезать нельзя. */
+  _findClipRoot(element) {
+    let node = element.parentElement;
+    while (node && node !== document.body) {
+      const style = window.getComputedStyle(node);
+      const overflow = style.overflow + style.overflowY + style.overflowX;
+      if (/(auto|scroll|hidden)/.test(overflow)) return node;
+      node = node.parentElement;
+    }
+    return document.documentElement;
+  }
+
+  /**
+   * Слежение за геометрией слота.
+   *
+   * Намеренно НЕ используем постоянный requestAnimationFrame-цикл: приложение
+   * работает часами, и держать renderer в непрерывной перерисовке ради пересчёта
+   * координат — лишний расход процессора. Пересчитываем по событиям, которые
+   * реально способны сдвинуть слот, плюс редкий страховочный опрос на случай
+   * изменений, не порождающих событий.
+   */
+  _startTracking() {
+    if (this._tracking) return;
+    this._tracking = true;
+
+    this._onGeometryChange = () => this._sync();
+
+    window.addEventListener('scroll', this._onGeometryChange, { passive: true, capture: true });
+    window.addEventListener('resize', this._onGeometryChange, { passive: true });
+
+    if (window.ResizeObserver) {
+      this._resizeObserver = new ResizeObserver(this._onGeometryChange);
+      this._resizeObserver.observe(this.slot);
+      this._resizeObserver.observe(document.body);
+    }
+
+    this._pollInterval = setInterval(this._onGeometryChange, 500);
+
+    this._sync();
+  }
+
+  _stopTracking() {
+    if (!this._tracking) return;
+    this._tracking = false;
+
+    if (this._onGeometryChange) {
+      window.removeEventListener('scroll', this._onGeometryChange, { capture: true });
+      window.removeEventListener('resize', this._onGeometryChange);
+      this._onGeometryChange = null;
+    }
+
+    if (this._resizeObserver) {
+      this._resizeObserver.disconnect();
+      this._resizeObserver = null;
+    }
+
+    if (this._pollInterval) {
+      clearInterval(this._pollInterval);
+      this._pollInterval = null;
+    }
+  }
+
+  _isVisible(element) {
+    if (!element.isConnected) return false;
+    if (element.offsetParent === null && window.getComputedStyle(element).position !== 'fixed') return false;
+    return true;
+  }
+
+  /** Подгоняет геометрию под слот, записывая стили только при реальном сдвиге. */
+  _sync() {
+    if (!this.slot || !this.host) return;
+
+    if (!this._isVisible(this.slot)) {
+      this._park();
+      return;
+    }
+
+    const rect = this.slot.getBoundingClientRect();
+    if (rect.width < 1 || rect.height < 1) {
+      this._park();
+      return;
+    }
+
+    // Пересечение слота с областью прокрутки — узел не должен наезжать
+    // на шапку и соседние блоки при скролле страницы.
+    const clip = this.clipRoot === document.documentElement
+      ? { left: 0, top: 0, right: window.innerWidth, bottom: window.innerHeight }
+      : this.clipRoot.getBoundingClientRect();
+
+    const left = Math.max(rect.left, clip.left);
+    const top = Math.max(rect.top, clip.top);
+    const right = Math.min(rect.right, clip.right);
+    const bottom = Math.min(rect.bottom, clip.bottom);
+
+    if (right - left < 1 || bottom - top < 1) {
+      this._park();
+      return;
+    }
+
+    const geometry = `${left}|${top}|${right}|${bottom}|${rect.left}|${rect.top}|${rect.width}|${rect.height}`;
+    if (geometry === this._lastGeometry) return;
+    this._lastGeometry = geometry;
+
+    this._parked = false;
+    this.host.style.display = 'block';
+    this.host.style.transform = '';
+    this.host.style.left = `${left}px`;
+    this.host.style.top = `${top}px`;
+    this.host.style.width = `${right - left}px`;
+    this.host.style.height = `${bottom - top}px`;
+    this.host.style.borderRadius = window.getComputedStyle(this.slot).borderRadius || '0px';
+
+    this.webview.style.left = `${rect.left - left}px`;
+    this.webview.style.top = `${rect.top - top}px`;
+    this.webview.style.width = `${rect.width}px`;
+    this.webview.style.height = `${rect.height}px`;
+  }
+}
+
+window.SlottedWebview = SlottedWebview;
