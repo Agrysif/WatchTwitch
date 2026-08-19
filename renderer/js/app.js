@@ -153,6 +153,13 @@ window.utils = {
   },
 
   showToast(message, type = 'info') {
+    // Настройка «Toast уведомления» до этого момента ни на что не влияла:
+    // её сохраняли, но никто не читал.
+    // Ошибки показываем всегда — молча терять их нельзя.
+    if (type !== 'error' && window.settings && window.settings.get('toastNotifications') === false) {
+      return;
+    }
+
     // Создаём контейнер для toast если его еще нет
     let toastContainer = document.getElementById('toast-container');
     if (!toastContainer) {

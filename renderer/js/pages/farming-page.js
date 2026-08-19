@@ -5005,10 +5005,19 @@ class FarmingPage {
         
         // Если 2 проверки подряд провалились - переключаемся на другой стрим (быстрее реакция)
         if (this.streamHealthFailCount >= 2) {
+          this.streamHealthFailCount = 0;
+
+          // Настройка «Автопереключение стримов» раньше сохранялась,
+          // но нигде не проверялась — переключение шло всегда.
+          if (window.settings && window.settings.get('autoSwitchStreams') === false) {
+            console.log('[Health] Стрим недоступен, но автопереключение выключено в настройках');
+            window.utils.showToast('Стрим недоступен. Автопереключение выключено', 'warning');
+            return;
+          }
+
           console.warn('Stream health check failed 2 times, switching to another stream...');
           window.utils.showToast('Стрим недоступен, переключение...', 'warning');
-          this.streamHealthFailCount = 0;
-          
+
           // Переключаемся на другой стрим той же категории
           await this.switchToNextStream();
         }

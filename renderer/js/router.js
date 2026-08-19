@@ -22,42 +22,21 @@ class Router {
       });
     });
 
-    // Global toggle handler (delegated)
-    this.installToggleDelegation();
-
     // Load initial page
     this.navigate('farming');
   }
 
-  installToggleDelegation() {
-    if (this._toggleDelegationInstalled) return;
-    this._toggleDelegationInstalled = true;
-
-    document.addEventListener('click', (event) => {
-      if (this.currentPage !== 'settings') return;
-      const toggle = event.target.closest('.toggle-switch');
-      if (!toggle) return;
-
-      event.preventDefault();
-      event.stopPropagation();
-
-      const isActive = toggle.classList.contains('active');
-      if (isActive) {
-        toggle.classList.remove('active');
-        toggle.style.setProperty('background', '#4a4a4a', 'important');
-      } else {
-        toggle.classList.add('active');
-        toggle.style.setProperty('background', '#7c5cff', 'important');
-      }
-
-      toggle.setAttribute('aria-pressed', (!isActive).toString());
-
-      if (toggle.id === 'shutdown-toggle') {
-        const shutdownSetting = document.getElementById('shutdown-action-setting');
-        if (shutdownSetting) shutdownSetting.style.display = !isActive ? 'flex' : 'none';
-      }
-    });
-  }
+  /**
+   * Раньше здесь висел глобальный обработчик кликов по '.toggle-switch':
+   * он сам переключал вид элемента и гасил событие через stopPropagation.
+   *
+   * Удалён по двум причинам. Элементов с таким классом в приложении нет
+   * (переключатели настроек — это .settings-toggle с настоящим checkbox
+   * внутри), то есть код был мёртвым. При этом он оставался миной: любой
+   * будущий переключатель с этим классом получил бы только смену внешнего
+   * вида, а сохранение настройки не сработало бы — событие до страницы
+   * просто не доходило.
+   */
 
   async navigate(page) {
     console.log('[Router] Navigating to page:', page);
