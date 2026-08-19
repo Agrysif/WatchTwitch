@@ -549,8 +549,13 @@
     }
   }
 
+  /* min-width: 0 обязателен. По умолчанию флекс-элемент не сжимается уже
+     своего содержимого, поэтому строка категории переполнялась: кнопки
+     справа уезжали за границу карточки, а появление кнопки закрепления
+     сдвигало Play всего на пару пикселей вместо освобождения места. */
   .category-info {
     flex: 1;
+    min-width: 0;
   }
 
   .category-name {
@@ -558,6 +563,9 @@
     font-weight: 600;
     color: var(--text-primary);
     margin-bottom: 4px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .category-status {
@@ -565,6 +573,7 @@
     color: var(--text-secondary);
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 8px;
     flex-wrap: wrap;
   }
