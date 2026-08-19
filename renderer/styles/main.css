@@ -2958,3 +2958,49 @@ body.no-animations * {
     border-top: 1px solid var(--border-color);
   }
 }
+
+/* ===== ОТСЧЁТ ДО ВЫКЛЮЧЕНИЯ =====
+ * Показывается поверх всего и всегда отменяем: выключать чужой компьютер
+ * без возможности передумать приложение не вправе.
+ */
+.shutdown-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 12000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.72);
+}
+
+.shutdown-dialog {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  padding: 28px 32px;
+  text-align: center;
+  min-width: 320px;
+  box-shadow: var(--shadow-overlay);
+}
+
+.shutdown-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.shutdown-reason {
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.shutdown-countdown {
+  margin: 18px 0;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 38px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--warning-color);
+  letter-spacing: -0.02em;
+}

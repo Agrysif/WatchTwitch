@@ -166,7 +166,7 @@ class SettingsPage {
             </label>
           </div>
 
-          <div class="settings-item" id="shutdown-action-row" style="${settings.get('enableShutdown') ? '' : 'display: none;'}">
+          <div class="settings-item shutdown-option" style="${settings.get('enableShutdown') ? '' : 'display: none;'}">
             <div class="settings-item-info">
               <div class="settings-item-label">${i18n.t('settings.shutdownAction')}</div>
               <div class="settings-item-description">${i18n.t('settings.shutdownActionDesc')}</div>
@@ -175,6 +175,32 @@ class SettingsPage {
               <option value="shutdown" ${settings.get('shutdownAction') === 'shutdown' ? 'selected' : ''}>${i18n.t('settings.shutdownPC')}</option>
               <option value="sleep" ${settings.get('shutdownAction') === 'sleep' ? 'selected' : ''}>${i18n.t('settings.sleep')}</option>
               <option value="hibernate" ${settings.get('shutdownAction') === 'hibernate' ? 'selected' : ''}>${i18n.t('settings.hibernate')}</option>
+            </select>
+          </div>
+
+          <div class="settings-item shutdown-option" style="${settings.get('enableShutdown') ? '' : 'display: none;'}">
+            <div class="settings-item-info">
+              <div class="settings-item-label">${i18n.t('settings.shutdownTrigger')}</div>
+              <div class="settings-item-description">${i18n.t('settings.shutdownTriggerDesc')}</div>
+            </div>
+            <select class="input-field" id="setting-shutdown-trigger" style="width: 190px; flex-shrink: 0;">
+              <option value="drops" ${settings.get('shutdownTrigger') === 'drops' ? 'selected' : ''}>${i18n.t('settings.triggerDrops')}</option>
+              <option value="streamEnd" ${settings.get('shutdownTrigger') === 'streamEnd' ? 'selected' : ''}>${i18n.t('settings.triggerStreamEnd')}</option>
+              <option value="any" ${settings.get('shutdownTrigger') === 'any' ? 'selected' : ''}>${i18n.t('settings.triggerAny')}</option>
+            </select>
+          </div>
+
+          <div class="settings-item shutdown-option" style="${settings.get('enableShutdown') ? '' : 'display: none;'}">
+            <div class="settings-item-info">
+              <div class="settings-item-label">${i18n.t('settings.shutdownDelay')}</div>
+              <div class="settings-item-description">${i18n.t('settings.shutdownDelayDesc')}</div>
+            </div>
+            <select class="input-field" id="setting-shutdown-delay" style="width: 190px; flex-shrink: 0;">
+              <option value="0" ${String(settings.get('shutdownDelayMinutes')) === '0' ? 'selected' : ''}>${i18n.t('settings.delayNow')}</option>
+              <option value="5" ${String(settings.get('shutdownDelayMinutes')) === '5' ? 'selected' : ''}>5 ${i18n.t('farming.min')}</option>
+              <option value="15" ${String(settings.get('shutdownDelayMinutes')) === '15' ? 'selected' : ''}>15 ${i18n.t('farming.min')}</option>
+              <option value="30" ${String(settings.get('shutdownDelayMinutes')) === '30' ? 'selected' : ''}>30 ${i18n.t('farming.min')}</option>
+              <option value="60" ${String(settings.get('shutdownDelayMinutes')) === '60' ? 'selected' : ''}>60 ${i18n.t('farming.min')}</option>
             </select>
           </div>
         </div>
@@ -519,8 +545,9 @@ class SettingsPage {
       shutdownToggle.addEventListener('change', (e) => {
         settings.set('enableShutdown', e.target.checked);
 
-        const row = document.getElementById('shutdown-action-row');
-        if (row) row.style.display = e.target.checked ? '' : 'none';
+        document.querySelectorAll('.shutdown-option').forEach(row => {
+          row.style.display = e.target.checked ? '' : 'none';
+        });
 
         window.utils.showToast(
           e.target.checked ? i18n.t('settings.shutdownEnabled') : i18n.t('settings.shutdownDisabled'),
@@ -529,12 +556,19 @@ class SettingsPage {
       }, { signal: this._abort.signal });
     }
 
-    const shutdownActionSelect = document.getElementById('setting-shutdown-action');
-    if (shutdownActionSelect) {
-      shutdownActionSelect.addEventListener('change', (e) => {
-        settings.set('shutdownAction', e.target.value);
+    const shutdownSelects = [
+      ['setting-shutdown-action', 'shutdownAction'],
+      ['setting-shutdown-trigger', 'shutdownTrigger'],
+      ['setting-shutdown-delay', 'shutdownDelayMinutes']
+    ];
+    shutdownSelects.forEach(([elementId, settingKey]) => {
+      const select = document.getElementById(elementId);
+      if (!select) return;
+      select.addEventListener('change', (e) => {
+        const value = settingKey === 'shutdownDelayMinutes' ? Number(e.target.value) : e.target.value;
+        settings.set(settingKey, value);
       }, { signal: this._abort.signal });
-    }
+    });
 
     // Автопереключение
     const autoSwitchToggle = document.getElementById('setting-auto-switch');

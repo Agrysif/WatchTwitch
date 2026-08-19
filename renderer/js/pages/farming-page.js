@@ -1701,16 +1701,7 @@ class FarmingPage {
       'Все доступные дропсы собраны'
     );
 
-    if (!window.settings?.get('enableShutdown')) return;
-
-    const action = window.settings.get('shutdownAction') || 'shutdown';
-    console.log('[Завершение] Автовыключение включено, действие:', action);
-
-    if (window.streamingManager?.showShutdownWarning) {
-      window.streamingManager.showShutdownWarning(action);
-    } else {
-      console.warn('[Завершение] Окно предупреждения недоступно, выключение отменено');
-    }
+    window.shutdownManager?.onDropsCompleted();
   }
 
   async pickPreferredStream(streams) {
