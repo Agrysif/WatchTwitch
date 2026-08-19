@@ -37,6 +37,10 @@ class SettingsManager {
       // Тема
       theme: 'dark',
       
+      // Завершение работы
+      enableShutdown: false,
+      shutdownAction: 'shutdown',
+
       // Разработчик
       developerMode: false
     };
@@ -77,9 +81,12 @@ class SettingsManager {
    * никогда не пересекались, поэтому там всегда были значения по умолчанию.
    */
   mirrorToMainProcess() {
-    if (!window.electronAPI?.storeSet) return;
+    if (!window.electronAPI?.settingsMerge) return;
 
-    window.electronAPI.storeSet('settings', this.settings)
+    // Именно слияние: в ключе settings у main-процесса лежат собственные поля
+    // (автозапуск, системные уведомления), которых здесь нет, и запись
+    // объекта целиком их стёрла бы.
+    window.electronAPI.settingsMerge(this.settings)
       .catch(error => console.warn('[Settings] Не удалось передать настройки в main:', error?.message));
   }
 

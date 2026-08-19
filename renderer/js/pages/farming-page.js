@@ -1671,6 +1671,82 @@ class FarmingPage {
     `;
   }
   
+  /**
+   * Выбирает канал из списка стримов категории.
+   *
+   * Смысл избранного в подписках именно в этом: если избранный стример
+   * сейчас ведёт эфир по нужной игре, смотреть надо его. Раньше избранное
+   * не использовалось в фарминге вообще — везде безусловно брался streams[0],
+   * то есть первый по версии Twitch. А «приоритет подписок» в настройках
+   * сортировал КАТЕГОРИИ, сравнивая название игры с логином стримера, —
+   * такое совпадение возможно только случайно.
+   *
+   * Порядок предпочтения:
+   *   1. избранные каналы;
+   *   2. остальные подписки, если включён приоритет подписок;
+   *   3. первый из выдачи Twitch.
+   */
+  /**
+   * Все категории отработаны — фармить больше нечего.
+   *
+   * Здесь же срабатывает автовыключение компьютера. Механика выключения
+   * в приложении была реализована полностью (IPC в main-процессе, окно с
+   * обратным отсчётом и отменой), но вызывать её было некому: обработчик
+   * завершения жил в StreamingManager, а тот в текущей версии не участвует
+   * в фарминге. Настройка сохранялась и не делала ничего.
+   */
+  onAllCategoriesCompleted() {
+    window.electronAPI?.showNotification?.(
+      this.i18n.t('farming.completed'),
+      'Все доступные дропсы собраны'
+    );
+
+    if (!window.settings?.get('enableShutdown')) return;
+
+    const action = window.settings.get('shutdownAction') || 'shutdown';
+    console.log('[Завершение] Автовыключение включено, действие:', action);
+
+    if (window.streamingManager?.showShutdownWarning) {
+      window.streamingManager.showShutdownWarning(action);
+    } else {
+      console.warn('[Завершение] Окно предупреждения недоступно, выключение отменено');
+    }
+  }
+
+  async pickPreferredStream(streams) {
+    if (!Array.isArray(streams) || streams.length === 0) return null;
+
+    const login = (value) => String(value || '').replace(/^@/, '').toLowerCase();
+
+    try {
+      const subscriptions = (await Storage.getSubscriptions()) || [];
+
+      const favorites = new Set(
+        subscriptions.filter(sub => sub.isFavorite).map(sub => login(sub.login))
+      );
+
+      const favorite = streams.find(stream => favorites.has(login(stream.login)));
+      if (favorite) {
+        console.log('[Выбор стрима] Избранный канал в эфире:', favorite.displayName || favorite.login);
+        return favorite;
+      }
+
+      const priorityEnabled = await Storage.getItem('subscriptions_priority_enabled');
+      if (priorityEnabled) {
+        const subscribed = new Set(subscriptions.map(sub => login(sub.login)));
+        const match = streams.find(stream => subscribed.has(login(stream.login)));
+        if (match) {
+          console.log('[Выбор стрима] Канал из подписок:', match.displayName || match.login);
+          return match;
+        }
+      }
+    } catch (error) {
+      console.warn('[Выбор стрима] Не удалось учесть подписки:', error?.message);
+    }
+
+    return streams[0];
+  }
+
   async startFarmingForCategory(category) {
     const accounts = await Storage.getAccounts();
     if (accounts.length === 0) {
@@ -1687,7 +1763,7 @@ class FarmingPage {
     }
     
     // Выбираем первый стрим
-    const stream = streams[0];
+    const stream = await this.pickPreferredStream(streams);
     const streamUrl = `https://www.twitch.tv/${stream.login}`;
     
     console.log('Starting stream:', stream.displayName, streamUrl);
@@ -1871,7 +1947,7 @@ class FarmingPage {
         return;
       }
 
-      const stream = streams[0];
+      const stream = await this.pickPreferredStream(streams);
       
       // Переключаемся на стрим
       await window.electronAPI.openStream(`https://www.twitch.tv/${stream.login}`, account);
@@ -1919,9 +1995,11 @@ class FarmingPage {
         const bManual = b.autoDrops ? 0 : 1;
         if (aManual !== bManual) return bManual - aManual;
         
-        // Проверяем есть ли в подписках
-        const aIsSubscribed = subscriptionLogins.some(login => a.name.toLowerCase().includes(login) || a.name.toLowerCase() === login);
-        const bIsSubscribed = subscriptionLogins.some(login => b.name.toLowerCase().includes(login) || b.name.toLowerCase() === login);
+        // Категория считается подписочной, только если её имя в точности
+        // совпадает с логином канала. Сравнение через includes ловило ложные
+        // совпадения: короткий логин находится внутри названия любой игры.
+        const aIsSubscribed = subscriptionLogins.includes(a.name.toLowerCase());
+        const bIsSubscribed = subscriptionLogins.includes(b.name.toLowerCase());
         
         if (aIsSubscribed !== bIsSubscribed) return aIsSubscribed ? -1 : 1;
         
@@ -1969,6 +2047,9 @@ class FarmingPage {
         streamInfo.style.display = 'flex';
         playerContainer.style.display = 'none';
       }
+
+      // Больше фармить нечего — это и есть завершение работы
+      this.onAllCategoriesCompleted();
       return false;
     }
     
@@ -2003,7 +2084,7 @@ class FarmingPage {
         await window.electronAPI.closeStream();
         
         // Берём первый стрим
-        const stream = streams[0];
+        const stream = await this.pickPreferredStream(streams);
         console.log('Selected stream:', stream.displayName);
         
         // Открываем стрим
@@ -2303,7 +2384,7 @@ class FarmingPage {
     }
     
     // Выбираем первый стрим
-    const stream = streams[0];
+    const stream = await this.pickPreferredStream(streams);
     const streamUrl = `https://www.twitch.tv/${stream.login}`;
     
     console.log('Starting stream:', stream.displayName, streamUrl);
@@ -4065,7 +4146,7 @@ class FarmingPage {
           }
           
           // Берём первый стрим
-          const stream = streams[0];
+          const stream = await this.pickPreferredStream(streams);
           
           // Открываем стрим
           await window.electronAPI.openStream(`https://www.twitch.tv/${stream.login}`);
@@ -4364,7 +4445,7 @@ class FarmingPage {
       }
       
       // Запускаем первый стрим
-      const stream = streams[0];
+      const stream = await this.pickPreferredStream(streams);
       this.currentCategory = prevCategory;
       this.currentStream = stream;
       this.resetChannelPointsTracking();
@@ -4425,7 +4506,7 @@ class FarmingPage {
       }
       
       // Запускаем первый стрим
-      const stream = streams[0];
+      const stream = await this.pickPreferredStream(streams);
       this.currentCategory = nextCategory;
       this.currentStream = stream;
       this.resetChannelPointsTracking();
