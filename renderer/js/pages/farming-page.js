@@ -345,11 +345,12 @@ class FarmingPage {
 
     if (addedCount > 0) {
       window.utils.showToast(`Автодобавлено новых категорий с дропсами: ${addedCount}`, 'success');
-
-      if (!this.currentStream && (!window.streamingManager || !window.streamingManager.isFarmingActive || !window.streamingManager.isFarmingActive())) {
-        setTimeout(() => this.startFarming(), 600);
-      }
     }
+
+    // Фарминг отсюда НЕ запускаем. Этот метод вызывается только из init(),
+    // который сразу после него сам решает, надо ли стартовать. Отложенный
+    // запуск отсюда давал второй параллельный старт — отсюда и брались
+    // задвоенные уведомления «Ищем стрим…» и «Нет активных категорий…».
 
     return addedCount;
   }
@@ -2123,7 +2124,31 @@ class FarmingPage {
     });
   }
 
+  /**
+   * Запуск фарминга. Обёртка вокруг реальной реализации.
+   *
+   * Точек вызова несколько (автозапуск при инициализации, кнопка в сайдбаре,
+   * добавление категорий), и они способны сработать почти одновременно —
+   * тогда пользователь видел два одинаковых уведомления подряд. Флаг живёт
+   * на window, а не на объекте страницы: страница пересоздаётся при каждой
+   * навигации, и отложенный вызов от прежнего экземпляра иначе прошёл бы мимо
+   * защиты.
+   */
   async startFarming() {
+    if (window._farmingStarting) {
+      console.log('[Farming] Запуск уже выполняется — повторный вызов пропущен');
+      return;
+    }
+
+    window._farmingStarting = true;
+    try {
+      return await this._startFarming();
+    } finally {
+      window._farmingStarting = false;
+    }
+  }
+
+  async _startFarming() {
     if (this.categories.length === 0) {
       window.utils.showToast('Добавьте хотя бы одну категорию', 'warning');
       return;
