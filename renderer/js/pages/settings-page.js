@@ -134,6 +134,29 @@ class SettingsPage {
 
           <div class="settings-item">
             <div class="settings-item-info">
+              <div class="settings-item-label">${i18n.t('settings.autostart')}</div>
+              <div class="settings-item-description">${i18n.t('settings.autostartDesc')}</div>
+            </div>
+            <label class="settings-toggle">
+              <input type="checkbox" id="setting-autostart" ${settings.get('autostart') ? 'checked' : ''}>
+              <span class="settings-slider"></span>
+            </label>
+          </div>
+
+          <div class="settings-item">
+            <div class="settings-item-info">
+              <div class="settings-item-label">${i18n.t('settings.streamQuality')}</div>
+              <div class="settings-item-description">${i18n.t('settings.streamQualityDesc')}</div>
+            </div>
+            <select class="input-field" id="setting-quality" style="width: 190px; flex-shrink: 0;">
+              <option value="160p30" ${settings.get('preferredStreamQuality') === '160p30' ? 'selected' : ''}>${i18n.t('settings.lowest')} (160p)</option>
+              <option value="360p30" ${settings.get('preferredStreamQuality') === '360p30' ? 'selected' : ''}>360p</option>
+              <option value="480p30" ${settings.get('preferredStreamQuality') === '480p30' ? 'selected' : ''}>480p</option>
+            </select>
+          </div>
+
+          <div class="settings-item">
+            <div class="settings-item-info">
               <div class="settings-item-label">${i18n.t('settings.enableShutdown')}</div>
               <div class="settings-item-description">${i18n.t('settings.enableShutdownDesc')}</div>
             </div>
@@ -469,6 +492,25 @@ class SettingsPage {
           'info'
         );
       });
+    }
+
+    // Автозапуск вместе с системой
+    const autostartToggle = document.getElementById('setting-autostart');
+    if (autostartToggle) {
+      autostartToggle.addEventListener('change', (e) => {
+        settings.set('autostart', e.target.checked);
+        // Реальный автозапуск включает main-процесс через системный API
+        window.electronAPI?.setAutostart?.(e.target.checked);
+      }, { signal: this._abort.signal });
+    }
+
+    // Качество стрима: напрямую влияет на расход трафика
+    const qualitySelect = document.getElementById('setting-quality');
+    if (qualitySelect) {
+      qualitySelect.addEventListener('change', (e) => {
+        settings.set('preferredStreamQuality', e.target.value);
+        window.utils.showToast(i18n.t('settings.qualityApplied'), 'info');
+      }, { signal: this._abort.signal });
     }
 
     // Автовыключение после сбора всех дропсов

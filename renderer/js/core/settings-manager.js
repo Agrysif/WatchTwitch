@@ -29,7 +29,8 @@ class SettingsManager {
       
       // Фарминг
       autoSwitchStreams: false,
-      preferredStreamQuality: 'auto',
+      preferredStreamQuality: '160p30',
+      autostart: false,
       
       // Язык
       language: 'ru',
