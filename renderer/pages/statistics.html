@@ -17,7 +17,7 @@
       <button class="btn btn-secondary period-btn" data-period="custom">
         <span data-i18n="statistics.custom">Настраиваемый</span>
       </button>
-      <button class="btn btn-primary" id="export-stats-btn" style="margin-left: auto; display: flex; align-items: center; gap: 8px; background: linear-gradient(135deg, #9147ff, #772ce8); border: none; box-shadow: 0 2px 8px rgba(145, 71, 255, 0.3); transition: all 0.2s ease; color: white;">
+      <button class="btn btn-primary" id="export-stats-btn" style="margin-left: auto; display: flex; align-items: center; gap: 8px; background: #7c5cff; border: none; box-shadow: none; transition: all 0.2s ease; color: white;">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
           <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" stroke-width="2"/>
         </svg>
@@ -54,7 +54,7 @@
             <input type="date" id="end-date" style="position: absolute; opacity: 0; pointer-events: none;">
           </div>
         </div>
-        <button class="btn btn-primary" id="apply-date-range" style="margin-top: 20px; background: linear-gradient(135deg, #9147ff, #772ce8); border: none; box-shadow: 0 2px 8px rgba(145, 71, 255, 0.3); color: white;">
+        <button class="btn btn-primary" id="apply-date-range" style="margin-top: 20px; background: #7c5cff; border: none; box-shadow: none; color: white;">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
             <path d="M20 6L9 17l-5-5"/>
           </svg>
@@ -67,7 +67,7 @@
   <!-- Stats Grid -->
   <div class="stats-grid">
     <div class="stat-card">
-      <div class="stat-icon" style="background: rgba(145, 71, 255, 0.15);">
+      <div class="stat-icon" style="background: rgba(124, 92, 255, 0.15);">
         <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--accent-color)">
           <circle cx="12" cy="12" r="10" stroke-width="2"/>
           <path d="M12 6v6l4 2" stroke-width="2"/>
@@ -80,7 +80,7 @@
     </div>
 
     <div class="stat-card">
-      <div class="stat-icon" style="background: rgba(0, 245, 147, 0.15);">
+      <div class="stat-icon" style="background: rgba(53, 208, 138, 0.15);">
         <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--success-color)">
           <circle cx="12" cy="12" r="10" stroke-width="2"/>
           <text x="12" y="16" font-size="12" fill="var(--success-color)" text-anchor="middle" font-weight="bold">$</text>
@@ -151,7 +151,7 @@
     .stack-cover-wrapper {
       position: absolute;
       transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
-      border-radius: 12px;
+      border-radius: var(--radius-md);
       overflow: hidden;
       box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
     }
@@ -160,10 +160,7 @@
       content: '';
       position: absolute;
       inset: 0;
-      background: linear-gradient(135deg, 
-        rgba(145, 71, 255, 0) 0%,
-        rgba(145, 71, 255, 0.3) 50%,
-        rgba(145, 71, 255, 0) 100%);
+      background: rgba(124, 92, 255, 0);
       opacity: 0;
       transition: opacity 0.4s ease;
       pointer-events: none;
@@ -179,9 +176,9 @@
       display: block;
       width: 120px;
       height: 170px;
-      border-radius: 12px;
+      border-radius: var(--radius-md);
       object-fit: cover;
-      background: linear-gradient(135deg, rgba(145, 71, 255, 0.2), rgba(145, 71, 255, 0.05));
+      background: rgba(124, 92, 255, 0.2);
     }
     
     @keyframes shine {
@@ -202,7 +199,7 @@
       align-items: center;
       gap: 16px;
       padding: 16px 18px;
-      border-radius: 12px;
+      border-radius: var(--radius-md);
       border: 1px solid var(--border-color);
       background: var(--bg-secondary);
       transition: all 0.3s ease;
@@ -213,10 +210,7 @@
       content: '';
       position: absolute;
       inset: 0;
-      background: linear-gradient(135deg, 
-        rgba(145, 71, 255, 0) 0%,
-        rgba(145, 71, 255, 0.15) 50%,
-        rgba(145, 71, 255, 0) 100%);
+      background: rgba(124, 92, 255, 0);
       opacity: 0;
       transition: opacity 0.4s ease;
       pointer-events: none;
@@ -224,8 +218,8 @@
     }
     
     .category-item:hover {
-      border-color: rgba(145, 71, 255, 0.5);
-      box-shadow: 0 4px 20px rgba(145, 71, 255, 0.2);
+      border-color: rgba(124, 92, 255, 0.5);
+      box-shadow: none;
     }
     
     .category-item:hover::before {
@@ -301,7 +295,7 @@
     .category-time {
       font-size: 18px;
       font-weight: 700;
-      background: linear-gradient(135deg, var(--accent-color), #a855f7);
+      background: var(--accent-color);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
@@ -313,8 +307,8 @@
       color: var(--success-color);
       opacity: 0.9;
       padding: 2px 8px;
-      background: rgba(0, 245, 147, 0.1);
-      border-radius: 6px;
+      background: rgba(53, 208, 138, 0.1);
+      border-radius: var(--radius-sm);
     }
     
     /* Recent Sessions Styles */
@@ -324,7 +318,7 @@
       align-items: center;
       gap: 16px;
       padding: 16px;
-      border-radius: 12px;
+      border-radius: var(--radius-md);
       border: 1px solid var(--border-color);
       background: var(--bg-secondary);
       transition: all 0.3s ease;
@@ -336,10 +330,7 @@
       content: '';
       position: absolute;
       inset: 0;
-      background: linear-gradient(135deg, 
-        rgba(145, 71, 255, 0) 0%,
-        rgba(145, 71, 255, 0.2) 50%,
-        rgba(145, 71, 255, 0) 100%);
+      background: rgba(124, 92, 255, 0);
       opacity: 0;
       transition: opacity 0.4s ease;
       pointer-events: none;
@@ -347,8 +338,8 @@
     }
     
     .session-item:hover {
-      border-color: rgba(145, 71, 255, 0.5);
-      box-shadow: 0 4px 20px rgba(145, 71, 255, 0.2);
+      border-color: rgba(124, 92, 255, 0.5);
+      box-shadow: none;
     }
     
     .session-item:hover::before {
@@ -360,7 +351,7 @@
       position: relative;
       width: 56px;
       height: 78px;
-      border-radius: 8px;
+      border-radius: var(--radius-md);
       overflow: hidden;
       flex-shrink: 0;
       box-shadow: 0 3px 12px rgba(0, 0, 0, 0.4);
@@ -474,7 +465,7 @@
   .stat-card {
     background: var(--card-bg);
     border: 1px solid var(--border-color);
-    border-radius: 12px;
+    border-radius: var(--radius-md);
     padding: 24px;
     display: flex;
     align-items: center;
@@ -490,7 +481,7 @@
   .stat-icon {
     width: 64px;
     height: 64px;
-    border-radius: 12px;
+    border-radius: var(--radius-md);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -531,7 +522,7 @@
   .session-item {
     padding: 16px;
     background: var(--bg-secondary);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     border: 1px solid var(--border-color);
     margin-bottom: 12px;
     display: flex;
@@ -544,7 +535,7 @@
   .session-item:hover {
     border-color: var(--accent-color);
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(145, 71, 255, 0.15);
+    box-shadow: none;
   }
 
   .session-item img {
@@ -595,7 +586,7 @@
     left: -100%;
     width: 100%;
     height: 100%;
-    background: linear-gradient(90deg, transparent, rgba(145, 71, 255, 0.1), transparent);
+    background: transparent;
     transition: left 0.5s ease;
   }
 

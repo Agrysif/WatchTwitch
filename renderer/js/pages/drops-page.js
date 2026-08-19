@@ -419,11 +419,11 @@
     createCampaignCard(campaign, isCompleted, isExpired = false) {
       const card = document.createElement('div');
       card.className = 'campaign-card';
-      card.style.cssText = `background: rgba(0,0,0,0.2); border-radius: 12px; overflow: visible; margin-bottom: 20px; transition: border 0.2s; border: 2px solid transparent; transform: none !important; box-shadow: none !important; ${isCompleted ? 'opacity: 0.85;' : ''}`;
+      card.style.cssText = `background: rgba(0,0,0,0.2); border-radius: var(--radius-md); overflow: visible; margin-bottom: 20px; transition: border 0.2s; border: 2px solid transparent; transform: none !important; box-shadow: none !important; ${isCompleted ? 'opacity: 0.85;' : ''}`;
       
       // Добавляем обработчики hover только для обводки
       card.addEventListener('mouseenter', () => {
-        card.style.border = '2px solid rgba(145,71,255,0.6)';
+        card.style.border = '2px solid rgba(124, 92, 255,0.6)';
         card.style.transform = 'none';
         card.style.boxShadow = 'none';
       });
@@ -487,25 +487,25 @@
       const endDate = campaign.endsAt ? new Date(campaign.endsAt).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) : '';
       
       card.innerHTML = `
-        <div style="position: relative; height: 180px; background: ${gameImage ? `linear-gradient(to bottom, rgba(0,0,0,0.4), rgba(0,0,0,0.85)), url('${gameImage}')` : 'rgba(0,0,0,0.3)'}; background-size: cover; background-position: center; display: flex; flex-direction: column; justify-content: flex-end; padding: 20px;">
+        <div style="position: relative; height: 180px; background: ${gameImage ? `rgba(0,0,0,0.4), url('${gameImage}')` : 'rgba(0,0,0,0.3)'}; background-size: cover; background-position: center; display: flex; flex-direction: column; justify-content: flex-end; padding: 20px;">
           <div style="color: #fff; font-size: 20px; font-weight: 700; margin-bottom: 6px; text-shadow: 0 2px 8px rgba(0,0,0,0.8);">${campaign.name || 'Campaign'}</div>
           <div style="color: rgba(255,255,255,0.9); font-size: 14px; text-shadow: 0 1px 4px rgba(0,0,0,0.8);">${campaign.game?.name || 'Unknown Game'}</div>
           ${startDate && endDate ? `<div style="color: rgba(255,255,255,0.7); font-size: 12px; margin-top: 4px; text-shadow: 0 1px 4px rgba(0,0,0,0.8);">${startDate} — ${endDate}</div>` : ''}
           ${timeText ? `<div style="color: rgba(255,255,255,0.85); font-size: 13px; margin-top: 6px; font-weight: 600; text-shadow: 0 1px 4px rgba(0,0,0,0.8);">${timeText}</div>` : ''}
-          ${isExpired ? '<div style="position: absolute; top: 15px; right: 15px; background: rgba(255,255,255,0.15); color: #fff; padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 700; backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.2);">Завершено</div>' : (isCompleted ? '<div style="position: absolute; top: 15px; right: 15px; background: rgba(0,245,147,0.2); color: #00f593; padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 700; backdrop-filter: blur(8px); border: 1px solid rgba(0,245,147,0.4);">✓ 100%</div>' : '')}
+          ${isExpired ? '<div style="position: absolute; top: 15px; right: 15px; background: rgba(255,255,255,0.15); color: #fff; padding: 6px 14px; border-radius: var(--radius-md); font-size: 12px; font-weight: 700; backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.2);">Завершено</div>' : (isCompleted ? '<div style="position: absolute; top: 15px; right: 15px; background: rgba(53, 208, 138,0.2); color: #35d08a; padding: 6px 14px; border-radius: var(--radius-md); font-size: 12px; font-weight: 700; backdrop-filter: blur(8px); border: 1px solid rgba(53, 208, 138,0.4);">✓ 100%</div>' : '')}
         </div>
         
         <div style="padding: 20px; overflow: visible;">
           <div style="margin-bottom: 20px;">
             <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
               <span style="color: var(--text-secondary); font-size: 14px; font-weight: 600;">${completedDrops} ${this.i18n.t('common.of')} ${totalDrops} ${this.i18n.t('drops.claimed').toLowerCase()}</span>
-              <span style="color: ${progressPercent === 100 ? '#00f593' : 'var(--accent-color)'}; font-size: 14px; font-weight: 700;">${progressPercent}%</span>
+              <span style="color: ${progressPercent === 100 ? '#35d08a' : 'var(--accent-color)'}; font-size: 14px; font-weight: 700;">${progressPercent}%</span>
             </div>
             <div class="campaign-progress-container" style="position: relative;">
-              <div class="campaign-progress-bar" style="background: rgba(255,255,255,0.08); height: 10px; border-radius: 5px; overflow: hidden; box-shadow: inset 0 1px 3px rgba(0,0,0,0.3); cursor: pointer;">
-                <div style="background: ${progressPercent === 100 ? '#00f593' : '#9147ff'} !important; height: 100%; width: ${progressPercent}%; transition: width 0.5s ease; box-shadow: 0 0 10px ${progressPercent === 100 ? 'rgba(0,245,147,0.5)' : 'rgba(145,71,255,0.5)'};"></div>
+              <div class="campaign-progress-bar" style="background: rgba(255,255,255,0.08); height: 10px; border-radius: var(--radius-sm); overflow: hidden; box-shadow: inset 0 1px 3px rgba(0,0,0,0.3); cursor: pointer;">
+                <div style="background: ${progressPercent === 100 ? '#35d08a' : '#7c5cff'} !important; height: 100%; width: ${progressPercent}%; transition: width 0.5s ease; box-shadow: 0 0 10px ${progressPercent === 100 ? 'rgba(53, 208, 138,0.5)' : 'rgba(124, 92, 255,0.5)'};"></div>
               </div>
-              <div class="campaign-progress-tooltip" style="display: none; position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); margin-bottom: 8px; background: rgba(0,0,0,0.95); border: 1px solid rgba(145,71,255,0.3); border-radius: 8px; padding: 8px; z-index: 1000; backdrop-filter: blur(8px); min-width: 120px;">
+              <div class="campaign-progress-tooltip" style="display: none; position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); margin-bottom: 8px; background: rgba(0,0,0,0.95); border: 1px solid rgba(124, 92, 255,0.3); border-radius: var(--radius-md); padding: 8px; z-index: 1000; backdrop-filter: blur(8px); min-width: 120px;">
                 <div class="tooltip-drops-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(48px, 1fr)); gap: 6px;">
                 </div>
               </div>
@@ -535,14 +535,14 @@
             console.log(`Drop ${index}:`, drop.benefitName, 'imageUrl:', imageUrl);
             const dropImg = document.createElement('img');
             dropImg.src = imageUrl;
-            dropImg.style.cssText = 'width: 48px; height: 48px; border-radius: 4px; object-fit: cover; border: 1px solid rgba(145,71,255,0.2); transition: transform 0.2s ease;';
+            dropImg.style.cssText = 'width: 48px; height: 48px; border-radius: var(--radius-sm); object-fit: cover; border: 1px solid rgba(124, 92, 255,0.2); transition: transform 0.2s ease;';
             dropImg.addEventListener('mouseenter', () => {
               dropImg.style.transform = 'scale(1.1)';
-              dropImg.style.borderColor = 'rgba(145,71,255,0.6)';
+              dropImg.style.borderColor = 'rgba(124, 92, 255,0.6)';
             });
             dropImg.addEventListener('mouseleave', () => {
               dropImg.style.transform = 'scale(1)';
-              dropImg.style.borderColor = 'rgba(145,71,255,0.2)';
+              dropImg.style.borderColor = 'rgba(124, 92, 255,0.2)';
             });
             tooltipGrid.appendChild(dropImg);
           });
@@ -594,7 +594,7 @@
         // Получено - бадж внизу над картинкой
         bottomSection = `
           <div style="background: rgba(0,0,0,0.85); padding: 8px;">
-            <div style="background: rgba(0,245,147,0.95); padding: 4px; text-align: center; font-size: 9px; font-weight: 600; color: #000; text-transform: uppercase; letter-spacing: 0.5px; border-radius: 3px; margin-bottom: 6px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">✓ Получено</div>
+            <div style="background: rgba(53, 208, 138,0.95); padding: 4px; text-align: center; font-size: 9px; font-weight: 600; color: #000; text-transform: uppercase; letter-spacing: 0.5px; border-radius: var(--radius-sm); margin-bottom: 6px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">✓ Получено</div>
             <div style="color: rgba(255,255,255,0.7); font-size: 10px; font-weight: 600; text-align: center;">${drop.benefitName || 'Reward'}</div>
           </div>
         `;
@@ -603,7 +603,7 @@
         bottomSection = `
           <div style="background: rgba(0,0,0,0.85); padding: 8px;">
             <div style="color: rgba(255,255,255,0.9); font-size: 10px; font-weight: 600; margin-bottom: 6px; text-align: center;">${drop.benefitName || 'Reward'}</div>
-            <button onclick="window.claimDropNow('${drop.dropInstanceID}', this)" style="width: 100%; background: linear-gradient(135deg, #9147ff, #772ce8); color: white; border: none; padding: 6px; border-radius: 4px; font-size: 10px; font-weight: 700; cursor: pointer; text-transform: uppercase; letter-spacing: 0.5px;">${this.i18n.t('farming.claim')}</button>
+            <button onclick="window.claimDropNow('${drop.dropInstanceID}', this)" style="width: 100%; background: #7c5cff; color: white; border: none; padding: 6px; border-radius: var(--radius-sm); font-size: 10px; font-weight: 700; cursor: pointer; text-transform: uppercase; letter-spacing: 0.5px;">${this.i18n.t('farming.claim')}</button>
           </div>
         `;
       } else {
@@ -615,8 +615,8 @@
               <span style="color: rgba(255,255,255,0.7); font-size: 9px;">${percentage}%</span>
               <span style="color: rgba(255,255,255,0.5); font-size: 9px;">${remaining} мин</span>
             </div>
-            <div style="background: rgba(255,255,255,0.1); height: 4px; border-radius: 2px; overflow: hidden;">
-              <div style="background: #9147ff; height: 100%; width: ${percentage}%; transition: width 0.5s ease;"></div>
+            <div style="background: rgba(255,255,255,0.1); height: 4px; border-radius: var(--radius-sm); overflow: hidden;">
+              <div style="background: #7c5cff; height: 100%; width: ${percentage}%; transition: width 0.5s ease;"></div>
             </div>
           </div>
         `;
@@ -626,7 +626,7 @@
         <div class="drop-card-clickable" data-drop="${dropDataStr}" data-campaign="${campaignDataStr}" style="
           position: relative; 
           background: rgba(0,0,0,0.3); 
-          border-radius: 8px; 
+          border-radius: var(--radius-md); 
           overflow: hidden;
           cursor: pointer;
           ${isClaimed ? 'opacity: 0.7;' : ''}
@@ -788,7 +788,7 @@
       const allFilterBtn = document.createElement('button');
       allFilterBtn.textContent = 'Все';
       allFilterBtn.className = 'btn btn-secondary';
-      allFilterBtn.style.cssText = `font-size: 12px; padding: 6px 12px; white-space: nowrap; ${this.inventoryFilter === 'all' ? 'background: rgba(145,71,255,0.5);' : ''}`;
+      allFilterBtn.style.cssText = `font-size: 12px; padding: 6px 12px; white-space: nowrap; ${this.inventoryFilter === 'all' ? 'background: rgba(124, 92, 255,0.5);' : ''}`;
       allFilterBtn.onclick = () => {
         this.inventoryFilter = 'all';
         this.inventoryGameFilter = null;
@@ -808,7 +808,7 @@
         gameBtn.textContent = game;
         gameBtn.className = 'btn btn-secondary';
         const isActive = this.inventoryFilter === 'game' && this.inventoryGameFilter === game;
-        gameBtn.style.cssText = `font-size: 12px; padding: 6px 12px; white-space: nowrap; ${isActive ? 'background: rgba(145,71,255,0.5);' : ''}`;
+        gameBtn.style.cssText = `font-size: 12px; padding: 6px 12px; white-space: nowrap; ${isActive ? 'background: rgba(124, 92, 255,0.5);' : ''}`;
         gameBtn.onclick = () => {
           this.inventoryFilter = 'game';
           this.inventoryGameFilter = game;
@@ -827,12 +827,12 @@
           display: inline-flex; 
           align-items: center; 
           gap: 6px;
-          background: rgba(145,71,255,0.12);
-          border: 1px solid rgba(145,71,255,0.25);
+          background: rgba(124, 92, 255,0.12);
+          border: 1px solid rgba(124, 92, 255,0.25);
           color: var(--accent-color);
           font-weight: 500;
           cursor: pointer;
-          border-radius: 6px;
+          border-radius: var(--radius-sm);
           transition: all 0.2s;
         `;
         
@@ -857,13 +857,13 @@
         updateToggleGamesBtn();
         
         toggleGamesBtn.onmouseenter = () => {
-          toggleGamesBtn.style.background = 'rgba(145,71,255,0.2)';
-          toggleGamesBtn.style.borderColor = 'rgba(145,71,255,0.4)';
+          toggleGamesBtn.style.background = 'rgba(124, 92, 255,0.2)';
+          toggleGamesBtn.style.borderColor = 'rgba(124, 92, 255,0.4)';
         };
         
         toggleGamesBtn.onmouseleave = () => {
-          toggleGamesBtn.style.background = 'rgba(145,71,255,0.12)';
-          toggleGamesBtn.style.borderColor = 'rgba(145,71,255,0.25)';
+          toggleGamesBtn.style.background = 'rgba(124, 92, 255,0.12)';
+          toggleGamesBtn.style.borderColor = 'rgba(124, 92, 255,0.25)';
         };
         
         toggleGamesBtn.onclick = () => {
@@ -911,26 +911,26 @@
           align-items: center; 
           justify-content: center;
           gap: 8px;
-          background: rgba(145,71,255,0.08);
-          border: 1px solid rgba(145,71,255,0.2);
+          background: rgba(124, 92, 255,0.08);
+          border: 1px solid rgba(124, 92, 255,0.2);
           color: var(--accent-color);
           font-weight: 600;
           cursor: pointer;
-          border-radius: 8px;
+          border-radius: var(--radius-md);
           transition: all 0.25s ease;
           margin-top: 30px;
         `;
         
         loadMoreBtn.onmouseenter = () => {
-          loadMoreBtn.style.background = 'rgba(145,71,255,0.15)';
-          loadMoreBtn.style.borderColor = 'rgba(145,71,255,0.4)';
+          loadMoreBtn.style.background = 'rgba(124, 92, 255,0.15)';
+          loadMoreBtn.style.borderColor = 'rgba(124, 92, 255,0.4)';
           loadMoreBtn.style.transform = 'translateY(-2px)';
-          loadMoreBtn.style.boxShadow = '0 4px 12px rgba(145,71,255,0.2)';
+          loadMoreBtn.style.boxShadow = '0 4px 12px rgba(124, 92, 255,0.2)';
         };
         
         loadMoreBtn.onmouseleave = () => {
-          loadMoreBtn.style.background = 'rgba(145,71,255,0.08)';
-          loadMoreBtn.style.borderColor = 'rgba(145,71,255,0.2)';
+          loadMoreBtn.style.background = 'rgba(124, 92, 255,0.08)';
+          loadMoreBtn.style.borderColor = 'rgba(124, 92, 255,0.2)';
           loadMoreBtn.style.transform = 'translateY(0)';
           loadMoreBtn.style.boxShadow = 'none';
         };
@@ -959,12 +959,12 @@
       card.className = 'drop-card-clickable';
       card.dataset.drop = encodeURIComponent(JSON.stringify(drop));
       card.dataset.campaign = dropCampaign ? encodeURIComponent(JSON.stringify(dropCampaign)) : '';
-      card.style.cssText = 'position: relative; background: rgba(0,0,0,0.3); border-radius: 8px; overflow: hidden; cursor: pointer; border: 2px solid transparent; transition: border 0.3s;';
+      card.style.cssText = 'position: relative; background: rgba(0,0,0,0.3); border-radius: var(--radius-md); overflow: hidden; cursor: pointer; border: 2px solid transparent; transition: border 0.3s;';
       
       // Анимация flip с подсветкой
       card.onmouseenter = () => {
-        card.style.border = '2px solid rgba(145,71,255,0.6)';
-        card.style.boxShadow = '0 0 20px rgba(145,71,255,0.4)';
+        card.style.border = '2px solid rgba(124, 92, 255,0.6)';
+        card.style.boxShadow = '0 0 20px rgba(124, 92, 255,0.4)';
         const flipContainer = card.querySelector('.flip-container');
         if (flipContainer) flipContainer.style.transform = 'rotateY(180deg)';
       };
@@ -988,9 +988,9 @@
         
         <div style="background: rgba(0,0,0,0.9); padding: 10px;">
           ${drop.claimed ? 
-            `<div style="display: inline-flex; align-items: center; gap: 3px; background: rgba(0,200,83,0.15); color: #00c853; padding: 2px 6px; border-radius: 4px; font-size: 9px; font-weight: 600; margin-bottom: 6px;"><span style="font-size: 10px;">✓</span> ${this.i18n.t('drops.claimed')}</div>` : 
+            `<div style="display: inline-flex; align-items: center; gap: 3px; background: rgba(0,200,83,0.15); color: #00c853; padding: 2px 6px; border-radius: var(--radius-sm); font-size: 9px; font-weight: 600; margin-bottom: 6px;"><span style="font-size: 10px;">✓</span> ${this.i18n.t('drops.claimed')}</div>` : 
             drop.canClaim ? 
-              `<button onclick="window.claimDropNow('${drop.dropInstanceID}', this)" style="width: 100%; background: linear-gradient(135deg, #9147ff, #772ce8); color: white; border: none; padding: 6px; border-radius: 4px; font-size: 10px; font-weight: 700; cursor: pointer; text-transform: uppercase; margin-bottom: 6px;">${this.i18n.t('farming.claim')}</button>` :
+              `<button onclick="window.claimDropNow('${drop.dropInstanceID}', this)" style="width: 100%; background: #7c5cff; color: white; border: none; padding: 6px; border-radius: var(--radius-sm); font-size: 10px; font-weight: 700; cursor: pointer; text-transform: uppercase; margin-bottom: 6px;">${this.i18n.t('farming.claim')}</button>` :
               ''
           }
           <div style="color: #fff; font-size: 12px; font-weight: 600; margin-bottom: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${drop.name}">${drop.name}</div>
@@ -1141,7 +1141,7 @@
       
       if (result.success) {
         button.innerHTML = '✓ Получено';
-        button.style.background = '#00f593';
+        button.style.background = '#35d08a';
         button.style.color = '#000';
         window.utils?.showToast('Награда получена!', 'success');
         

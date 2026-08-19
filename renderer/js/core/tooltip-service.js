@@ -16,7 +16,7 @@ class TooltipService {
       background: rgba(0, 0, 0, 0.95);
       color: white;
       padding: 8px 12px;
-      border-radius: 6px;
+      border-radius: var(--radius-sm);
       font-size: 13px;
       font-weight: 500;
       pointer-events: none;

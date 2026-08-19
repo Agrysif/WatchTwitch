@@ -98,7 +98,7 @@ const DOMHelpers = {
         width: sizes[size] || sizes.medium,
         height: sizes[size] || sizes.medium,
         border: '3px solid rgba(255, 255, 255, 0.1)',
-        borderTop: '3px solid #9147ff',
+        borderTop: '3px solid #7c5cff',
         borderRadius: '50%',
         animation: 'spin 1s linear infinite',
         margin: '20px auto'

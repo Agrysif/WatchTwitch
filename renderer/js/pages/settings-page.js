@@ -93,7 +93,7 @@ class SettingsPage {
         <!-- Автоматизация -->
         <div class="settings-section">
           <h2 class="settings-section-title">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style="margin-right: 8px; vertical-align: -4px; color: #00E57A;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style="margin-right: 8px; vertical-align: -4px; color: #35d08a;">
               <path d="M12 2L2 7v10c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-10-5z"/>
             </svg>
             ${i18n.t('settings.automation')}
@@ -329,7 +329,7 @@ class SettingsPage {
         <!-- Обновления -->
         <div class="settings-section">
           <h2 class="settings-section-title">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style="margin-right: 8px; vertical-align: -4px; color: #FF6B6B;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style="margin-right: 8px; vertical-align: -4px; color: #f0555f;">
               <path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/>
             </svg>
             ${i18n.t('settings.updates')}
@@ -743,7 +743,7 @@ class SettingsPage {
         const pid = metric.pid || '—';
 
         return `
-          <div style="display: grid; grid-template-columns: 1fr auto auto; gap: 12px; align-items: center; padding: 10px 12px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 10px;">
+          <div style="display: grid; grid-template-columns: 1fr auto auto; gap: 12px; align-items: center; padding: 10px 12px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius-md);">
             <div>
               <div style="font-size: 13px; font-weight: 600; color: var(--text-primary);">${label}</div>
               <div style="font-size: 11px; color: var(--text-secondary);">pid: ${pid} • type: ${metric.type || '—'}</div>

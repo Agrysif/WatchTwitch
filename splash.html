@@ -13,13 +13,13 @@
 
     body {
       font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      background: linear-gradient(135deg, #0e0e10 0%, #1a1a2e 100%);
+      background: linear-gradient(135deg, #0a0b0d 0%, #1a1a2e 100%);
       display: flex;
       align-items: center;
       justify-content: center;
       height: 100vh;
       overflow: hidden;
-      color: #efeff1;
+      color: #e4e8ee;
     }
 
     .splash-container {
@@ -46,13 +46,13 @@
     .logo {
       width: 120px;
       height: 120px;
-      background: linear-gradient(135deg, #9147ff 0%, #772ce8 100%);
-      border-radius: 24px;
+      background: linear-gradient(135deg, #7c5cff 0%, #6b49f0 100%);
+      border-radius: var(--radius-md);
       display: flex;
       align-items: center;
       justify-content: center;
       margin: 0 auto;
-      box-shadow: 0 20px 60px rgba(145, 71, 255, 0.4);
+      box-shadow: 0 20px 60px rgba(124, 92, 255, 0.4);
       position: relative;
       z-index: 2;
     }
@@ -67,8 +67,8 @@
       position: absolute;
       width: 140px;
       height: 140px;
-      background: radial-gradient(circle, rgba(145, 71, 255, 0.3) 0%, transparent 70%);
-      border-radius: 50%;
+      background: radial-gradient(circle, rgba(124, 92, 255, 0.3) 0%, transparent 70%);
+      border-radius: var(--radius-circle);
       animation: pulse 2s ease-in-out infinite;
       z-index: 1;
     }
@@ -88,7 +88,7 @@
       font-size: 32px;
       font-weight: 700;
       margin-bottom: 8px;
-      background: linear-gradient(135deg, #9147ff 0%, #00e57a 100%);
+      background: linear-gradient(135deg, #7c5cff 0%, #35d08a 100%);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
@@ -96,7 +96,7 @@
 
     .app-tagline {
       font-size: 14px;
-      color: #adadb8;
+      color: #848d9b;
       margin-bottom: 48px;
       letter-spacing: 0.5px;
     }
@@ -104,8 +104,8 @@
     .loading-bar {
       width: 240px;
       height: 4px;
-      background: rgba(145, 71, 255, 0.2);
-      border-radius: 2px;
+      background: rgba(124, 92, 255, 0.2);
+      border-radius: var(--radius-sm);
       margin: 0 auto;
       overflow: hidden;
       position: relative;
@@ -113,8 +113,8 @@
 
     .loading-bar-fill {
       height: 100%;
-      background: linear-gradient(90deg, #9147ff 0%, #00e57a 100%);
-      border-radius: 2px;
+      background: linear-gradient(90deg, #7c5cff 0%, #35d08a 100%);
+      border-radius: var(--radius-sm);
       animation: loading 1.5s ease-in-out infinite;
     }
 
@@ -136,7 +136,7 @@
     .loading-text {
       margin-top: 16px;
       font-size: 13px;
-      color: #adadb8;
+      color: #848d9b;
       animation: fadeInOut 2s ease-in-out infinite;
     }
 
@@ -163,8 +163,8 @@
       position: absolute;
       width: 4px;
       height: 4px;
-      background: rgba(145, 71, 255, 0.3);
-      border-radius: 50%;
+      background: rgba(124, 92, 255, 0.3);
+      border-radius: var(--radius-circle);
       animation: float linear infinite;
     }
 

@@ -218,7 +218,7 @@ window.utils = {
       `;
 
       modal.innerHTML = `
-        <div style="background: var(--bg-primary); border-radius: 12px; padding: 24px; max-width: 400px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5); border: 1px solid var(--border-color);">
+        <div style="background: var(--bg-primary); border-radius: var(--radius-md); padding: 24px; max-width: 400px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5); border: 1px solid var(--border-color);">
           <h2 style="color: var(--text-primary); margin: 0 0 8px 0; font-size: 18px; font-weight: 600;">${title}</h2>
           ${message ? `<p style="color: var(--text-secondary); margin: 0 0 20px 0; font-size: 14px;">${message}</p>` : ''}
           <div style="display: flex; gap: 12px; justify-content: flex-end;">
@@ -274,11 +274,11 @@ window.utils = {
       `;
 
       modal.innerHTML = `
-        <div style="background: var(--bg-primary); border-radius: 16px; padding: 32px; max-width: 440px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6); border: 1px solid var(--border-color); animation: modalSlideIn 0.3s ease;">
+        <div style="background: var(--bg-primary); border-radius: var(--radius-md); padding: 32px; max-width: 440px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6); border: 1px solid var(--border-color); animation: modalSlideIn 0.3s ease;">
           ${contentHtml}
           <div style="display: flex; gap: 12px; justify-content: center; margin-top: 24px;">
-            <button class="btn btn-secondary" id="confirm-cancel" style="flex: 1; max-width: 160px; padding: 12px 24px; font-size: 15px; font-weight: 600; border-radius: 10px; transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; text-align: center;">${cancelText}</button>
-            <button class="btn ${confirmClass}" id="confirm-ok" style="flex: 1; max-width: 160px; padding: 12px 24px; font-size: 15px; font-weight: 600; border-radius: 10px; transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; text-align: center;">${confirmText}</button>
+            <button class="btn btn-secondary" id="confirm-cancel" style="flex: 1; max-width: 160px; padding: 12px 24px; font-size: 15px; font-weight: 600; border-radius: var(--radius-md); transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; text-align: center;">${cancelText}</button>
+            <button class="btn ${confirmClass}" id="confirm-ok" style="flex: 1; max-width: 160px; padding: 12px 24px; font-size: 15px; font-weight: 600; border-radius: var(--radius-md); transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; text-align: center;">${confirmText}</button>
           </div>
         </div>
       `;
@@ -325,7 +325,7 @@ style.textContent = `
     gap: 12px;
     padding: 14px 18px;
     padding-bottom: 10px;
-    border-radius: 12px;
+    border-radius: var(--radius-md);
     color: white;
     font-weight: 500;
     font-size: 14px;
@@ -354,7 +354,7 @@ style.textContent = `
     left: 0;
     right: 0;
     height: 2px;
-    background: linear-gradient(90deg, rgba(255,255,255,0.4), rgba(255,255,255,0.1));
+    background: rgba(255,255,255,0.4);
   }
 
   .toast-progress {
@@ -389,7 +389,7 @@ style.textContent = `
     justify-content: center;
     width: 32px;
     height: 32px;
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     background: rgba(255, 255, 255, 0.15);
   }
 
@@ -399,8 +399,8 @@ style.textContent = `
   }
   
   .toast-info {
-    background: linear-gradient(135deg, rgba(145, 71, 255, 0.95), rgba(119, 44, 232, 0.95));
-    border-color: rgba(145, 71, 255, 0.4);
+    background: rgba(124, 92, 255, 0.95);
+    border-color: rgba(124, 92, 255, 0.4);
   }
 
   .toast-info .toast-icon {
@@ -408,8 +408,8 @@ style.textContent = `
   }
   
   .toast-success {
-    background: linear-gradient(135deg, rgba(0, 229, 122, 0.95), rgba(0, 200, 100, 0.95));
-    border-color: rgba(0, 229, 122, 0.4);
+    background: rgba(53, 208, 138, 0.95);
+    border-color: rgba(53, 208, 138, 0.4);
   }
 
   .toast-success .toast-icon {
@@ -417,7 +417,7 @@ style.textContent = `
   }
   
   .toast-error {
-    background: linear-gradient(135deg, rgba(232, 17, 35, 0.95), rgba(200, 15, 30, 0.95));
+    background: rgba(232, 17, 35, 0.95);
     border-color: rgba(232, 17, 35, 0.4);
   }
 
@@ -426,7 +426,7 @@ style.textContent = `
   }
   
   .toast-warning {
-    background: linear-gradient(135deg, rgba(255, 159, 67, 0.95), rgba(255, 140, 50, 0.95));
+    background: rgba(255, 159, 67, 0.95);
     border-color: rgba(255, 159, 67, 0.4);
   }
 
@@ -463,7 +463,7 @@ style.textContent = `
     position: relative;
     z-index: 10001;
     background: var(--card-bg);
-    border-radius: 16px;
+    border-radius: var(--radius-md);
     border: 1px solid var(--border-color);
     overflow: hidden;
     max-width: 500px;
@@ -499,7 +499,7 @@ style.textContent = `
     justify-content: center;
     width: 40px;
     height: 40px;
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     transition: all 0.2s ease;
     flex-shrink: 0;
   }
@@ -524,12 +524,12 @@ style.textContent = `
   }
 
   .auth-modal-body::-webkit-scrollbar-thumb {
-    background: rgba(145, 71, 255, 0.3);
-    border-radius: 3px;
+    background: rgba(124, 92, 255, 0.3);
+    border-radius: var(--radius-sm);
   }
 
   .auth-modal-body::-webkit-scrollbar-thumb:hover {
-    background: rgba(145, 71, 255, 0.5);
+    background: rgba(124, 92, 255, 0.5);
   }
 
   .shutdown-modal {
@@ -557,7 +557,7 @@ style.textContent = `
     position: relative;
     background: var(--card-bg);
     padding: 32px;
-    border-radius: 16px;
+    border-radius: var(--radius-md);
     border: 1px solid var(--border-color);
     text-align: center;
     min-width: 400px;

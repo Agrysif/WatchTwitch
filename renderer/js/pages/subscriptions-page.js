@@ -642,18 +642,18 @@ class SubscriptionsPage {
     const lastStreamDate = new Date(sub.lastStreamDate || 0);
     const daysSinceStream = (Date.now() - lastStreamDate.getTime()) / (1000 * 60 * 60 * 24);
     const isLive = sub.isLive === true;
-    const ratingColor = sub.rating >= 70 ? '#00e57a' : sub.rating >= 40 ? '#9147ff' : '#ff6b6b';
+    const ratingColor = sub.rating >= 70 ? '#35d08a' : sub.rating >= 40 ? '#7c5cff' : '#f0555f';
     const activityStatus = daysSinceStream > 30 ? this.i18n.t('subscriptions.inactive') : daysSinceStream > 7 ? this.i18n.t('subscriptions.rarely') : this.i18n.t('subscriptions.activeStatus');
     const activityIcon = daysSinceStream > 30 ? '🔴' : daysSinceStream > 7 ? '🟡' : '🟢';
-    const activityColor = daysSinceStream > 30 ? '#ff6b6b' : daysSinceStream > 7 ? '#ffaa00' : '#00e57a';
+    const activityColor = daysSinceStream > 30 ? '#f0555f' : daysSinceStream > 7 ? '#ffaa00' : '#35d08a';
 
     content.innerHTML = `
       <div style="position: relative; margin-bottom: 20px;">
-        <div style="position: absolute; top: 0; left: 0; right: 0; height: 120px; background-image: url('${sub.profileImageUrl || ''}'); background-size: cover; background-position: center; filter: blur(40px); opacity: 0.3; border-radius: 8px;"></div>
+        <div style="position: absolute; top: 0; left: 0; right: 0; height: 120px; background-image: url('${sub.profileImageUrl || ''}'); background-size: cover; background-position: center; filter: blur(40px); opacity: 0.3; border-radius: var(--radius-md);"></div>
         <div style="position: relative; text-align: center; padding: 20px 0;">
           <div style="position: relative; display: inline-block;">
-            <img src="${sub.profileImageUrl || ''}" alt="${sub.displayName}" style="width: 100px; height: 100px; border-radius: 50%; border: 4px solid var(--bg-primary); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);">
-            ${isLive ? '<div style="position: absolute; bottom: 5px; right: 5px; width: 20px; height: 20px; background: #ff0000; border: 3px solid var(--bg-primary); border-radius: 50%; box-shadow: 0 0 10px rgba(255, 0, 0, 0.8);"></div>' : ''}
+            <img src="${sub.profileImageUrl || ''}" alt="${sub.displayName}" style="width: 100px; height: 100px; border-radius: var(--radius-circle); border: 4px solid var(--bg-primary); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);">
+            ${isLive ? '<div style="position: absolute; bottom: 5px; right: 5px; width: 20px; height: 20px; background: #ff0000; border: 3px solid var(--bg-primary); border-radius: var(--radius-circle); box-shadow: 0 0 10px rgba(255, 0, 0, 0.8);"></div>' : ''}
           </div>
           <h2 style="color: var(--text-primary); font-size: 24px; font-weight: 700; margin: 12px 0 4px;">${sub.displayName}</h2>
           <p style="color: var(--text-secondary); font-size: 14px; margin: 0 0 8px;">@${sub.login}</p>
@@ -662,8 +662,8 @@ class SubscriptionsPage {
             <p id="channel-description" style="color: var(--text-secondary); font-size: 13px; line-height: 1.4; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${sub.description}</p>
             <button id="show-more-desc" style="display: none; background: none; border: none; color: var(--accent-color); font-size: 12px; cursor: pointer; margin: 4px auto 0; padding: 0;"></button>
           </div>` : ''}
-          ${isLive ? `<div style="display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; padding: 4px 12px; background: rgba(255, 0, 0, 0.15); border: 1px solid rgba(255, 0, 0, 0.3); border-radius: 20px; font-size: 12px; font-weight: 600; color: #ff4444;">
-            <span style="width: 8px; height: 8px; background: #ff0000; border-radius: 50%; animation: pulse-live 2s ease-in-out infinite;"></span>
+          ${isLive ? `<div style="display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; padding: 4px 12px; background: rgba(255, 0, 0, 0.15); border: 1px solid rgba(255, 0, 0, 0.3); border-radius: var(--radius-md); font-size: 12px; font-weight: 600; color: #ff4444;">
+            <span style="width: 8px; height: 8px; background: #ff0000; border-radius: var(--radius-circle); animation: pulse-live 2s ease-in-out infinite;"></span>
             <span>В эфире</span>
             ${sub.gameName ? `<span style="opacity: 0.7;">• ${sub.gameName}</span>` : ''}
           </div>` : ''}
@@ -671,7 +671,7 @@ class SubscriptionsPage {
       </div>
 
       <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px;">
-        <div style="padding: 16px; background: linear-gradient(135deg, rgba(0, 229, 122, 0.1) 0%, rgba(0, 229, 122, 0.05) 100%); border: 1px solid rgba(0, 229, 122, 0.2); border-radius: 10px; text-align: center;">
+        <div style="padding: 16px; background: rgba(53, 208, 138, 0.1); border: 1px solid rgba(53, 208, 138, 0.2); border-radius: var(--radius-md); text-align: center;">
           <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">${this.i18n.t('subscriptions.rating')}</div>
           <div style="font-size: 24px; font-weight: 700; color: ${ratingColor};">
             ${Math.round(sub.rating)}
@@ -679,20 +679,20 @@ class SubscriptionsPage {
           <div style="font-size: 10px; color: var(--text-secondary); margin-top: 4px;">${sub.rating >= 70 ? this.i18n.t('subscriptions.excellent') : sub.rating >= 40 ? this.i18n.t('subscriptions.average') : this.i18n.t('subscriptions.low')}</div>
         </div>
         
-        <div style="padding: 16px; background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(59, 130, 246, 0.05) 100%); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: 10px; text-align: center;">
+        <div style="padding: 16px; background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: var(--radius-md); text-align: center;">
           <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">${this.i18n.t('subscriptions.followers')}</div>
           <div style="font-size: 24px; font-weight: 700; color: var(--accent-color);">${this.formatFollowers(sub.followers || 0)}</div>
           <div style="font-size: 10px; color: var(--text-secondary); margin-top: 4px;">${(sub.followers || 0).toLocaleString()}</div>
         </div>
         
-        <div style="padding: 16px; background: linear-gradient(135deg, rgba(168, 85, 247, 0.1) 0%, rgba(168, 85, 247, 0.05) 100%); border: 1px solid rgba(168, 85, 247, 0.2); border-radius: 10px; text-align: center;">
+        <div style="padding: 16px; background: rgba(168, 85, 247, 0.1); border: 1px solid rgba(168, 85, 247, 0.2); border-radius: var(--radius-md); text-align: center;">
           <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">${this.i18n.t('subscriptions.activity')}</div>
           <div style="font-size: 20px; margin-bottom: 2px;">${activityIcon}</div>
           <div style="font-size: 13px; font-weight: 600; color: ${activityColor};">${activityStatus}</div>
         </div>
       </div>
 
-      <div style="padding: 16px; background: var(--bg-secondary); border-radius: 10px; margin-bottom: 16px;">
+      <div style="padding: 16px; background: var(--bg-secondary); border-radius: var(--radius-md); margin-bottom: 16px;">
         <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--text-secondary);">
             <circle cx="12" cy="12" r="10"/>
@@ -703,10 +703,10 @@ class SubscriptionsPage {
         <div style="font-size: 14px; font-weight: 600; color: var(--text-primary);">${this.getLastStreamText(sub.lastStreamDate)}</div>
       </div>
 
-      ${sub.hasDrops ? `<div style="padding: 16px; background: linear-gradient(135deg, rgba(145, 71, 255, 0.15) 0%, rgba(145, 71, 255, 0.05) 100%); border: 1px solid rgba(145, 71, 255, 0.3); border-radius: 10px; display: flex; align-items: center; gap: 12px; margin-bottom: 16px;"><div style="font-size: 24px;">💎</div><div><div style="font-size: 13px; font-weight: 600; color: var(--text-primary);">${this.i18n.t('subscriptions.dropsAvailable')}</div><div style="font-size: 11px; color: var(--text-secondary); margin-top: 2px;">${this.i18n.t('subscriptions.canGetRewards')}</div></div></div>` : ''}
+      ${sub.hasDrops ? `<div style="padding: 16px; background: rgba(124, 92, 255, 0.15); border: 1px solid rgba(124, 92, 255, 0.3); border-radius: var(--radius-md); display: flex; align-items: center; gap: 12px; margin-bottom: 16px;"><div style="font-size: 24px;">💎</div><div><div style="font-size: 13px; font-weight: 600; color: var(--text-primary);">${this.i18n.t('subscriptions.dropsAvailable')}</div><div style="font-size: 11px; color: var(--text-secondary); margin-top: 2px;">${this.i18n.t('subscriptions.canGetRewards')}</div></div></div>` : ''}
 
       <div style="display: flex; gap: 10px;">
-        <button class="modal-btn modal-btn-primary" id="farm-channel-detail-btn" style="flex: 1; padding: 12px; background: linear-gradient(135deg, var(--accent-color) 0%, #7c3aed 100%); border: none; border-radius: 8px; color: white; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s; box-shadow: 0 2px 8px rgba(145, 71, 255, 0.3);">
+        <button class="modal-btn modal-btn-primary" id="farm-channel-detail-btn" style="flex: 1; padding: 12px; background: var(--accent-color); border: none; border-radius: var(--radius-md); color: white; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s; box-shadow: none;">
           <div style="display: flex; align-items: center; justify-content: center; gap: 8px;">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
               <path d="M12 2L2 7v10c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-10-5z"/>
@@ -714,12 +714,12 @@ class SubscriptionsPage {
             <span>${this.i18n.t('subscriptions.startFarming')}</span>
           </div>
         </button>
-        <button class="modal-btn modal-btn-secondary" id="view-twitch-btn" style="padding: 12px 16px; background: rgba(145, 71, 255, 0.1); border: 1px solid rgba(145, 71, 255, 0.3); border-radius: 8px; color: var(--accent-color); font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s;">
+        <button class="modal-btn modal-btn-secondary" id="view-twitch-btn" style="padding: 12px 16px; background: rgba(124, 92, 255, 0.1); border: 1px solid rgba(124, 92, 255, 0.3); border-radius: var(--radius-md); color: var(--accent-color); font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s;">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
             <path d="M11.571 4.714h1.715v5.143H11.57zm4.715 0H18v5.143h-1.714zM6 0L1.714 4.286v15.428h5.143V24l4.286-4.286h3.428L22.286 12V0zm14.571 11.143l-3.428 3.428h-3.429l-3 3v-3H6.857V1.714h13.714z"/>
           </svg>
         </button>
-        <button class="modal-btn modal-btn-danger" id="unsub-channel-detail-btn" style="padding: 12px 16px; background: rgba(255, 107, 107, 0.1); border: 1px solid rgba(255, 107, 107, 0.3); border-radius: 8px; color: #ff6b6b; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s;">
+        <button class="modal-btn modal-btn-danger" id="unsub-channel-detail-btn" style="padding: 12px 16px; background: rgba(255, 107, 107, 0.1); border: 1px solid rgba(255, 107, 107, 0.3); border-radius: var(--radius-md); color: #f0555f; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s;">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
             <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
           </svg>
@@ -749,10 +749,10 @@ class SubscriptionsPage {
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
       }
       .modal-btn-primary:hover {
-        box-shadow: 0 4px 16px rgba(145, 71, 255, 0.5) !important;
+        box-shadow: none;
       }
       .modal-btn-secondary:hover {
-        background: rgba(145, 71, 255, 0.2);
+        background: rgba(124, 92, 255, 0.2);
       }
       .modal-btn-danger:hover {
         background: rgba(255, 107, 107, 0.2);
@@ -882,8 +882,8 @@ class SubscriptionsPage {
   async unsubscribeChannel(sub) {
     const modalHtml = `
       <div style="text-align: center;">
-        <div style="width: 80px; height: 80px; margin: 0 auto 20px; background: linear-gradient(135deg, rgba(255, 107, 107, 0.2), rgba(255, 107, 107, 0.05)); border-radius: 50%; display: flex; align-items: center; justify-content: center;">
-          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#FF6B6B" stroke-width="2">
+        <div style="width: 80px; height: 80px; margin: 0 auto 20px; background: rgba(255, 107, 107, 0.2); border-radius: var(--radius-circle); display: flex; align-items: center; justify-content: center;">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#f0555f" stroke-width="2">
             <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>
             <rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect>
             <line x1="10" y1="11" x2="10" y2="17"></line>

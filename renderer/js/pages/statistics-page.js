@@ -315,7 +315,7 @@ class StatisticsPage {
                data-category="${cat.name}"
                data-game-id="${gameId}"
                title="${cat.name}"
-               onerror="this.style.background='linear-gradient(135deg, rgba(145, 71, 255, 0.2), rgba(145, 71, 255, 0.05))'; this.style.opacity='0.6';">
+               onerror="this.style.background='rgba(124, 92, 255, 0.2)'; this.style.opacity='0.6';">
         </div>`;
     });
 
@@ -469,7 +469,7 @@ class StatisticsPage {
       
       div.style.transition = 'all 0.2s';
       div.addEventListener('mouseenter', () => {
-        div.style.background = 'rgba(145, 71, 255, 0.08)';
+        div.style.background = 'rgba(124, 92, 255, 0.08)';
         this.showBandwidthGraph(div, bandwidthHistory, idx);
       });
       div.addEventListener('mouseleave', () => {
@@ -514,11 +514,11 @@ class StatisticsPage {
     
     // Рисуем фон градиента
     const gradient = ctx.createLinearGradient(0, padding, 0, height - padding);
-    gradient.addColorStop(0, 'rgba(145, 71, 255, 0.2)');
-    gradient.addColorStop(1, 'rgba(145, 71, 255, 0.02)');
+    gradient.addColorStop(0, 'rgba(124, 92, 255, 0.2)');
+    gradient.addColorStop(1, 'rgba(124, 92, 255, 0.02)');
     
     // Рисуем линию
-    ctx.strokeStyle = 'rgb(145, 71, 255)';  // Твитч фиолетовый
+    ctx.strokeStyle = 'rgb(124, 92, 255)';  // Твитч фиолетовый
     ctx.fillStyle = gradient;
     ctx.lineWidth = 2;
     ctx.lineCap = 'round';
@@ -547,7 +547,7 @@ class StatisticsPage {
     ctx.fill();
     
     // Рисуем линию поверх
-    ctx.strokeStyle = 'rgb(145, 71, 255)';
+    ctx.strokeStyle = 'rgb(124, 92, 255)';
     ctx.beginPath();
     data.forEach((value, i) => {
       const x = padding + i * pointSpacing;
@@ -563,7 +563,7 @@ class StatisticsPage {
     ctx.stroke();
     
     // Рисуем точки
-    ctx.fillStyle = 'rgb(145, 71, 255)';
+    ctx.fillStyle = 'rgb(124, 92, 255)';
     data.forEach((value, i) => {
       const x = padding + i * pointSpacing;
       const normalizedValue = (value - minBw) / range;

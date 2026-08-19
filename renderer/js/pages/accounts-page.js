@@ -52,7 +52,7 @@ function renderAccounts(accounts) {
   container.innerHTML = accounts.map(account => {
     const lastLogin = account.lastLogin ? new Date(account.lastLogin).toLocaleString() : 'Never';
     const avatarContent = account.avatar 
-      ? `<img src="${account.avatar}" alt="${account.username}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">` 
+      ? `<img src="${account.avatar}" alt="${account.username}" style="width: 100%; height: 100%; border-radius: var(--radius-circle); object-fit: cover;">` 
       : account.username.charAt(0).toUpperCase();
     
     // Проверяем статус аккаунта: активен только если OAuth авторизация
@@ -80,13 +80,13 @@ function renderAccounts(accounts) {
           ${account.loginMethod === 'oauth' ? 'OAuth' : 'Cookies'} •
           Last: ${lastLogin}
         </div>
-        ${!isActive ? `<div style="font-size: 12px; color: #ff9147; margin-top: 6px;">
+        ${!isActive ? `<div style="font-size: 12px; color: #f0a83c; margin-top: 6px;">
           ⚠️ ${i18n.t('accounts.requiresOAuthWarning')}
         </div>` : ''}
-        ${isActive && !isTwitchLoggedIn ? `<div style="font-size: 12px; color: #ff9147; margin-top: 6px;">
+        ${isActive && !isTwitchLoggedIn ? `<div style="font-size: 12px; color: #f0a83c; margin-top: 6px;">
           ⚠️ ${i18n.t('accounts.requiresTwitchLoginWarning')}
         </div>` : ''}
-        ${tokenExpiringSoon ? `<div style="font-size: 12px; color: #ff9147; margin-top: 6px;">
+        ${tokenExpiringSoon ? `<div style="font-size: 12px; color: #f0a83c; margin-top: 6px;">
           ⏰ ${i18n.t('accounts.tokenExpiresOn')} ${new Date(account.oauthExpiresAt).toLocaleDateString()}
         </div>` : ''}
       </div>
@@ -151,7 +151,7 @@ function renderAccounts(accounts) {
       
       const confirmed = await window.utils.showCustomConfirmation(`
         <div style="text-align: center;">
-          <div style="width: 80px; height: 80px; margin: 0 auto 20px; background: linear-gradient(135deg, rgba(255, 159, 67, 0.2), rgba(255, 159, 67, 0.05)); border-radius: 50%; display: flex; align-items: center; justify-content: center;">
+          <div style="width: 80px; height: 80px; margin: 0 auto 20px; background: rgba(255, 159, 67, 0.2); border-radius: var(--radius-circle); display: flex; align-items: center; justify-content: center;">
             <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#FF9F43" stroke-width="2">
               <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
               <polyline points="16 17 21 12 16 7"/>
@@ -161,7 +161,7 @@ function renderAccounts(accounts) {
           <h3 style="font-size: 20px; font-weight: 600; color: var(--text-primary); margin-bottom: 12px;">Выйти из Twitch?</h3>
           <p style="font-size: 14px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 0;">
             Вы уверены, что хотите выйти из аккаунта <strong style="color: var(--text-primary);">${username}</strong>?<br>
-            <span style="color: #ff9147;">⚠️ Для фарминга дропсов потребуется снова войти</span>
+            <span style="color: #f0a83c;">⚠️ Для фарминга дропсов потребуется снова войти</span>
           </p>
         </div>
       `, {
@@ -232,8 +232,8 @@ function renderAccounts(accounts) {
       // Show custom confirmation modal
       const modalHtml = `
         <div style="text-align: center;">
-          <div style="width: 80px; height: 80px; margin: 0 auto 20px; background: linear-gradient(135deg, rgba(255, 107, 107, 0.2), rgba(255, 107, 107, 0.05)); border-radius: 50%; display: flex; align-items: center; justify-content: center;">
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#FF6B6B" stroke-width="2">
+          <div style="width: 80px; height: 80px; margin: 0 auto 20px; background: rgba(255, 107, 107, 0.2); border-radius: var(--radius-circle); display: flex; align-items: center; justify-content: center;">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#f0555f" stroke-width="2">
               <path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14z"/>
               <line x1="10" y1="11" x2="10" y2="17"/>
               <line x1="14" y1="11" x2="14" y2="17"/>
@@ -408,7 +408,7 @@ async function handleTwitchWebLogin(username) {
         </button>
       </div>
       <div class="auth-modal-body">
-        <div style="background: rgba(145, 71, 255, 0.1); border: 1px solid rgba(145, 71, 255, 0.3); border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+        <div style="background: rgba(124, 92, 255, 0.1); border: 1px solid rgba(124, 92, 255, 0.3); border-radius: var(--radius-md); padding: 16px; margin-bottom: 20px;">
           <div style="font-weight: 600; margin-bottom: 8px; color: var(--text-primary);">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="vertical-align: middle; margin-right: 6px;">
               <circle cx="12" cy="12" r="10" stroke-width="2"/>
@@ -425,7 +425,7 @@ async function handleTwitchWebLogin(username) {
           <div style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin-bottom: 12px;">
             ${i18n.t('accounts.loginThroughBrowser')}
           </div>
-          <div style="border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden; height: 500px; background: white;">
+          <div style="border: 1px solid var(--border-color); border-radius: var(--radius-md); overflow: hidden; height: 500px; background: white;">
             <webview id="twitch-login-webview" 
                      src="https://www.twitch.tv/login" 
                      style="width: 100%; height: 100%;"
@@ -573,7 +573,7 @@ async function handleTwitchWebLogin(username) {
     const result = await checkTwitchLogin();
     
     if (!result) {
-      statusDiv.innerHTML = '<span style="color: #ff9147;">⚠️ Войдите в Twitch в окне выше и попробуйте снова</span>';
+      statusDiv.innerHTML = '<span style="color: #f0a83c;">⚠️ Войдите в Twitch в окне выше и попробуйте снова</span>';
       checkBtn.disabled = false;
     }
   });
@@ -608,7 +608,7 @@ async function handleWebLoginForNewAccount() {
         </button>
       </div>
       <div class="auth-modal-body">
-        <div style="background: rgba(145, 71, 255, 0.1); border: 1px solid rgba(145, 71, 255, 0.3); border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+        <div style="background: rgba(124, 92, 255, 0.1); border: 1px solid rgba(124, 92, 255, 0.3); border-radius: var(--radius-md); padding: 16px; margin-bottom: 20px;">
           <div style="font-weight: 600; margin-bottom: 8px; color: var(--text-primary);">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="vertical-align: middle; margin-right: 6px;">
               <circle cx="12" cy="12" r="10" stroke-width="2"/>
@@ -626,7 +626,7 @@ async function handleWebLoginForNewAccount() {
           <div style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin-bottom: 12px;">
             Войдите в Twitch:
           </div>
-          <div style="border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden; height: 500px; background: white;">
+          <div style="border: 1px solid var(--border-color); border-radius: var(--radius-md); overflow: hidden; height: 500px; background: white;">
             <webview id="twitch-login-webview" 
                      src="https://www.twitch.tv/login" 
                      style="width: 100%; height: 100%;"
@@ -695,7 +695,7 @@ async function handleWebLoginForNewAccount() {
       }
       
       console.log('✅ User is logged in!');
-      statusDiv.innerHTML = '<span style="color: #00e57a;">✅ Авторизация обнаружена! Получаем данные аккаунта...</span>';
+      statusDiv.innerHTML = '<span style="color: #35d08a;">✅ Авторизация обнаружена! Получаем данные аккаунта...</span>';
       
       // Получаем имя пользователя
       const userData = await webview.executeJavaScript(`
@@ -709,7 +709,7 @@ async function handleWebLoginForNewAccount() {
       `);
       
       if (!userData || !userData.username) {
-        statusDiv.innerHTML = '<span style="color: #ff9147;">⚠️ Не удалось получить имя пользователя</span>';
+        statusDiv.innerHTML = '<span style="color: #f0a83c;">⚠️ Не удалось получить имя пользователя</span>';
         return false;
       }
       
@@ -720,7 +720,7 @@ async function handleWebLoginForNewAccount() {
       const accountExists = existingAccounts.some(acc => acc.username.toLowerCase() === userData.username.toLowerCase());
       
       if (accountExists) {
-        statusDiv.innerHTML = `<span style="color: #ff9147;">⚠️ Аккаунт ${userData.username} уже добавлен</span>`;
+        statusDiv.innerHTML = `<span style="color: #f0a83c;">⚠️ Аккаунт ${userData.username} уже добавлен</span>`;
         window.utils.showToast(`Аккаунт ${userData.username} уже существует`, 'warning');
         setTimeout(() => closeModal(), 2000);
         return true;
@@ -739,7 +739,7 @@ async function handleWebLoginForNewAccount() {
       await Storage.saveAccount(newAccount);
       await loadAndRenderAccounts();
       
-      statusDiv.innerHTML = `<span style="color: #00e57a;">✅ Аккаунт ${userData.username} успешно добавлен!</span>`;
+      statusDiv.innerHTML = `<span style="color: #35d08a;">✅ Аккаунт ${userData.username} успешно добавлен!</span>`;
       window.utils.showToast(`Аккаунт ${userData.username} добавлен!`, 'success');
       
       setTimeout(() => closeModal(), 1500);
@@ -747,7 +747,7 @@ async function handleWebLoginForNewAccount() {
       
     } catch (error) {
       console.error('Error checking login:', error);
-      statusDiv.innerHTML = '<span style="color: #ff4757;">❌ Ошибка проверки авторизации</span>';
+      statusDiv.innerHTML = '<span style="color: #f0555f;">❌ Ошибка проверки авторизации</span>';
       return false;
     }
   };
@@ -766,7 +766,7 @@ async function handleWebLoginForNewAccount() {
     const result = await checkAndAddAccount();
     
     if (!result) {
-      statusDiv.innerHTML = '<span style="color: #ff9147;">⚠️ Войдите в Twitch в окне выше и попробуйте снова</span>';
+      statusDiv.innerHTML = '<span style="color: #f0a83c;">⚠️ Войдите в Twitch в окне выше и попробуйте снова</span>';
       checkBtn.disabled = false;
     }
   });
@@ -853,18 +853,18 @@ async function handleCookiesLogin() {
 // Show account details modal
 function showAccountDetailsModal(account) {
   const avatarContent = account.avatar 
-    ? `<img src="${account.avatar}" alt="${account.username}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">` 
-    : `<div style="width: 100%; height: 100%; border-radius: 50%; background: linear-gradient(135deg, #9147ff, #772ce8); display: flex; align-items: center; justify-content: center; font-size: 48px; font-weight: 600; color: white;">${account.username.charAt(0).toUpperCase()}</div>`;
+    ? `<img src="${account.avatar}" alt="${account.username}" style="width: 100%; height: 100%; border-radius: var(--radius-circle); object-fit: cover;">` 
+    : `<div style="width: 100%; height: 100%; border-radius: var(--radius-circle); background: #7c5cff; display: flex; align-items: center; justify-content: center; font-size: 48px; font-weight: 600; color: white;">${account.username.charAt(0).toUpperCase()}</div>`;
   
   const isActive = account.loginMethod === 'oauth';
   const isTwitchLoggedIn = account.twitchLoggedIn || false;
   const tokenExpiringSoon = isActive && account.oauthExpiresAt && (new Date(account.oauthExpiresAt).getTime() - Date.now() < 7 * 24 * 60 * 60 * 1000);
   
   const statusBadge = (isActive && isTwitchLoggedIn) 
-    ? `<div style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; background: rgba(0, 229, 122, 0.15); color: #00E57A; border-radius: 20px; font-size: 13px; font-weight: 600;"><span style="width: 8px; height: 8px; background: #00E57A; border-radius: 50%;"></span>${i18n.t('accounts.active')}</div>`
+    ? `<div style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; background: rgba(53, 208, 138, 0.15); color: #35d08a; border-radius: var(--radius-md); font-size: 13px; font-weight: 600;"><span style="width: 8px; height: 8px; background: #35d08a; border-radius: var(--radius-circle);"></span>${i18n.t('accounts.active')}</div>`
     : tokenExpiringSoon
-    ? `<div style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; background: rgba(255, 159, 67, 0.15); color: #FF9F43; border-radius: 20px; font-size: 13px; font-weight: 600;"><span style="width: 8px; height: 8px; background: #FF9F43; border-radius: 50%;"></span>${i18n.t('accounts.tokenExpires')}</div>`
-    : '<div style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; background: rgba(255, 107, 107, 0.15); color: #FF6B6B; border-radius: 20px; font-size: 13px; font-weight: 600;"><span style="width: 8px; height: 8px; background: #FF6B6B; border-radius: 50%;"></span>Требует действий</div>';
+    ? `<div style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; background: rgba(255, 159, 67, 0.15); color: #FF9F43; border-radius: var(--radius-md); font-size: 13px; font-weight: 600;"><span style="width: 8px; height: 8px; background: #FF9F43; border-radius: var(--radius-circle);"></span>${i18n.t('accounts.tokenExpires')}</div>`
+    : '<div style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; background: rgba(255, 107, 107, 0.15); color: #f0555f; border-radius: var(--radius-md); font-size: 13px; font-weight: 600;"><span style="width: 8px; height: 8px; background: #f0555f; border-radius: var(--radius-circle);"></span>Требует действий</div>';
 
   const addedDate = new Date(account.addedAt);
   const lastLoginDate = account.lastLogin ? new Date(account.lastLogin) : null;
@@ -888,7 +888,7 @@ function showAccountDetailsModal(account) {
       <div class="auth-modal-body" style="padding: 0;">
         <!-- Avatar and Name Section -->
         <div style="display: flex; flex-direction: column; align-items: center; gap: 16px; margin-bottom: 32px;">
-          <div style="width: 120px; height: 120px; border-radius: 50%; overflow: hidden; box-shadow: 0 8px 32px rgba(145, 71, 255, 0.25); border: 4px solid var(--card-bg);">
+          <div style="width: 120px; height: 120px; border-radius: var(--radius-circle); overflow: hidden; box-shadow: none; border: 4px solid var(--card-bg);">
             ${avatarContent}
           </div>
           <div style="text-align: center;">
@@ -901,9 +901,9 @@ function showAccountDetailsModal(account) {
         <!-- Details Grid -->
         <div style="display: grid; gap: 16px;">
           ${account.email ? `
-          <div class="detail-row clickable" data-copy="${account.email}" style="display: flex; align-items: center; gap: 12px; padding: 16px; background: var(--input-bg); border-radius: 12px; border: 1px solid var(--border-color);">
-            <div style="width: 40px; height: 40px; background: linear-gradient(135deg, rgba(145, 71, 255, 0.15), rgba(119, 44, 232, 0.05)); border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9147ff" stroke-width="2">
+          <div class="detail-row clickable" data-copy="${account.email}" style="display: flex; align-items: center; gap: 12px; padding: 16px; background: var(--input-bg); border-radius: var(--radius-md); border: 1px solid var(--border-color);">
+            <div style="width: 40px; height: 40px; background: rgba(124, 92, 255, 0.15); border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#7c5cff" stroke-width="2">
                 <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
                 <polyline points="22,6 12,13 2,6"/>
               </svg>
@@ -919,9 +919,9 @@ function showAccountDetailsModal(account) {
           </div>
           ` : ''}
 
-          <div class="detail-row" style="display: flex; align-items: center; gap: 12px; padding: 16px; background: var(--input-bg); border-radius: 12px; border: 1px solid var(--border-color);">
-            <div style="width: 40px; height: 40px; background: linear-gradient(135deg, rgba(0, 229, 122, 0.15), rgba(0, 229, 122, 0.05)); border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00E57A" stroke-width="2">
+          <div class="detail-row" style="display: flex; align-items: center; gap: 12px; padding: 16px; background: var(--input-bg); border-radius: var(--radius-md); border: 1px solid var(--border-color);">
+            <div style="width: 40px; height: 40px; background: rgba(53, 208, 138, 0.15); border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#35d08a" stroke-width="2">
                 <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
               </svg>
             </div>
@@ -931,8 +931,8 @@ function showAccountDetailsModal(account) {
             </div>
           </div>
 
-          <div class="detail-row" style="display: flex; align-items: center; gap: 12px; padding: 16px; background: var(--input-bg); border-radius: 12px; border: 1px solid var(--border-color);">
-            <div style="width: 40px; height: 40px; background: linear-gradient(135deg, rgba(255, 159, 67, 0.15), rgba(255, 159, 67, 0.05)); border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+          <div class="detail-row" style="display: flex; align-items: center; gap: 12px; padding: 16px; background: var(--input-bg); border-radius: var(--radius-md); border: 1px solid var(--border-color);">
+            <div style="width: 40px; height: 40px; background: rgba(255, 159, 67, 0.15); border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FF9F43" stroke-width="2">
                 <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
                 <line x1="16" y1="2" x2="16" y2="6"/>
@@ -947,8 +947,8 @@ function showAccountDetailsModal(account) {
           </div>
 
           ${lastLoginDate ? `
-          <div class="detail-row" style="display: flex; align-items: center; gap: 12px; padding: 16px; background: var(--input-bg); border-radius: 12px; border: 1px solid var(--border-color);">
-            <div style="width: 40px; height: 40px; background: linear-gradient(135deg, rgba(0, 224, 255, 0.15), rgba(0, 224, 255, 0.05)); border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+          <div class="detail-row" style="display: flex; align-items: center; gap: 12px; padding: 16px; background: var(--input-bg); border-radius: var(--radius-md); border: 1px solid var(--border-color);">
+            <div style="width: 40px; height: 40px; background: rgba(0, 224, 255, 0.15); border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00E0FF" stroke-width="2">
                 <circle cx="12" cy="12" r="10"/>
                 <polyline points="12 6 12 12 16 14"/>
@@ -962,9 +962,9 @@ function showAccountDetailsModal(account) {
           ` : ''}
 
           ${oauthExpiryDate && isActive ? `
-          <div class="detail-row" style="display: flex; align-items: center; gap: 12px; padding: 16px; background: var(--input-bg); border-radius: 12px; border: 1px solid var(--border-color);">
-            <div style="width: 40px; height: 40px; background: linear-gradient(135deg, ${tokenExpiringSoon ? 'rgba(255, 159, 67, 0.15), rgba(255, 159, 67, 0.05)' : 'rgba(145, 71, 255, 0.15), rgba(119, 44, 232, 0.05)'}); border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="${tokenExpiringSoon ? '#FF9F43' : '#9147ff'}" stroke-width="2">
+          <div class="detail-row" style="display: flex; align-items: center; gap: 12px; padding: 16px; background: var(--input-bg); border-radius: var(--radius-md); border: 1px solid var(--border-color);">
+            <div style="width: 40px; height: 40px; background: linear-gradient(135deg, ${tokenExpiringSoon ? 'rgba(255, 159, 67, 0.15), rgba(255, 159, 67, 0.05)' : 'rgba(124, 92, 255, 0.15), rgba(107, 73, 240, 0.05)'}); border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="${tokenExpiringSoon ? '#FF9F43' : '#7c5cff'}" stroke-width="2">
                 <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M13.8 12H3"/>
               </svg>
             </div>
@@ -976,7 +976,7 @@ function showAccountDetailsModal(account) {
           ` : ''}
 
           ${!isActive || !isTwitchLoggedIn ? `
-          <div style="margin-top: 8px; padding: 16px; background: rgba(255, 159, 67, 0.1); border-radius: 12px; border: 1px solid rgba(255, 159, 67, 0.3);">
+          <div style="margin-top: 8px; padding: 16px; background: rgba(255, 159, 67, 0.1); border-radius: var(--radius-md); border: 1px solid rgba(255, 159, 67, 0.3);">
             <div style="display: flex; gap: 12px; align-items: start;">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FF9F43" stroke-width="2" style="flex-shrink: 0; margin-top: 2px;">
                 <circle cx="12" cy="12" r="10"/>

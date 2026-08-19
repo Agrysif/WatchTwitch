@@ -78,7 +78,7 @@
     padding: 0 24px;
     height: 48px;
     border: 1.5px solid transparent;
-    border-radius: 12px;
+    border-radius: var(--radius-md);
     font-size: 15px;
     font-weight: 600;
     cursor: pointer;
@@ -97,15 +97,15 @@
   }
 
   .accounts-btn-primary {
-    background: linear-gradient(135deg, #9147ff 0%, #7c3aed 100%);
+    background: #7c5cff;
     color: white;
     border-color: transparent;
   }
 
   .accounts-btn-primary:hover {
-    background: linear-gradient(135deg, #a05eff 0%, #8b49ff 100%);
+    background: #a05eff;
     transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(145, 71, 255, 0.4);
+    box-shadow: none;
   }
 
   .accounts-btn-primary:active {
@@ -120,7 +120,7 @@
 
   .accounts-btn-secondary:hover {
     border-color: var(--accent-color);
-    background: rgba(145, 71, 255, 0.1);
+    background: rgba(124, 92, 255, 0.1);
     transform: translateY(-1px);
   }
 
@@ -142,14 +142,14 @@
 
   .accounts-btn-outline:hover {
     border-color: var(--accent-color);
-    background: rgba(145, 71, 255, 0.05);
+    background: rgba(124, 92, 255, 0.05);
   }
 
   .external-login-hint {
     margin-top: 24px;
     padding: 18px;
     background: var(--bg-primary);
-    border-radius: 12px;
+    border-radius: var(--radius-md);
     border: 1.5px dashed var(--border-color);
   }
 
@@ -181,7 +181,7 @@
     gap: 12px;
     padding: 20px;
     background: var(--bg-secondary);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     border: 1px solid var(--border-color);
     margin-bottom: 12px;
     transition: all 0.2s;
@@ -191,7 +191,7 @@
 
   .account-card:hover {
     border-color: var(--accent-color);
-    box-shadow: 0 4px 12px rgba(145, 71, 255, 0.15);
+    box-shadow: none;
     /* transform убран для предотвращения скролла */
   }
 
@@ -217,7 +217,7 @@
   .account-avatar {
     width: 52px;
     height: 52px;
-    border-radius: 50%;
+    border-radius: var(--radius-circle);
     background: var(--accent-color);
     display: flex;
     align-items: center;
@@ -226,7 +226,7 @@
     font-weight: 700;
     color: white;
     flex-shrink: 0;
-    border: 2px solid rgba(145, 71, 255, 0.3);
+    border: 2px solid rgba(124, 92, 255, 0.3);
   }
 
   .account-info {
@@ -254,20 +254,20 @@
     align-items: center;
     gap: 6px;
     padding: 7px 14px;
-    border-radius: 20px;
+    border-radius: var(--radius-md);
     font-size: 13px;
     font-weight: 600;
     white-space: nowrap;
   }
 
   .account-status.connected {
-    background: rgba(0, 245, 147, 0.15);
+    background: rgba(53, 208, 138, 0.15);
     color: var(--success-color);
   }
   
   .account-status.warning {
     background: rgba(255, 145, 71, 0.15);
-    color: #ff9147;
+    color: #f0a83c;
   }
 
   .account-status.disconnected {
@@ -294,7 +294,7 @@
     padding: 0;
     background: var(--bg-tertiary);
     border: 1.5px solid var(--border-color);
-    border-radius: 10px;
+    border-radius: var(--radius-md);
     color: var(--text-secondary);
     cursor: pointer;
     transition: all 0.2s;
@@ -314,23 +314,23 @@
   }
   
   .account-btn.activate {
-    border-color: rgba(0, 245, 147, 0.4);
+    border-color: rgba(53, 208, 138, 0.4);
   }
   
   .account-btn.activate:hover {
     border-color: var(--success-color);
     color: var(--success-color);
-    background: rgba(0, 245, 147, 0.1);
+    background: rgba(53, 208, 138, 0.1);
   }
   
   .account-btn.login-twitch {
-    border-color: rgba(145, 71, 255, 0.5);
+    border-color: rgba(124, 92, 255, 0.5);
   }
   
   .account-btn.login-twitch:hover {
     border-color: var(--accent-color);
     color: var(--accent-color);
-    background: rgba(145, 71, 255, 0.15);
+    background: rgba(124, 92, 255, 0.15);
   }
 
   .account-btn.delete:hover {
@@ -380,7 +380,7 @@
     position: relative;
     z-index: 10001;
     background: var(--card-bg);
-    border-radius: 16px;
+    border-radius: var(--radius-md);
     padding: 24px;
     width: 100%;
     max-width: 500px;
@@ -412,7 +412,7 @@
     cursor: pointer;
     color: var(--text-secondary);
     padding: 8px;
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     transition: all 0.2s ease;
     display: flex;
     align-items: center;
@@ -434,7 +434,7 @@
     cursor: pointer;
     color: var(--text-secondary);
     padding: 8px;
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     transition: all 0.2s ease;
     display: flex;
     align-items: center;
@@ -444,12 +444,12 @@
   }
 
   .modal-close-btn:hover {
-    background: rgba(145, 71, 255, 0.1);
+    background: rgba(124, 92, 255, 0.1);
     color: var(--accent-color);
   }
 
   .modal-close-btn:active {
-    background: rgba(145, 71, 255, 0.2);
+    background: rgba(124, 92, 255, 0.2);
   }
 
   .auth-modal-footer {
@@ -496,12 +496,12 @@
   }
 
   .auth-modal-body::-webkit-scrollbar-thumb {
-    background: rgba(145, 71, 255, 0.3);
-    border-radius: 3px;
+    background: rgba(124, 92, 255, 0.3);
+    border-radius: var(--radius-sm);
   }
 
   .auth-modal-body::-webkit-scrollbar-thumb:hover {
-    background: rgba(145, 71, 255, 0.5);
+    background: rgba(124, 92, 255, 0.5);
   }
 
   /* Account Details Modal */
@@ -536,7 +536,7 @@
   }
 
   .detail-row.clickable:hover {
-    background: linear-gradient(135deg, rgba(145, 71, 255, 0.1), rgba(119, 44, 232, 0.05)) !important;
+    background: rgba(124, 92, 255, 0.1) !important;
   }
 
   .close-modal:hover {

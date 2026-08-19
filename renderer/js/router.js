@@ -47,7 +47,7 @@ class Router {
         toggle.style.setProperty('background', '#4a4a4a', 'important');
       } else {
         toggle.classList.add('active');
-        toggle.style.setProperty('background', '#9147FF', 'important');
+        toggle.style.setProperty('background', '#7c5cff', 'important');
       }
 
       toggle.setAttribute('aria-pressed', (!isActive).toString());
