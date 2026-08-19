@@ -144,44 +144,14 @@ class StatisticsPage {
       let sessions = stats.sessions || [];
       console.log('Sessions from storage:', sessions.length, sessions);
       
-      // Если нет сессий, добавляем тестовые для демонстрации
-      if (sessions.length === 0) {
-        console.log('No sessions found, adding test data...');
-        
-        // Ждём каждого addSession
-        await Storage.addSession({
-          timestamp: Date.now() - 3600000,
-          duration: 60,
-          category: 'Rocket League',
-          channel: 'shroud',
-          bandwidth: 1024000,
-          bandwidthHistory: [300, 310, 295, 320, 300],
-          categoryBoxArtURL: 'https://static-cdn.jtvnw.net/ttv-boxart/30921-272x380.jpg',
-          pointsEarned: 500,
-          chestsCollected: 2,
-          dropsCollected: 1
-        });
-        console.log('Test session 1 added');
-        
-        await Storage.addSession({
-          timestamp: Date.now() - 7200000,
-          duration: 45,
-          category: 'League of Legends',
-          channel: 'doublelift',
-          bandwidth: 900000,
-          bandwidthHistory: [250, 260, 240, 270, 260],
-          categoryBoxArtURL: 'https://static-cdn.jtvnw.net/ttv-boxart/21779-272x380.jpg',
-          pointsEarned: 300,
-          chestsCollected: 1,
-          dropsCollected: 0
-        });
-        console.log('Test session 2 added');
-        
-        const updatedStats = await Storage.getStatistics();
-        sessions = updatedStats.sessions || [];
-        console.log('After adding test data, sessions:', sessions.length, sessions);
-      }
-      
+      // Демонстрационные сессии здесь больше не создаются.
+      //
+      // Раньше при пустой статистике сюда ЗАПИСЫВАЛИСЬ две выдуманные сессии
+      // (Rocket League/shroud и League of Legends/doublelift) — прямо в реальное
+      // хранилище, а не только в отображение. Они давали 800 баллов, 3 сундука
+      // и 1 дропс, которые потом навсегда смешивались с настоящей статистикой
+      // и выглядели как ошибка подсчёта.
+
       // Фильтруем сессии по периоду
       const filteredSessions = this.filterSessionsByPeriod(sessions);
       console.log('Filtered sessions count:', filteredSessions.length, filteredSessions);
