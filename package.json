@@ -51,6 +51,9 @@
       "!**/*.backup",
       "!**/*.old.js"
     ],
+    "releaseInfo": {
+      "releaseNotesFile": "RELEASE_NOTES.md"
+    },
     "publish": {
       "provider": "github",
       "owner": "Agrysif",
