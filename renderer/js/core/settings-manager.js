@@ -59,11 +59,28 @@ class SettingsManager {
   saveSettings() {
     try {
       localStorage.setItem('app_settings', JSON.stringify(this.settings));
+      this.mirrorToMainProcess();
       return true;
     } catch (error) {
       console.error('Failed to save settings:', error);
       return false;
     }
+  }
+
+  /**
+   * Дублирует настройки в electron-store.
+   *
+   * Без этого половина переключателей была декоративной: интерфейс сохранял
+   * настройки в localStorage, а main-процесс и preload читали их из
+   * electron-store — например, store.get('settings.minimizeToTray') при
+   * закрытии окна и 'settings.autoClaimDrops' в preload чата. Два хранилища
+   * никогда не пересекались, поэтому там всегда были значения по умолчанию.
+   */
+  mirrorToMainProcess() {
+    if (!window.electronAPI?.storeSet) return;
+
+    window.electronAPI.storeSet('settings', this.settings)
+      .catch(error => console.warn('[Settings] Не удалось передать настройки в main:', error?.message));
   }
 
   /**
@@ -74,16 +91,30 @@ class SettingsManager {
   }
 
   /**
+   * Разовая синхронизация при запуске: переносит уже накопленные в
+   * localStorage настройки в electron-store, иначе на существующих
+   * установках main-процесс продолжил бы видеть значения по умолчанию.
+   */
+  syncOnStartup() {
+    this.mirrorToMainProcess();
+  }
+
+  /**
    * Установить значение настройки
    */
   set(key, value) {
     const oldValue = this.settings[key];
     this.settings[key] = value;
     this.saveSettings();
-    
+
+    // Применяем сразу. Раньше applyAll() вызывался только на DOMContentLoaded,
+    // поэтому переключатели вступали в силу лишь после перезапуска приложения —
+    // со стороны это выглядело так, будто они вообще не работают.
+    this.applyAll();
+
     // Уведомляем слушателей
     this.notifyListeners(key, value, oldValue);
-    
+
     return true;
   }
 
@@ -207,4 +238,5 @@ window.settings = window.settings || new SettingsManager();
 // Применяем настройки при загрузке
 window.addEventListener('DOMContentLoaded', () => {
   window.settings.applyAll();
+  window.settings.syncOnStartup();
 });
