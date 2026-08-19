@@ -2876,3 +2876,85 @@ body.no-animations * {
 .campaign-progress-tooltip img:hover {
   box-shadow: none;
 }
+
+/* ===== БАЛЛЫ КАНАЛА =====
+ * Три метрики внутри одной карточки. Раньше каждая была обёрнута
+ * собственной рамкой с фоном — рамка в рамке давала лишний шум.
+ * Теперь колонки разделены вертикальной линией.
+ */
+.points-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  margin-top: var(--gap-base);
+}
+
+.points-cell {
+  padding: 0 16px;
+  min-width: 0;
+}
+
+.points-cell:first-child {
+  padding-left: 0;
+}
+
+.points-cell:last-child {
+  padding-right: 0;
+}
+
+.points-cell + .points-cell {
+  border-left: 1px solid var(--border-color);
+}
+
+.points-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--text-tertiary);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.points-head svg {
+  flex-shrink: 0;
+}
+
+.points-value {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.points-sub {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.points-sub-accent {
+  color: var(--success-color);
+  font-weight: 500;
+}
+
+@media (max-width: 720px) {
+  .points-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .points-cell {
+    padding: 12px 0;
+  }
+
+  /* На узком экране колонки встают друг под друга — разделитель
+     тоже должен стать горизонтальным */
+  .points-cell + .points-cell {
+    border-left: none;
+    border-top: 1px solid var(--border-color);
+  }
+}
