@@ -67,7 +67,7 @@ window.showCategoryDetailsModal = async function (page, category) {
                 </svg>
                 <div style="flex: 1;">
                   <div style="font-size: 11px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px;">Зрители</div>
-                  <div style="font-size: 15px; font-weight: 700; color: var(--text-primary);">${page.formatViewersCount(category.viewersCount)}</div>
+                  <div style="font-size: 15px; font-weight: 700; color: var(--text-primary);" id="category-live-viewers">${page.formatViewersCount(category.viewersCount)}</div>
                 </div>
               </div>
               
@@ -147,7 +147,8 @@ window.showCategoryDetailsModal = async function (page, category) {
 
   // Загружаем стримы с дропсами
   try {
-    const streams = await window.electronAPI.getStreamsWithDrops(category.name);
+    const overview = await window.electronAPI.getCategoryOverview(category.name);
+    const streams = (overview?.streams || []).filter(stream => stream.hasDrops);
     const loadingEl = document.getElementById('category-streams-loading');
     const contentEl = document.getElementById('category-streams-content');
 
@@ -165,26 +166,22 @@ window.showCategoryDetailsModal = async function (page, category) {
       return;
     }
 
-    // Получаем информацию о всех стримах
-    const topStreams = streams;
-    const accounts = await Storage.getAccounts();
-    const authToken = accounts.find(acc => acc.loginMethod === 'oauth')?.authToken;
-
-    const streamsData = await Promise.all(
-      topStreams.map(async (stream) => {
-        const details = await window.electronAPI.getChannelDetails(authToken, stream.login);
-        console.log(`[CategoryModal] Stream ${stream.login}:`, { 
-          profileImageUrl: details.profileImageUrl, 
-          displayName: stream.display_name || stream.displayName,
-          merged: { ...stream, ...details }
-        });
-        return { ...stream, ...details };
-      })
-    );
+    // Аватарка и число зрителей приходят вместе со списком. Раньше на
+    // каждый канал уходил отдельный запрос getChannelDetails с OAuth-токеном:
+    // при его отсутствии или истечении аватарки просто не грузились, а
+    // зрителей у стримов не было вовсе.
+    const streamsData = streams;
 
     loadingEl.style.display = 'none';
     contentEl.style.display = 'block';
     
+    // Зрители в карточке категории могли быть сохранены давно —
+    // подменяем на свежее число из того же ответа Twitch
+    const liveViewers = document.getElementById('category-live-viewers');
+    if (liveViewers && overview.gameViewers > 0) {
+      liveViewers.textContent = page.formatViewersCount(overview.gameViewers);
+    }
+
     // Обновляем левую колонку с количеством стримеров
     const categoryInfoBlocks = document.getElementById('category-info-blocks');
     if (categoryInfoBlocks) {
@@ -196,8 +193,8 @@ window.showCategoryDetailsModal = async function (page, category) {
             <path d="M1 4h1v8H1V4zm13 0h1v8h-1V4z"/>
           </svg>
           <div style="flex: 1;">
-            <div style="font-size: 11px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px;">Стримеров онлайн</div>
-            <div style="font-size: 15px; font-weight: 700; color: var(--text-primary);">${streams.length}</div>
+            <div style="font-size: 11px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px;">Стримов с дропсами</div>
+            <div style="font-size: 15px; font-weight: 700; color: var(--text-primary);">${overview.streamsWithDrops} <span style="font-size: 11px; font-weight: 500; color: var(--text-tertiary);">из ${overview.streamsChecked} проверенных</span></div>
           </div>
         </div>
       `;

@@ -1311,18 +1311,20 @@ class FarmingPage {
         
         if (category) {
           console.log('Manual play category:', category.name);
-          // Отметка ручного запуска: пока она стоит, автопереключение
-          // этой категории не трогает
-          this.manualCategoryId = category.id;
-          this.setManualPlayLock(category);
           window.utils.showToast(`Запуск категории ${category.name}...`, 'info');
-          
+
           // Останавливаем текущий стрим если есть
           if (this.currentStream) {
             this.stopFarming();
             await new Promise(resolve => setTimeout(resolve, 1000));
           }
-          
+
+          // Отметку ручного запуска ставим ПОСЛЕ остановки: stopFarming
+          // сбрасывает её вместе с остальным состоянием сессии, и при
+          // установке до остановки защита от автопереключения молча пропадала
+          this.manualCategoryId = category.id;
+          this.setManualPlayLock(category);
+
           // Запускаем выбранную категорию
           await this.startFarmingForCategory(category);
         }
@@ -1770,6 +1772,15 @@ class FarmingPage {
   }
 
   async switchToNextEnabledCategory() {
+    // Категорию, запущенную вручную, не меняем ни по какой причине.
+    // Раньше защита стояла только в handleCategoryNoDrops, а сюда ведут
+    // и другие пути: смена игры у стримера, завершение дропсов, ошибки.
+    if (this.isManualCategoryActive()) {
+      console.log('[Ручной запуск] Смена категории отменена:', this.currentCategory?.name);
+      this.showSwitchOffer();
+      return false;
+    }
+
     console.log('switchToNextEnabledCategory called');
     console.log('Current category:', this.currentCategory);
     console.log('All categories:', this.categories.map(c => ({ name: c.name, id: c.id, enabled: c.enabled })));
@@ -2887,6 +2898,11 @@ class FarmingPage {
     }
   }
 
+  /** Идёт ли сейчас категория, которую пользователь запустил вручную. */
+  isManualCategoryActive() {
+    return !!(this.manualCategoryId && this.currentCategory?.id === this.manualCategoryId);
+  }
+
   async handleCategoryNoDrops() {
     if (!this.currentCategory) return;
 
@@ -2894,7 +2910,7 @@ class FarmingPage {
     // Прежняя блокировка срабатывала только когда включена ровно одна
     // категория и она же единственная ручная — то есть почти никогда.
     // Теперь достаточно того, что пользователь сам нажал Play.
-    if (this.manualCategoryId && this.currentCategory.id === this.manualCategoryId) {
+    if (this.isManualCategoryActive()) {
       console.log('[Ручной запуск] Дропсов нет, но категорию не меняем:', this.currentCategory.name);
       this.dropsMissingChecks = 0;
       this.showSwitchOffer();

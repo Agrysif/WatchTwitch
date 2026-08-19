@@ -2519,6 +2519,78 @@ async function hasActiveInventoryDropsForCategory(categoryName) {
   });
 }
 
+/**
+ * Сводка по категории для окна подробностей: сколько зрителей у игры,
+ * сколько стримов просмотрено и сколько из них с дропсами.
+ *
+ * Отдельный обработчик, потому что get-streams-with-drops отдаёт массив,
+ * а дополнительные свойства массива не переживают сериализацию IPC.
+ */
+ipcMain.handle('get-category-overview', async (event, categoryName) => {
+  const https = require('https');
+
+  return new Promise((resolve) => {
+    const escapedName = String(categoryName || '').replace(/"/g, '\\"');
+    const postData = JSON.stringify({
+      query:
+        'query { game(name: "' + escapedName + '") { viewersCount streams(first: 30) { edges { node { title viewersCount broadcaster { login displayName profileImageURL(width: 70) } freeformTags { name } } } } } }'
+    });
+
+    const req = https.request({
+      hostname: 'gql.twitch.tv',
+      port: 443,
+      path: '/gql',
+      method: 'POST',
+      headers: {
+        'Client-ID': 'kimne78kx3ncx6brgo4mv6wki5h1ko',
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(postData)
+      }
+    }, (res) => {
+      let data = '';
+      res.on('data', (chunk) => { data += chunk; });
+      res.on('end', () => {
+        try {
+          const game = JSON.parse(data)?.data?.game;
+          const edges = game?.streams?.edges || [];
+
+          const streams = edges.map(edge => {
+            const node = edge.node;
+            const broadcaster = node?.broadcaster;
+            if (!broadcaster) return null;
+            return {
+              login: broadcaster.login,
+              displayName: broadcaster.displayName,
+              title: node.title,
+              viewersCount: node.viewersCount || 0,
+              profileImageUrl: broadcaster.profileImageURL || null,
+              hasDrops: streamHasDropsSignal(node)
+            };
+          }).filter(Boolean);
+
+          resolve({
+            gameViewers: game?.viewersCount || 0,
+            streamsChecked: edges.length,
+            streamsWithDrops: streams.filter(s => s.hasDrops).length,
+            streams
+          });
+        } catch (e) {
+          console.log('[CategoryOverview] Ошибка разбора:', e.message);
+          resolve({ gameViewers: 0, streamsChecked: 0, streamsWithDrops: 0, streams: [] });
+        }
+      });
+    });
+
+    req.on('error', (e) => {
+      console.log('[CategoryOverview] Ошибка запроса:', e.message);
+      resolve({ gameViewers: 0, streamsChecked: 0, streamsWithDrops: 0, streams: [] });
+    });
+
+    req.write(postData);
+    req.end();
+  });
+});
+
 // Получить стримы с дропсами для категории
 ipcMain.handle('get-streams-with-drops', async (event, categoryName) => {
   const https = require('https');
@@ -2526,8 +2598,11 @@ ipcMain.handle('get-streams-with-drops', async (event, categoryName) => {
   return new Promise((resolve) => {
     const escapedName = categoryName.replace(/"/g, '\\"');
     const postData = JSON.stringify({
+      // Аватарка и зрители запрашиваются сразу здесь: окно категории раньше
+      // добирало их отдельным запросом на каждый канал, с OAuth-токеном —
+      // при его отсутствии аватарки не грузились вовсе.
       query:
-        'query { game(name: "' + escapedName + '") { streams(first: 20) { edges { node { title broadcaster { login displayName } freeformTags { name } } } } } }'
+        'query { game(name: "' + escapedName + '") { streams(first: 30) { edges { node { title viewersCount broadcaster { login displayName profileImageURL(width: 70) } freeformTags { name } } } } } }'
     });
 
     const options = {
@@ -2562,7 +2637,9 @@ ipcMain.handle('get-streams-with-drops', async (event, categoryName) => {
             return {
               login: broadcaster.login,
               displayName: broadcaster.displayName,
-              title: edge.node.title
+              title: edge.node.title,
+              viewersCount: edge.node.viewersCount || 0,
+              profileImageUrl: broadcaster.profileImageURL || null
             };
           }).filter(stream => stream !== null);
 

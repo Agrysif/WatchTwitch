@@ -45,6 +45,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   fetchTwitchCategories: () => ipcRenderer.invoke('fetch-twitch-categories'),
   checkCategoryDrops: (categoryName) => ipcRenderer.invoke('check-category-drops', categoryName),
   getStreamsWithDrops: (categoryName) => ipcRenderer.invoke('get-streams-with-drops', categoryName),
+  getCategoryOverview: (categoryName) => ipcRenderer.invoke('get-category-overview', categoryName),
   getStreamStats: (channelLogin) => ipcRenderer.invoke('get-stream-stats', channelLogin),
   getDropsProgress: (channelLogin) => ipcRenderer.invoke('get-drops-progress', channelLogin),
   fetchTwitchDrops: () => ipcRenderer.invoke('fetch-twitch-drops'),
