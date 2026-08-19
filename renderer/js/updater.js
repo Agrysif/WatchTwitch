@@ -100,6 +100,35 @@ class UpdateManager {
         margin-bottom: 24px;
       }
 
+      .update-notes {
+        max-height: 190px;
+        overflow-y: auto;
+        text-align: left;
+        margin-bottom: 20px;
+        padding: 12px 14px;
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: var(--radius-md);
+        font-size: 12.5px;
+        line-height: 1.55;
+        color: #c9cdd6;
+      }
+
+      .update-notes-title {
+        font-weight: 600;
+        color: #e4e8ee;
+        margin-bottom: 6px;
+      }
+
+      .update-notes ul {
+        margin: 0;
+        padding-left: 18px;
+      }
+
+      .update-notes li {
+        margin-bottom: 3px;
+      }
+
       .update-version {
         font-size: 13px;
         color: #7c5cff;
@@ -232,6 +261,8 @@ class UpdateManager {
         <div class="update-subtitle" id="update-subtitle">Новая версия приложения</div>
         <div class="update-version" id="update-version-text">Загрузка информации...</div>
 
+        <div class="update-notes" id="update-notes" style="display: none;"></div>
+
         <div class="update-progress-section" id="progress-section" style="display: none;">
           <div class="update-progress-label">
             <span>Загрузка обновления</span>
@@ -275,6 +306,7 @@ class UpdateManager {
       this.updateInfo = info;
       this.showWindow();
       this.updateVersionText(info.version);
+      this.showReleaseNotes(info.releaseNotes);
     });
 
     // Прогресс загрузки
@@ -317,6 +349,54 @@ class UpdateManager {
   /**
    * Обновить текст версии
    */
+  /**
+   * Показывает список изменений из описания релиза.
+   *
+   * Описание пишется на двух языках, разделённых заголовками с флагами.
+   * Выбираем секцию под текущий язык интерфейса, а не показываем обе:
+   * иначе окно превращается в простыню.
+   */
+  showReleaseNotes(notes) {
+    const box = document.getElementById('update-notes');
+    if (!box) return;
+
+    const raw = typeof notes === 'string'
+      ? notes
+      : Array.isArray(notes)
+        ? notes.map(n => (typeof n === 'string' ? n : n?.note || '')).join('\n')
+        : '';
+
+    if (!raw.trim()) {
+      box.style.display = 'none';
+      return;
+    }
+
+    const isRussian = (window.i18n?.currentLang || 'ru') === 'ru';
+    const sections = raw.split(/^##\s+/m).filter(Boolean);
+
+    let chosen = sections.find(part => isRussian
+      ? /^\s*(🇷🇺|Что нового)/i.test(part)
+      : /^\s*(🇬🇧|What)/i.test(part));
+
+    if (!chosen) chosen = sections[0] || raw;
+
+    const lines = chosen.split('\n').map(l => l.trim()).filter(Boolean);
+    const title = lines.shift() || '';
+    const items = lines
+      .filter(l => l.startsWith('-') || l.startsWith('*'))
+      .map(l => l.replace(/^[-*]\s*/, ''));
+
+    // Разметку собираем сами: описание релиза — внешний текст,
+    // вставлять его как HTML нельзя
+    const escape = (text) => text.replace(/[&<>"']/g, ch => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[ch]));
+
+    box.innerHTML = '<div class="update-notes-title">' + escape(title) + '</div>' +
+      (items.length ? '<ul>' + items.map(i => '<li>' + escape(i) + '</li>').join('') + '</ul>' : '');
+    box.style.display = 'block';
+  }
+
   updateVersionText(version) {
     document.getElementById('update-version-text').textContent = `Версия ${version}`;
   }
