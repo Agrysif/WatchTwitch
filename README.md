@@ -113,3 +113,8 @@ MIT License
 
 Agrysif - Egor Balashov
 Created with ❤️ for Twitch community
+
+## Выпуск обновлений
+
+Процесс релиза и правила, без которых ломается автообновление, описаны
+в [RELEASE.md](RELEASE.md).

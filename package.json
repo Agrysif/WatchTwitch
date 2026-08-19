@@ -9,7 +9,8 @@
     "build": "electron-builder",
     "build:win": "electron-builder --win",
     "build:mac": "electron-builder --mac",
-    "build:portable": "electron-builder --win portable"
+    "build:portable": "electron-builder --win portable",
+    "release": "electron-builder --win --publish always"
   },
   "keywords": [
     "twitch",
@@ -37,11 +38,24 @@
     "directories": {
       "output": "dist"
     },
+    "files": [
+      "**/*",
+      "!dist${/*}",
+      "!tools${/*}",
+      "!*.ps1",
+      "!*.sh",
+      "!*.py",
+      "!*.md",
+      "!create-icon.js",
+      "!test-updater.js",
+      "!**/*.backup",
+      "!**/*.old.js"
+    ],
     "publish": {
       "provider": "github",
       "owner": "Agrysif",
       "repo": "WatchTwitch",
-      "releaseType": "release"
+      "releaseType": "draft"
     },
     "win": {
       "target": [
@@ -61,6 +75,7 @@
       "icon": "assets/icon.icns"
     },
     "nsis": {
+      "artifactName": "${productName}-Setup-${version}.${ext}",
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "installerIcon": "assets/icon.ico",
