@@ -14,6 +14,15 @@
  */
 class SlottedWebview {
   /**
+   * Постоянный размер холста webview. Все слоты в приложении имеют
+   * соотношение 16:9, поэтому одного базового размера достаточно:
+   * меняется только масштаб, а не размеры самого webview.
+   */
+  static get BASE_SIZE() {
+    return { width: 640, height: 360 };
+  }
+
+  /**
    * @param {object} options
    * @param {string} options.logName    префикс для логов
    * @param {string} options.hostId     id контейнера-обрезателя
@@ -136,8 +145,20 @@ class SlottedWebview {
     if (!this.host || this._parked) return;
     this._parked = true;
     this._lastGeometry = '';
+
+    // Прячем, НЕ убирая за пределы экрана. Уехавший за экран элемент
+    // Chromium считает невидимым и приостанавливает — видео замирает, а
+    // сторож воспроизведения принимает это за зависание и перезагружает
+    // плеер. Именно так возникала пауза при переходе на другую вкладку.
+    // Схлопнутый до пикселя контейнер оставляет плеер живым: сам webview
+    // при этом не меняет размеров, он просто обрезан.
     this.host.style.display = 'block';
-    this.host.style.transform = 'translate(-100000px, -100000px)';
+    this.host.style.transform = '';
+    this.host.style.left = '0px';
+    this.host.style.top = '0px';
+    this.host.style.width = '1px';
+    this.host.style.height = '1px';
+    this.host.style.opacity = '0';
   }
 
   /** Ближайший предок с прокруткой — за его границы вылезать нельзя. */
@@ -259,16 +280,29 @@ class SlottedWebview {
     this._parked = false;
     this.host.style.display = 'block';
     this.host.style.transform = '';
+    this.host.style.opacity = '';
     this.host.style.left = `${left}px`;
     this.host.style.top = `${top}px`;
     this.host.style.width = `${right - left}px`;
     this.host.style.height = `${bottom - top}px`;
     this.host.style.borderRadius = window.getComputedStyle(this.slot).borderRadius || '0px';
 
-    this.webview.style.left = `${rect.left - left}px`;
-    this.webview.style.top = `${rect.top - top}px`;
-    this.webview.style.width = `${rect.width}px`;
-    this.webview.style.height = `${rect.height}px`;
+    // Размер webview НЕ меняем — только масштабируем изображение.
+    //
+    // Физическое изменение размеров webview меняет размер окна внутри него,
+    // и плеер Twitch на это заново договаривается о потоке: отсюда пауза
+    // на несколько секунд при переезде в сайдбар и обратно. Гость об этих
+    // переездах вообще не должен знать, поэтому держим ему постоянный
+    // холст и подгоняем картинку через transform.
+    const base = SlottedWebview.BASE_SIZE;
+    const scale = rect.width / base.width;
+
+    this.webview.style.width = `${base.width}px`;
+    this.webview.style.height = `${base.height}px`;
+    this.webview.style.transformOrigin = 'top left';
+    this.webview.style.transform = `translate(${rect.left - left}px, ${rect.top - top}px) scale(${scale})`;
+    this.webview.style.left = '0px';
+    this.webview.style.top = '0px';
   }
 }
 
