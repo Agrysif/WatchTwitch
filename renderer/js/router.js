@@ -358,17 +358,21 @@ class Router {
     const miniPlayerContainer = document.getElementById('sidebar-mini-player-container');
 
     if (page === 'farming') {
-      // На странице фарминга плеер занимает своё основное место
-      this.hideSidebarMiniPlayer(miniPlayerContainer);
-
+      // На странице фарминга плеер занимает своё основное место,
+      // но уезжает в сайдбар, если его прокрутили за пределы экрана
       const slot = document.getElementById('farming-player-slot');
+
       if (slot && player.hasStream()) {
-        player.attachTo(slot);
-      } else if (!player.hasStream()) {
-        player.detach();
+        this.watchPlayerVisibility(slot);
+      } else {
+        this.stopWatchingPlayerVisibility();
+        this.hideSidebarMiniPlayer(miniPlayerContainer);
+        if (!player.hasStream()) player.detach();
       }
       return;
     }
+
+    this.stopWatchingPlayerVisibility();
 
     // На остальных страницах — мини-плеер в сайдбаре, но только если
     // фарминг реально идёт и есть загруженный поток.
@@ -397,6 +401,66 @@ class Router {
     if (sidebarSlot) {
       player.attachTo(sidebarSlot, { interactive: false });
     }
+  }
+
+  /**
+   * Следит, виден ли плеер на странице фарминга.
+   *
+   * Когда его прокручивают за пределы экрана, плеер переезжает в сайдбар и
+   * продолжает работу там; когда возвращается в поле зрения — едет обратно.
+   * Оба переезда анимированы, а сам поток не прерывается: webview не
+   * пересоздаётся и не меняет размеров, меняются только координаты.
+   */
+  watchPlayerVisibility(slot) {
+    if (this._visibilityTarget === slot) return;
+    this.stopWatchingPlayerVisibility();
+    this._visibilityTarget = slot;
+
+    const apply = (visible) => {
+      if (this._playerInSidebar === !visible) return;
+      this._playerInSidebar = !visible;
+
+      const player = window.playerManager;
+      const container = document.getElementById('sidebar-mini-player-container');
+
+      if (visible) {
+        this.hideSidebarMiniPlayer(container);
+        player.attachTo(slot, { animate: true });
+        return;
+      }
+
+      const sidebarSlot = document.getElementById('sidebar-player-slot');
+      if (!sidebarSlot) return;
+
+      if (container) {
+        container.style.display = 'block';
+        requestAnimationFrame(() => {
+          container.style.opacity = '1';
+          container.style.transform = 'translateY(0)';
+        });
+      }
+      player.attachTo(sidebarSlot, { interactive: false, animate: true });
+    };
+
+    // Порог в четверть: переезд происходит, когда плеера почти не видно,
+    // а не при первом же пикселе за краем — иначе он дёргался бы
+    // туда-сюда от небольшой прокрутки.
+    this._visibilityObserver = new IntersectionObserver(
+      (entries) => apply(entries[0].intersectionRatio >= 0.25),
+      { threshold: [0, 0.25, 0.5] }
+    );
+
+    this._visibilityObserver.observe(slot);
+    this._playerInSidebar = null;
+  }
+
+  stopWatchingPlayerVisibility() {
+    if (this._visibilityObserver) {
+      this._visibilityObserver.disconnect();
+      this._visibilityObserver = null;
+    }
+    this._visibilityTarget = null;
+    this._playerInSidebar = null;
   }
 
   hideSidebarMiniPlayer(container) {

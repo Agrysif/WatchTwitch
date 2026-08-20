@@ -48,6 +48,7 @@ class SlottedWebview {
     this._onGeometryChange = null;
     this._lastGeometry = '';
     this._parked = false;
+    this._moveTimer = null;
   }
 
   /** Создаёт узел один раз за всё время жизни приложения. */
@@ -112,6 +113,15 @@ class SlottedWebview {
     }
 
     this.ensure();
+
+    // Плавный переезд между слотами. Анимация включается только на время
+    // самого перехода: держать её постоянно нельзя — координаты
+    // пересчитываются при каждой прокрутке, и плеер тянулся бы за
+    // страницей с задержкой.
+    if (options.animate && this.slot && this.slot !== slot && !this._parked) {
+      this._animateMove();
+    }
+
     // Слежение всегда перезапускаем: ResizeObserver был подписан на старый слот
     this._stopTracking();
     this.slot = slot;
@@ -141,6 +151,20 @@ class SlottedWebview {
    * сообщения (а значит, и бонусные сундуки). Смещение за экран оставляет
    * содержимое полностью живым.
    */
+  _animateMove() {
+    const duration = 320;
+    const easing = 'cubic-bezier(0.4, 0, 0.2, 1)';
+
+    this.host.style.transition = `left ${duration}ms ${easing}, top ${duration}ms ${easing}, width ${duration}ms ${easing}, height ${duration}ms ${easing}`;
+    this.webview.style.transition = `transform ${duration}ms ${easing}`;
+
+    clearTimeout(this._moveTimer);
+    this._moveTimer = setTimeout(() => {
+      this.host.style.transition = '';
+      this.webview.style.transition = '';
+    }, duration + 40);
+  }
+
   _park() {
     if (!this.host || this._parked) return;
     this._parked = true;
