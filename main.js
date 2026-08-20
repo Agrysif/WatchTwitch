@@ -444,6 +444,77 @@ ipcMain.on('download-update', async () => {
 
 ipcMain.handle('get-app-version', () => app.getVersion());
 
+/**
+ * Заметки о выпусках берутся с GitHub, а не хранятся внутри приложения.
+ *
+ * Иначе установленная версия знала бы только о себе: посмотреть, что
+ * изменилось в предыдущих патчах, было бы неоткуда, а текст пришлось бы
+ * дублировать в коде при каждом релизе.
+ *
+ * @param {string|null} version - конкретная версия ('1.0.15') или null
+ *                                для списка последних выпусков
+ */
+ipcMain.handle('fetch-release-notes', async (event, version = null) => {
+  const https = require('https');
+
+  const path = version
+    ? `/repos/Agrysif/WatchTwitch/releases/tags/v${encodeURIComponent(version)}`
+    : '/repos/Agrysif/WatchTwitch/releases?per_page=10';
+
+  return new Promise((resolve) => {
+    const req = https.request({
+      hostname: 'api.github.com',
+      path,
+      method: 'GET',
+      headers: {
+        'User-Agent': 'WatchTwitch',
+        'Accept': 'application/vnd.github+json'
+      }
+    }, (res) => {
+      let data = '';
+      res.on('data', (chunk) => { data += chunk; });
+      res.on('end', () => {
+        if (res.statusCode !== 200) {
+          console.warn('[Заметки] GitHub ответил', res.statusCode);
+          resolve({ success: false, error: 'Код ответа ' + res.statusCode });
+          return;
+        }
+
+        try {
+          const parsed = JSON.parse(data);
+          const list = Array.isArray(parsed) ? parsed : [parsed];
+
+          resolve({
+            success: true,
+            releases: list
+              .filter(r => r && !r.draft)
+              .map(r => ({
+                version: String(r.tag_name || '').replace(/^v/, ''),
+                name: r.name || r.tag_name,
+                body: r.body || '',
+                publishedAt: r.published_at || null
+              }))
+          });
+        } catch (e) {
+          resolve({ success: false, error: 'Не удалось разобрать ответ' });
+        }
+      });
+    });
+
+    req.on('error', (e) => {
+      console.warn('[Заметки] Ошибка запроса:', e.message);
+      resolve({ success: false, error: e.message });
+    });
+
+    req.setTimeout(10000, () => {
+      req.destroy();
+      resolve({ success: false, error: 'Превышено время ожидания' });
+    });
+
+    req.end();
+  });
+});
+
 ipcMain.handle('get-webview-preload-path', () => {
   const preloadPath = path.join(__dirname, 'renderer', 'js', 'webview-traffic-preload.js');
   return pathToFileURL(preloadPath).toString();

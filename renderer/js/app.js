@@ -65,6 +65,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Initialize router
   window.router = new Router();
 
+  // Окно «что нового» после обновления. С задержкой, чтобы не перебивать
+  // запуск приложения и дать настройкам загрузиться.
+  setTimeout(() => {
+    window.whatsNew?.checkAfterUpdate().catch(e =>
+      console.warn('[Что нового] Проверка не удалась:', e?.message));
+  }, 4000);
+
   // Settings manager is already initialized in settings-manager.js
   // Just ensure it exists
   if (!window.settings) {

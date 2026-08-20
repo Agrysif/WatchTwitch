@@ -396,6 +396,15 @@ class SettingsPage {
               ${i18n.t('settings.resetSettings')}
             </button>
             
+            <button class="btn btn-secondary" id="whats-new-btn">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="16" x2="12" y2="12"></line>
+                <line x1="12" y1="8" x2="12.01" y2="8"></line>
+              </svg>
+              ${i18n.t('settings.whatsNew')}
+            </button>
+
             <button class="btn btn-secondary" id="clear-statistics-btn">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M3 6h18"></path>
@@ -750,6 +759,13 @@ class SettingsPage {
     }
 
     // Сброс настроек
+    const whatsNewBtn = document.getElementById('whats-new-btn');
+    if (whatsNewBtn) {
+      whatsNewBtn.addEventListener('click', () => {
+        window.whatsNew?.show();
+      }, { signal: this._abort.signal });
+    }
+
     const clearStatsBtn = document.getElementById('clear-statistics-btn');
     if (clearStatsBtn) {
       clearStatsBtn.addEventListener('click', async () => {

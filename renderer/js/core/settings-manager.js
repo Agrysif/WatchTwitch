@@ -35,6 +35,7 @@ class SettingsManager {
       autoSwitchStreams: false,
       preferredStreamQuality: '160p30',
       autostart: false,
+      lastSeenVersion: null,
       
       // Язык
       language: 'ru',
