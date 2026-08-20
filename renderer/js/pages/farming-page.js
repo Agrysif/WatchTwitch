@@ -434,7 +434,7 @@ class FarmingPage {
       const beforeCount = this.categories.length;
       const currentId = this.currentCategory?.id;
       const toRemoveIds = this.categories
-        .filter(cat => cat.autoDrops === true && cat.hasDrops === false)
+        .filter(cat => cat.autoDrops === true && cat.hasDrops === false && !cat.pinned)
         .map(c => c.id);
       if (toRemoveIds.length > 0) {
         // Если текущая категория среди удаляемых, переключаемся корректно
@@ -443,7 +443,11 @@ class FarmingPage {
           await this.handleCategoryNoDrops();
         }
         // Удаляем прочие авто‑категории без дропсов
-        const kept = this.categories.filter(cat => !(cat.autoDrops === true && cat.hasDrops === false));
+        // Закреплённые не удаляем никогда: закрепление означает «оставить».
+        // Раньше закреплённая авто-категория без дропсов вычищалась вместе
+        // с остальными и добавлялась заново уже без метки — со стороны это
+        // выглядело так, будто закрепление слетает после перезапуска.
+        const kept = this.categories.filter(cat => !(cat.autoDrops === true && cat.hasDrops === false && !cat.pinned));
         this.categories = kept;
         await Storage.saveCategories(this.categories);
         this.renderCategories();
@@ -1453,47 +1457,65 @@ class FarmingPage {
    * почти никогда не попадают. Поэтому искать их в списке бесполезно:
    * сначала спрашиваем напрямую, в эфире ли они и в той ли игре.
    *
-   * Порядок предпочтения:
+   * Подписки учитываются ТОЛЬКО при включённом приоритете подписок.
+   * Порядок предпочтения при включённом:
    *   1. избранные каналы, идущие сейчас по нужной игре;
-   *   2. остальные подписки, если включён приоритет подписок;
-   *   3. избранные/подписки, попавшие в выдачу Twitch;
+   *   2. остальные подписки;
+   *   3. подписки, попавшие в выдачу Twitch;
    *   4. первый из выдачи.
+   *
+   * options.exclude — канал, который выбирать нельзя (кнопка «Другой стрим»).
    */
-  async pickPreferredStream(streams, categoryName) {
+  async pickPreferredStream(streams, categoryName, options = {}) {
     if (!Array.isArray(streams) || streams.length === 0) return null;
 
     const norm = (value) => String(value || '').replace(/^@/, '').toLowerCase();
 
+    // Канал, который просили не выбирать (кнопка «Другой стрим»)
+    const excluded = norm(options.exclude);
+    const pool = excluded
+      ? streams.filter(stream => norm(stream.login) !== excluded)
+      : streams;
+
+    const fallback = pool.length > 0 ? pool : streams;
+
     try {
+      const priorityEnabled = await Storage.getItem('subscriptions_priority_enabled');
+
+      // Выключенный переключатель означает именно выключенный: подписки и
+      // избранное не влияют на выбор вообще. Раньше избранные применялись
+      // всегда, и отключить их было невозможно — приложение упорно
+      // возвращало один и тот же канал.
+      if (!priorityEnabled) {
+        return fallback[0];
+      }
+
       const subscriptions = (await Storage.getSubscriptions()) || [];
+      if (subscriptions.length === 0) return fallback[0];
 
-      if (subscriptions.length > 0) {
-        const priorityEnabled = await Storage.getItem('subscriptions_priority_enabled');
+      // Избранные вперёд, внутри группы — по заданному пользователем порядку
+      const ordered = subscriptions
+        .filter(sub => norm(sub.login) !== excluded)
+        .sort((a, b) => {
+          if (!!a.isFavorite !== !!b.isFavorite) return a.isFavorite ? -1 : 1;
+          return (a.priority ?? 9999) - (b.priority ?? 9999);
+        });
 
-        // Избранные вперёд, внутри группы — по заданному пользователем порядку
-        const ordered = subscriptions
-          .filter(sub => sub.isFavorite || priorityEnabled)
-          .sort((a, b) => {
-            if (!!a.isFavorite !== !!b.isFavorite) return a.isFavorite ? -1 : 1;
-            return (a.priority ?? 9999) - (b.priority ?? 9999);
-          });
+      const direct = await this.findLivePreferredChannel(ordered, categoryName);
+      if (direct) return direct;
 
-        const direct = await this.findLivePreferredChannel(ordered, categoryName);
-        if (direct) return direct;
-
-        // Подстраховка: вдруг подписка всё же попала в выдачу
-        const known = new Set(ordered.map(sub => norm(sub.login)));
-        const inList = streams.find(stream => known.has(norm(stream.login)));
-        if (inList) {
-          console.log('[Выбор стрима] Канал из подписок в выдаче:', inList.displayName || inList.login);
-          return inList;
-        }
+      // Подстраховка: вдруг подписка всё же попала в выдачу
+      const known = new Set(ordered.map(sub => norm(sub.login)));
+      const inList = fallback.find(stream => known.has(norm(stream.login)));
+      if (inList) {
+        console.log('[Выбор стрима] Канал из подписок в выдаче:', inList.displayName || inList.login);
+        return inList;
       }
     } catch (error) {
       console.warn('[Выбор стрима] Не удалось учесть подписки:', error?.message);
     }
 
-    return streams[0];
+    return fallback[0];
   }
 
   /**
@@ -2924,7 +2946,12 @@ class FarmingPage {
     
     if (this.currentCategory.autoDrops) {
       // Авто-категории можем удалить
-      this.categories = this.categories.filter(cat => cat.id !== this.currentCategory.id);
+      if (this.currentCategory.pinned) {
+        // Закреплённую категорию не удаляем, только выключаем
+        this.currentCategory.enabled = false;
+      } else {
+        this.categories = this.categories.filter(cat => cat.id !== this.currentCategory.id);
+      }
     } else {
       // Пользовательские категории отключаем
       this.currentCategory.enabled = false;
@@ -4059,12 +4086,18 @@ class FarmingPage {
         return;
       }
 
-      // Находим текущий стрим
-      const currentIndex = streams.findIndex(s => s.login === this.currentStream?.login);
-      
-      // Берем следующий стрим (или первый если достигли конца)
-      const nextIndex = (currentIndex + 1) % streams.length;
-      const nextStream = streams[nextIndex];
+      // Явно исключаем текущий канал: иначе выбор мог вернуть тот же самый,
+      // и кнопка «Другой стрим» выглядела бы неработающей
+      const nextStream = await this.pickPreferredStream(
+        streams,
+        this.currentCategory.name,
+        { exclude: this.currentStream?.login }
+      );
+
+      if (nextStream && nextStream.login === this.currentStream?.login) {
+        window.utils.showToast('Других стримов в этой категории нет', 'warning');
+        return;
+      }
       
       if (nextStream) {
         // Переключаемся на следующий стрим

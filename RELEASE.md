@@ -9,7 +9,7 @@
 Нужен авторизованный GitHub CLI. Проверить:
 
 ```
-tools\ghin\gh.exe auth status
+tools/gh/bin/gh.exe auth status
 ```
 
 Если не авторизован — `gh auth login`. Токен после этого хранится в

@@ -116,11 +116,39 @@ class SubscriptionsPage {
         setTimeout(() => reject(new Error('API timeout after 10 seconds')), 10000);
       });
 
-      this.subscriptions = await Promise.race([fetchPromise, timeoutPromise]);
-      console.log('[Subscriptions] Loaded:', this.subscriptions?.length, 'subscriptions');
+      // Сохранённое показываем сразу: страница не должна висеть пустым
+      // спиннером, пока Twitch отвечает (а он может и не ответить)
+      const savedSubs = (await Storage.getSubscriptions()) || [];
+      if (savedSubs.length > 0) {
+        this.subscriptions = savedSubs;
+        this.applyFilter();
+      }
 
-      // Загружаем сохраненные данные о подписках
-      const savedSubs = await Storage.getSubscriptions();
+      let fetched = null;
+      try {
+        fetched = await Promise.race([fetchPromise, timeoutPromise]);
+      } catch (e) {
+        console.warn('[Subscriptions] Запрос не удался:', e?.message);
+      }
+
+      // Пустой ответ НЕ считаем правдой. Раньше он записывался поверх
+      // сохранённого списка, стирая избранное и заданные приоритеты —
+      // достаточно было один раз открыть страницу с протухшим токеном.
+      if (!Array.isArray(fetched) || fetched.length === 0) {
+        console.warn('[Subscriptions] Twitch вернул пусто — оставляем сохранённый список');
+        this.hideLoadingState();
+
+        if (savedSubs.length === 0) {
+          this.showEmptyState();
+        } else {
+          window.utils.showToast('Не удалось обновить список, показаны сохранённые подписки', 'warning');
+          this.applyFilter();
+        }
+        return;
+      }
+
+      this.subscriptions = fetched;
+      console.log('[Subscriptions] Loaded:', this.subscriptions.length, 'subscriptions');
 
       // Мержим данные
       this.subscriptions = this.subscriptions.map(sub => {
