@@ -3544,3 +3544,27 @@ body.no-animations * {
     border-top: 1px solid var(--border-color);
   }
 }
+
+/* Блок «все дропсы получены»: не просто сообщение, а следующий шаг */
+.drops-done {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.drops-done-text {
+  color: var(--success-color);
+  font-weight: 600;
+}
+
+.drops-done-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.drops-done-hint {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}

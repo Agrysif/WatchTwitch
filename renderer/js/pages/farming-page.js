@@ -2821,6 +2821,10 @@ class FarmingPage {
         </div>
       `;
 
+      if (overallPercent === 100) {
+        this.renderNextCategoryAction();
+      }
+
       // Обработчик для тестирования уведомлений (DevMode + Shift + Click)
       setTimeout(() => {
         const footer = document.getElementById('drops-received-footer');
@@ -4592,6 +4596,48 @@ class FarmingPage {
     window.sessionState?.resetPoints();
     this._sessionDropsBaseline = null;
     this._sessionCountedDrops = null;
+  }
+
+  /**
+   * Действие после того, как все награды кампании собраны.
+   *
+   * Раньше блок просто сообщал «Все дропсы получены» и на этом всё:
+   * если приложение не переключало категорию само (например, её запустили
+   * вручную), дальше нужно было догадаться пойти и переключить руками.
+   * Показываем, куда можно перейти, и даём это сделать одним нажатием.
+   */
+  renderNextCategoryAction() {
+    const box = document.getElementById('drops-done-actions');
+    if (!box) return;
+
+    const next = this.categories.find(cat =>
+      cat.enabled !== false &&
+      cat.hasDrops &&
+      !cat.dropsCompleted &&
+      cat.id !== this.currentCategory?.id
+    );
+
+    if (!next) {
+      box.innerHTML = '<span class="drops-done-hint">Других категорий с дропсами сейчас нет</span>';
+      return;
+    }
+
+    box.innerHTML = `
+      <button class="btn btn-primary" id="drops-next-category">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M5 3l14 9-14 9V3z"/>
+        </svg>
+        Перейти к «${next.name}»
+      </button>
+    `;
+
+    box.querySelector('#drops-next-category').addEventListener('click', async () => {
+      // Пользователь решил сам, поэтому отметка ручного запуска снимается:
+      // иначе защита от автопереключения удержала бы его на этой категории
+      this.manualCategoryId = null;
+      this.manualPlayLockCategoryId = null;
+      await this.startFarmingForCategory(next);
+    });
   }
 
   /**
