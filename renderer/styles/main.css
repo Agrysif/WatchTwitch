@@ -3272,3 +3272,23 @@ body.no-animations * {
   font-size: 12px;
   line-height: 1.5;
 }
+
+/* В сайдбаре плеер маленький: панель сжимается до кнопки звука и
+   всегда видна — выключить внезапно заигравший звук нужно уметь
+   с любой вкладки, не возвращаясь на страницу фарминга. */
+.player-bar-compact {
+  right: 4px;
+  bottom: 4px;
+  padding: 3px;
+  opacity: 0.75;
+}
+
+.player-bar-compact .player-bar-btn {
+  width: 22px;
+  height: 22px;
+}
+
+.player-bar-compact .player-bar-btn svg {
+  width: 12px;
+  height: 12px;
+}

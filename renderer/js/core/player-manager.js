@@ -31,6 +31,7 @@ class PlayerManager extends SlottedWebview {
     this.muted = true;
     this.lastPlaybackTime = null;
     this.stallStrikes = 0;
+    this.playbackProbe = null;
   }
 
   /** Качества, которые понимает плеер Twitch. */
@@ -61,6 +62,15 @@ class PlayerManager extends SlottedWebview {
    * с pointer-events, поэтому прокрутка страницы над плеером работает.
    */
   onCreated(webview) {
+    // Тот же preload, что и у чата: он задаёт качество в localStorage
+    // плеера ДО запуска его скриптов. Позже это уже не работает —
+    // плеер к тому моменту выбрал поток.
+    if (window.electronAPI?.getWebviewPreloadPath) {
+      window.electronAPI.getWebviewPreloadPath()
+        .then(path => { if (path) webview.setAttribute('preload', path); })
+        .catch(e => console.warn('[PlayerManager] Не удалось получить preload:', e?.message));
+    }
+
     const bar = document.createElement('div');
     bar.className = 'player-bar';
     bar.style.display = 'none';
@@ -121,10 +131,20 @@ class PlayerManager extends SlottedWebview {
     this.syncBar();
   }
 
-  /** Панель нужна только там, где плеер основной. В сайдбаре он декоративный. */
+  /**
+   * В сайдбаре панель сжимается до одной кнопки звука: выбор качества там
+   * не поместится, а вот выключить внезапный звук нужно уметь с любой
+   * вкладки — иначе пришлось бы возвращаться на страницу фарминга.
+   */
   onAttached(options = {}) {
     if (!this.bar) return;
-    this.bar.style.display = options.interactive === false ? 'none' : 'flex';
+
+    const compact = options.interactive === false;
+    this.bar.style.display = 'flex';
+    this.bar.classList.toggle('player-bar-compact', compact);
+
+    const quality = this.bar.querySelector('.player-quality');
+    if (quality) quality.style.display = compact ? 'none' : '';
   }
 
   /**
@@ -191,6 +211,113 @@ class PlayerManager extends SlottedWebview {
   }
 
   /**
+   * Проверяет, что воспроизведение вообще началось, и понижает требования,
+   * если нет.
+   *
+   * Найдено измерением: не у каждого стрима есть запрошенное качество.
+   * При запросе 160p30 у канала без такой дорожки плеер не падает и не
+   * сообщает об ошибке — он просто молча стоит с currentTime = 0
+   * бесконечно. Снаружи это выглядит как «стрим завис».
+   *
+   * Поэтому после загрузки ждём реальных кадров и, если их нет, идём вверх
+   * по лестнице качеств. Последняя ступень — снять закрепление вовсе и
+   * отдать выбор плееру.
+   */
+  ensurePlaybackStarted(requestedQuality) {
+    clearTimeout(this.playbackProbe);
+
+    const ladder = PlayerManager.QUALITIES.map(q => q.value);
+    const startIndex = ladder.indexOf(requestedQuality);
+
+    this.playbackProbe = setTimeout(async () => {
+      if (!this.webview || !this.channel) return;
+
+      let started = false;
+      try {
+        started = await this.webview.executeJavaScript(
+          '(function(){var v=document.querySelector("video");return !!v && v.currentTime > 0.3;})()'
+        );
+      } catch (e) {
+        return;
+      }
+
+      if (started) return;
+
+      const next = startIndex >= 0 ? ladder[startIndex + 1] : null;
+
+      if (next) {
+        console.warn('[PlayerManager] Качество', requestedQuality,
+          'не запускается, пробую', next);
+        window.settings?.set('preferredStreamQuality', next);
+        this.syncBar();
+
+        const channel = this.channel;
+        this.channel = null;
+        this.load(channel, { quality: next, keepSound: this.muted === false });
+        window.utils?.showToast('Качество ' + requestedQuality + ' недоступно, включено ' + next, 'warning');
+        return;
+      }
+
+      // Ступени кончились — отдаём выбор плееру
+      console.warn('[PlayerManager] Снимаю закрепление качества, выбор за плеером');
+      try {
+        await this.webview.executeJavaScript('localStorage.removeItem("video-quality");');
+      } catch (e) {
+        // ignore
+      }
+      try { this.webview.reload(); } catch (e) { /* ignore */ }
+    }, 14000);
+  }
+
+  /**
+   * После перезагрузки плеера видео создаётся заново и стартует немым.
+   * Ждём его появления и возвращаем звук.
+   */
+  restoreSoundAfterLoad() {
+    let attempts = 0;
+
+    // Снимать немоту сразу после появления video бесполезно: плеер стартует
+    // немым по требованию автозапуска и возвращает muted обратно, пока
+    // воспроизведение не началось. Ждём реальных кадров (currentTime растёт)
+    // и потом ещё несколько раз проверяем, что немота не вернулась.
+    const tryRestore = async () => {
+      attempts += 1;
+      if (attempts > 30 || this.muted !== false) return;
+
+      let state = null;
+      try {
+        state = await this.webview.executeJavaScript(`
+          (function () {
+            const video = document.querySelector('video');
+            if (!video) return null;
+            const playing = video.currentTime > 0.5 && !video.paused;
+            if (playing) {
+              video.muted = false;
+              video.volume = 0.5;
+            }
+            return { playing: playing, muted: video.muted };
+          })();
+        `);
+      } catch (e) {
+        // документ ещё не готов
+      }
+
+      if (state && state.playing && state.muted === false) {
+        this.syncBar();
+        // Ещё одна проверка позже: плеер иногда возвращает немоту сам
+        setTimeout(() => {
+          if (this.muted === false) tryRestore();
+        }, 3000);
+        return;
+      }
+
+      setTimeout(tryRestore, 800);
+    };
+
+    setTimeout(tryRestore, 1500);
+  }
+
+  /**
    * Качество плеер Twitch читает из своего localStorage, поэтому применение
    * требует перезагрузки. Делаем это только по явному выбору пользователя.
    */
@@ -207,9 +334,14 @@ class PlayerManager extends SlottedWebview {
       console.warn('[PlayerManager] Не удалось записать качество:', e.message);
     }
 
+    // Звук при смене качества сохраняем: пользователь включил его осознанно
+    // минуту назад, и терять его из-за перезагрузки плеера — неожиданно
+    const keepSound = this.muted === false;
+
     const channel = this.channel;
     this.channel = null;
-    this.load(channel, { quality: value });
+    this.load(channel, { quality: value, keepSound });
+
     const chosen = PlayerManager.QUALITIES.find(q => q.value === value);
     window.utils?.showToast('Качество: ' + (chosen ? chosen.label : value), 'info');
   }
@@ -249,10 +381,17 @@ class PlayerManager extends SlottedWebview {
     this.channel = login;
     this.lastPlaybackTime = null;
     this.stallStrikes = 0;
-    // Новый стрим всегда начинается без звука
-    this.muted = true;
+    // Новый канал всегда начинается без звука. Исключение — перезагрузка
+    // того же канала ради смены качества: там звук осознанно сохраняем.
+    this.muted = options.keepSound ? false : true;
     this.syncBar();
     webview.src = url;
+
+    if (options.keepSound) {
+      this.restoreSoundAfterLoad();
+    }
+
+    this.ensurePlaybackStarted(quality);
 
     this.startWatchdog();
   }
@@ -376,6 +515,7 @@ class PlayerManager extends SlottedWebview {
   unload() {
     if (!this.webview) return;
     console.log('[PlayerManager] Останавливаю плеер');
+    clearTimeout(this.playbackProbe);
     this.stopWatchdog();
     this.channel = null;
     try {

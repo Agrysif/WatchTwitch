@@ -11,6 +11,29 @@ const { ipcRenderer } = require('electron');
 console.log('[WebviewPreload] ✅ Preload loaded');
 
 // ================================
+// Качество плеера
+// ================================
+//
+// Плеер Twitch игнорирует параметр quality в адресе: качество он берёт из
+// собственного localStorage. Записать значение после загрузки страницы
+// недостаточно — плеер к тому моменту уже выбрал поток. Preload выполняется
+// ДО скриптов страницы, поэтому запись отсюда попадает вовремя.
+(async function applyPlayerQuality() {
+  try {
+    if (!location.host.includes('player.twitch.tv')) return;
+
+    let quality = await ipcRenderer.invoke('store-get', 'settings.preferredStreamQuality');
+    const known = ['160p30', '360p30', '480p30', '720p60', 'chunked'];
+    if (!known.includes(quality)) quality = '160p30';
+
+    localStorage.setItem('video-quality', JSON.stringify({ default: quality }));
+    console.log('[PlayerPreload] Качество задано до запуска плеера:', quality);
+  } catch (e) {
+    console.warn('[PlayerPreload] Не удалось задать качество:', e.message);
+  }
+})();
+
+// ================================
 // Принудительно низкое качество видео
 // ================================
 // Параметр quality= в URL встроенный плеер Twitch игнорирует, а прокликивание

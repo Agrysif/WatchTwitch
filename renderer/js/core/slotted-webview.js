@@ -165,7 +165,20 @@ class SlottedWebview {
     if (this._tracking) return;
     this._tracking = true;
 
-    this._onGeometryChange = () => this._sync();
+    // Пачку событий за один кадр схлопываем в один пересчёт. Во время
+    // перехода между страницами ResizeObserver и scroll срабатывают
+    // десятки раз подряд, а каждое изменение размеров webview заставляет
+    // плеер перестраивать поток — отсюда рывки и паузы при переезде
+    // в сайдбар.
+    let scheduled = false;
+    this._onGeometryChange = () => {
+      if (scheduled) return;
+      scheduled = true;
+      requestAnimationFrame(() => {
+        scheduled = false;
+        this._sync();
+      });
+    };
 
     window.addEventListener('scroll', this._onGeometryChange, { passive: true, capture: true });
     window.addEventListener('resize', this._onGeometryChange, { passive: true });
