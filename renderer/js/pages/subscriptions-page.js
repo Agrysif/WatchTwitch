@@ -157,7 +157,7 @@ class SubscriptionsPage {
           ...sub,
           ...saved,
           lastSeen: saved.lastSeen || new Date().toISOString(),
-          rating: this.calculateRating(sub, saved),
+          rating: this.calculateRating({ ...sub, ...saved }),
           recommended: this.shouldRecommendUnsubscribe(sub, saved)
         };
       });
@@ -231,41 +231,59 @@ class SubscriptionsPage {
     }
   }
 
-  calculateRating(subscription, saved = {}) {
-    let rating = 0;
-    let score = 50; // базовый балл
+  /**
+   * Оценка канала для фарминга, 0–100.
+   *
+   * Прежняя формула не работала. Она стартовала с 50 баллов и только
+   * добавляла — рейтинг ниже 50 был невозможен, поэтому нулевых каналов
+   * не существовало в принципе. Три её слагаемых из пяти (частота стримов,
+   * регулярность, язык) считались по полям, которые никто никогда не
+   * заполнял, то есть 60% веса всегда были нулём. Сверху добавлялась
+   * «вариация» из кода первого символа id — она не несла смысла, но
+   * создавала видимость точности.
+   *
+   * Хуже всего, что рейтинг считался в момент слияния списков, когда
+   * подробности канала ещё не загружены: у всех каналов выходило одно и
+   * то же число.
+   *
+   * Здесь используются только те данные, которые приложение реально
+   * получает, а до их загрузки рейтинг не выдумывается — возвращается null.
+   */
+  calculateRating(subscription) {
+    const followers = Number(subscription.followers);
+    const hasFollowers = Number.isFinite(followers);
+    const hasActivity = !!subscription.lastStreamDate || subscription.isLive !== undefined;
 
-    // Частота стримов (вес: 30%)
-    const streamFrequency = subscription.streamFrequency || 0; // стримов в неделю
-    score += Math.min(streamFrequency * 10, 30);
+    // Пока подробности не подгружены, честнее не показывать ничего
+    if (!hasFollowers && !hasActivity) return null;
 
-    // Регулярность (вес: 25%)
-    const consistency = subscription.consistency || 0; // 0-100
-    score += (consistency / 100) * 25;
+    // Активность — 45 баллов. Для фарминга важнее всего, идут ли эфиры.
+    let activity = 0;
+    if (subscription.isLive) {
+      activity = 45;
+    } else if (subscription.lastStreamDate) {
+      const days = (Date.now() - new Date(subscription.lastStreamDate).getTime()) / 86400000;
+      if (days < 2) activity = 42;
+      else if (days < 7) activity = 35;
+      else if (days < 14) activity = 25;
+      else if (days < 30) activity = 15;
+      else if (days < 90) activity = 5;
+    }
 
-    // Количество фолловеров (вес: 20%)
-    const followers = subscription.followers || 0;
-    if (followers > 50000) score += 20;
-    else if (followers > 10000) score += 15;
-    else if (followers > 1000) score += 10;
+    // Аудитория — 25 баллов. Косвенный признак того, что канал живой.
+    let audience = 0;
+    if (hasFollowers) {
+      if (followers > 500000) audience = 25;
+      else if (followers > 100000) audience = 20;
+      else if (followers > 50000) audience = 15;
+      else if (followers > 10000) audience = 10;
+      else if (followers > 1000) audience = 5;
+    }
 
-    // Время последнего стрима (вес: 15%)
-    const lastStreamDate = new Date(subscription.lastStreamDate || 0);
-    const daysSinceStream = (Date.now() - lastStreamDate.getTime()) / (1000 * 60 * 60 * 24);
-    if (daysSinceStream < 7) score += 15;
-    else if (daysSinceStream < 14) score += 10;
-    else if (daysSinceStream < 30) score += 5;
+    // Дропсы — 30 баллов. Ради них приложение и существует.
+    const drops = subscription.hasDrops ? 30 : 0;
 
-    // Наличие дропсов (бонус: 10%)
-    if (subscription.hasDrops) score += 10;
-
-    // Язык трансляции (бонус для предпочитаемых языков)
-    if (subscription.language === 'ru') score += 5;
-
-    rating = Math.min(100, Math.max(0, score));
-    // Добавляем небольшую случайную вариацию чтобы рейтинги не были кратны 5
-    const variation = (subscription.id?.charCodeAt(0) || 0) % 5;
-    return Math.round(rating + variation);
+    return Math.max(0, Math.min(100, Math.round(activity + audience + drops)));
   }
 
   shouldRecommendUnsubscribe(subscription, saved = {}) {
@@ -435,10 +453,18 @@ class SubscriptionsPage {
   }
 
   renderSubscriptionItem(sub) {
-    const ratingColor = sub.rating >= 70 ? 'good' : sub.rating >= 40 ? 'neutral' : 'bad';
+    // Рейтинг может быть ещё не посчитан: подробности канала грузятся
+    // отдельными запросами уже после отрисовки списка
+    const hasRating = Number.isFinite(sub.rating);
+    const ratingValue = hasRating ? Math.round(sub.rating) : '—';
+    const ratingColor = !hasRating ? 'neutral' : sub.rating >= 70 ? 'good' : sub.rating >= 40 ? 'neutral' : 'bad';
     const lastStreamText = this.getLastStreamText(sub.lastStreamDate);
     const isLive = sub.isLive === true;
-    const ratingText = sub.rating >= 70 ? this.i18n.t('subscriptions.excellentRating') : sub.rating >= 40 ? this.i18n.t('subscriptions.averageRating') : this.i18n.t('subscriptions.lowRating');
+    const ratingText = !hasRating
+      ? 'Оценка появится после загрузки данных канала'
+      : sub.rating >= 70 ? this.i18n.t('subscriptions.excellentRating')
+      : sub.rating >= 40 ? this.i18n.t('subscriptions.averageRating')
+      : this.i18n.t('subscriptions.lowRating');
     const isFavorite = sub.isFavorite || false;
     const gameName = sub.gameName || '';
     const gameImageUrl = sub.gameImageUrl || '';
@@ -453,13 +479,13 @@ class SubscriptionsPage {
                    class="subscription-card-avatar">
               ${isLive ? '<div class="subscription-card-live-indicator"></div>' : ''}
               
-              <div class="subscription-card-rating ${ratingColor}" title="${ratingText}: ${Math.round(sub.rating)}/100 (качество канала для фарминга)">
+              <div class="subscription-card-rating ${ratingColor}" title="${ratingText}${hasRating ? ': ' + ratingValue + '/100' : ''} (оценка канала для фарминга)">
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
                   ${sub.rating >= 70 ? '<path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>' :
         sub.rating >= 40 ? '<path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>' :
           '<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>'}
                 </svg>
-                <span>${Math.round(sub.rating)}</span>
+                <span>${ratingValue}</span>
               </div>
               
               <div class="subscription-card-status-overlay ${isLive ? 'live' : 'offline'}">
@@ -490,13 +516,13 @@ class SubscriptionsPage {
             <div class="subscription-card-info">
               <div class="subscription-card-name-line">
                 <span class="subscription-card-name">${sub.displayName}</span>
-                <div class="subscription-card-rating-inline ${ratingColor}" title="${ratingText}: ${Math.round(sub.rating)}/100">
+                <div class="subscription-card-rating-inline ${ratingColor}" title="${ratingText}${hasRating ? ': ' + ratingValue + '/100' : ''}">
                   <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
                     ${sub.rating >= 70 ? '<path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>' :
         sub.rating >= 40 ? '<path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>' :
           '<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>'}
                   </svg>
-                  <span>${Math.round(sub.rating)}</span>
+                  <span>${ratingValue}</span>
                 </div>
               </div>
               <div class="subscription-card-status ${isLive ? 'live' : 'offline'}">
@@ -638,13 +664,20 @@ class SubscriptionsPage {
     // Обновляем рейтинг
     const ratingEl = cardElement.querySelector('.subscription-card-rating');
     if (ratingEl) {
-      const ratingColor = sub.rating >= 70 ? 'good' : sub.rating >= 40 ? 'neutral' : 'bad';
-      const ratingText = sub.rating >= 70 ? this.i18n.t('subscriptions.excellentRating') : sub.rating >= 40 ? this.i18n.t('subscriptions.averageRating') : this.i18n.t('subscriptions.lowRating');
+      const hasRating = Number.isFinite(sub.rating);
+      const ratingColor = !hasRating ? 'neutral' : sub.rating >= 70 ? 'good' : sub.rating >= 40 ? 'neutral' : 'bad';
+      const ratingText = !hasRating
+        ? 'Оценка появится после загрузки данных канала'
+        : sub.rating >= 70 ? this.i18n.t('subscriptions.excellentRating')
+        : sub.rating >= 40 ? this.i18n.t('subscriptions.averageRating')
+        : this.i18n.t('subscriptions.lowRating');
+
       ratingEl.className = `subscription-card-rating ${ratingColor}`;
-      ratingEl.title = `${ratingText}: ${Math.round(sub.rating)}/100 (качество канала для фарминга)`;
-      const ratingValue = ratingEl.querySelector('span');
-      if (ratingValue) {
-        ratingValue.textContent = Math.round(sub.rating);
+      ratingEl.title = ratingText + (hasRating ? `: ${Math.round(sub.rating)}/100` : '');
+
+      const valueEl = ratingEl.querySelector('span');
+      if (valueEl) {
+        valueEl.textContent = hasRating ? Math.round(sub.rating) : '—';
       }
     }
   }
@@ -702,7 +735,7 @@ class SubscriptionsPage {
         <div style="padding: 16px; background: rgba(53, 208, 138, 0.1); border: 1px solid rgba(53, 208, 138, 0.2); border-radius: var(--radius-md); text-align: center;">
           <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">${this.i18n.t('subscriptions.rating')}</div>
           <div style="font-size: 24px; font-weight: 700; color: ${ratingColor};">
-            ${Math.round(sub.rating)}
+            ${Number.isFinite(sub.rating) ? Math.round(sub.rating) : '—'}
           </div>
           <div style="font-size: 10px; color: var(--text-secondary); margin-top: 4px;">${sub.rating >= 70 ? this.i18n.t('subscriptions.excellent') : sub.rating >= 40 ? this.i18n.t('subscriptions.average') : this.i18n.t('subscriptions.low')}</div>
         </div>
