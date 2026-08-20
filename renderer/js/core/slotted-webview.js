@@ -53,7 +53,11 @@ class SlottedWebview {
       'background: #000',
       `z-index: ${this.zIndex}`,
       'display: none',
-      'pointer-events: auto'
+      // Прозрачен для мыши по умолчанию. Webview — отдельный слой, и когда
+      // он принимает события, колесо прокрутки уходит внутрь него, а
+      // страница под курсором перестаёт прокручиваться. Кликабельные
+      // элементы включают pointer-events у себя.
+      'pointer-events: none'
     ].join(';');
 
     const webview = document.createElement('webview');
@@ -77,6 +81,9 @@ class SlottedWebview {
 
   /** Точка расширения для наследников: вызывается сразу после создания узла. */
   onCreated() {}
+
+  /** Точка расширения: вызывается при каждой привязке к слоту. */
+  onAttached() {}
 
   getWebview() {
     return this.ensure();
@@ -103,8 +110,7 @@ class SlottedWebview {
     this._lastGeometry = '';
     this._startTracking();
 
-    const interactive = options.interactive !== false;
-    this.host.style.pointerEvents = interactive ? 'auto' : 'none';
+    this.onAttached(options);
 
     console.log(`[${this.logName}] Привязан к слоту:`, slot.id || slot.className);
   }
