@@ -258,32 +258,36 @@ class SubscriptionsPage {
     if (!hasFollowers && !hasActivity) return null;
 
     // Активность — 45 баллов. Для фарминга важнее всего, идут ли эфиры.
+    //
+    // Затухание плавное, а не ступенями: ступени давали одинаковые оценки
+    // каналам, которые стримили неделю назад и три недели назад, и все
+    // значения выходили кратными пяти. Период полураспада — две недели.
     let activity = 0;
     if (subscription.isLive) {
       activity = 45;
     } else if (subscription.lastStreamDate) {
-      const days = (Date.now() - new Date(subscription.lastStreamDate).getTime()) / 86400000;
-      if (days < 2) activity = 42;
-      else if (days < 7) activity = 35;
-      else if (days < 14) activity = 25;
-      else if (days < 30) activity = 15;
-      else if (days < 90) activity = 5;
+      const days = Math.max(0, (Date.now() - new Date(subscription.lastStreamDate).getTime()) / 86400000);
+      activity = 45 * Math.pow(0.5, days / 14);
     }
 
-    // Аудитория — 25 баллов. Косвенный признак того, что канал живой.
+    // Аудитория — 25 баллов по логарифмической шкале.
+    //
+    // Логарифм потому, что разница между 100 и 1000 подписчиков значит
+    // куда больше, чем между 500 000 и 600 000. Шкала растянута от сотни
+    // (0 баллов) до миллиона (25 баллов).
     let audience = 0;
-    if (hasFollowers) {
-      if (followers > 500000) audience = 25;
-      else if (followers > 100000) audience = 20;
-      else if (followers > 50000) audience = 15;
-      else if (followers > 10000) audience = 10;
-      else if (followers > 1000) audience = 5;
+    if (hasFollowers && followers > 0) {
+      const scale = (Math.log10(followers) - 2) / 4;
+      audience = 25 * Math.min(1, Math.max(0, scale));
     }
 
     // Дропсы — 30 баллов. Ради них приложение и существует.
     const drops = subscription.hasDrops ? 30 : 0;
 
-    return Math.max(0, Math.min(100, Math.round(activity + audience + drops)));
+    // Округляем до десятых: целые числа снова слипались бы в одинаковые
+    // значения у близких каналов, а именно этого и хотелось избежать
+    const total = Math.max(0, Math.min(100, activity + audience + drops));
+    return Math.round(total * 10) / 10;
   }
 
   shouldRecommendUnsubscribe(subscription, saved = {}) {
@@ -347,15 +351,19 @@ class SubscriptionsPage {
       if (a.isFavorite && !b.isFavorite) return -1;
       if (!a.isFavorite && b.isFavorite) return 1;
       
-      // Если оба избранные, сортируем по приоритету
+      // Внутри избранных — заданный вручную порядок, а при равном
+      // приоритете (то есть когда порядок не задавали) тоже по рейтингу
       if (a.isFavorite && b.isFavorite) {
         const aPriority = a.priority !== undefined ? a.priority : 9999;
         const bPriority = b.priority !== undefined ? b.priority : 9999;
-        return aPriority - bPriority;
+        if (aPriority !== bPriority) return aPriority - bPriority;
       }
       
-      // Обычные каналы по рейтингу
-      return b.rating - a.rating;
+      // Обычные каналы по рейтингу, выше — впереди.
+      // Каналы без оценки уходят вниз: раньше сравнение null с числом
+      // давало NaN, и порядок получался произвольным.
+      const rank = (sub) => Number.isFinite(sub.rating) ? sub.rating : -1;
+      return rank(b) - rank(a);
     });
 
     this.renderSubscriptions();
