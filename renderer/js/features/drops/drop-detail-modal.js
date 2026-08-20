@@ -7,9 +7,13 @@
     const existingModal = document.getElementById('drop-detail-modal');
     if (existingModal) existingModal.remove();
     
-    // Вычисляем редкость
-    const rarity = dropsPageInstance.calculateDropRarity(drop, campaign);
-    const imageUrl = drop.imageURL || drop.image || drop.imageUrl || 'https://via.placeholder.com/400x400?text=Drop';
+    // Редкость считает вызывающая страница. Если её не передали — окно
+    // не должно падать: раньше обращение к отсутствующему объекту роняло
+    // отрисовку целиком, и вместо карточки не появлялось ничего.
+    const rarity = (typeof dropsPageInstance?.calculateDropRarity === 'function')
+      ? dropsPageInstance.calculateDropRarity(drop, campaign)
+      : { color: 'var(--text-secondary)', label: 'Награда' };
+    const imageUrl = drop.imageURL || drop.image || drop.imageUrl || window.DROP_PLACEHOLDER;
     
     // Форматируем даты
     const claimedDateRaw = drop.claimedAt || drop.lastAwardedAt || drop.claimedDate;
@@ -59,6 +63,12 @@
       statusColor = 'var(--text-secondary)';
     }
     
+    // Получение прямо из приложения. Механика claim-drop была реализована
+    // давно, но в этом окне кнопки не было вовсе — оно лишь сообщало
+    // «Доступно к получению», и забирать награду приходилось на сайте.
+    const dropInstanceID = drop.dropInstanceID || drop.self?.dropInstanceID || null;
+    const canClaimHere = !isClaimed && !!dropInstanceID && (progressPercent >= 100 || isClaimable);
+
     const formatViewersCount = typeof dropsPageInstance?.formatViewersCount === 'function'
       ? dropsPageInstance.formatViewersCount.bind(dropsPageInstance)
       : (count) => (count || count === 0 ? count.toString() : '—');
@@ -188,6 +198,15 @@
               <div style="font-size: 11px; color: var(--text-tertiary); text-transform: uppercase; margin-bottom: 4px;">Статус</div>
               <div style="font-size: 18px; font-weight: 700; color: ${statusColor};">${statusText}</div>
             </div>
+
+            ${canClaimHere ? `
+              <button id="claim-drop-btn" class="btn btn-primary" style="width: 100%; margin-top: 12px; justify-content: center;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                </svg>
+                Получить награду
+              </button>
+            ` : ''}
           </div>
           
           <!-- Правая колонка: Детальная информация -->
@@ -332,6 +351,36 @@
     });
     
     // Закрытие модального окна
+    const claimBtn = document.getElementById('claim-drop-btn');
+    if (claimBtn) {
+      claimBtn.addEventListener('click', async () => {
+        claimBtn.disabled = true;
+        claimBtn.textContent = 'Получаем…';
+
+        try {
+          const result = await window.electronAPI.claimDrop(dropInstanceID);
+
+          if (result?.success) {
+            claimBtn.textContent = 'Награда получена';
+            window.utils?.showToast('Награда получена', 'success');
+            // Обновляем список, чтобы состояние совпало с Twitch
+            window.dropsPage?.loadDrops?.();
+          } else {
+            claimBtn.disabled = false;
+            claimBtn.textContent = 'Получить награду';
+            window.utils?.showToast(
+              'Не удалось получить: ' + (result?.error || 'неизвестная ошибка'),
+              'error'
+            );
+          }
+        } catch (error) {
+          claimBtn.disabled = false;
+          claimBtn.textContent = 'Получить награду';
+          window.utils?.showToast('Ошибка при получении награды', 'error');
+        }
+      });
+    }
+
     const closeBtn = document.getElementById('close-drop-modal');
     closeBtn.addEventListener('mouseenter', function() {
       this.style.background = 'rgba(255, 255, 255, 0.2)';
