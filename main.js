@@ -3966,55 +3966,54 @@ ipcMain.handle('unsubscribe-channel', async (event, authToken, channelLogin) => 
       (async function () {
         const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
-        const findFollowButton = () => {
-          // Только именованные кнопки Twitch. Широкие селекторы вроде
-          // 'button' приводили к нажатию случайных элементов страницы.
-          const selectors = [
-            '[data-a-target="unfollow-button"]',
-            '[data-a-target="follow-button"]'
-          ];
-          for (const selector of selectors) {
-            const el = document.querySelector(selector);
-            if (el) return el;
-          }
-          return null;
-        };
+        const findUnfollow = () => document.querySelector('[data-a-target="unfollow-button"]');
+        const findFollow = () => document.querySelector('[data-a-target="follow-button"]');
 
         let button = null;
         for (let i = 0; i < 40; i++) {
-          button = findFollowButton();
+          button = findUnfollow();
           if (button) break;
+          if (findFollow()) return { ok: true, already: true };
           await sleep(500);
         }
 
         if (!button) return { ok: false, reason: 'not-found' };
 
-        const label = (button.getAttribute('data-a-target') || '') + ' ' +
-                      (button.getAttribute('aria-label') || '');
+        // Интерфейс Twitch написан на React: простой .click() он местами
+        // игнорирует, потому что слушает последовательность событий мыши.
+        // Проверено на живой странице: одиночный click подтверждения не
+        // открывал и подписку не снимал.
+        const press = (el) => {
+          const opts = { bubbles: true, cancelable: true, view: window, button: 0 };
+          el.dispatchEvent(new PointerEvent('pointerdown', opts));
+          el.dispatchEvent(new MouseEvent('mousedown', opts));
+          el.dispatchEvent(new PointerEvent('pointerup', opts));
+          el.dispatchEvent(new MouseEvent('mouseup', opts));
+          el.dispatchEvent(new MouseEvent('click', opts));
+        };
 
-        // Кнопка «подписаться» означает, что подписки уже нет
-        if (/follow-button/.test(label) && !/unfollow/i.test(label)) {
-          return { ok: true, already: true };
-        }
+        press(button);
+        await sleep(2000);
 
-        button.click();
-        await sleep(1200);
+        // Подтверждение появляется не всегда: в части вариантов интерфейса
+        // отписка происходит сразу. Ищем кнопку подтверждения по смыслу,
+        // а не по вёрстке — имена классов Twitch меняет постоянно.
+        for (let attempt = 0; attempt < 6; attempt++) {
+          if (findFollow()) return { ok: true };
 
-        // Twitch спрашивает подтверждение
-        const confirmSelectors = [
-          '[data-a-target="modal-unfollow-button"]',
-          'button[data-test-selector="unfollow-button"]'
-        ];
-        for (const selector of confirmSelectors) {
-          const nodes = document.querySelectorAll(selector);
-          for (const node of nodes) {
-            const text = (node.innerText || '') + ' ' + (node.getAttribute('aria-label') || '');
-            if (/отписаться|unfollow|не следить/i.test(text)) {
-              node.click();
-              await sleep(1000);
-              return { ok: true };
-            }
+          const candidates = [...document.querySelectorAll('[role="dialog"] button, button')];
+          const confirm = candidates.find(b => {
+            const text = ((b.innerText || '') + ' ' + (b.getAttribute('aria-label') || '')).trim();
+            return /^(отписаться|unfollow|не следить|yes|да)/i.test(text);
+          });
+
+          if (confirm) {
+            press(confirm);
+            await sleep(1500);
+            return { ok: true, confirmed: true };
           }
+
+          await sleep(1000);
         }
 
         return { ok: true, unconfirmed: true };
