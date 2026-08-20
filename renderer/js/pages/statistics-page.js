@@ -195,6 +195,7 @@ class StatisticsPage {
       // Обновляем UI
       console.log('Updating UI with stats:', { totalMinutes, totalStreams, totalPoints, totalChests, totalDrops });
       this.updateStatsCards(totalMinutes, totalStreams, totalPoints, totalChests, totalBandwidth, totalDrops);
+      this.renderAnalytics(filteredSessions, { totalMinutes, totalDrops, totalPoints, totalBandwidth, topCategories });
       
       // Рендерим топ категорий
       console.log('Rendering top categories:', topCategories);
@@ -232,6 +233,96 @@ class StatisticsPage {
       default:
         return sessions;
     }
+  }
+
+  /**
+   * Аналитика: выводы из накопленных цифр.
+   *
+   * Приложение давно собирало историю сессий, трафик, баллы и категории,
+   * но показывало только суммы. Сумма отвечает на вопрос «сколько всего»,
+   * а решения принимаются по другим: выгодно ли это, что окупается, чего
+   * ждать дальше.
+   */
+  renderAnalytics(sessions, totals) {
+    const card = document.getElementById('analytics-card');
+    const grid = document.getElementById('analytics-grid');
+    const note = document.getElementById('analytics-note');
+    if (!card || !grid) return;
+
+    // Без истории выводы делать не из чего — блок честнее спрятать
+    if (!sessions || sessions.length === 0 || totals.totalMinutes <= 0) {
+      card.style.display = 'none';
+      return;
+    }
+
+    const hours = totals.totalMinutes / 60;
+    const dropsPerHour = hours > 0 ? totals.totalDrops / hours : 0;
+    const pointsPerHour = hours > 0 ? totals.totalPoints / hours : 0;
+    const trafficPerHour = hours > 0 ? totals.totalBandwidth / hours : 0;
+
+    // Сколько часов уходит на один дропс — понятнее, чем доли в час
+    const hoursPerDrop = totals.totalDrops > 0 ? hours / totals.totalDrops : null;
+
+    const best = (totals.topCategories || [])[0];
+
+    const items = [
+      {
+        label: 'Дропсов в час',
+        value: totals.totalDrops > 0 ? dropsPerHour.toFixed(2) : '—',
+        sub: hoursPerDrop
+          ? `примерно ${this.formatHours(hoursPerDrop)} на одну награду`
+          : 'награды пока не засчитывались'
+      },
+      {
+        label: 'Трафик на час',
+        value: trafficPerHour > 0 ? this.formatBytes(trafficPerHour) : '—',
+        sub: trafficPerHour > 0
+          ? `около ${this.formatBytes(trafficPerHour * 24)} за сутки фарминга`
+          : 'нет данных о расходе'
+      },
+      {
+        label: 'Баллов в час',
+        value: pointsPerHour > 0 ? Math.round(pointsPerHour).toLocaleString() : '—',
+        sub: `за ${this.formatHours(hours)} просмотра`
+      },
+      {
+        label: 'Средняя сессия',
+        value: this.formatHours(totals.totalMinutes / sessions.length / 60),
+        sub: `${sessions.length} ${this.pluralSessions(sessions.length)}`
+      }
+    ];
+
+    grid.innerHTML = items.map(item => `
+      <div class="analytics-item">
+        <div class="analytics-label">${item.label}</div>
+        <div class="analytics-value">${item.value}</div>
+        <div class="analytics-sub">${item.sub}</div>
+      </div>
+    `).join('');
+
+    if (note) {
+      note.textContent = best
+        ? `Больше всего времени уходит на «${best.name}» — ${this.formatHours(best.time / 60)} за ${best.streams} ${this.pluralSessions(best.streams)}.`
+        : '';
+    }
+
+    card.style.display = 'block';
+  }
+
+  formatHours(hours) {
+    if (!Number.isFinite(hours) || hours <= 0) return '—';
+    if (hours < 1) return Math.round(hours * 60) + ' мин';
+    if (hours < 10) return hours.toFixed(1).replace('.0', '') + ' ч';
+    return Math.round(hours) + ' ч';
+  }
+
+  pluralSessions(count) {
+    const n = Math.abs(count) % 100;
+    if (n >= 11 && n <= 14) return 'сессий';
+    const last = n % 10;
+    if (last === 1) return 'сессия';
+    if (last >= 2 && last <= 4) return 'сессии';
+    return 'сессий';
   }
 
   updateStatsCards(minutes, streams, points, chests, bandwidth, drops) {
@@ -648,14 +739,15 @@ class StatisticsPage {
     return `${mins}m`;
   }
 
+  /** Единицы русские — в сайдбаре они уже такие, разнобой бросался в глаза. */
   formatBytes(bytes) {
-    if (bytes === 0) return '0 B';
-    
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    
-    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+    if (!bytes || bytes <= 0) return '0 Б';
+
+    const units = ['Б', 'КБ', 'МБ', 'ГБ', 'ТБ'];
+    const i = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
+    const value = bytes / Math.pow(1024, i);
+
+    return `${value.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
   }
 
   async exportStatistics() {

@@ -2749,6 +2749,7 @@ class FarmingPage {
         matched.map(c => c.name).join(' | '));
 
       this.trackSessionDrops(matched);
+      this.warnAboutEndingCampaigns(matched);
       await this.autoClaimReadyDrops(matched);
 
       horizontal.style.display = 'block';
@@ -4594,6 +4595,42 @@ class FarmingPage {
   }
 
   /**
+   * Предупреждает, что кампания скоро закончится, а награды ещё не собраны.
+   *
+   * Фарминг фоновый: без уведомления о том, что до конца кампании час, а
+   * дропс недобран, пользователь узнаёт об этом когда уже поздно.
+   * Предупреждаем один раз на кампанию, иначе это превратится в напоминание
+   * каждые полминуты.
+   */
+  warnAboutEndingCampaigns(campaigns) {
+    if (!this._endWarned) this._endWarned = new Set();
+
+    const HOUR = 60 * 60 * 1000;
+
+    for (const campaign of campaigns) {
+      if (!campaign.endsAt || this._endWarned.has(campaign.id)) continue;
+
+      const left = new Date(campaign.endsAt).getTime() - Date.now();
+      if (left <= 0 || left > HOUR) continue;
+
+      const unclaimed = (campaign.drops || []).filter(d => !this.isDropEarned(d));
+      if (unclaimed.length === 0) continue;
+
+      this._endWarned.add(campaign.id);
+
+      const minutes = Math.max(1, Math.round(left / 60000));
+      const name = campaign.name || campaign.game?.name || 'Кампания';
+
+      console.log('[Дропсы] Кампания заканчивается через', minutes, 'мин:', name);
+      window.notifyFarmingEvent(
+        'Кампания скоро закончится',
+        `${name}: ${minutes} мин, не собрано наград — ${unclaimed.length}`
+      );
+      window.utils?.showToast(`${name}: осталось ${minutes} мин, наград не собрано ${unclaimed.length}`, 'warning');
+    }
+  }
+
+  /**
    * Забирает награды, у которых набралось нужное время просмотра.
    *
    * Настройка автосбора существовала, но не работала: механизм в
@@ -4900,14 +4937,32 @@ Object.defineProperty(FarmingPage.prototype, 'sessionStartTime', {
 // Export to window
 window.FarmingPage = FarmingPage;
 
-// Глобальная функция для показа кастомных уведомлений о дропах
+/**
+ * Уведомление о полученной награде.
+ *
+ * Настройка «Уведомления о получении дропсов» существовала, но здесь не
+ * проверялась: переключатель ни на что не влиял, уведомления приходили
+ * всегда. Теперь он работает.
+ */
 window.showDropNotification = function(dropName, gameName, dropIcon = null) {
-  // Используем Electron API для показа уведомления на экране (не внутри приложения)
+  if (window.settings && window.settings.get('notifyOnDropClaimed') === false) return;
+
   if (window.electronAPI && window.electronAPI.showDropNotification) {
     window.electronAPI.showDropNotification(dropName, gameName, dropIcon);
   } else {
     console.error('[DropNotification] electronAPI.showDropNotification not available');
   }
+};
+
+/**
+ * Уведомление о событии фарминга: кампания заканчивается, стрим пропал.
+ *
+ * При фоновом фарминге такие вещи иначе остаются незамеченными до тех
+ * пор, пока пользователь сам не откроет окно.
+ */
+window.notifyFarmingEvent = function(title, body) {
+  if (window.settings && window.settings.get('notifications') === false) return;
+  window.electronAPI?.showNotification?.(title, body);
 };
 
 window.hideDropNotification = function(notificationId) {
