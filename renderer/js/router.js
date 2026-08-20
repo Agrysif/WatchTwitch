@@ -358,17 +358,7 @@ class Router {
     const miniPlayerContainer = document.getElementById('sidebar-mini-player-container');
 
     if (page === 'farming') {
-      // На странице фарминга плеер занимает своё основное место,
-      // но уезжает в сайдбар, если его прокрутили за пределы экрана
-      const slot = document.getElementById('farming-player-slot');
-
-      if (slot && player.hasStream()) {
-        this.watchPlayerVisibility(slot);
-      } else {
-        this.stopWatchingPlayerVisibility();
-        this.hideSidebarMiniPlayer(miniPlayerContainer);
-        if (!player.hasStream()) player.detach();
-      }
+      this.placePlayerOnFarming();
       return;
     }
 
@@ -401,6 +391,31 @@ class Router {
     if (sidebarSlot) {
       player.attachTo(sidebarSlot, { interactive: false });
     }
+  }
+
+  /**
+   * Размещает плеер на странице фарминга и включает слежение за видимостью.
+   *
+   * Вызывается и роутером при навигации, и самой страницей — когда стрим
+   * стартовал уже после открытия страницы. Раньше страница привязывала
+   * плеер напрямую, минуя роутер, и наблюдатель за прокруткой в этом случае
+   * не заводился вовсе: плеер уезжал под верхний край и оставался там.
+   */
+  placePlayerOnFarming() {
+    const player = window.playerManager;
+    if (!player) return;
+
+    const slot = document.getElementById('farming-player-slot');
+    const miniPlayerContainer = document.getElementById('sidebar-mini-player-container');
+
+    if (slot && player.hasStream()) {
+      this.watchPlayerVisibility(slot);
+      return;
+    }
+
+    this.stopWatchingPlayerVisibility();
+    this.hideSidebarMiniPlayer(miniPlayerContainer);
+    if (!player.hasStream()) player.detach();
   }
 
   /**
