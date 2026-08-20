@@ -919,7 +919,7 @@ class SubscriptionsPage {
           </svg>
         </div>
         <h3 style="font-size: 20px; font-weight: 600; color: var(--text-primary); margin-bottom: 12px;">Удалить ${sub.displayName}?</h3>
-        <p style="font-size: 14px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 24px;">Канал будет удален из списка. Откроется страница на Twitch для отписки - нажмите кнопку <strong>"Не следить"</strong>.</p>
+        <p style="font-size: 14px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 24px;">Отписка выполнится прямо здесь, переходить на Twitch не нужно.</p>
       </div>
     `;
 
@@ -932,20 +932,36 @@ class SubscriptionsPage {
     if (!confirmed) return;
 
     try {
-      // Удаляем из локального списка
+      // Настоящая отписка через Twitch. Раньше приложение только убирало
+      // канал из своего списка и открывало сайт, предлагая отписаться
+      // вручную — при том, что вызов для отписки давно был реализован,
+      // просто его никто не вызывал.
+      const accounts = await Storage.getAccounts();
+      const token = accounts?.[0]?.accessToken;
+
+      const result = await window.electronAPI.unsubscribeChannel(token, sub.id);
+
+      if (!result?.success) {
+        console.error('Не удалось отписаться:', result?.error);
+        window.utils.showToast(
+          'Не удалось отписаться: ' + (result?.error || 'неизвестная ошибка'),
+          'error'
+        );
+        return;
+      }
+
+      // Из списка убираем только после подтверждённой отписки, иначе канал
+      // исчезал бы из приложения, оставаясь в подписках на Twitch
       this.subscriptions = this.subscriptions.filter(s => s.id !== sub.id);
       await Storage.saveSubscriptions(this.subscriptions);
 
       this.updateStats();
       this.applyFilter();
-      
-      // Открываем страницу канала для ручной отписки
-      window.electronAPI.openExternal(`https://www.twitch.tv/${sub.login}`);
-      
-      window.utils.showToast(`${sub.displayName} удален из списка`, 'success');
+
+      window.utils.showToast(`Отписка от ${sub.displayName} выполнена`, 'success');
     } catch (error) {
       console.error('Error removing subscription:', error);
-      window.utils.showToast('Ошибка при удалении', 'error');
+      window.utils.showToast('Ошибка при отписке', 'error');
     }
   }
 

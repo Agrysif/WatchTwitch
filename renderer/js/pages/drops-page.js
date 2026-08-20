@@ -270,11 +270,6 @@
       let activeCampaigns = 0;
       
       this.campaigns.forEach(campaign => {
-        // Считаем полученные дропсы
-        if (campaign.drops) {
-          const claimedCount = campaign.drops.filter(d => d.claimed).length;
-          totalClaimedDrops += claimedCount;
-        }
         
         // Считаем завершенные кампании
         const isCompleted = isCampaignCompleted(campaign) || isCampaignExpired(campaign);
@@ -285,6 +280,17 @@
         }
       });
       
+      // Полученные дропсы считаем по инвентарю, а не по активным кампаниям.
+      //
+      // Раньше суммировались только те награды, что помечены полученными
+      // внутри кампаний, показанных на странице, — а там лежат лишь текущие
+      // активные. Всё, что собрано в завершившихся кампаниях, в счётчик не
+      // попадало, и цифра выходила заметно меньше реальной.
+      totalClaimedDrops = Array.isArray(this.claimedDrops) && this.claimedDrops.length > 0
+        ? this.claimedDrops.length
+        : this.campaigns.reduce((sum, campaign) =>
+            sum + (campaign.drops || []).filter(d => d.claimed).length, 0);
+
       // Обновляем элементы на странице
       const totalClaimedEl = document.getElementById('totalClaimedDrops');
       const completedCampaignsEl = document.getElementById('completedCampaignsCount');
@@ -480,14 +486,24 @@
       const progressPercent = totalDrops > 0 ? Math.floor((completedDrops / totalDrops) * 100) : 0;
       
       // Превью игры
-      const gameImage = campaign.game?.boxArtURL ? campaign.game.boxArtURL.replace('{width}', '300').replace('{height}', '400') : '';
+      // Обложку берём из любого доступного поля: у кампаний из разных
+      // запросов Twitch она лежит по-разному, и раньше при отсутствии
+      // boxArtURL карточка оставалась просто тёмной
+      const rawCover = campaign.game?.boxArtURL
+        || campaign.game?.boxArtUrl
+        || campaign.imageUrl
+        || campaign.boxArtURL
+        || '';
+      const gameImage = rawCover
+        ? rawCover.replace('{width}', '300').replace('{height}', '400')
+        : '';
       
       // Дополнительная информация
       const startDate = campaign.startAt ? new Date(campaign.startAt).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) : '';
       const endDate = campaign.endsAt ? new Date(campaign.endsAt).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) : '';
       
       card.innerHTML = `
-        <div style="position: relative; height: 180px; background: ${gameImage ? `rgba(0,0,0,0.4), url('${gameImage}')` : 'rgba(0,0,0,0.3)'}; background-size: cover; background-position: center; display: flex; flex-direction: column; justify-content: flex-end; padding: 20px;">
+        <div style="position: relative; height: 180px; background-color: rgba(0, 0, 0, 0.3); ${gameImage ? `background-image: linear-gradient(rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0.45)), url('${gameImage}');` : ''} background-size: cover; background-position: center; display: flex; flex-direction: column; justify-content: flex-end; padding: 20px;">
           <div style="color: #fff; font-size: 20px; font-weight: 700; margin-bottom: 6px; text-shadow: 0 2px 8px rgba(0,0,0,0.8);">${campaign.name || 'Campaign'}</div>
           <div style="color: rgba(255,255,255,0.9); font-size: 14px; text-shadow: 0 1px 4px rgba(0,0,0,0.8);">${campaign.game?.name || 'Unknown Game'}</div>
           ${startDate && endDate ? `<div style="color: rgba(255,255,255,0.7); font-size: 12px; margin-top: 4px; text-shadow: 0 1px 4px rgba(0,0,0,0.8);">${startDate} — ${endDate}</div>` : ''}
@@ -531,7 +547,7 @@
           // Очищаем и заполняем tooltip изображениями дропсов
           tooltipGrid.innerHTML = '';
           campaign.drops.forEach((drop, index) => {
-            const imageUrl = drop.imageURL || drop.imageUrl || 'https://via.placeholder.com/48x48?text=Drop';
+            const imageUrl = drop.imageURL || drop.imageUrl || window.DROP_PLACEHOLDER;
             console.log(`Drop ${index}:`, drop.benefitName, 'imageUrl:', imageUrl);
             const dropImg = document.createElement('img');
             dropImg.src = imageUrl;
@@ -567,7 +583,7 @@
     }
 
     createDropElement(drop) {
-      const imageUrl = drop.imageURL || 'https://via.placeholder.com/90x90?text=Drop';
+      const imageUrl = drop.imageURL || window.DROP_PLACEHOLDER;
       const percentage = drop.percentage || 0;
       const isClaimed = drop.claimed || false;
       const canClaim = !isClaimed && percentage >= 100 && drop.dropInstanceID;
@@ -944,7 +960,7 @@
     }
 
     createInventoryDropCard(drop) {
-      const imageUrl = drop.image || 'https://via.placeholder.com/100x100?text=Drop';
+      const imageUrl = drop.image || window.DROP_PLACEHOLDER;
       const timeAgo = drop.claimedAt ? this.getTimeAgo(drop.claimedAt) : '';
       
       // Находим кампанию для этого дропа
