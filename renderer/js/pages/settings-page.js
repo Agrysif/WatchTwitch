@@ -187,6 +187,19 @@ class SettingsPage {
               <option value="drops" ${settings.get('shutdownTrigger') === 'drops' ? 'selected' : ''}>${i18n.t('settings.triggerDrops')}</option>
               <option value="streamEnd" ${settings.get('shutdownTrigger') === 'streamEnd' ? 'selected' : ''}>${i18n.t('settings.triggerStreamEnd')}</option>
               <option value="any" ${settings.get('shutdownTrigger') === 'any' ? 'selected' : ''}>${i18n.t('settings.triggerAny')}</option>
+              <option value="timer" ${settings.get('shutdownTrigger') === 'timer' ? 'selected' : ''}>${i18n.t('settings.triggerTimer')}</option>
+            </select>
+          </div>
+
+          <div class="settings-item shutdown-option" style="${settings.get('enableShutdown') ? '' : 'display: none;'}">
+            <div class="settings-item-info">
+              <div class="settings-item-label">${i18n.t('settings.shutdownTimer')}</div>
+              <div class="settings-item-description">${i18n.t('settings.shutdownTimerDesc')}</div>
+            </div>
+            <select class="input-field" id="setting-shutdown-timer" style="width: 190px; flex-shrink: 0;">
+              ${[1, 2, 3, 4, 6, 8, 12].map(h => `
+                <option value="${h}" ${String(settings.get('shutdownTimerHours')) === String(h) ? 'selected' : ''}>${h} ${i18n.t('settings.hoursShort')}</option>
+              `).join('')}
             </select>
           </div>
 
@@ -202,6 +215,11 @@ class SettingsPage {
               <option value="30" ${String(settings.get('shutdownDelayMinutes')) === '30' ? 'selected' : ''}>30 ${i18n.t('farming.min')}</option>
               <option value="60" ${String(settings.get('shutdownDelayMinutes')) === '60' ? 'selected' : ''}>60 ${i18n.t('farming.min')}</option>
             </select>
+          </div>
+
+          <div class="shutdown-summary shutdown-option" id="shutdown-summary"
+               style="${settings.get('enableShutdown') ? '' : 'display: none;'}">
+            ${window.shutdownManager ? window.shutdownManager.describeSchedule() : ''}
           </div>
         </div>
 
@@ -548,6 +566,7 @@ class SettingsPage {
         document.querySelectorAll('.shutdown-option').forEach(row => {
           row.style.display = e.target.checked ? '' : 'none';
         });
+        refreshSummary();
 
         window.utils.showToast(
           e.target.checked ? i18n.t('settings.shutdownEnabled') : i18n.t('settings.shutdownDisabled'),
@@ -556,17 +575,26 @@ class SettingsPage {
       }, { signal: this._abort.signal });
     }
 
+    const refreshSummary = () => {
+      const box = document.getElementById('shutdown-summary');
+      if (box && window.shutdownManager) {
+        box.textContent = window.shutdownManager.describeSchedule();
+      }
+    };
+
     const shutdownSelects = [
       ['setting-shutdown-action', 'shutdownAction'],
       ['setting-shutdown-trigger', 'shutdownTrigger'],
-      ['setting-shutdown-delay', 'shutdownDelayMinutes']
+      ['setting-shutdown-delay', 'shutdownDelayMinutes'],
+      ['setting-shutdown-timer', 'shutdownTimerHours']
     ];
     shutdownSelects.forEach(([elementId, settingKey]) => {
       const select = document.getElementById(elementId);
       if (!select) return;
       select.addEventListener('change', (e) => {
-        const value = settingKey === 'shutdownDelayMinutes' ? Number(e.target.value) : e.target.value;
-        settings.set(settingKey, value);
+        const numeric = settingKey === 'shutdownDelayMinutes' || settingKey === 'shutdownTimerHours';
+        settings.set(settingKey, numeric ? Number(e.target.value) : e.target.value);
+        refreshSummary();
       }, { signal: this._abort.signal });
     });
 

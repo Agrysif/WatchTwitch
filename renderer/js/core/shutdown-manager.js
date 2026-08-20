@@ -9,7 +9,8 @@
  * Настройки:
  *   enableShutdown        — включено ли вообще
  *   shutdownAction        — shutdown | sleep | hibernate
- *   shutdownTrigger       — drops | streamEnd | any (по какому событию срабатывать)
+ *   shutdownTrigger       — drops | streamEnd | any | timer (когда срабатывать)
+ *   shutdownTimerHours    — для режима timer: через сколько часов фарминга
  *   shutdownDelayMinutes  — сколько ждать перед выполнением
  *
  * Отсчёт всегда виден и всегда отменяем: выключение чужого компьютера без
@@ -21,6 +22,7 @@ class ShutdownManager {
     this.timer = null;
     this.tick = null;
     this.overlay = null;
+    this.sessionTimer = null;
   }
 
   static get() {
@@ -42,6 +44,70 @@ class ShutdownManager {
   /** Стрим закончился, а переключаться не на что или запрещено. */
   onStreamEnded() {
     this._maybeArm('streamEnd', 'Стрим завершён');
+  }
+
+  /**
+   * Таймер обратного отсчёта от старта фарминга.
+   *
+   * Отдельный режим, не связанный с дропсами: «пусть фармит три часа и
+   * выключит компьютер». Заводится при старте сессии и снимается при
+   * остановке — иначе он сработал бы после того, как фарминг уже не идёт.
+   */
+  startSessionTimer() {
+    this.cancelSessionTimer();
+
+    const settings = this.settings;
+    if (!settings || !settings.get('enableShutdown')) return;
+    if ((settings.get('shutdownTrigger') || 'drops') !== 'timer') return;
+
+    const hours = Number(settings.get('shutdownTimerHours'));
+    if (!Number.isFinite(hours) || hours <= 0) return;
+
+    const ms = hours * 60 * 60 * 1000;
+    console.log('[Выключение] Таймер сессии на', hours, 'ч');
+
+    this.sessionTimer = setTimeout(() => {
+      this.sessionTimer = null;
+      this.arm(
+        settings.get('shutdownAction') || 'shutdown',
+        Number(settings.get('shutdownDelayMinutes')) || 0,
+        `Прошло ${hours} ч фарминга`
+      );
+    }, ms);
+  }
+
+  cancelSessionTimer() {
+    if (this.sessionTimer) {
+      clearTimeout(this.sessionTimer);
+      this.sessionTimer = null;
+    }
+  }
+
+  /**
+   * Человеческое описание того, когда сработает выключение.
+   * Показывается в настройках: включать переключатель, не понимая,
+   * что произойдёт и когда, — страшно.
+   */
+  describeSchedule() {
+    const settings = this.settings;
+    if (!settings || !settings.get('enableShutdown')) return 'Выключение отключено';
+
+    const trigger = settings.get('shutdownTrigger') || 'drops';
+    const delay = Number(settings.get('shutdownDelayMinutes')) || 0;
+    const hours = Number(settings.get('shutdownTimerHours')) || 0;
+
+    const when = {
+      drops: 'когда будут собраны все дропсы',
+      streamEnd: 'когда завершится стрим',
+      any: 'когда собраны все дропсы или завершится стрим',
+      timer: `через ${hours} ч после начала фарминга`
+    }[trigger] || '';
+
+    const after = delay > 0
+      ? `, затем ещё ${delay} мин на отмену`
+      : ', с отсчётом в полминуты на отмену';
+
+    return `Сработает ${when}${after}. Отсчёт можно прервать.`;
   }
 
   _maybeArm(event, reasonText) {

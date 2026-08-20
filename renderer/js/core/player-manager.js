@@ -36,10 +36,13 @@ class PlayerManager extends SlottedWebview {
   /** Качества, которые понимает плеер Twitch. */
   static get QUALITIES() {
     return [
-      { value: '160p30', label: '160p — минимум' },
-      { value: '360p30', label: '360p' },
-      { value: '480p30', label: '480p' },
-      { value: '720p60', label: '720p' }
+      { value: '160p30', label: '160p', hint: 'минимум' },
+      { value: '360p30', label: '360p', hint: '' },
+      { value: '480p30', label: '480p', hint: '' },
+      { value: '720p60', label: '720p', hint: '' },
+      // Twitch называет исходное качество chunked. Конкретное разрешение
+      // зависит от стримера, поэтому числом его не подписать.
+      { value: 'chunked', label: 'Источник', hint: 'как у стримера' }
     ];
   }
 
@@ -63,7 +66,12 @@ class PlayerManager extends SlottedWebview {
     bar.style.display = 'none';
 
     const qualityOptions = PlayerManager.QUALITIES
-      .map(q => `<option value="${q.value}">${q.label}</option>`)
+      .map(q => `
+        <button class="player-menu-item" data-quality="${q.value}">
+          <span>${q.label}</span>
+          ${q.hint ? `<span class="player-menu-hint">${q.hint}</span>` : ''}
+        </button>
+      `)
       .join('');
 
     bar.innerHTML = `
@@ -76,14 +84,39 @@ class PlayerManager extends SlottedWebview {
           <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3a4.5 4.5 0 00-2.5-4v8a4.5 4.5 0 002.5-4zM14 3.2v2.1c2.9.9 5 3.5 5 6.7s-2.1 5.8-5 6.7v2.1c4-1 7-4.6 7-8.8s-3-7.8-7-8.8z"/>
         </svg>
       </button>
-      <select class="player-bar-select" data-role="quality">${qualityOptions}</select>
+      <div class="player-quality">
+        <button class="player-bar-btn player-quality-trigger" data-role="quality-trigger">
+          <span data-role="quality-label">160p</span>
+          <svg width="9" height="9" viewBox="0 0 12 12" fill="currentColor"><path d="M6 8L2 4h8z"/></svg>
+        </button>
+        <div class="player-menu" data-role="quality-menu">${qualityOptions}</div>
+      </div>
     `;
 
     this.host.appendChild(bar);
     this.bar = bar;
 
     bar.querySelector('[data-role="sound"]').addEventListener('click', () => this.toggleSound());
-    bar.querySelector('[data-role="quality"]').addEventListener('change', (e) => this.setQuality(e.target.value));
+
+    const trigger = bar.querySelector('[data-role="quality-trigger"]');
+    const menu = bar.querySelector('[data-role="quality-menu"]');
+
+    trigger.addEventListener('click', (event) => {
+      event.stopPropagation();
+      menu.classList.toggle('open');
+    });
+
+    menu.querySelectorAll('.player-menu-item').forEach(item => {
+      item.addEventListener('click', (event) => {
+        event.stopPropagation();
+        menu.classList.remove('open');
+        this.setQuality(item.dataset.quality);
+      });
+    });
+
+    // Клик мимо закрывает список. Слушаем на документе, потому что сам
+    // плеер мышь не принимает и клика по нему не будет.
+    document.addEventListener('click', () => menu.classList.remove('open'));
 
     this.syncBar();
   }
@@ -112,8 +145,14 @@ class PlayerManager extends SlottedWebview {
     if (!this.bar) return;
 
     const quality = this.resolveQuality();
-    const select = this.bar.querySelector('[data-role="quality"]');
-    if (select) select.value = quality;
+    const current = PlayerManager.QUALITIES.find(q => q.value === quality);
+
+    const label = this.bar.querySelector('[data-role="quality-label"]');
+    if (label) label.textContent = current ? current.label : '160p';
+
+    this.bar.querySelectorAll('.player-menu-item').forEach(item => {
+      item.classList.toggle('active', item.dataset.quality === quality);
+    });
 
     const muted = this.muted !== false;
     const btn = this.bar.querySelector('[data-role="sound"]');
@@ -171,7 +210,8 @@ class PlayerManager extends SlottedWebview {
     const channel = this.channel;
     this.channel = null;
     this.load(channel, { quality: value });
-    window.utils?.showToast('Качество: ' + value, 'info');
+    const chosen = PlayerManager.QUALITIES.find(q => q.value === value);
+    window.utils?.showToast('Качество: ' + (chosen ? chosen.label : value), 'info');
   }
 
   hasStream() {

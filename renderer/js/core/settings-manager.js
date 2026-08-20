@@ -47,6 +47,7 @@ class SettingsManager {
       shutdownAction: 'shutdown',
       shutdownTrigger: 'drops',
       shutdownDelayMinutes: 5,
+      shutdownTimerHours: 3,
 
       // Разработчик
       developerMode: false
