@@ -1,45 +1,53 @@
 ## 🇷🇺 Что нового
 
-- Стрим больше не перезапускается при переходах между вкладками — плеер один на всё приложение и продолжает играть, минуты просмотра для дропсов не сбрасываются
-- Показываются все кампании дропсов игры, а не только первая; видны и те, к которым ещё не приступали
-- Избранные каналы из подписок теперь действительно смотрятся первыми: они проверяются напрямую, а не ищутся в топ-20 выдачи Twitch, куда небольшие каналы не попадают
-- Категории можно закреплять — наведите на карточку и нажмите значок рядом с «Play». Закреплённые идут первыми и первыми проверяются на дропсы
-- Категория, запущенная вручную, больше не переключается сама: вместо этого приложение предлагает перейти и ждёт вашего решения
-- Автосбор бонусных сундуков продолжает работать на любой вкладке, а не только на странице фарминга
-- Автовыключение компьютера: выбор действия (выключение, сон, гибернация), события и задержки, с отменяемым отсчётом
-- Новое оформление: чёткие границы, плотная сетка, шрифт IBM Plex Sans
+- Дропсы теперь забираются автоматически. Настройка автосбора существовала, но не работала — приложение наматывало часы, а награду всё равно нужно было брать руками
+- Награду можно забрать и вручную: в окне дропса появилась кнопка «Получить»
+- Отписаться от канала можно прямо из приложения, без перехода на сайт
+- Это окно: после обновления приложение показывает, что изменилось. Сведения берутся с GitHub, поэтому видны и предыдущие патчи. Открыть в любой момент — «Настройки → Что нового в обновлении»
+- Раздел «Аналитика» в статистике: дропсов в час, сколько времени уходит на одну награду, расход трафика за час и за сутки, средняя длина сессии
+- Категории можно закреплять — наведите на карточку и нажмите значок рядом с «Play». Закреплённые проверяются на дропсы первыми
+- Выбор качества и звука прямо на плеере. Каждая новая сессия начинается с минимального качества, чтобы не тратить трафик незаметно
+- Плеер уезжает в сайдбар, когда его прокручиваешь за край экрана, и возвращается обратно
+- Автовыключение компьютера получило таймер и понятное описание того, когда именно оно сработает
 
 ## 🐛 Исправлено
 
-- Настройки применялись только после перезапуска, а часть не работала вовсе: интерфейс хранил их отдельно от того, что читало приложение
-- Счётчик трафика показывал завышенные цифры и почти всегда 0 КБ/с
-- Баллы канала считались неверно: колонки не соответствовали подписям, сундуки не учитывались, а счёт шёл только при открытой странице фарминга
-- Статистика записывала показатели одного стрима вместо всей сессии, а полученные дропсы не считались вовсе
-- Запуск другой категории мог оборваться на середине: уведомление появлялось, но стрим продолжал играть
-- Одинаковые уведомления больше не копятся стопкой
-- Обложки категорий в статистике были размытыми, у плеера в сайдбаре пропадал звук и возникали паузы
-- Окно категории показывало неверные счётчики и не загружало аватарки стримеров
-- Устранены утечки памяти: обработчики и таймеры больше не накапливаются при переходах между вкладками
+- **Стрим больше не зависает.** Если у канала не было запрошенного качества, плеер молча стоял с чёрным экраном бесконечно. Теперь качество подбирается автоматически, а зависший плеер перезапускается сам
+- **Стрим не прерывается** при переходе между вкладками и при переезде в сайдбар
+- Сессия больше не показывается активной, когда стрим не запущен
+- Категория снова берётся в работу, когда у игры начинается новая кампания дропсов — раньше она считалась отработанной навсегда
+- Приоритет подписок наконец отключается: раньше избранные каналы применялись даже при выключенном переключателе
+- Избранные каналы действительно смотрятся первыми — они проверяются напрямую, а не ищутся в списке популярных, куда небольшие каналы не попадают
+- Рейтинг каналов считается по-настоящему: раньше у всех выходило одно и то же число, а оценка ниже 50 была невозможна
+- Список подписок больше не стирается, если Twitch ответил пустым списком
+- Обложки кампаний и картинки наград снова загружаются
+- Приложение переживает обрывы связи: запросы повторяются вместо того, чтобы считать канал офлайн
+- Прокрутка страницы работает, когда курсор над плеером
+- Расход трафика считается точнее и создаёт меньше нагрузки
 
 ## 🇬🇧 What's new
 
-- The stream no longer restarts when you switch tabs — one player for the whole app keeps playing, so watch time for drops is not reset
-- All drop campaigns for a game are shown, not just the first one, including campaigns you have not started yet
-- Favourite channels from your subscriptions are now really watched first: they are checked directly instead of being looked up in Twitch's top-20 list, where small channels never appear
-- Categories can be pinned — hover a card and click the icon next to "Play". Pinned categories come first and are checked for drops first
-- A category you started manually is no longer switched automatically: the app offers to switch and waits for your decision
-- Bonus chest auto-collection keeps working on any tab, not only on the farming page
-- Computer shutdown: choose the action (shutdown, sleep, hibernate), the trigger and the delay, with a countdown you can cancel
-- New look: crisp borders, denser layout, IBM Plex Sans typeface
+- Drops are now claimed automatically. The auto-claim setting existed but never ran — the app accumulated watch time while rewards still had to be taken by hand
+- Rewards can also be claimed manually: the drop window now has a "Claim" button
+- Unfollowing a channel works from inside the app, without opening the website
+- This window: after an update the app shows what changed. Notes come from GitHub, so previous patches are visible too. Open it any time via Settings → What's new
+- An "Analytics" section in statistics: drops per hour, time spent per reward, traffic per hour and per day, average session length
+- Categories can be pinned — hover a card and click the icon next to "Play". Pinned ones are checked for drops first
+- Quality and sound controls on the player itself. Every new session starts at the lowest quality so bandwidth is not spent unnoticed
+- The player moves to the sidebar when scrolled off screen and returns when scrolled back
+- Computer shutdown gained a timer and a plain description of exactly when it will trigger
 
 ## 🐛 Fixed
 
-- Settings only applied after a restart, and some did nothing at all: the interface stored them separately from what the app actually read
-- The traffic counter reported inflated numbers and almost always showed 0 KB/s
-- Channel points were counted incorrectly: columns did not match their labels, chests were ignored, and counting only ran while the farming page was open
-- Statistics recorded a single stream instead of the whole session, and collected drops were never counted
-- Starting another category could break halfway: the notification appeared while the stream kept playing
-- Identical notifications no longer stack up
-- Category art in statistics was blurry; the sidebar player lost sound and kept pausing
-- The category window showed wrong counters and failed to load streamer avatars
-- Memory leaks fixed: handlers and timers no longer accumulate when switching tabs
+- **The stream no longer freezes.** If a channel lacked the requested quality, the player silently sat on a black screen forever. Quality is now picked automatically and a stalled player restarts itself
+- **Playback is not interrupted** when switching tabs or moving to the sidebar
+- A session is no longer shown as active when no stream is playing
+- A category returns to the queue when its game starts a new drops campaign — previously it counted as finished forever
+- Subscription priority can finally be turned off: favourites applied even with the toggle disabled
+- Favourite channels are really watched first — they are checked directly instead of being looked up among the most popular, where small channels never appear
+- Channel rating actually works: every channel used to show the same number, and a score below 50 was impossible
+- The subscriptions list is no longer wiped when Twitch returns an empty response
+- Campaign art and reward images load again
+- The app survives network drops: requests retry instead of treating a channel as offline
+- Page scrolling works while the cursor is over the player
+- Bandwidth is measured more accurately and with less overhead
