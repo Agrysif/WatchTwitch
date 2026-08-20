@@ -219,6 +219,67 @@ let trafficData = {
 const monitoredWebContents = new Set();
 
 /**
+ * POST-запрос к Twitch с повтором при сетевых сбоях.
+ *
+ * Фарминг идёт часами, и разрыв связи за это время неизбежен. Раньше
+ * каждый запрос при ошибке просто отдавал пустой результат, а вызывающий
+ * код принимал это за «стримов нет» или «канал офлайн» — и фарминг
+ * останавливался из-за секундного обрыва.
+ *
+ * Повторяем только сетевые сбои и ответы 5xx. Ошибки 4xx не повторяем:
+ * они означают, что запрос неверен, и повтор ничего не изменит.
+ */
+function twitchPost(postData, headers, options = {}) {
+  const https = require('https');
+  const attempts = options.attempts || 3;
+  const baseDelay = options.delay || 1500;
+
+  const once = () => new Promise((resolve) => {
+    const req = https.request({
+      hostname: 'gql.twitch.tv',
+      port: 443,
+      path: '/gql',
+      method: 'POST',
+      headers
+    }, (res) => {
+      let data = '';
+      res.on('data', (chunk) => { data += chunk; });
+      res.on('end', () => resolve({ ok: res.statusCode < 400, statusCode: res.statusCode, data }));
+    });
+
+    req.on('error', (e) => resolve({ ok: false, statusCode: 0, error: e.message }));
+    req.setTimeout(15000, () => {
+      req.destroy();
+      resolve({ ok: false, statusCode: 0, error: 'таймаут' });
+    });
+
+    req.write(postData);
+    req.end();
+  });
+
+  return (async () => {
+    let last = null;
+
+    for (let attempt = 1; attempt <= attempts; attempt++) {
+      last = await once();
+
+      if (last.ok) return last;
+
+      const worthRetry = last.statusCode === 0 || last.statusCode >= 500;
+      if (!worthRetry || attempt === attempts) return last;
+
+      // Пауза растёт: при длительном обрыве нет смысла долбить сеть
+      const wait = baseDelay * attempt;
+      console.warn('[Twitch] Запрос не удался (' + (last.error || last.statusCode) +
+        '), повтор через ' + wait + ' мс');
+      await new Promise(r => setTimeout(r, wait));
+    }
+
+    return last;
+  })();
+}
+
+/**
  * Заголовки, подсмотренные у собственных GraphQL-запросов Twitch внутри webview.
  * Client-Integrity выдаётся клиенту Twitch после прохождения его проверки и
  * живёт несколько часов; без него запрос списка кампаний дропсов возвращает
@@ -304,9 +365,52 @@ function resetTrafficSession() {
   return getTrafficSnapshot();
 }
 
+/**
+ * Стоит ли считать трафик у этого окна.
+ *
+ * Отладчик Chromium шлёт событие на каждый полученный кусок данных, а у
+ * видеопотока их тысячи в минуту, и каждое пересекает границу процессов.
+ * Раньше он вешался на всё подряд — главное окно, чат, скрытые webview, —
+ * хотя интересен только расход на просмотр. Считаем у плеера и у окна
+ * стрима, остальное пропускаем.
+ */
+function shouldCountTraffic(webContents) {
+  try {
+    if (webContents.getType() === 'browserView') return true;
+
+    const url = webContents.getURL() || '';
+    if (url.includes('player.twitch.tv')) return true;
+
+    // Адрес webview может ещё не быть выставлен на момент создания —
+    // проверим повторно после первой загрузки
+    return url === '' || url === 'about:blank';
+  } catch (e) {
+    return false;
+  }
+}
+
 function setupTrafficMonitoring(webContents) {
   if (!webContents || webContents.isDestroyed() || monitoredWebContents.has(webContents.id)) return;
+
+  if (!shouldCountTraffic(webContents)) return;
+
+  // Пустой адрес — окно ещё не начало грузиться. Дождёмся и решим снова.
+  try {
+    const url = webContents.getURL() || '';
+    if (url === '' || url === 'about:blank') {
+      webContents.once('did-start-navigation', () => {
+        if (!webContents.isDestroyed() && !monitoredWebContents.has(webContents.id)) {
+          setupTrafficMonitoring(webContents);
+        }
+      });
+      return;
+    }
+  } catch (e) {
+    return;
+  }
+
   monitoredWebContents.add(webContents.id);
+  console.log('[Трафик] Считаю расход у:', (webContents.getURL() || '').slice(0, 60));
 
   try {
     if (!webContents.debugger.isAttached()) {
@@ -615,8 +719,8 @@ function createMainWindow() {
     });
   }
 
-  // Настраиваем реальный мониторинг трафика через CDP (включая webview)
-  setupTrafficMonitoring(mainWindow.webContents);
+  // Трафик считаем только у webview с видео: само окно приложения
+  // почти ничего не качает, а отладчик на нём — лишняя нагрузка
   mainWindow.webContents.on('did-attach-webview', (_event, webContents) => {
     setupTrafficMonitoring(webContents);
   });
@@ -1368,69 +1472,48 @@ function setupStreamQuality() {
 
 // Получить статистику стрима
 ipcMain.handle('get-stream-stats', async (event, channelLogin) => {
-  const https = require('https');
+  const safeLogin = String(channelLogin || '').replace(/"/g, '');
+  if (!safeLogin) return null;
 
-  return new Promise((resolve) => {
-    const postData = JSON.stringify({
-      query: 'query { user(login: "' + channelLogin + '") { stream { title viewersCount createdAt game { name } } channel { self { communityPoints { balance } } } } }'
-    });
-
-    const options = {
-      hostname: 'gql.twitch.tv',
-      port: 443,
-      path: '/gql',
-      method: 'POST',
-      headers: {
-        'Client-ID': 'kimne78kx3ncx6brgo4mv6wki5h1ko',
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(postData)
-      }
-    };
-
-    const req = https.request(options, (res) => {
-      let data = '';
-
-      res.on('data', (chunk) => {
-        data += chunk;
-      });
-
-      res.on('end', () => {
-        try {
-          const response = JSON.parse(data);
-          const user = response?.data?.user;
-          const stream = user?.stream;
-          const points = user?.channel?.self?.communityPoints?.balance;
-
-          if (stream) {
-            const uptime = calculateUptime(stream.createdAt);
-            resolve({
-              // title нужен, когда канал выбран напрямую из подписок и не
-              // попал в выдачу по игре: иначе карточка стрима осталась бы
-              // без названия
-              title: stream.title || '',
-              viewers: stream.viewersCount || 0,
-              points: points || 0,
-              uptime: uptime,
-              gameName: (stream.game && stream.game.name) ? stream.game.name : null
-            });
-          } else {
-            resolve(null);
-          }
-        } catch (e) {
-          console.log('Error getting stream stats:', e.message);
-          resolve(null);
-        }
-      });
-    });
-
-    req.on('error', (e) => {
-      console.log('Request error:', e.message);
-      resolve(null);
-    });
-
-    req.write(postData);
-    req.end();
+  const postData = JSON.stringify({
+    query: 'query { user(login: "' + safeLogin + '") { stream { title viewersCount createdAt game { name } } channel { self { communityPoints { balance } } } } }'
   });
+
+  const authToken = await getCookieAuthToken();
+  const headers = {
+    'Client-ID': 'kimne78kx3ncx6brgo4mv6wki5h1ko',
+    'Content-Type': 'text/plain;charset=UTF-8',
+    'Content-Length': Buffer.byteLength(postData)
+  };
+  if (authToken) headers['Authorization'] = 'OAuth ' + authToken;
+
+  // С повтором: сетевой сбой не должен читаться как «канал офлайн» —
+  // именно по этому признаку приложение решает, жив ли стрим
+  const res = await twitchPost(postData, headers);
+
+  if (!res.ok) {
+    console.warn('[Стрим] Статистика недоступна:', res.error || res.statusCode);
+    return null;
+  }
+
+  try {
+    const user = JSON.parse(res.data)?.data?.user;
+    const stream = user?.stream;
+    if (!stream) return null;
+
+    return {
+      // title нужен, когда канал выбран напрямую из подписок и не попал
+      // в выдачу по игре: иначе карточка стрима осталась бы без названия
+      title: stream.title || '',
+      viewers: stream.viewersCount || 0,
+      points: user?.channel?.self?.communityPoints?.balance || 0,
+      uptime: calculateUptime(stream.createdAt),
+      gameName: stream.game?.name || null
+    };
+  } catch (e) {
+    console.warn('[Стрим] Ошибка разбора статистики:', e.message);
+    return null;
+  }
 });
 
 function calculateUptime(createdAt) {
@@ -2664,72 +2747,49 @@ ipcMain.handle('get-category-overview', async (event, categoryName) => {
 
 // Получить стримы с дропсами для категории
 ipcMain.handle('get-streams-with-drops', async (event, categoryName) => {
-  const https = require('https');
-
-  return new Promise((resolve) => {
-    const escapedName = categoryName.replace(/"/g, '\\"');
-    const postData = JSON.stringify({
-      // Аватарка и зрители запрашиваются сразу здесь: окно категории раньше
-      // добирало их отдельным запросом на каждый канал, с OAuth-токеном —
-      // при его отсутствии аватарки не грузились вовсе.
-      query:
-        'query { game(name: "' + escapedName + '") { streams(first: 30) { edges { node { title viewersCount broadcaster { login displayName profileImageURL(width: 70) } freeformTags { name } } } } } }'
-    });
-
-    const options = {
-      hostname: 'gql.twitch.tv',
-      port: 443,
-      path: '/gql',
-      method: 'POST',
-      headers: {
-        'Client-ID': 'kimne78kx3ncx6brgo4mv6wki5h1ko',
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(postData)
-      }
-    };
-
-    const req = https.request(options, (res) => {
-      let data = '';
-
-      res.on('data', (chunk) => {
-        data += chunk;
-      });
-
-      res.on('end', () => {
-        try {
-          const response = JSON.parse(data);
-          const streams = response?.data?.game?.streams?.edges || [];
-
-          // Фильтруем стримы по сигналам дропсов
-          const dropsStreams = streams.filter(edge => streamHasDropsSignal(edge.node)).map(edge => {
-            const broadcaster = edge.node?.broadcaster;
-            if (!broadcaster) return null;
-            
-            return {
-              login: broadcaster.login,
-              displayName: broadcaster.displayName,
-              title: edge.node.title,
-              viewersCount: edge.node.viewersCount || 0,
-              profileImageUrl: broadcaster.profileImageURL || null
-            };
-          }).filter(stream => stream !== null);
-
-          resolve(dropsStreams);
-        } catch (e) {
-          console.log('Error getting streams:', e.message);
-          resolve([]);
-        }
-      });
-    });
-
-    req.on('error', (e) => {
-      console.log('Request error:', e.message);
-      resolve([]);
-    });
-
-    req.write(postData);
-    req.end();
+  const escapedName = String(categoryName || '').replace(/"/g, '\\"');
+  const postData = JSON.stringify({
+    // Аватарка и зрители запрашиваются сразу здесь: окно категории раньше
+    // добирало их отдельным запросом на каждый канал, с OAuth-токеном —
+    // при его отсутствии аватарки не грузились вовсе.
+    query:
+      'query { game(name: "' + escapedName + '") { streams(first: 30) { edges { node { title viewersCount broadcaster { login displayName profileImageURL(width: 70) } freeformTags { name } } } } } }'
   });
+
+  // С повтором: обрыв связи не должен выглядеть как «стримов нет»
+  const res = await twitchPost(postData, {
+    'Client-ID': 'kimne78kx3ncx6brgo4mv6wki5h1ko',
+    'Content-Type': 'application/json',
+    'Content-Length': Buffer.byteLength(postData)
+  });
+
+  if (!res.ok) {
+    console.warn('[Стримы] Не удалось получить список:', res.error || res.statusCode);
+    return [];
+  }
+
+  try {
+    const game = JSON.parse(res.data)?.data?.game;
+    const edges = game?.streams?.edges || [];
+
+    return edges
+      .filter(edge => streamHasDropsSignal(edge.node))
+      .map(edge => {
+        const broadcaster = edge.node?.broadcaster;
+        if (!broadcaster) return null;
+        return {
+          login: broadcaster.login,
+          displayName: broadcaster.displayName,
+          title: edge.node.title,
+          viewersCount: edge.node.viewersCount || 0,
+          profileImageUrl: broadcaster.profileImageURL || null
+        };
+      })
+      .filter(Boolean);
+  } catch (e) {
+    console.warn('[Стримы] Ошибка разбора ответа:', e.message);
+    return [];
+  }
 });
 
 // Получить активные кампании дропсов
