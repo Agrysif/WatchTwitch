@@ -9,6 +9,7 @@
 - Выбор качества и звука прямо на плеере. Каждая новая сессия начинается с минимального качества, чтобы не тратить трафик незаметно
 - Плеер уезжает в сайдбар, когда его прокручиваешь за край экрана, и возвращается обратно
 - Автовыключение компьютера получило таймер и понятное описание того, когда именно оно сработает
+- Когда все дропсы категории собраны, приложение сразу предлагает перейти к следующей категории с дропсами
 
 ## 🐛 Исправлено
 
@@ -36,6 +37,7 @@
 - Quality and sound controls on the player itself. Every new session starts at the lowest quality so bandwidth is not spent unnoticed
 - The player moves to the sidebar when scrolled off screen and returns when scrolled back
 - Computer shutdown gained a timer and a plain description of exactly when it will trigger
+- When every drop in a category is collected, the app offers to move straight to the next category with drops
 
 ## 🐛 Fixed
 
