@@ -3291,7 +3291,15 @@ class FarmingPage {
       // load() сам проверит, не тот же ли это канал, и не станет
       // перезагружать webview впустую.
       window.playerManager.load(stream.login);
-      window.playerManager.attachTo('farming-player-slot');
+
+      // Размещение доверяем роутеру: он же заводит слежение за прокруткой,
+      // чтобы плеер уезжал в сайдбар, когда его прокручивают за край.
+      // Прямая привязка это слежение обходила.
+      if (window.router?.placePlayerOnFarming) {
+        window.router.placePlayerOnFarming();
+      } else {
+        window.playerManager.attachTo('farming-player-slot');
+      }
 
       // Автоматически обрабатываем mature content warning
       this.setupMatureContentHandler(player);
