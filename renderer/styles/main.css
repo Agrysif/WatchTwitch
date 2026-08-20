@@ -3187,19 +3187,88 @@ body.no-animations * {
   color: #fff;
 }
 
-.player-bar-select {
-  height: 26px;
-  padding: 0 6px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.08);
-  color: #e4e8ee;
-  font-family: inherit;
-  font-size: 11px;
-  cursor: pointer;
+/* Выпадающий список качества — свой, а не системный: системный
+   рисуется средствами Windows и в тёмном интерфейсе выглядит чужеродно
+   белым прямоугольником. Раскрывается вверх, чтобы поместиться в области
+   плеера: контейнер обрезает всё, что выходит за его границы. */
+.player-quality {
+  position: relative;
 }
 
-.player-bar-select:focus {
-  outline: none;
-  border-color: var(--accent-color);
+.player-quality-trigger {
+  width: auto;
+  gap: 5px;
+  padding: 0 7px;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.player-menu {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 6px);
+  display: none;
+  flex-direction: column;
+  min-width: 132px;
+  padding: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: var(--radius-ctl);
+  background: rgba(14, 16, 19, 0.97);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.55);
+}
+
+.player-menu.open {
+  display: flex;
+}
+
+.player-menu-item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 8px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: #d5d9e0;
+  font-family: inherit;
+  font-size: 11.5px;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.player-menu-item:hover {
+  background: rgba(255, 255, 255, 0.09);
+  color: #fff;
+}
+
+.player-menu-item.active {
+  background: var(--accent-quiet);
+  color: var(--accent-color);
+  font-weight: 600;
+}
+
+.player-menu-hint {
+  font-size: 10px;
+  color: var(--text-tertiary);
+}
+
+.player-menu-item.active .player-menu-hint {
+  color: var(--accent-color);
+  opacity: 0.75;
+}
+
+/* Сводка по автовыключению. Включать переключатель, не понимая, что и
+   когда произойдёт, — страшно; строка отвечает на это прямо в настройках. */
+.shutdown-summary {
+  margin: 4px 0 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--warning-color);
+  border-radius: var(--radius-ctl);
+  background: rgba(240, 168, 60, 0.08);
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
 }

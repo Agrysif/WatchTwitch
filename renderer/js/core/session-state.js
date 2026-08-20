@@ -68,6 +68,7 @@ class SessionState {
 
     window.electronAPI?.resetTrafficSession?.();
     this.resetPoints();
+    window.shutdownManager?.startSessionTimer();
     this.showFarmingUI();
     this._tick();
 
@@ -91,6 +92,7 @@ class SessionState {
     this.categoryName = null;
     this.streamLogin = null;
     this.stopPointsPolling();
+    window.shutdownManager?.cancelSessionTimer();
     this.hideFarmingUI();
 
     console.log('[SessionState] Сессия остановлена');
