@@ -2749,6 +2749,7 @@ class FarmingPage {
         matched.map(c => c.name).join(' | '));
 
       this.trackSessionDrops(matched);
+      await this.autoClaimReadyDrops(matched);
 
       horizontal.style.display = 'block';
 
@@ -4590,6 +4591,58 @@ class FarmingPage {
     window.sessionState?.resetPoints();
     this._sessionDropsBaseline = null;
     this._sessionCountedDrops = null;
+  }
+
+  /**
+   * Забирает награды, у которых набралось нужное время просмотра.
+   *
+   * Настройка автосбора существовала, но не работала: механизм в
+   * drops-manager никто не запускал, а написан он был под сырой формат
+   * Twitch, тогда как приложение оперирует своим. Получалось, что
+   * приложение честно наматывает часы, а забрать награду всё равно
+   * нужно руками — при том, что смысл фарминга в обратном.
+   *
+   * Делаем это здесь, где данные о кампаниях уже загружены и обновляются
+   * каждые 30 секунд.
+   */
+  async autoClaimReadyDrops(campaigns) {
+    if (window.settings && window.settings.get('autoClaimDrops') === false) return;
+    if (!window.electronAPI?.claimDrop) return;
+
+    if (!this._claimAttempted) this._claimAttempted = new Set();
+
+    for (const campaign of campaigns) {
+      for (const drop of (campaign.drops || [])) {
+        const id = drop.dropInstanceID;
+        if (!id) continue;                     // Twitch выдаёт его только у готовых наград
+        if (drop.claimed) continue;
+        if (this._claimAttempted.has(id)) continue;
+
+        const ready = drop.required > 0 && drop.progress >= drop.required;
+        if (!ready && !drop.canClaim && !drop.isClaimable) continue;
+
+        // Помечаем до запроса: повторная попытка каждые 30 секунд
+        // при неудаче превратилась бы в спам по сети
+        this._claimAttempted.add(id);
+
+        const name = drop.benefitName || drop.name || 'Награда';
+        console.log('[Дропсы] Забираю награду:', name);
+
+        try {
+          const result = await window.electronAPI.claimDrop(id);
+
+          if (result?.success) {
+            drop.claimed = true;
+            window.utils?.showToast(`Награда получена: ${name}`, 'success');
+            window.showDropNotification?.(name, campaign.game?.name || campaign.name || '', drop.imageURL);
+          } else {
+            console.warn('[Дропсы] Не удалось забрать:', name, result?.error);
+          }
+        } catch (error) {
+          console.warn('[Дропсы] Ошибка при получении:', error?.message);
+        }
+      }
+    }
   }
 
   /**
