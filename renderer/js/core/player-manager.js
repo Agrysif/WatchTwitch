@@ -155,6 +155,26 @@ class PlayerManager extends SlottedWebview {
    * непонятный ему параметр. Всё неизвестное считаем минимальным качеством —
    * оно же и по умолчанию.
    */
+  /**
+   * Возврат к минимальному качеству в начале каждой сессии фарминга.
+   *
+   * Выбор пользователя действует до конца сессии — если он поднял качество,
+   * оно таким и останется. Но новая сессия всегда стартует с минимума:
+   * фарминг обычно идёт часами и фоном, и незаметно унаследованное
+   * «Источник» с прошлого раза означает лишние гигабайты трафика.
+   */
+  resetQualityForNewSession() {
+    const lowest = PlayerManager.QUALITIES[0].value;
+    const current = window.settings?.get('preferredStreamQuality');
+
+    if (current !== lowest) {
+      console.log('[PlayerManager] Новая сессия: качество сброшено на', lowest);
+      window.settings?.set('preferredStreamQuality', lowest);
+    }
+
+    this.syncBar();
+  }
+
   resolveQuality() {
     const stored = window.settings?.get('preferredStreamQuality');
     const known = PlayerManager.QUALITIES.some(q => q.value === stored);

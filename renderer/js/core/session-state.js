@@ -69,6 +69,7 @@ class SessionState {
     window.electronAPI?.resetTrafficSession?.();
     this.resetPoints();
     window.shutdownManager?.startSessionTimer();
+    window.playerManager?.resetQualityForNewSession();
     this.showFarmingUI();
     this._tick();
 
