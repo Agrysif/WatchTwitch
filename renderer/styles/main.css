@@ -3134,3 +3134,72 @@ body.no-animations * {
   gap: 8px;
   flex-shrink: 0;
 }
+
+/* ===== ПАНЕЛЬ ПЛЕЕРА =====
+ * Единственный элемент поверх плеера, принимающий мышь. Сам webview
+ * прозрачен для курсора: иначе колесо прокрутки уходило внутрь него и
+ * страница под курсором не прокручивалась.
+ */
+.player-bar {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 6px;
+  border-radius: var(--radius-ctl);
+  background: rgba(10, 11, 13, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  pointer-events: auto;
+  opacity: 0.35;
+  transition: opacity var(--transition-fast);
+}
+
+.player-bar:hover {
+  opacity: 1;
+}
+
+.player-bar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.08);
+  color: #e4e8ee;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.player-bar-btn:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+/* Включённый звук подсвечен: при фоновом фарминге это заметное состояние */
+.player-bar-btn.active {
+  background: var(--accent-color);
+  border-color: var(--accent-color);
+  color: #fff;
+}
+
+.player-bar-select {
+  height: 26px;
+  padding: 0 6px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.08);
+  color: #e4e8ee;
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.player-bar-select:focus {
+  outline: none;
+  border-color: var(--accent-color);
+}

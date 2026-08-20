@@ -27,8 +27,20 @@ class PlayerManager extends SlottedWebview {
 
     this.channel = null; // текущий канал, чтобы не перезагружать плеер зря
     this.watchdog = null;
+    this.bar = null;
+    this.muted = true;
     this.lastPlaybackTime = null;
     this.stallStrikes = 0;
+  }
+
+  /** Качества, которые понимает плеер Twitch. */
+  static get QUALITIES() {
+    return [
+      { value: '160p30', label: '160p — минимум' },
+      { value: '360p30', label: '360p' },
+      { value: '480p30', label: '480p' },
+      { value: '720p60', label: '720p' }
+    ];
   }
 
   static get() {
@@ -36,6 +48,130 @@ class PlayerManager extends SlottedWebview {
       window._playerManager = new PlayerManager();
     }
     return window._playerManager;
+  }
+
+  /**
+   * Панель управления поверх плеера.
+   *
+   * Собственная, а не встроенная в Twitch: встроенная показывает оверлеи с
+   * названием канала и перехватывает мышь. Панель — единственный элемент
+   * с pointer-events, поэтому прокрутка страницы над плеером работает.
+   */
+  onCreated(webview) {
+    const bar = document.createElement('div');
+    bar.className = 'player-bar';
+    bar.style.display = 'none';
+
+    const qualityOptions = PlayerManager.QUALITIES
+      .map(q => `<option value="${q.value}">${q.label}</option>`)
+      .join('');
+
+    bar.innerHTML = `
+      <button class="player-bar-btn" data-role="sound" title="Включить звук">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" data-icon="muted">
+          <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3a4.5 4.5 0 00-2.5-4v8a4.5 4.5 0 002.5-4z" opacity=".35"/>
+          <path d="M19 5L5 19" stroke="currentColor" stroke-width="2"/>
+        </svg>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" data-icon="loud" style="display: none;">
+          <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3a4.5 4.5 0 00-2.5-4v8a4.5 4.5 0 002.5-4zM14 3.2v2.1c2.9.9 5 3.5 5 6.7s-2.1 5.8-5 6.7v2.1c4-1 7-4.6 7-8.8s-3-7.8-7-8.8z"/>
+        </svg>
+      </button>
+      <select class="player-bar-select" data-role="quality">${qualityOptions}</select>
+    `;
+
+    this.host.appendChild(bar);
+    this.bar = bar;
+
+    bar.querySelector('[data-role="sound"]').addEventListener('click', () => this.toggleSound());
+    bar.querySelector('[data-role="quality"]').addEventListener('change', (e) => this.setQuality(e.target.value));
+
+    this.syncBar();
+  }
+
+  /** Панель нужна только там, где плеер основной. В сайдбаре он декоративный. */
+  onAttached(options = {}) {
+    if (!this.bar) return;
+    this.bar.style.display = options.interactive === false ? 'none' : 'flex';
+  }
+
+  /**
+   * Приводит сохранённое качество к одному из поддерживаемых.
+   *
+   * У ранних версий здесь могло остаться значение 'auto', которого нет
+   * среди вариантов: список тогда показывался пустым, а плеер получал
+   * непонятный ему параметр. Всё неизвестное считаем минимальным качеством —
+   * оно же и по умолчанию.
+   */
+  resolveQuality() {
+    const stored = window.settings?.get('preferredStreamQuality');
+    const known = PlayerManager.QUALITIES.some(q => q.value === stored);
+    return known ? stored : '160p30';
+  }
+
+  syncBar() {
+    if (!this.bar) return;
+
+    const quality = this.resolveQuality();
+    const select = this.bar.querySelector('[data-role="quality"]');
+    if (select) select.value = quality;
+
+    const muted = this.muted !== false;
+    const btn = this.bar.querySelector('[data-role="sound"]');
+    if (btn) {
+      btn.classList.toggle('active', !muted);
+      btn.title = muted ? 'Включить звук' : 'Выключить звук';
+      btn.querySelector('[data-icon="muted"]').style.display = muted ? '' : 'none';
+      btn.querySelector('[data-icon="loud"]').style.display = muted ? 'none' : '';
+    }
+  }
+
+  /**
+   * Звук переключается прямо у видео, без перезагрузки плеера.
+   * Состояние намеренно не запоминается между стримами: фарминг фоновый,
+   * и внезапно заоравший на следующем канале звук — не то, чего ждут.
+   */
+  async toggleSound() {
+    if (!this.webview) return;
+
+    this.muted = this.muted === false;
+    this.syncBar();
+
+    try {
+      await this.webview.executeJavaScript(`
+        (function () {
+          const video = document.querySelector('video');
+          if (!video) return false;
+          video.muted = ${this.muted};
+          if (!video.muted) video.volume = 0.5;
+          return true;
+        })();
+      `);
+    } catch (e) {
+      console.warn('[PlayerManager] Не удалось переключить звук:', e.message);
+    }
+  }
+
+  /**
+   * Качество плеер Twitch читает из своего localStorage, поэтому применение
+   * требует перезагрузки. Делаем это только по явному выбору пользователя.
+   */
+  async setQuality(value) {
+    window.settings?.set('preferredStreamQuality', value);
+
+    if (!this.webview || !this.channel) return;
+
+    try {
+      await this.webview.executeJavaScript(`
+        localStorage.setItem('video-quality', JSON.stringify({ default: '${value}' }));
+      `);
+    } catch (e) {
+      console.warn('[PlayerManager] Не удалось записать качество:', e.message);
+    }
+
+    const channel = this.channel;
+    this.channel = null;
+    this.load(channel, { quality: value });
+    window.utils?.showToast('Качество: ' + value, 'info');
   }
 
   hasStream() {
@@ -64,9 +200,7 @@ class PlayerManager extends SlottedWebview {
     // Качество берём из настроек: это прямой рычаг расхода трафика.
     // Раньше значение было прибито в коде, а настройка в интерфейсе
     // отсутствовала вовсе.
-    const quality = options.quality
-      || window.settings?.get('preferredStreamQuality')
-      || '160p30';
+    const quality = options.quality || this.resolveQuality();
     // controls=false убирает панель управления и наложенную поверх видео
     // подпись с названием стрима — для фонового просмотра они не нужны.
     const url = `https://player.twitch.tv/?channel=${login}&parent=localhost&muted=true&autoplay=true&controls=false&quality=${quality}`;
@@ -75,6 +209,9 @@ class PlayerManager extends SlottedWebview {
     this.channel = login;
     this.lastPlaybackTime = null;
     this.stallStrikes = 0;
+    // Новый стрим всегда начинается без звука
+    this.muted = true;
+    this.syncBar();
     webview.src = url;
 
     this.startWatchdog();
