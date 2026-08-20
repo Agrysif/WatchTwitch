@@ -411,7 +411,32 @@ class FarmingPage {
 
           category.dropsProgressPercent = campaignInfo.progress;
           category.dropsEndsAt = campaignInfo.campaign?.endAt || campaignInfo.campaign?.endsAt;
-          category.dropsCompleted = false;
+
+          // Кампании у игры сменяются: одна закончилась, назавтра началась
+          // другая. Раньше отметка «зафармлено» ставилась навсегда, а
+          // категория оставалась выключенной — приложение считало игру
+          // отработанной и не возвращалось к ней, пока стрим не запустят
+          // вручную.
+          const campaignId = campaignInfo.campaign?.id || '';
+          const isNewCampaign = !!campaignId
+            && !!category.dropsCampaignIds
+            && !category.dropsCampaignIds.split(',').includes(campaignId);
+
+          if (isNewCampaign) {
+            category.dropsCompleted = false;
+            category.dropsCampaignIds = campaignId;
+            updated = true;
+
+            // Возвращаем в работу только то, что выключило само приложение
+            if (category.disabledByCompletion) {
+              category.enabled = true;
+              category.disabledByCompletion = false;
+              console.log('[Дропсы] Новая кампания, категория снова в работе:', category.name);
+              window.utils?.showToast(`${category.name}: новая кампания дропсов`, 'success');
+            }
+          } else {
+            category.dropsCompleted = false;
+          }
 
           if (prevProgress !== category.dropsProgressPercent || prevEndsAt !== category.dropsEndsAt) {
             updated = true;
@@ -1707,6 +1732,11 @@ class FarmingPage {
         if (category) {
           const wasEnabled = category.enabled;
           category.enabled = e.target.checked;
+
+          // Пользователь распорядился сам — снимаем отметку о том, что
+          // категорию выключило приложение, иначе оно вернуло бы её
+          // в работу при новой кампании вопреки решению пользователя
+          category.disabledByCompletion = false;
           
           console.log('Toggle category:', {
             name: category.name,
@@ -2825,6 +2855,9 @@ class FarmingPage {
         this.currentCategory.dropsCompleted = overallPercent === 100;
         this.currentCategory.dropsProgressPercent = overallPercent;
         this.currentCategory.dropsEndsAt = soonestEnd;
+        // Идентификаторы кампаний нужны, чтобы отличить «та же кампания
+        // всё ещё идёт» от «началась новая»
+        this.currentCategory.dropsCampaignIds = matched.map(c => c.id).filter(Boolean).sort().join(',');
         await Storage.saveCategories(this.categories);
         this.renderCategories();
 
@@ -2848,9 +2881,13 @@ class FarmingPage {
             await Storage.saveCategories(this.categories);
             this.renderCategories();
           } else {
-            // Пользовательские категории отключаем вместо удаления
+            // Пользовательские категории отключаем вместо удаления.
+            // Помечаем, что выключило приложение, а не пользователь: когда
+            // у игры начнётся новая кампания, такую категорию можно вернуть
+            // в работу автоматически, а выключенную вручную — нельзя.
             console.log('Category completed, disabling:', this.currentCategory.name);
             this.currentCategory.enabled = false;
+            this.currentCategory.disabledByCompletion = true;
             await Storage.saveCategories(this.categories);
             this.renderCategories();
             this.currentCategory = null;
