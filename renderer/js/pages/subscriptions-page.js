@@ -891,7 +891,7 @@ class SubscriptionsPage {
 
       for (const sub of this.subscriptions) {
         if (!this.isChannelActive(sub)) {
-          await window.electronAPI.unsubscribeChannel(account.accessToken, sub.id);
+          await window.electronAPI.unsubscribeChannel(null, sub.login);
         }
       }
 
@@ -936,10 +936,9 @@ class SubscriptionsPage {
       // канал из своего списка и открывало сайт, предлагая отписаться
       // вручную — при том, что вызов для отписки давно был реализован,
       // просто его никто не вызывал.
-      const accounts = await Storage.getAccounts();
-      const token = accounts?.[0]?.accessToken;
-
-      const result = await window.electronAPI.unsubscribeChannel(token, sub.id);
+      // Передаём login: отписка выполняется действием на самой странице
+      // канала, а не запросом по идентификатору
+      const result = await window.electronAPI.unsubscribeChannel(null, sub.login);
 
       if (!result?.success) {
         console.error('Не удалось отписаться:', result?.error);
@@ -958,7 +957,12 @@ class SubscriptionsPage {
       this.updateStats();
       this.applyFilter();
 
-      window.utils.showToast(`Отписка от ${sub.displayName} выполнена`, 'success');
+      window.utils.showToast(
+        result.already
+          ? `Вы уже не подписаны на ${sub.displayName}`
+          : `Отписка от ${sub.displayName} выполнена`,
+        'success'
+      );
     } catch (error) {
       console.error('Error removing subscription:', error);
       window.utils.showToast('Ошибка при отписке', 'error');

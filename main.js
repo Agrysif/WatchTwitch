@@ -3371,12 +3371,7 @@ ipcMain.handle('get-channel-points', async (event, channelId, userId) => {
         port: 443,
         path: '/gql',
         method: 'POST',
-        headers: {
-          'Client-ID': 'kimne78kx3ncx6brgo4mv6wki5h1ko',
-          'Authorization': `OAuth ${authToken}`,
-          'Content-Type': 'text/plain;charset=UTF-8',
-          'Content-Length': Buffer.byteLength(postData)
-        }
+        headers: unsubscribeHeaders
       };
 
       const req = https.request(options, (res) => {
@@ -3859,15 +3854,231 @@ ipcMain.handle('get-user-subscriptions', async (event, authToken) => {
 });
 
 // Отписка от канала через GraphQL API
-ipcMain.handle('unsubscribe-channel', async (event, authToken, broadcasterId) => {
+/**
+ * Отписка от канала.
+ *
+ * Прямая GraphQL-мутация здесь не работает. Проверено измерением: тот же
+ * cookie-токен успешно выполняет запрос инвентаря дропсов (код 200), то
+ * есть сессия настоящая и авторизованная, — но мутацию отписки Twitch
+ * отклоняет с 401 даже с приложенным Client-Integrity. Подпись целостности
+ * привязана к живому клиенту и переиспользованию не поддаётся.
+ *
+ * Через Helix тоже нельзя: Twitch убрал возможность отписки из публичного
+ * API в 2023 году.
+ *
+ * Поэтому отписываемся так же, как приложение собирает сундуки, — действием
+ * внутри самой страницы Twitch, где весь нужный контекст уже есть.
+ */
+/**
+ * Спрашивает у Twitch, подписан ли пользователь на канал.
+ *
+ * Запросы, в отличие от мутаций, проходят с cookie-токеном без проверки
+ * целостности — это проверено измерением. Нужна, чтобы не выдавать успех
+ * отписки, не убедившись в нём: без проверки приложение сообщало об успехе
+ * даже для несуществующего канала.
+ */
+function isFollowingChannel(login) {
+  const https = require('https');
+
   return new Promise(async (resolve) => {
-    console.log('[Unsubscribe] Starting unsubscribe for broadcaster:', broadcasterId);
-    
-    if (!authToken || !broadcasterId) {
-      console.error('[Unsubscribe] Missing auth token or broadcaster ID');
-      resolve({ success: false, error: 'Missing auth token or broadcaster ID' });
+    const token = await getCookieAuthToken();
+    if (!token || !login) {
+      resolve(null);
       return;
     }
+
+    const safeLogin = String(login).replace(/"/g, '');
+    const body = JSON.stringify({
+      query: 'query { user(login: "' + safeLogin + '") { id self { follower { followedAt } } } }'
+    });
+
+    const req = https.request({
+      hostname: 'gql.twitch.tv', port: 443, path: '/gql', method: 'POST',
+      headers: {
+        'Client-ID': 'kimne78kx3ncx6brgo4mv6wki5h1ko',
+        'Authorization': 'OAuth ' + token,
+        'Content-Type': 'text/plain;charset=UTF-8'
+      }
+    }, (res) => {
+      let data = '';
+      res.on('data', c => { data += c; });
+      res.on('end', () => {
+        try {
+          const user = JSON.parse(data)?.data?.user;
+          if (!user) {
+            resolve(null);
+            return;
+          }
+          resolve(!!user.self?.follower?.followedAt);
+        } catch (e) {
+          resolve(null);
+        }
+      });
+    });
+
+    req.on('error', () => resolve(null));
+    req.write(body);
+    req.end();
+  });
+}
+
+ipcMain.handle('unsubscribe-channel', async (event, authToken, channelLogin) => {
+  if (!channelLogin) {
+    return { success: false, error: 'Не указан канал' };
+  }
+
+  const { BrowserWindow } = require('electron');
+
+  const worker = new BrowserWindow({
+    show: false,
+    webPreferences: {
+      partition: 'persist:twitch',
+      nodeIntegration: false,
+      contextIsolation: true,
+      offscreen: false
+    }
+  });
+
+  const finish = (result) => {
+    try {
+      if (!worker.isDestroyed()) worker.destroy();
+    } catch (e) { /* ignore */ }
+    return result;
+  };
+
+  try {
+    const followedBefore = await isFollowingChannel(channelLogin);
+
+    if (followedBefore === null) {
+      return finish({ success: false, error: 'Канал не найден или Twitch не ответил' });
+    }
+
+    if (followedBefore === false) {
+      console.log('[Unsubscribe] Подписки на этот канал и не было');
+      return finish({ success: true, already: true });
+    }
+
+    console.log('[Unsubscribe] Открываю страницу канала:', channelLogin);
+    await worker.loadURL(`https://www.twitch.tv/${channelLogin}`);
+
+    // Страница Twitch собирается скриптами, кнопка появляется не сразу
+    const clicked = await worker.webContents.executeJavaScript(`
+      (async function () {
+        const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+        const findFollowButton = () => {
+          // Только именованные кнопки Twitch. Широкие селекторы вроде
+          // 'button' приводили к нажатию случайных элементов страницы.
+          const selectors = [
+            '[data-a-target="unfollow-button"]',
+            '[data-a-target="follow-button"]'
+          ];
+          for (const selector of selectors) {
+            const el = document.querySelector(selector);
+            if (el) return el;
+          }
+          return null;
+        };
+
+        let button = null;
+        for (let i = 0; i < 40; i++) {
+          button = findFollowButton();
+          if (button) break;
+          await sleep(500);
+        }
+
+        if (!button) return { ok: false, reason: 'not-found' };
+
+        const label = (button.getAttribute('data-a-target') || '') + ' ' +
+                      (button.getAttribute('aria-label') || '');
+
+        // Кнопка «подписаться» означает, что подписки уже нет
+        if (/follow-button/.test(label) && !/unfollow/i.test(label)) {
+          return { ok: true, already: true };
+        }
+
+        button.click();
+        await sleep(1200);
+
+        // Twitch спрашивает подтверждение
+        const confirmSelectors = [
+          '[data-a-target="modal-unfollow-button"]',
+          'button[data-test-selector="unfollow-button"]'
+        ];
+        for (const selector of confirmSelectors) {
+          const nodes = document.querySelectorAll(selector);
+          for (const node of nodes) {
+            const text = (node.innerText || '') + ' ' + (node.getAttribute('aria-label') || '');
+            if (/отписаться|unfollow|не следить/i.test(text)) {
+              node.click();
+              await sleep(1000);
+              return { ok: true };
+            }
+          }
+        }
+
+        return { ok: true, unconfirmed: true };
+      })();
+    `);
+
+    if (!clicked?.ok) {
+      console.warn('[Unsubscribe] Кнопка не найдена на странице');
+      return finish({
+        success: false,
+        error: 'Не удалось найти кнопку подписки на странице канала'
+      });
+    }
+
+    // Результат подтверждаем запросом, а не верой в клик: страница могла
+    // измениться, и нажатие ничего не значит само по себе.
+    let followedAfter = true;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      await new Promise(r => setTimeout(r, 900));
+      followedAfter = await isFollowingChannel(channelLogin);
+      if (followedAfter === false) break;
+    }
+
+    if (followedAfter === false) {
+      console.log('[Unsubscribe] Отписка подтверждена:', channelLogin);
+      return finish({ success: true });
+    }
+
+    console.warn('[Unsubscribe] Подписка осталась после нажатия');
+    return finish({
+      success: false,
+      error: 'Twitch не подтвердил отписку. Похоже, изменилась страница канала.'
+    });
+  } catch (error) {
+    console.error('[Unsubscribe] Ошибка:', error.message);
+    return finish({ success: false, error: error.message });
+  }
+});
+
+ipcMain.handle('unsubscribe-channel-legacy', async (event, authToken, broadcasterId) => {
+  return new Promise(async (resolve) => {
+    console.log('[Unsubscribe] Starting unsubscribe for broadcaster:', broadcasterId);
+
+    // Мутация выполняется под веб-клиентом Twitch, а он принимает только
+    // cookie-токен из webview. Токен OAuth-приложения здесь даёт 401
+    // «The Authorization token is invalid» — снаружи это выглядело как
+    // «No data in response», потому что в ответе действительно нет data.
+    //
+    // Токен берём до проверки: вызывающей стороне знать о нём незачем.
+    const cookieToken = await getCookieAuthToken();
+    const token = cookieToken || authToken;
+
+    if (!token || !broadcasterId) {
+      console.error('[Unsubscribe] Нет токена или id канала');
+      resolve({
+        success: false,
+        error: !token
+          ? 'Не найден токен Twitch. Откройте любой стрим в приложении, чтобы авторизоваться.'
+          : 'Не указан канал'
+      });
+      return;
+    }
+
+    console.log('[Unsubscribe] Источник токена:', cookieToken ? 'cookie webview' : 'переданный');
 
     try {
       // Используем GraphQL API для реальной отписки
@@ -3895,6 +4106,28 @@ ipcMain.handle('unsubscribe-channel', async (event, authToken, broadcasterId) =>
       };
 
       const postData = JSON.stringify([graphqlQuery]);
+
+      // Мутации Twitch проходят проверку целостности клиента. Без заголовка
+      // Client-Integrity сервер отвечает 401 «The Authorization token is
+      // invalid» — сообщение вводит в заблуждение, токен тут ни при чём.
+      // Заголовок перехватывается из собственных запросов Twitch внутри
+      // webview, тем же механизмом, что уже используется для списка кампаний.
+      const unsubscribeHeaders = {
+        'Client-ID': 'kimne78kx3ncx6brgo4mv6wki5h1ko',
+        'Authorization': `OAuth ${token}`,
+        'Content-Type': 'text/plain;charset=UTF-8',
+        'Content-Length': Buffer.byteLength(postData)
+      };
+
+      if (hasFreshIntegrity()) {
+        unsubscribeHeaders['Client-Integrity'] = twitchGqlHeaders.integrity;
+        if (twitchGqlHeaders.deviceId) unsubscribeHeaders['X-Device-Id'] = twitchGqlHeaders.deviceId;
+        if (twitchGqlHeaders.clientVersion) unsubscribeHeaders['Client-Version'] = twitchGqlHeaders.clientVersion;
+        if (twitchGqlHeaders.sessionId) unsubscribeHeaders['Client-Session-Id'] = twitchGqlHeaders.sessionId;
+        console.log('[Unsubscribe] Client-Integrity приложен');
+      } else {
+        console.warn('[Unsubscribe] Client-Integrity не перехвачен — Twitch, скорее всего, отклонит запрос');
+      }
 
       const options = {
         hostname: 'gql.twitch.tv',
@@ -3931,12 +4164,32 @@ ipcMain.handle('unsubscribe-channel', async (event, authToken, broadcasterId) =>
             }
             
             // Проверяем успешность - может быть data.unfollowUser или просто data
-            if (result.data) {
-              console.log('[Unsubscribe] Successfully unfollowed broadcaster:', broadcasterId);
+            // Twitch отвечает по-разному: HTTP-ошибкой, GraphQL-ошибкой
+            // или data без полезной нагрузки. Раньше всё это сваливалось
+            // в одно невнятное «No data in response».
+            if (res.statusCode === 401) {
+              resolve({
+                success: false,
+                error: hasFreshIntegrity()
+                  ? 'Twitch отклонил авторизацию. Откройте стрим в приложении, чтобы обновить вход.'
+                  : 'Twitch требует проверку клиента. Запустите фарминг на минуту и повторите — приложение подхватит нужный ключ.'
+              });
+              return;
+            }
+
+            if (Array.isArray(result?.errors) && result.errors.length > 0) {
+              const message = result.errors[0]?.message || 'ошибка Twitch';
+              console.error('[Unsubscribe] GraphQL-ошибка:', message);
+              resolve({ success: false, error: message });
+              return;
+            }
+
+            if (result?.data && 'unfollowUser' in result.data) {
+              console.log('[Unsubscribe] Отписка выполнена:', broadcasterId);
               resolve({ success: true });
             } else {
-              console.error('[Unsubscribe] No data in response:', result);
-              resolve({ success: false, error: 'No data in response' });
+              console.error('[Unsubscribe] Неожиданный ответ:', JSON.stringify(result).slice(0, 300));
+              resolve({ success: false, error: 'Twitch вернул неожиданный ответ (код ' + res.statusCode + ')' });
             }
           } catch (e) {
             console.error('[Unsubscribe] Error parsing response:', e);
