@@ -427,6 +427,15 @@ class PlayerManager extends SlottedWebview {
   async checkPlayback() {
     if (!this.webview || !this.channel || !this.webview.src) return;
 
+    // Спрятанный плеер проверять нельзя: пока он не показан, замирание
+    // нормально, а вмешательство сторожа обернулось бы перезагрузкой
+    // и потерей накопленного просмотра.
+    if (this._parked) {
+      this.lastPlaybackTime = null;
+      this.stallStrikes = 0;
+      return;
+    }
+
     let state;
     try {
       state = await this.webview.executeJavaScript(`
