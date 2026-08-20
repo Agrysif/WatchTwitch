@@ -25,6 +25,7 @@ class SessionState {
     this.points = SessionState.emptyPoints();
     this.pointsPollInterval = null;
     this.dropsCollected = 0;
+    this.idleTicks = 0;
 
     // Тикаем всегда: если сессии нет, _tick просто ничего не рисует.
     this._startTicking();
@@ -34,6 +35,15 @@ class SessionState {
   // пассивный просмотр начисляет мелкими порциями
   static get CHEST_THRESHOLD() {
     return 50;
+  }
+
+  /**
+   * Сколько секунд сессия может прожить без играющего стрима.
+   * Запас нужен на перезагрузку плеера сторожем и на смену канала —
+   * в эти моменты стрима нет секунду-другую, и это нормально.
+   */
+  static get IDLE_LIMIT_SECONDS() {
+    return 45;
   }
 
   static emptyPoints() {
@@ -67,6 +77,7 @@ class SessionState {
     this.streamLogin = meta.streamLogin || null;
 
     window.electronAPI?.resetTrafficSession?.();
+    this.idleTicks = 0;
     this.resetPoints();
     window.shutdownManager?.startSessionTimer();
     window.playerManager?.resetQualityForNewSession();
@@ -81,6 +92,7 @@ class SessionState {
     this.startTime = startTime || Date.now();
     this.categoryName = meta.categoryName || null;
     this.streamLogin = meta.streamLogin || null;
+    this.idleTicks = 0;
 
     this.showFarmingUI();
     this._tick();
@@ -238,6 +250,26 @@ class SessionState {
 
   async _tick() {
     if (!this.isActive()) return;
+
+    // Сессия без стрима — не сессия.
+    //
+    // Раньше состояние сессии жило само по себе: после запуска приложения
+    // в сайдбаре шёл таймер и капал трафик, хотя плеер ничего не играл.
+    // Даём запас на перезагрузку плеера и смену канала, а если стрима нет
+    // дольше — останавливаем сессию честно.
+    if (!window.playerManager?.hasStream()) {
+      this.idleTicks = (this.idleTicks || 0) + 1;
+
+      if (this.idleTicks > SessionState.IDLE_LIMIT_SECONDS) {
+        console.warn('[SessionState] Стрима нет', this.idleTicks, 'секунд — останавливаю сессию');
+        this.idleTicks = 0;
+        this.stop();
+        window.utils?.showToast('Сессия остановлена: стрим не запущен', 'warning');
+        return;
+      }
+    } else {
+      this.idleTicks = 0;
+    }
 
     const text = this._formatDuration(this.getDurationMs());
 

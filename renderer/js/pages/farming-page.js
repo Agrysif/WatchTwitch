@@ -706,6 +706,22 @@ class FarmingPage {
         title: sessionState.streamTitle || ''
       };
 
+      // Проверяем, идёт ли ещё тот стрим.
+      //
+      // Раньше сессия восстанавливалась без этой проверки: после запуска
+      // приложения в сайдбаре шёл таймер и капал трафик, хотя канал давно
+      // офлайн и смотреть нечего. Возобновлять имеет смысл только реально
+      // идущий эфир — иначе пусть отработает обычный подбор категории.
+      if (stream.login && window.electronAPI?.getStreamStats) {
+        const stats = await window.electronAPI.getStreamStats(stream.login);
+        if (!stats) {
+          console.log('[Сессия] Сохранённый канал офлайн, сессию не восстанавливаем:', stream.login);
+          await Storage.delete('activeSession').catch(() => {});
+          return;
+        }
+        stream.title = stats.title || stream.title;
+      }
+
       // Восстанавливаем время сессии
       this.sessionStartTime = sessionState.startTime || Date.now();
       this.currentCategory = category;
