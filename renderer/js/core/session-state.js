@@ -265,6 +265,7 @@ class SessionState {
         this.idleTicks = 0;
         this.stop();
         window.utils?.showToast('Сессия остановлена: стрим не запущен', 'warning');
+        window.notifyFarmingEvent?.('Фарминг остановлен', 'Стрим не запустился, сессия завершена');
         return;
       }
     } else {
