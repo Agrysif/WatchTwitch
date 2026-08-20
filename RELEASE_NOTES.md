@@ -1,55 +1,21 @@
-## 🇷🇺 Что нового
+## 🇷🇺 Исправлено
 
-- Дропсы теперь забираются автоматически. Настройка автосбора существовала, но не работала — приложение наматывало часы, а награду всё равно нужно было брать руками
-- Награду можно забрать и вручную: в окне дропса появилась кнопка «Получить»
-- Отписаться от канала можно прямо из приложения, без перехода на сайт
-- Это окно: после обновления приложение показывает, что изменилось. Сведения берутся с GitHub, поэтому видны и предыдущие патчи. Открыть в любой момент — «Настройки → Что нового в обновлении»
-- Раздел «Аналитика» в статистике: дропсов в час, сколько времени уходит на одну награду, расход трафика за час и за сутки, средняя длина сессии
-- Категории можно закреплять — наведите на карточку и нажмите значок рядом с «Play». Закреплённые проверяются на дропсы первыми
-- Выбор качества и звука прямо на плеере. Каждая новая сессия начинается с минимального качества, чтобы не тратить трафик незаметно
-- Плеер уезжает в сайдбар, когда его прокручиваешь за край экрана, и возвращается обратно
-- Автовыключение компьютера получило таймер и понятное описание того, когда именно оно сработает
-- Когда все дропсы категории собраны, приложение сразу предлагает перейти к следующей категории с дропсами
+- **Награда снова забирается из приложения.** Кнопка «Получить» отвечала «Не удалось получить награду» на любую попытку: запрос уходил под токеном OAuth-приложения, а Twitch принимает его только от своего веб-клиента и возвращал отказ. Теперь используется тот же токен, на котором работает список дропсов, — и кнопка, и автосбор наград
+- Отказ теперь называет причину: истёкшую авторизацию, устаревший список наград или ответ Twitch. Раньше на всё была одна фраза
+- Награда, забранная ранее на сайте, больше не считается ошибкой
+- Кнопка «Получить все» перестала молча пропускать награды — в ней лежал устаревший запрос
 
-## 🐛 Исправлено
+## ✨ Что нового
 
-- **Стрим больше не зависает.** Если у канала не было запрошенного качества, плеер молча стоял с чёрным экраном бесконечно. Теперь качество подбирается автоматически, а зависший плеер перезапускается сам
-- **Стрим не прерывается** при переходе между вкладками и при переезде в сайдбар
-- Сессия больше не показывается активной, когда стрим не запущен
-- Категория снова берётся в работу, когда у игры начинается новая кампания дропсов — раньше она считалась отработанной навсегда
-- Приоритет подписок наконец отключается: раньше избранные каналы применялись даже при выключенном переключателе
-- Избранные каналы действительно смотрятся первыми — они проверяются напрямую, а не ищутся в списке популярных, куда небольшие каналы не попадают
-- Рейтинг каналов считается по-настоящему: раньше у всех выходило одно и то же число, а оценка ниже 50 была невозможна
-- Список подписок больше не стирается, если Twitch ответил пустым списком
-- Обложки кампаний и картинки наград снова загружаются
-- Приложение переживает обрывы связи: запросы повторяются вместо того, чтобы считать канал офлайн
-- Прокрутка страницы работает, когда курсор над плеером
-- Расход трафика считается точнее и создаёт меньше нагрузки
+- Когда все дропсы категории собраны, приложение сразу предлагает перейти к следующей категории с дропсами. Раньше следующую нужно было искать руками
 
-## 🇬🇧 What's new
+## 🇬🇧 Fixed
 
-- Drops are now claimed automatically. The auto-claim setting existed but never ran — the app accumulated watch time while rewards still had to be taken by hand
-- Rewards can also be claimed manually: the drop window now has a "Claim" button
-- Unfollowing a channel works from inside the app, without opening the website
-- This window: after an update the app shows what changed. Notes come from GitHub, so previous patches are visible too. Open it any time via Settings → What's new
-- An "Analytics" section in statistics: drops per hour, time spent per reward, traffic per hour and per day, average session length
-- Categories can be pinned — hover a card and click the icon next to "Play". Pinned ones are checked for drops first
-- Quality and sound controls on the player itself. Every new session starts at the lowest quality so bandwidth is not spent unnoticed
-- The player moves to the sidebar when scrolled off screen and returns when scrolled back
-- Computer shutdown gained a timer and a plain description of exactly when it will trigger
-- When every drop in a category is collected, the app offers to move straight to the next category with drops
+- **Claiming rewards from the app works again.** The "Claim" button answered "could not claim the reward" on every attempt: the request went out under the OAuth application token, which Twitch accepts only from its own web client and rejected. It now uses the same token the drops list already works on — both for the button and for automatic claiming
+- Failures now name the cause: expired authorization, a stale rewards list, or Twitch's own error. Previously everything shared one message
+- A reward already claimed on the website no longer counts as an error
+- "Claim all" stopped silently skipping rewards — it carried a stale request
 
-## 🐛 Fixed
+## ✨ What's new
 
-- **The stream no longer freezes.** If a channel lacked the requested quality, the player silently sat on a black screen forever. Quality is now picked automatically and a stalled player restarts itself
-- **Playback is not interrupted** when switching tabs or moving to the sidebar
-- A session is no longer shown as active when no stream is playing
-- A category returns to the queue when its game starts a new drops campaign — previously it counted as finished forever
-- Subscription priority can finally be turned off: favourites applied even with the toggle disabled
-- Favourite channels are really watched first — they are checked directly instead of being looked up among the most popular, where small channels never appear
-- Channel rating actually works: every channel used to show the same number, and a score below 50 was impossible
-- The subscriptions list is no longer wiped when Twitch returns an empty response
-- Campaign art and reward images load again
-- The app survives network drops: requests retry instead of treating a channel as offline
-- Page scrolling works while the cursor is over the player
-- Bandwidth is measured more accurately and with less overhead
+- When every drop in a category is collected, the app offers to move straight to the next category with drops. Previously the next one had to be found by hand
