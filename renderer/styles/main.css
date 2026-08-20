@@ -3292,3 +3292,197 @@ body.no-animations * {
   width: 12px;
   height: 12px;
 }
+
+/* ===== ЧТО НОВОГО ===== */
+.whats-new-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 11000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  background: rgba(0, 0, 0, 0.68);
+  animation: whatsNewFade 0.2s ease;
+}
+
+@keyframes whatsNewFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.whats-new {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 520px;
+  max-height: 78vh;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-overlay);
+  overflow: hidden;
+  animation: whatsNewRise 0.24s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes whatsNewRise {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.whats-new-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.whats-new-eyebrow {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--accent-color);
+}
+
+.whats-new-title {
+  margin: 4px 0 0;
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: var(--text-primary);
+}
+
+.whats-new-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-ctl);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.whats-new-close:hover {
+  background: var(--hover-bg);
+  color: var(--text-primary);
+}
+
+.whats-new-body {
+  padding: 8px 20px 18px;
+  overflow-y: auto;
+}
+
+.whats-new-loading,
+.whats-new-empty {
+  padding: 22px 0;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* Версии складываются, кроме самой свежей: после обновления интересна
+   прежде всего она, остальные — по желанию */
+.whats-new-release {
+  border-bottom: 1px solid var(--border-color);
+}
+
+.whats-new-release:last-child {
+  border-bottom: none;
+}
+
+.whats-new-release-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 0;
+  cursor: pointer;
+  user-select: none;
+}
+
+.whats-new-version {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  padding: 2px 7px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-quiet);
+  color: var(--accent-color);
+}
+
+.whats-new-date {
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+}
+
+.whats-new-chevron {
+  margin-left: auto;
+  color: var(--text-tertiary);
+  transition: transform var(--transition-base);
+}
+
+.whats-new-release.open .whats-new-chevron {
+  transform: rotate(180deg);
+}
+
+.whats-new-release-body {
+  display: none;
+  padding-bottom: 14px;
+}
+
+.whats-new-release.open .whats-new-release-body {
+  display: block;
+}
+
+.whats-new-section + .whats-new-section {
+  margin-top: 14px;
+}
+
+.whats-new-section-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+}
+
+.whats-new-section ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.whats-new-section li {
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+
+/* Пояснение об ограничении на странице аккаунтов */
+.accounts-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-color);
+  border-left: 2px solid var(--warning-color);
+  border-radius: var(--radius-ctl);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.accounts-notice b {
+  color: var(--text-primary);
+  font-weight: 600;
+}

@@ -27,6 +27,18 @@
       </button>
     </div>
 
+    <!-- Честная пометка: страница позволяет добавить несколько аккаунтов,
+         но фарминг во всём коде работает с первым. Обещать переключение,
+         которого нет, хуже, чем прямо сказать об ограничении. -->
+    <div class="accounts-notice">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink: 0;">
+        <circle cx="12" cy="12" r="10"></circle>
+        <line x1="12" y1="16" x2="12" y2="12"></line>
+        <line x1="12" y1="8" x2="12.01" y2="8"></line>
+      </svg>
+      <span>Фарминг ведётся под <b>первым аккаунтом</b> в списке. Остальные сохраняются, но пока не используются — переключение между ними не реализовано.</span>
+    </div>
+
     <div id="accounts-list">
       <div class="no-accounts" style="text-align: center; padding: 60px; color: var(--text-secondary);">
         <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="opacity: 0.3; margin: 0 auto;">

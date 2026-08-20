@@ -75,6 +75,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onUpdateDownloaded: (callback) => ipcRenderer.on('update-downloaded', (event, data) => callback(data)),
   onUpdateError: (callback) => ipcRenderer.on('update-error', (event, data) => callback(data)),
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
+  fetchReleaseNotes: (version) => ipcRenderer.invoke('fetch-release-notes', version),
 
   getWebviewPreloadPath: () => ipcRenderer.invoke('get-webview-preload-path'),
 
