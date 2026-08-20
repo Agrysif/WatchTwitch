@@ -478,6 +478,20 @@ class Router {
     this._playerInSidebar = null;
   }
 
+  /**
+   * Освобождает оба места плеера: наблюдатель за прокруткой и мини-плеер
+   * в сайдбаре.
+   *
+   * Вызывается самой выгрузкой плеера. Раньше страница фарминга просила
+   * роутер обновить мини-плеер до unload(), поэтому hasStream() был ещё
+   * истинным, роутер решал, что плеер на месте, и сайдбарный контейнер
+   * не закрывался — от остановленного фарминга оставался чёрный прямоугольник.
+   */
+  releasePlayerSlots() {
+    this.stopWatchingPlayerVisibility();
+    this.hideSidebarMiniPlayer(document.getElementById('sidebar-mini-player-container'));
+  }
+
   hideSidebarMiniPlayer(container) {
     const miniPlayerContainer = container || document.getElementById('sidebar-mini-player-container');
     if (!miniPlayerContainer || miniPlayerContainer.style.display === 'none') return;

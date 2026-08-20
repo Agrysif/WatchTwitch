@@ -366,8 +366,17 @@ class PlayerManager extends SlottedWebview {
     window.utils?.showToast('Качество: ' + (chosen ? chosen.label : value), 'info');
   }
 
+  /**
+   * Есть ли сейчас загруженный поток.
+   *
+   * Признаком служит канал, а не webview.src: присвоение src пустой строки
+   * при выгрузке резолвится браузером в адрес самой страницы, поэтому
+   * проверка по src оставалась истинной и после остановки фарминга. Из-за
+   * этого роутер считал плеер живым и возвращал в сайдбар пустой чёрный
+   * прямоугольник при первой же прокрутке.
+   */
   hasStream() {
-    return !!(this.webview && this.webview.src);
+    return !!this.channel;
   }
 
   getChannel() {
@@ -553,6 +562,10 @@ class PlayerManager extends SlottedWebview {
       console.warn('[PlayerManager] Не удалось очистить src:', e.message);
     }
     this.detach();
+
+    // Плеера больше нет — места под него должны закрыться, иначе в сайдбаре
+    // остаётся пустой чёрный прямоугольник
+    window.router?.releasePlayerSlots?.();
   }
 }
 
