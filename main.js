@@ -3568,110 +3568,130 @@ ipcMain.handle('shutdown-computer', async (event, action) => {
 });
 
 // Получение одного дропа
+/**
+ * Получение награды за дроп.
+ *
+ * Здесь была та же ловушка, что и с отпиской: предпочитался токен
+ * OAuth-приложения, а мутация выполняется под веб-клиентом Twitch, который
+ * принимает только cookie-токен из webview. Токен приложения давал 401,
+ * а наружу это выходило безликим «Не удалось получить награду».
+ *
+ * Мутации к тому же проходят проверку целостности клиента, поэтому
+ * прикладываем Client-Integrity, перехваченный у запросов самого Twitch.
+ */
 ipcMain.handle('claim-drop', async (event, dropInstanceID) => {
-  const https = require('https');
+  if (!dropInstanceID) {
+    return { success: false, error: 'Не указана награда' };
+  }
 
-  return new Promise(async (resolve) => {
-    console.log('Claiming drop:', dropInstanceID);
+  const cookieToken = await getCookieAuthToken();
+  const oauth = store.get('oauth');
+  const token = cookieToken || oauth?.accessToken;
 
-    let authToken = null;
+  if (!token) {
+    return { success: false, error: 'Требуется вход в Twitch. Откройте стрим в приложении.' };
+  }
 
-    // Сначала пробуем получить OAuth токен
-    const oauth = store.get('oauth');
-    if (oauth && oauth.accessToken) {
-      authToken = oauth.accessToken;
-      console.log('Using OAuth token for claim');
-    } else {
-      // Если нет OAuth, пробуем куки
-      const { session } = require('electron');
-      const twitchSession = session.fromPartition('persist:twitch');
+  console.log('[Награда] Получаю', dropInstanceID, '| токен:', cookieToken ? 'cookie' : 'OAuth');
 
-      try {
-        const cookies = await twitchSession.cookies.get({
-          url: 'https://www.twitch.tv',
-          name: 'auth-token'
-        });
-
-        if (cookies && cookies.length > 0) {
-          authToken = cookies[0].value;
-          console.log('Using cookie token for claim');
-        }
-      } catch (e) {
-        console.error('Error getting cookie token:', e.message);
+  // Хеш проверен запросом к Twitch: даёт 200 и разбираемый ответ. В соседнем
+  // обработчике «получить все» у той же операции стоял другой хеш, и он
+  // отвечает PersistedQueryNotFound — там он и был исправлен.
+  const persisted = JSON.stringify([{
+    operationName: 'DropsPage_ClaimDropRewards',
+    variables: { input: { dropInstanceID } },
+    extensions: {
+      persistedQuery: {
+        version: 1,
+        sha256Hash: 'a455deea71bdc9015b78eb49f4acfbce8baa7ccbedd28e549bb025bd0f751930'
       }
     }
+  }]);
 
-    if (!authToken) {
-      console.error('No auth token found');
-      resolve({ success: false, error: 'Требуется авторизация в Twitch' });
-      return;
+  // Хеши со временем протухают, поэтому держим запасной путь обычным текстом
+  const inline = JSON.stringify([{
+    operationName: 'DropsPage_ClaimDropRewards',
+    variables: { input: { dropInstanceID } },
+    query: `mutation DropsPage_ClaimDropRewards($input: ClaimDropRewardsInput!) {
+      claimDropRewards(input: $input) {
+        status
+      }
+    }`
+  }]);
+
+  const buildHeaders = (body) => {
+    const headers = {
+      'Client-ID': 'kimne78kx3ncx6brgo4mv6wki5h1ko',
+      'Authorization': `OAuth ${token}`,
+      'Content-Type': 'text/plain;charset=UTF-8',
+      'Content-Length': Buffer.byteLength(body)
+    };
+
+    // Мутации проходят проверку целостности клиента, в отличие от обычных запросов
+    if (hasFreshIntegrity()) {
+      headers['Client-Integrity'] = twitchGqlHeaders.integrity;
+      if (twitchGqlHeaders.deviceId) headers['X-Device-Id'] = twitchGqlHeaders.deviceId;
+      if (twitchGqlHeaders.clientVersion) headers['Client-Version'] = twitchGqlHeaders.clientVersion;
+      if (twitchGqlHeaders.sessionId) headers['Client-Session-Id'] = twitchGqlHeaders.sessionId;
+    }
+
+    return headers;
+  };
+
+  const send = async (body) => {
+    const res = await twitchPost(body, buildHeaders(body));
+
+    if (!res.ok) {
+      if (res.statusCode === 401 || res.statusCode === 403) {
+        return { success: false, error: 'Twitch отклонил авторизацию. Откройте стрим в приложении и повторите.' };
+      }
+      return { success: false, error: res.error || ('код ответа ' + res.statusCode) };
     }
 
     try {
-      const postData = JSON.stringify([{
-        operationName: 'DropsPage_ClaimDropRewards',
-        variables: {
-          input: {
-            dropInstanceID: dropInstanceID
-          }
-        },
-        extensions: {
-          persistedQuery: {
-            version: 1,
-            sha256Hash: 'a455deea71bdc9015b78eb49f4acfbce8baa7ccbedd28e549bb025bd0f751930'
-          }
-        }
-      }]);
+      const parsed = JSON.parse(res.data);
+      const result = Array.isArray(parsed) ? parsed[0] : parsed;
+      const status = result?.data?.claimDropRewards?.status;
+      const errors = Array.isArray(result?.errors) ? result.errors : [];
 
-      const options = {
-        hostname: 'gql.twitch.tv',
-        port: 443,
-        path: '/gql',
-        method: 'POST',
-        headers: {
-          'Client-ID': 'kimne78kx3ncx6brgo4mv6wki5h1ko',
-          'Authorization': `OAuth ${authToken}`,
-          'Content-Type': 'text/plain;charset=UTF-8',
-          'Content-Length': Buffer.byteLength(postData)
-        }
+      console.log('[Награда] Ответ Twitch:', status || JSON.stringify(result).slice(0, 200));
+
+      // Уже полученная награда — не ошибка: результат тот же, она у пользователя
+      if (status === 'ELIGIBLE_FOR_ALL' || status === 'DROP_INSTANCE_ALREADY_CLAIMED') {
+        return { success: true, already: status === 'DROP_INSTANCE_ALREADY_CLAIMED' };
+      }
+
+      if (errors.length > 0) {
+        const message = errors[0]?.message || 'ошибка Twitch';
+        return { success: false, error: message, staleHash: /PersistedQueryNotFound/i.test(message) };
+      }
+
+      // Прежний код на любой неожиданный ответ выдавал одинаковую фразу,
+      // по которой невозможно было понять причину
+      if (status) {
+        return { success: false, error: 'Twitch ответил: ' + status };
+      }
+
+      // Ответ пустой: Twitch не признал эту награду. Обычно её уже забрали
+      // на сайте либо кампания закончилась, а список в приложении устарел.
+      return {
+        success: false,
+        error: 'Twitch не подтвердил награду — возможно, её уже забрали или кампания закончилась. Обновите список.',
+        stale: true
       };
-
-      const req = https.request(options, (res) => {
-        let data = '';
-
-        res.on('data', (chunk) => {
-          data += chunk;
-        });
-
-        res.on('end', () => {
-          try {
-            const response = JSON.parse(data);
-            console.log('Claim response:', response);
-
-            if (response[0]?.data?.claimDropRewards?.status === 'ELIGIBLE_FOR_ALL') {
-              resolve({ success: true });
-            } else {
-              resolve({ success: false, error: 'Не удалось получить награду' });
-            }
-          } catch (e) {
-            console.error('Error parsing claim response:', e);
-            resolve({ success: false, error: e.message });
-          }
-        });
-      });
-
-      req.on('error', (e) => {
-        console.error('Request error:', e);
-        resolve({ success: false, error: e.message });
-      });
-
-      req.write(postData);
-      req.end();
-    } catch (error) {
-      console.error('Error claiming drop:', error);
-      resolve({ success: false, error: error.message });
+    } catch (e) {
+      return { success: false, error: 'не удалось разобрать ответ Twitch' };
     }
-  });
+  };
+
+  let outcome = await send(persisted);
+
+  if (outcome.staleHash) {
+    console.warn('[Награда] Хеш запроса устарел, повторяю обычным текстом мутации');
+    outcome = await send(inline);
+  }
+
+  return outcome;
 });
 
 // Получение всех доступных наград
@@ -3794,10 +3814,24 @@ ipcMain.handle('claim-all-drops', async () => {
           extensions: {
             persistedQuery: {
               version: 1,
-              sha256Hash: '2f884fa187b8fadb2a49db0adc033e636f7b6aaee6e76de1e2bba9a7baf0daf6'
+              sha256Hash: 'a455deea71bdc9015b78eb49f4acfbce8baa7ccbedd28e549bb025bd0f751930'
             }
           }
         }]);
+
+        const claimHeaders = {
+          'Client-ID': 'kimne78kx3ncx6brgo4mv6wki5h1ko',
+          'Authorization': `OAuth ${authToken}`,
+          'Content-Type': 'text/plain;charset=UTF-8'
+        };
+
+        // Мутации проходят проверку целостности клиента, в отличие от запросов
+        if (hasFreshIntegrity()) {
+          claimHeaders['Client-Integrity'] = twitchGqlHeaders.integrity;
+          if (twitchGqlHeaders.deviceId) claimHeaders['X-Device-Id'] = twitchGqlHeaders.deviceId;
+          if (twitchGqlHeaders.clientVersion) claimHeaders['Client-Version'] = twitchGqlHeaders.clientVersion;
+          if (twitchGqlHeaders.sessionId) claimHeaders['Client-Session-Id'] = twitchGqlHeaders.sessionId;
+        }
 
         const claimResult = await new Promise((resolveClaim) => {
           const options = {
@@ -3805,11 +3839,7 @@ ipcMain.handle('claim-all-drops', async () => {
             port: 443,
             path: '/gql',
             method: 'POST',
-            headers: {
-              'Client-ID': 'kimne78kx3ncx6brgo4mv6wki5h1ko',
-              'Authorization': `OAuth ${authToken}`,
-              'Content-Type': 'text/plain;charset=UTF-8'
-            }
+            headers: claimHeaders
           };
 
           const req = https.request(options, (res) => {
@@ -3818,7 +3848,13 @@ ipcMain.handle('claim-all-drops', async () => {
             res.on('end', () => {
               try {
                 const response = JSON.parse(data);
-                const success = response[0]?.data?.claimDropRewards?.status === 'ELIGIBLE_FOR_ALL';
+                const status = response[0]?.data?.claimDropRewards?.status;
+                // Уже забранная награда — тот же результат, считаем успехом
+                const success = status === 'ELIGIBLE_FOR_ALL' || status === 'DROP_INSTANCE_ALREADY_CLAIMED';
+                if (!success) {
+                  console.warn('[Награды] Не удалось забрать', dropInstanceID + ':',
+                    response[0]?.errors?.[0]?.message || status || 'неожиданный ответ');
+                }
                 resolveClaim(success);
               } catch (e) {
                 resolveClaim(false);
