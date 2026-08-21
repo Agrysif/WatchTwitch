@@ -3568,3 +3568,16 @@ body.no-animations * {
   font-size: 12px;
   color: var(--text-tertiary);
 }
+
+/* Кампания, которую уже не успеть добить: награды есть, но времени до её
+   конца меньше, чем требует ближайшая. Отличается от «всё получено» —
+   там повод радоваться, здесь повод уйти в другую категорию. */
+.category-drops-status.too-late {
+  background: rgba(240, 173, 78, 0.12);
+  border: 1px solid rgba(240, 173, 78, 0.35);
+  color: #f0ad4e;
+}
+
+.category-item.drops-completed .category-drops-status.too-late {
+  opacity: 0.9;
+}
