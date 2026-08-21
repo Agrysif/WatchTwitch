@@ -2907,9 +2907,10 @@ class FarmingPage {
           </div>
           <div style="font-size: 20px; font-weight: 800; color: ${accentSolid};">${overallPercent}%</div>
         </div>
-        <div style="background: rgba(255, 255, 255, 0.12); height: 12px; border-radius: var(--radius-sm); overflow: hidden; margin-bottom: 16px;">
+        <div style="background: rgba(255, 255, 255, 0.12); height: 12px; border-radius: var(--radius-sm); overflow: hidden; margin-bottom: 12px;">
           <div style="height: 100%; background: ${accentSolid} !important; width: ${overallPercent}%; transition: width 0.5s ease;"></div>
         </div>
+        ${this.buildForecastMarkup(matched)}
         ${sections.map(s => s.html).join('')}
         <div id="drops-received-footer" style="margin-top: 12px; padding: 12px; background: rgba(${accentRgb}, 0.1); border-radius: var(--radius-sm); border: 1px solid rgba(${accentRgb}, 0.3); font-size: 13px; color: var(--text-secondary); text-align: center;">
           ${overallPercent === 100
@@ -2969,6 +2970,7 @@ class FarmingPage {
         // совпадали с рубежами выдачи наград
         const timeline = this.updateSidebarDropsDetail(matched);
         this.updateMiniDropsProgress(timeline ? timeline.percent : overallPercent);
+        this.updateTrayStatus(matched, timeline);
 
         // Если все дропсы получены - сразу переключаемся
         if (overallPercent === 100 && !this.currentCategory._switchScheduled) {
@@ -3297,6 +3299,8 @@ class FarmingPage {
 
     this.updateMiniDropsProgress(0);
 
+    window.electronAPI?.updateTrayStatus?.({ active: false });
+
     const dropsMarks = document.getElementById('sidebar-drops-marks');
     if (dropsMarks) dropsMarks.innerHTML = '';
     const dropsTip = document.getElementById('sidebar-drops-tip');
@@ -3450,6 +3454,72 @@ class FarmingPage {
     tip.setAttribute('aria-hidden', 'false');
 
     return timeline;
+  }
+
+/**
+   * Прогноз: когда будут собраны все достижимые награды и что из этого
+   * успеется до автовыключения.
+   *
+   * Вопрос «сколько ещё сидеть» возникает при каждом запуске, а ответ
+   * приложение знает точно: прогресс внутри кампании общий, поэтому
+   * достаточно самой дальней достижимой награды — остальные наберутся
+   * попутно.
+   */
+  buildForecastMarkup(campaigns) {
+    const CV = window.CampaignValue;
+    if (!CV) return '';
+
+    const now = Date.now();
+    const minutes = CV.minutesToFinish(campaigns, now);
+    if (minutes === null) return '';
+
+    const clock = (fromNow) => new Date(now + fromNow * 60000)
+      .toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+
+    const reachable = CV.reachableCount(campaigns, now);
+    const parts = [`
+      <span class="drops-forecast-main">
+        Все награды через ${this.formatMinutes(minutes)}
+      </span>
+      <span class="drops-forecast-clock">к ${clock(minutes)}</span>
+    `];
+
+    // Если заведено автовыключение по таймеру — сразу видно, что из
+    // задуманного успеется, а что нет
+    const untilShutdown = window.shutdownManager?.minutesUntilTimer?.();
+    if (untilShutdown !== null && untilShutdown !== undefined) {
+      const willGet = CV.dropsBefore(campaigns, untilShutdown, now);
+      const enough = willGet >= reachable;
+
+      parts.push(`
+        <span class="drops-forecast-note ${enough ? 'ok' : 'short'}">
+          До выключения в ${clock(untilShutdown)} ${enough
+            ? 'успеется всё'
+            : `успеется ${willGet} из ${reachable}`}
+        </span>
+      `);
+    }
+
+    return `<div class="drops-forecast">${parts.join('')}</div>`;
+  }
+
+/**
+   * Отдаёт состояние фарминга значку в трее и полосе на панели задач.
+   *
+   * Чтобы понять, идёт ли фарминг и далеко ли до награды, приходилось
+   * разворачивать окно. Теперь достаточно навести на значок.
+   */
+  updateTrayStatus(campaigns, timeline) {
+    if (!window.electronAPI?.updateTrayStatus) return;
+
+    const next = window.CampaignValue?.nextDrop(campaigns);
+
+    window.electronAPI.updateTrayStatus({
+      active: !!this.sessionStartTime,
+      category: this.currentCategory?.name || '',
+      percent: timeline ? timeline.percent : -1,
+      nextIn: next ? this.formatMinutes(next.minutesNeeded) : ''
+    });
   }
 
   /** Минуты в вид «2ч 15м». */

@@ -841,7 +841,7 @@ function createTray() {
       }
     ]);
 
-    tray.setToolTip('WatchTwitch - Фарминг дропсов');
+    tray.setToolTip('WatchTwitch — фарминг остановлен');
     tray.setContextMenu(contextMenu);
 
     tray.on('click', () => {
@@ -855,6 +855,44 @@ function createTray() {
     console.error('Failed to create tray:', error);
   }
 }
+
+/**
+ * Состояние фарминга в трее и на панели задач.
+ *
+ * Раньше значок в трее нёс неподвижную подпись, и чтобы узнать, идёт ли
+ * фарминг и далеко ли до награды, приходилось разворачивать окно. Теперь
+ * то же самое видно по наведению на значок, а прогресс — прямо на кнопке
+ * панели задач.
+ */
+ipcMain.on('tray-status', (event, status) => {
+  try {
+    const active = !!status?.active;
+
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      // Значение вне [0..1] убирает полосу; именно так её и гасим
+      mainWindow.setProgressBar(active && status.percent >= 0 ? status.percent / 100 : -1);
+    }
+
+    if (!tray || tray.isDestroyed?.()) return;
+
+    if (!active) {
+      tray.setToolTip('WatchTwitch — фарминг остановлен');
+      return;
+    }
+
+    const lines = ['WatchTwitch'];
+    if (status.category) lines[0] += ' — ' + status.category;
+
+    const details = [];
+    if (Number.isFinite(status.percent)) details.push('дропсы ' + Math.round(status.percent) + '%');
+    if (status.nextIn) details.push('следующая через ' + status.nextIn);
+    if (details.length) lines.push(details.join(' · '));
+
+    tray.setToolTip(lines.join('\n'));
+  } catch (error) {
+    console.warn('[Трей] Не удалось обновить состояние:', error.message);
+  }
+});
 
 // OAuth авторизация Twitch
 let authServer = null;

@@ -219,6 +219,50 @@ class CampaignValue {
     return { percent: Math.min(100, (watched / longest) * 100), watched, longest, marks };
   }
 
+  /**
+   * Сколько минут просмотра нужно, чтобы забрать всё достижимое.
+   *
+   * Считаем по самой дальней награде, которую ещё успеваем: прогресс
+   * внутри кампании общий, поэтому остальные наберутся попутно.
+   * Недостижимые в расчёт не идут — иначе прогноз обещал бы то, чего
+   * не будет. null означает «брать нечего».
+   */
+  static minutesToFinish(campaigns, now = Date.now()) {
+    let longest = null;
+
+    for (const campaign of campaigns || []) {
+      const left = CampaignValue.minutesLeft(campaign, now);
+      if (left <= 0) continue;
+
+      for (const drop of CampaignValue.unclaimedDrops(campaign)) {
+        const needed = CampaignValue.minutesNeeded(drop);
+        if (needed > left) continue;
+        if (longest === null || needed > longest) longest = needed;
+      }
+    }
+
+    return longest;
+  }
+
+  /**
+   * Сколько наград успеется забрать за отведённое время.
+   *
+   * Нужно для плана к автовыключению: до срабатывания таймера остаётся
+   * известное число минут, и заранее видно, что из этого выйдет.
+   */
+  static dropsBefore(campaigns, minutes, now = Date.now()) {
+    let count = 0;
+    for (const campaign of campaigns || []) {
+      count += CampaignValue.dropsWithin(campaign, minutes, now);
+    }
+    return count;
+  }
+
+  /** Сколько всего незабранных наград ещё достижимо. */
+  static reachableCount(campaigns, now = Date.now()) {
+    return CampaignValue.dropsBefore(campaigns, Infinity, now);
+  }
+
   /** Короткое пояснение для интерфейса. */
   static describe(evaluation) {
     switch (evaluation.reason) {

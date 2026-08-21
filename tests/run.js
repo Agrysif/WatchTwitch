@@ -328,8 +328,81 @@ function loadClass(relativePath, className, globals = {}) {
   check('деления отсортированы по возрастанию',
     шкала.marks.map(m => m.percent).slice().sort((a, b) => a - b), шкала.marks.map(m => m.percent));
 
+  // ── Прогноз окончания и план к выключению ──
+  check('время до всех наград', CampaignValue.minutesToFinish([кампанияСкрина], now), 288);
+  check('брать нечего', CampaignValue.minutesToFinish([всёСобрано], now), null);
+
+  // Недостижимая награда не должна попадать в прогноз: иначе он обещает
+  // то, чего не будет
+  const частичноДостижима = { endsAt: через(100), drops: [дропс(60, 20), дропс(600, 20)] };
+  check('недостижимая не удлиняет прогноз',
+    CampaignValue.minutesToFinish([частичноДостижима], now), 40);
+  check('всё недостижимо', CampaignValue.minutesToFinish([безнадёжная], now), null);
+
+  // План к выключению: сколько успеется за отведённое время
+  check('за час до выключения', CampaignValue.dropsBefore([общийПрогресс], 60, now), 1);
+  check('за пять часов', CampaignValue.dropsBefore([общийПрогресс], 300, now), 4);
+  check('по двум кампаниям сразу',
+    CampaignValue.dropsBefore([общийПрогресс, однаЗаЧас], 60, now), 2);
+  check('времени нет совсем', CampaignValue.dropsBefore([общийПрогресс], 0, now), 0);
+  check('всего достижимо', CampaignValue.reachableCount([частичноДостижима], now), 1);
+
   check('шкала без наград', CampaignValue.timeline({ drops: [] }), { percent: 0, marks: [] });
   check('шкала без кампании', CampaignValue.timeline(null), { percent: 0, marks: [] });
+}
+
+// ─── Слежение за избранными каналами ─────────────────────────────────
+{
+  const FW = loadClass('renderer/js/core/favourites-watch.js', 'FavouritesWatch');
+
+  // Правило «сообщаем один раз за эфир»: повторное уведомление каждые
+  // пять минут мешало бы сильнее, чем помогало
+  const первыйПроход = FW.pickNewlyLive([{ login: 'aspen' }, { login: 'Bob' }], new Set());
+  check('в первый раз сообщаем обо всех',
+    первыйПроход.fresh.map(c => c.login), ['aspen', 'Bob']);
+
+  const второйПроход = FW.pickNewlyLive([{ login: 'aspen' }, { login: 'Bob' }], первыйПроход.live);
+  check('повторно не сообщаем', второйПроход.fresh, []);
+
+  // Регистр логина не должен приводить к повторному уведомлению
+  const другойРегистр = FW.pickNewlyLive([{ login: 'BOB' }], первыйПроход.live);
+  check('регистр логина не считается новым каналом', другойРегистр.fresh, []);
+
+  // Новый канал среди уже известных
+  const третий = FW.pickNewlyLive(
+    [{ login: 'aspen' }, { login: 'carol' }], первыйПроход.live);
+  check('сообщаем только о новом', третий.fresh.map(c => c.login), ['carol']);
+
+  // Ушёл из эфира и вернулся — это новый эфир, сообщить нужно
+  const ушёл = FW.pickNewlyLive([], третий.live);
+  const вернулся = FW.pickNewlyLive([{ login: 'carol' }], ушёл.live);
+  check('после перерыва сообщаем снова', вернулся.fresh.map(c => c.login), ['carol']);
+
+  check('никого нет в эфире', FW.pickNewlyLive([], new Set()).fresh, []);
+}
+
+// ─── Оценка сэкономленного трафика ───────────────────────────────────
+{
+  const TE = loadClass('renderer/js/core/traffic-estimate.js', 'TrafficEstimate');
+
+  const мин = 60;
+  const базаЗаЧас = TE.wouldCost(мин);            // 720p60 за час
+  check('расход базового качества за час', Math.round(базаЗаЧас / 1024 / 1024), 1502);
+
+  // Час в минимальном качестве против часа в 720p60
+  const минимум = TE.wouldCost(мин, '160p30');
+  const сэкономлено = TE.saved(минимум, мин);
+  check('экономия за час', Math.round(сэкономлено / 1024 / 1024), 1403);
+  checkTrue('во сколько раз экономнее', Math.round(TE.ratio(минимум, мин)) === 15);
+
+  // Показывать «сэкономлено 0» или минус незачем
+  check('расход выше базового — экономии нет', TE.saved(базаЗаЧас * 2, мин), null);
+  check('ровно по базовому — экономии нет', TE.saved(базаЗаЧас, мин), null);
+
+  check('неизвестное качество', TE.wouldCost(мин, '9000p'), null);
+  check('нулевое время', TE.wouldCost(0), null);
+  check('без времени экономии нет', TE.saved(1000, 0), null);
+  check('без расхода отношение не считается', TE.ratio(0, мин), null);
 }
 
 // ─── Строки перевода ─────────────────────────────────────────────────

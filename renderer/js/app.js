@@ -72,6 +72,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       console.warn('[Что нового] Проверка не удалась:', e?.message));
   }, 4000);
 
+  // Слежение за избранными каналами: работает независимо от фарминга,
+  // поэтому запускается один раз при старте приложения
+  window.favouritesWatch?.start();
+
   // Settings manager is already initialized in settings-manager.js
   // Just ensure it exists
   if (!window.settings) {

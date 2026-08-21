@@ -66,8 +66,13 @@ class ShutdownManager {
     const ms = hours * 60 * 60 * 1000;
     console.log('[Выключение] Таймер сессии на', hours, 'ч');
 
+    // Момент срабатывания запоминаем отдельно: из setTimeout его не
+    // достать, а он нужен, чтобы показать, что успеется забрать до него
+    this.sessionTimerAt = Date.now() + ms;
+
     this.sessionTimer = setTimeout(() => {
       this.sessionTimer = null;
+      this.sessionTimerAt = null;
       this.arm(
         settings.get('shutdownAction') || 'shutdown',
         Number(settings.get('shutdownDelayMinutes')) || 0,
@@ -81,6 +86,18 @@ class ShutdownManager {
       clearTimeout(this.sessionTimer);
       this.sessionTimer = null;
     }
+    this.sessionTimerAt = null;
+  }
+
+  /**
+   * Сколько минут осталось до автовыключения по таймеру.
+   * null — таймер не заведён, значит и ограничения по времени нет.
+   */
+  minutesUntilTimer() {
+    if (!this.sessionTimerAt) return null;
+
+    const left = (this.sessionTimerAt - Date.now()) / 60000;
+    return left > 0 ? left : null;
   }
 
   /**
