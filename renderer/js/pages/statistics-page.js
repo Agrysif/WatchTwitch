@@ -292,6 +292,21 @@ class StatisticsPage {
       }
     ];
 
+    // Экономия от просмотра в минимальном качестве. Оценка приблизительная,
+    // поэтому сравнение названо явно — с чем именно сравниваем
+    const TE = window.TrafficEstimate;
+    const saved = TE?.saved(totals.totalBandwidth, totals.totalMinutes);
+    if (saved) {
+      const ratio = TE.ratio(totals.totalBandwidth, totals.totalMinutes);
+      items.push({
+        label: 'Сэкономлено трафика',
+        value: this.formatBytes(saved),
+        sub: ratio
+          ? `в ${ratio.toFixed(1)} раза экономнее, чем в ${TE.BASELINE_LABEL}`
+          : `если бы смотрели в ${TE.BASELINE_LABEL}`
+      });
+    }
+
     grid.innerHTML = items.map(item => `
       <div class="analytics-item">
         <div class="analytics-label">${item.label}</div>

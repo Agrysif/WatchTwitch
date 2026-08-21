@@ -3719,3 +3719,47 @@ body.no-animations * {
   font-size: 10px;
   color: var(--text-tertiary);
 }
+
+/* Прогноз в панели дропсов: сколько ещё сидеть и что успеется
+   до автовыключения */
+.drops-forecast {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+  font-size: 12px;
+}
+
+.drops-forecast-main {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.drops-forecast-clock {
+  padding: 2px 8px;
+  border-radius: var(--radius-md);
+  background: rgba(124, 92, 255, 0.15);
+  border: 1px solid rgba(124, 92, 255, 0.3);
+  color: #bda0ff;
+  font-weight: 700;
+}
+
+.drops-forecast-note {
+  padding: 2px 8px;
+  border-radius: var(--radius-md);
+  font-weight: 600;
+}
+
+.drops-forecast-note.ok {
+  background: rgba(53, 208, 138, 0.14);
+  border: 1px solid rgba(53, 208, 138, 0.32);
+  color: #35d08a;
+}
+
+/* Не успеваем всё — говорим прямо, а не прячем за общей фразой */
+.drops-forecast-note.short {
+  background: rgba(240, 173, 78, 0.14);
+  border: 1px solid rgba(240, 173, 78, 0.32);
+  color: #f0ad4e;
+}

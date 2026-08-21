@@ -112,6 +112,17 @@ class SettingsPage {
 
           <div class="settings-item">
             <div class="settings-item-info">
+              <div class="settings-item-label">${i18n.t('settings.notifyFavouriteLive')}</div>
+              <div class="settings-item-description">${i18n.t('settings.notifyFavouriteLiveDesc')}</div>
+            </div>
+            <label class="settings-toggle">
+              <input type="checkbox" id="setting-favourite-live" ${settings.get('notifyFavouriteLive') !== false ? 'checked' : ''}>
+              <span class="settings-slider"></span>
+            </label>
+          </div>
+
+          <div class="settings-item">
+            <div class="settings-item-info">
               <div class="settings-item-label">${i18n.t('settings.smartCategorySwitch')}</div>
               <div class="settings-item-description">${i18n.t('settings.smartCategorySwitchDesc')}</div>
             </div>
@@ -541,6 +552,20 @@ class SettingsPage {
         settings.set('autoClaimDrops', e.target.checked);
         window.utils.showToast(
           e.target.checked ? i18n.t('settings.autoClaimDrops') : i18n.t('settings.autoClaimDrops'),
+          'info'
+        );
+      });
+    }
+
+    // Уведомление о выходе избранного канала
+    const favouriteLiveToggle = document.getElementById('setting-favourite-live');
+    if (favouriteLiveToggle) {
+      favouriteLiveToggle.addEventListener('change', (e) => {
+        settings.set('notifyFavouriteLive', e.target.checked);
+        if (e.target.checked) window.favouritesWatch?.start();
+        else window.favouritesWatch?.stop();
+        window.utils.showToast(
+          e.target.checked ? i18n.t('settings.enabled') : i18n.t('settings.disabled'),
           'info'
         );
       });

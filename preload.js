@@ -52,6 +52,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   fetchDropsInventory: () => ipcRenderer.invoke('fetch-drops-inventory'),
   claimAllDrops: () => ipcRenderer.invoke('claim-all-drops'),
   claimDrop: (dropInstanceID) => ipcRenderer.invoke('claim-drop', dropInstanceID),
+  updateTrayStatus: (status) => ipcRenderer.send('tray-status', status),
   getChannelPoints: (channelId, userId) => ipcRenderer.invoke('get-channel-points', channelId, userId),
   
   // Subscriptions
