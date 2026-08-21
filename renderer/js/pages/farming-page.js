@@ -2165,16 +2165,56 @@ class FarmingPage {
    * защиты.
    */
   async startFarming() {
+    // Защёлка от двойного запуска. Раньше она снималась только в finally,
+    // то есть при зависшем сетевом запросе не снималась никогда: блок
+    // await не завершался, и кнопка молча переставала работать до
+    // перезапуска приложения. Теперь у неё есть срок годности.
+    const STALE_MS = 90000;
+    const startedAt = window._farmingStartingAt || 0;
+
     if (window._farmingStarting) {
-      console.log('[Farming] Запуск уже выполняется — повторный вызов пропущен');
-      return;
+      if (Date.now() - startedAt < STALE_MS) {
+        console.log('[Фарминг] Запуск уже идёт — повторное нажатие пропущено');
+        return;
+      }
+      console.warn('[Фарминг] Прошлый запуск завис, снимаю защёлку');
     }
 
     window._farmingStarting = true;
+    window._farmingStartingAt = Date.now();
+
+    // Кнопка молчала все несколько секунд поиска и выглядела сломанной
+    this.setStartButtonBusy(true);
+
     try {
       return await this._startFarming();
+    } catch (error) {
+      console.error('[Фарминг] Запуск не удался:', error);
+      window.utils?.showToast('Не удалось запустить: ' + (error?.message || 'неизвестная ошибка'), 'error');
     } finally {
       window._farmingStarting = false;
+      window._farmingStartingAt = 0;
+      this.setStartButtonBusy(false);
+    }
+  }
+
+  /** Показывает, что приложение занято поиском стрима. */
+  setStartButtonBusy(busy) {
+    const btn = document.getElementById('sidebar-start-farming-btn');
+    if (!btn) return;
+
+    const label = btn.querySelector('span');
+    if (busy) {
+      btn.disabled = true;
+      btn.style.opacity = '0.7';
+      if (label) {
+        if (!this._startButtonLabel) this._startButtonLabel = label.textContent;
+        label.textContent = 'Ищем стрим…';
+      }
+    } else {
+      btn.disabled = false;
+      btn.style.opacity = '1';
+      if (label && this._startButtonLabel) label.textContent = this._startButtonLabel;
     }
   }
 
@@ -2345,8 +2385,16 @@ class FarmingPage {
     let streams = [];
     const skipped = [];
 
+    // Каждый запрос со своим сроком: одна залипшая категория не должна
+    // останавливать перебор остальных
+    const withTimeout = (promise, ms) => Promise.race([
+      promise,
+      new Promise(resolve => setTimeout(() => resolve(null), ms))
+    ]);
+
     for (const candidate of attempts) {
-      const found = await window.electronAPI.getStreamsWithDrops(candidate.name);
+      const found = await withTimeout(window.electronAPI.getStreamsWithDrops(candidate.name), 12000);
+      if (found === null) console.warn('[Фарминг] Категория не ответила вовремя:', candidate.name);
       if (found && found.length > 0) {
         category = candidate;
         streams = found;
