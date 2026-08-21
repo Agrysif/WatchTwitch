@@ -4798,12 +4798,13 @@ class FarmingPage {
     if (!Array.isArray(matched) || matched.length === 0) return;
 
     const now = Date.now();
-    const evaluations = matched.map(c => CV.evaluate(c, now));
 
-    if (evaluations.some(e => e.feasible)) {
+    if (!CV.shouldLeave(matched, now)) {
       this._exhaustedCategoryId = null;
       return;
     }
+
+    const evaluations = matched.map(c => CV.evaluate(c, now));
 
     // Одну и ту же категорию не бросаем повторно каждые полминуты
     if (this._exhaustedCategoryId === this.currentCategory.id) return;

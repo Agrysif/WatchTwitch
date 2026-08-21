@@ -148,6 +148,21 @@ class CampaignValue {
     return worthwhile.slice().sort((a, b) => CampaignValue.compare(a, b, now))[0];
   }
 
+  /**
+   * Пора ли уходить из категории.
+   *
+   * Истина, когда ни одна из кампаний игры больше ничего не принесёт:
+   * всё забрано, кампания кончилась или ближайшая награда не влезает в
+   * остаток времени. Пустой список ничего не значит — данные могли
+   * просто не загрузиться, и бросать категорию из-за этого нельзя.
+   */
+  static shouldLeave(campaigns, now = Date.now()) {
+    const list = campaigns || [];
+    if (!list.length) return false;
+
+    return !list.some(c => CampaignValue.evaluate(c, now).feasible);
+  }
+
   /** Короткое пояснение для интерфейса. */
   static describe(evaluation) {
     switch (evaluation.reason) {
