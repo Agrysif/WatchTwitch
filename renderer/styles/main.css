@@ -3613,3 +3613,110 @@ body.no-animations * {
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
   font-size: 0.92em;
 }
+
+/* ===== Шкала дропсов в сайдбаре =====
+   Деления показывают, где выдаётся каждая награда. Шкала — по времени
+   просмотра: прогресс внутри кампании общий, поэтому средний процент по
+   наградам ни на что не указывает, а на шкале времени отметка встаёт
+   ровно туда, где награду дадут. */
+.drops-track {
+  position: relative;
+  height: 6px;
+  border-radius: var(--radius-sm);
+  background: rgba(124, 92, 255, 0.1);
+  overflow: hidden;
+}
+
+.drops-marks {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.drops-mark {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  /* Светлые: тёмные деления сливались с дорожкой и были не видны.
+     Белое читается и поверх фиолетовой заливки, и на пустой части */
+  background: rgba(255, 255, 255, 0.6);
+}
+
+/* Полученную награду отмечаем зелёным, чтобы отличать пройденные рубежи */
+.drops-mark.earned {
+  background: #5cffb1;
+  box-shadow: 0 0 3px rgba(53, 208, 138, 0.9);
+}
+
+/* Последнее деление всегда упирается в край — сдвигаем внутрь,
+   иначе его срезает скругление дорожки */
+.drops-mark.last {
+  margin-left: -2px;
+}
+
+.drops-tip {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: calc(100% + 8px);
+  z-index: 40;
+  padding: 10px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--card-bg, var(--bg-secondary));
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(4px);
+  transition: opacity 0.18s ease, transform 0.18s ease, visibility 0.18s;
+}
+
+#sidebar-drops-progress:hover .drops-tip {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+.drops-tip-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.drops-tip img {
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  background: rgba(124, 92, 255, 0.12);
+}
+
+.drops-tip-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.25;
+  /* Названия наград бывают длинными, а сайдбар узкий */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.drops-tip-left {
+  margin-top: 2px;
+  font-size: 11px;
+  color: #bda0ff;
+  font-weight: 700;
+}
+
+.drops-tip-note {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-color);
+  font-size: 10px;
+  color: var(--text-tertiary);
+}

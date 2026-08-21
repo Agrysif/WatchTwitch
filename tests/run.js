@@ -258,6 +258,52 @@ function loadClass(relativePath, className, globals = {}) {
   // Пустой список — это «данные не загрузились», а не «фармить нечего»
   check('без данных категорию не бросаем', CampaignValue.shouldLeave([], now), false);
   check('null вместо списка', CampaignValue.shouldLeave(null, now), false);
+
+  // ── Ближайшая награда и шкала для сайдбара ──
+  const кампанияСкрина = {
+    endsAt: через(9000),
+    drops: [
+      { required: 60, progress: 12, name: 'Награда 60' },
+      { required: 120, progress: 12, name: 'Награда 120' },
+      { required: 180, progress: 12, name: 'Награда 180' },
+      { required: 300, progress: 12, name: 'Награда 300' }
+    ]
+  };
+
+  const ближайшая = CampaignValue.nextDrop([кампанияСкрина], now);
+  check('ближайшая награда', ближайшая.drop.name, 'Награда 60');
+  check('минут до ближайшей', ближайшая.minutesNeeded, 48);
+
+  // Ближайшая — по нехватке времени, а не по порядку в списке
+  const вразнобой = { endsAt: через(9000), drops: [
+    { required: 300, progress: 290, name: 'Почти готова' },
+    { required: 60, progress: 0, name: 'Только начата' }
+  ]};
+  check('ближайшая не первая по списку',
+    CampaignValue.nextDrop([вразнобой], now).drop.name, 'Почти готова');
+
+  // Забранные награды не предлагаются
+  const частичноЗабрано = { endsAt: через(9000), drops: [
+    { required: 60, progress: 60, claimed: true, name: 'Забрана' },
+    { required: 120, progress: 60, name: 'Следующая' }
+  ]};
+  check('забранная не считается ближайшей',
+    CampaignValue.nextDrop([частичноЗабрано], now).drop.name, 'Следующая');
+
+  check('в законченной кампании ближайшей нет',
+    CampaignValue.nextDrop([{ endsAt: через(-10), drops: [дропс(60, 0)] }], now), null);
+
+  // Шкала: деления встают там, где награду выдадут
+  const шкала = CampaignValue.timeline(кампанияСкрина);
+  check('заполнение по времени просмотра', Math.round(шкала.percent), 4);
+  check('делений столько же, сколько наград', шкала.marks.length, 4);
+  check('положения делений', шкала.marks.map(m => Math.round(m.percent)), [20, 40, 60, 100]);
+  check('последняя награда в конце шкалы', шкала.marks[3].percent, 100);
+  check('деления отсортированы по возрастанию',
+    шкала.marks.map(m => m.percent).slice().sort((a, b) => a - b), шкала.marks.map(m => m.percent));
+
+  check('шкала без наград', CampaignValue.timeline({ drops: [] }), { percent: 0, marks: [] });
+  check('шкала без кампании', CampaignValue.timeline(null), { percent: 0, marks: [] });
 }
 
 // ─── Строки перевода ─────────────────────────────────────────────────

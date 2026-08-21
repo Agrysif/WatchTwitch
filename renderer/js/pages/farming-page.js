@@ -2985,7 +2985,10 @@ class FarmingPage {
         await Storage.saveCategories(this.categories);
         this.renderCategories();
 
-        this.updateMiniDropsProgress(overallPercent);
+        // Сайдбарная шкала идёт по времени просмотра, чтобы деления
+        // совпадали с рубежами выдачи наград
+        const timeline = this.updateSidebarDropsDetail(matched);
+        this.updateMiniDropsProgress(timeline ? timeline.percent : overallPercent);
 
         // Если все дропсы получены - сразу переключаемся
         if (overallPercent === 100 && !this.currentCategory._switchScheduled) {
@@ -3313,6 +3316,14 @@ class FarmingPage {
     if (legacyDrops) legacyDrops.style.display = 'none';
 
     this.updateMiniDropsProgress(0);
+
+    const dropsMarks = document.getElementById('sidebar-drops-marks');
+    if (dropsMarks) dropsMarks.innerHTML = '';
+    const dropsTip = document.getElementById('sidebar-drops-tip');
+    if (dropsTip) {
+      dropsTip.innerHTML = '';
+      dropsTip.setAttribute('aria-hidden', 'true');
+    }
     
     // Показываем контейнер обратно и очищаем UI текущего стрима
     const streamInfo = document.getElementById('current-stream-info');
@@ -3402,6 +3413,73 @@ class FarmingPage {
     window.dispatchEvent(new CustomEvent('statistics-updated'));
   }
 
+
+/**
+   * Подсказка и деления на шкале дропсов в сайдбаре.
+   *
+   * Деления показывают, где выдаётся каждая награда, подсказка при
+   * наведении — какая награда следующая и сколько до неё осталось.
+   *
+   * Шкала считается по времени просмотра, а не по среднему проценту
+   * наград: прогресс внутри кампании общий, и среднее по наградам ни на
+   * что не указывает — деления на такой шкале встали бы в произвольные
+   * места. По времени отметка встаёт ровно туда, где награду дадут.
+   */
+  updateSidebarDropsDetail(campaigns) {
+    const marksBox = document.getElementById('sidebar-drops-marks');
+    const tip = document.getElementById('sidebar-drops-tip');
+    const CV = window.CampaignValue;
+    if (!marksBox || !tip || !CV) return null;
+
+    const next = CV.nextDrop(campaigns);
+    const source = next?.campaign || (campaigns || [])[0];
+    const timeline = CV.timeline(source);
+
+    marksBox.innerHTML = timeline.marks
+      .map((mark, index) => {
+        const last = index === timeline.marks.length - 1;
+        return `<div class="drops-mark${mark.earned ? ' earned' : ''}${last ? ' last' : ''}"
+                     style="left: ${mark.percent}%"></div>`;
+      })
+      .join('');
+
+    const escape = (text) => String(text ?? '').replace(/[&<>"']/g, ch => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[ch]));
+
+    if (!next) {
+      tip.innerHTML = '<div class="drops-tip-name">Незабранных наград нет</div>';
+      tip.setAttribute('aria-hidden', 'false');
+      return timeline;
+    }
+
+    const icon = next.drop.imageURL || next.drop.image || '';
+    const left = Math.max(0, Math.ceil(next.minutesNeeded));
+    const collected = timeline.marks.filter(m => m.earned).length;
+
+    tip.innerHTML = `
+      <div class="drops-tip-row">
+        ${icon ? `<img src="${escape(icon)}" alt="" onerror="this.style.visibility='hidden'">` : ''}
+        <div>
+          <div class="drops-tip-name">${escape(next.drop.name || next.drop.benefitName || 'Награда')}</div>
+          <div class="drops-tip-left">${left > 0 ? `осталось ${this.formatMinutes(left)}` : 'готова к получению'}</div>
+        </div>
+      </div>
+      <div class="drops-tip-note">Собрано ${collected} из ${timeline.marks.length} · чёрточки — рубежи выдачи</div>
+    `;
+    tip.setAttribute('aria-hidden', 'false');
+
+    return timeline;
+  }
+
+  /** Минуты в вид «2ч 15м». */
+  formatMinutes(minutes) {
+    const total = Math.max(0, Math.round(minutes));
+    const hours = Math.floor(total / 60);
+    const rest = total % 60;
+    if (hours > 0) return rest > 0 ? `${hours}ч ${rest}м` : `${hours}ч`;
+    return `${rest} мин`;
+  }
 
   updateMiniDropsProgress(percent) {
     const sidebarProgress = document.getElementById('sidebar-drops-progress');
