@@ -196,6 +196,19 @@ const getFollowersFromIvr = (login) => new Promise((resolve) => {
   req.end();
 });
 let mainWindow;
+
+/**
+ * Отправка сообщения в главное окно.
+ *
+ * Проверки `if (mainWindow)` мало: закрытое окно ссылку не обнуляет, а
+ * обращение к webContents уничтоженного окна выбрасывает исключение и
+ * роняет главный процесс. События автообновления и закрытия приходят в
+ * том числе тогда, когда окна уже нет.
+ */
+function sendToMain(channel, payload) {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  mainWindow.webContents.send(channel, payload);
+}
 let splashWindow;
 let powerSaveBlockerId;
 let tray = null;
@@ -474,7 +487,7 @@ autoUpdater.on('update-available', (info) => {
   console.log('[Updater] Files:', info.files);
   updateInfo = info;
   if (mainWindow) {
-    mainWindow.webContents.send('update-available', {
+    sendToMain('update-available', {
       version: info.version,
       releaseDate: info.releaseDate,
       releaseNotes: info.releaseNotes
@@ -494,13 +507,13 @@ autoUpdater.on('error', (error) => {
   console.error('[Updater] Error message:', error.message);
   console.error('[Updater] Error stack:', error.stack);
   if (mainWindow) {
-    mainWindow.webContents.send('update-error', error.message);
+    sendToMain('update-error', error.message);
   }
 });
 
 autoUpdater.on('download-progress', (progressObj) => {
   if (mainWindow) {
-    mainWindow.webContents.send('update-download-progress', {
+    sendToMain('update-download-progress', {
       percent: Math.round(progressObj.percent),
       bytesPerSecond: progressObj.bytesPerSecond,
       total: progressObj.total,
@@ -512,7 +525,7 @@ autoUpdater.on('download-progress', (progressObj) => {
 autoUpdater.on('update-downloaded', () => {
   console.log('[Updater] Обновление загружено');
   if (mainWindow) {
-    mainWindow.webContents.send('update-downloaded', {
+    sendToMain('update-downloaded', {
       version: updateInfo?.version || 'unknown'
     });
   }
@@ -541,7 +554,7 @@ ipcMain.on('download-update', async () => {
   } catch (error) {
     console.error('[Updater] Ошибка загрузки обновления:', error);
     if (mainWindow) {
-      mainWindow.webContents.send('update-error', error?.message || 'Ошибка загрузки обновления');
+      sendToMain('update-error', error?.message || 'Ошибка загрузки обновления');
     }
   }
 });
@@ -773,7 +786,7 @@ function createMainWindow() {
       }
     } else {
       // Сигнализируем renderer процессу о закрытии
-      mainWindow.webContents.send('app-closing');
+      sendToMain('app-closing');
     }
   });
 
@@ -815,7 +828,7 @@ function createTray() {
         click: () => {
           mainWindow.show();
           mainWindow.focus();
-          mainWindow.webContents.send('navigate-to-page', 'settings');
+          sendToMain('navigate-to-page', 'settings');
         }
       },
       { type: 'separator' },
@@ -1802,7 +1815,7 @@ app.on('before-quit', async () => {
   
   // Уведомляем рендерер о закрытии для завершения сессии
   if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('app-closing');
+    sendToMain('app-closing');
     // Даем время на сохранение сессии
     await new Promise(resolve => setTimeout(resolve, 500));
   }
@@ -2094,6 +2107,21 @@ function createDropNotification(dropName, gameName, dropIcon) {
 
   dropNotificationWindow.once('ready-to-show', () => {
     dropNotificationWindow.show();
+
+    // Картинка качается асинхронно, а окно уведомления живёт несколько
+    // секунд и закрывается само. Ответ (или ошибка TLS) нередко приходит
+    // уже после закрытия, когда ссылка обнулена обработчиком 'closed', —
+    // обращение к webContents роняло весь главный процесс с
+    // «Cannot read properties of null». Держим ссылку на своё окно и
+    // проверяем, живо ли оно.
+    const targetWindow = dropNotificationWindow;
+    const sendToNotification = (dropIconData) => {
+      if (!targetWindow || targetWindow.isDestroyed()) {
+        console.log('[Main] Окно уведомления уже закрыто, картинка не нужна');
+        return;
+      }
+      targetWindow.webContents.send('notification-data', { dropName, gameName, dropIcon: dropIconData });
+    };
     
     // Загружаем картинку через главный процесс и передаем как base64
     if (dropIcon && dropIcon.startsWith('http')) {
@@ -2110,12 +2138,7 @@ function createDropNotification(dropName, gameName, dropIcon) {
         // Проверяем что ответ успешный и это изображение
         if (response.statusCode !== 200 || !response.headers['content-type']?.startsWith('image/')) {
           console.error('[Main] Invalid response - not an image or error status');
-          // Передаем без картинки
-          dropNotificationWindow.webContents.send('notification-data', {
-            dropName,
-            gameName,
-            dropIcon: null
-          });
+          sendToNotification(null);
           return;
         }
         
@@ -2132,31 +2155,15 @@ function createDropNotification(dropName, gameName, dropIcon) {
           const dataUrl = `data:${contentType};base64,${base64}`;
           
           console.log('[Main] Image downloaded successfully, size:', buffer.length, 'bytes');
-          
-          // Передаем данные с base64 изображением
-          dropNotificationWindow.webContents.send('notification-data', {
-            dropName,
-            gameName,
-            dropIcon: dataUrl
-          });
+          sendToNotification(dataUrl);
         });
         
       }).on('error', (err) => {
-        console.error('[Main] Failed to download image:', err);
-        // Передаем без картинки
-        dropNotificationWindow.webContents.send('notification-data', {
-          dropName,
-          gameName,
-          dropIcon: null
-        });
+        console.error('[Main] Failed to download image:', err.message);
+        sendToNotification(null);
       });
     } else {
-      // Передаем данные без картинки
-      dropNotificationWindow.webContents.send('notification-data', {
-        dropName,
-        gameName,
-        dropIcon: null
-      });
+      sendToNotification(null);
     }
   });
 

@@ -142,7 +142,7 @@ class WhatsNew {
     const blocks = sections.map(section => `
       <div class="whats-new-section">
         <div class="whats-new-section-title">${this.escape(section.title)}</div>
-        <ul>${section.items.map(i => `<li>${this.escape(i)}</li>`).join('')}</ul>
+        <ul>${section.items.map(i => `<li>${this.formatInline(i)}</li>`).join('')}</ul>
       </div>
     `).join('');
 
@@ -205,6 +205,22 @@ class WhatsNew {
       if (x !== y) return x > y ? 1 : -1;
     }
     return 0;
+  }
+
+  /**
+   * Готовит строку описания к вставке: экранирует, затем размечает.
+   *
+   * Порядок важен. Сначала экранирование — текст приходит с GitHub, и
+   * вставлять его как разметку нельзя. Только после этого превращаем
+   * **звёздочки** в жирный шрифт: раньше их никто не разбирал, и в окне
+   * так и висели две звёздочки вокруг каждого важного пункта.
+   */
+  formatInline(text) {
+    const safe = this.escape(text);
+
+    return safe
+      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+      .replace(/`([^`]+)`/g, '<code>$1</code>');
   }
 
   /** Описание приходит извне, поэтому вставляем его только как текст. */

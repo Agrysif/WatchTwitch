@@ -227,17 +227,30 @@ class FarmingPage {
     return activeCampaignsMap;
   }
 
-  async loadActiveCampaignsMap() {
-    let campaigns = await window.electronAPI.fetchTwitchDrops();
-    let campaignsMap = this.buildActiveCampaignsMapFromCampaigns(campaigns);
+  /**
+   * Кампании с дропсами и признак полноты источника.
+   *
+   * Полный список отдаёт только dashboard-запрос, а он требует
+   * Client-Integrity — тот появляется лишь после того, как в приложении
+   * запустится стрим. До этого работает откат на инвентарь, который знает
+   * исключительно НАЧАТЫЕ кампании: их полтора десятка против сотни с
+   * лишним. Отличать эти два случая обязательно — иначе неполный список
+   * выглядит как «дропсов больше нигде нет».
+   */
+  async loadActiveCampaigns() {
+    const campaigns = await window.electronAPI.fetchTwitchDrops();
+    const fromDashboard = this.buildActiveCampaignsMapFromCampaigns(campaigns);
 
-    // Fallback: если dashboard недоступен/пустой, используем inventory
-    if (campaignsMap.size === 0) {
-      const inventory = await window.electronAPI.fetchDropsInventory();
-      campaignsMap = this.buildActiveCampaignsMapFromCampaigns(inventory);
+    if (fromDashboard.size > 0) {
+      return { map: fromDashboard, complete: true };
     }
 
-    return campaignsMap;
+    const inventory = await window.electronAPI.fetchDropsInventory();
+    return { map: this.buildActiveCampaignsMapFromCampaigns(inventory), complete: false };
+  }
+
+  async loadActiveCampaignsMap() {
+    return (await this.loadActiveCampaigns()).map;
   }
 
   normalizeGameKey(name) {
@@ -378,7 +391,7 @@ class FarmingPage {
       
       // Получаем свежие данные о категориях
       const allCategories = await window.electronAPI.fetchTwitchCategories();
-      const activeCampaignsMap = await this.loadActiveCampaignsMap();
+      const { map: activeCampaignsMap, complete: campaignsComplete } = await this.loadActiveCampaigns();
       const hasInventoryCampaigns = activeCampaignsMap.size > 0;
       
       let updated = false;
@@ -455,12 +468,42 @@ class FarmingPage {
         }
       }
       
-      // Авто‑категории без дропсов: удаляем из списка
+      // Авто‑категории без дропсов: удаляем из списка.
+      //
+      // Удаление — потеря данных, поэтому оно обставлено двумя условиями.
+      // Во-первых, источник кампаний должен быть полным: неполный (инвентарь
+      // вместо dashboard) знает только начатые кампании, и на нём все
+      // остальные категории выглядят пустыми. Именно так однажды исчезли
+      // разом семь десятков только что добавленных категорий.
+      //
+      // Во-вторых, одного наблюдения мало — Twitch отвечает неровно.
+      // Категорию убираем, только когда она не показала дропсов несколько
+      // проверок подряд.
+      if (!this._noDropsStreak) this._noDropsStreak = new Map();
+
+      for (const cat of this.categories) {
+        if (cat.autoDrops !== true) continue;
+        if (cat.hasDrops === false && campaignsComplete) {
+          this._noDropsStreak.set(cat.id, (this._noDropsStreak.get(cat.id) || 0) + 1);
+        } else {
+          this._noDropsStreak.delete(cat.id);
+        }
+      }
+
+      const MISSES_BEFORE_REMOVAL = 3;
       const beforeCount = this.categories.length;
       const currentId = this.currentCategory?.id;
-      const toRemoveIds = this.categories
-        .filter(cat => cat.autoDrops === true && cat.hasDrops === false && !cat.pinned)
-        .map(c => c.id);
+      const isRemovable = (cat) => cat.autoDrops === true
+        && cat.hasDrops === false
+        && !cat.pinned
+        && (this._noDropsStreak.get(cat.id) || 0) >= MISSES_BEFORE_REMOVAL;
+
+      const toRemoveIds = this.categories.filter(isRemovable).map(c => c.id);
+
+      if (!campaignsComplete) {
+        console.log('[Категории] Список кампаний неполный, ничего не удаляю');
+      }
+
       if (toRemoveIds.length > 0) {
         // Если текущая категория среди удаляемых, переключаемся корректно
         if (currentId && toRemoveIds.includes(currentId)) {
@@ -472,7 +515,8 @@ class FarmingPage {
         // Раньше закреплённая авто-категория без дропсов вычищалась вместе
         // с остальными и добавлялась заново уже без метки — со стороны это
         // выглядело так, будто закрепление слетает после перезапуска.
-        const kept = this.categories.filter(cat => !(cat.autoDrops === true && cat.hasDrops === false && !cat.pinned));
+        const kept = this.categories.filter(cat => !isRemovable(cat));
+        toRemoveIds.forEach(id => this._noDropsStreak.delete(id));
         this.categories = kept;
         await Storage.saveCategories(this.categories);
         this.renderCategories();
@@ -609,6 +653,14 @@ class FarmingPage {
       if (prevCategoryBtn) {
         on(prevCategoryBtn, 'click', () => {
           this.switchToPrevCategory();
+        });
+      }
+
+      // Переход с ручного фарма на автоматический
+      const toAutofarmBtn = document.getElementById('sidebar-to-autofarm-btn');
+      if (toAutofarmBtn) {
+        on(toAutofarmBtn, 'click', () => {
+          this.switchToAutoFarming();
         });
       }
 
@@ -1388,6 +1440,7 @@ class FarmingPage {
 
           // Запускаем выбранную категорию
           await this.startFarmingForCategory(category);
+          this.updateAutoFarmButton();
         }
       });
     });
@@ -2293,12 +2346,42 @@ class FarmingPage {
       return;
     }
     
-    // Получаем стримы с дропсами для первой категории
-    const category = enabledCategories[0];
-    const streams = await window.electronAPI.getStreamsWithDrops(category.name);
-    
-    if (streams.length === 0) {
-      window.utils.showToast(`Нет стримов с дропсами в ${category.name}`, 'warning');
+    // Идём по категориям по порядку, пока какая-нибудь не запустится.
+    //
+    // Раньше бралась ровно первая, и если у неё не было живых стримов,
+    // запуск на этом заканчивался. Особенно обидно выходило с закреплённой
+    // категорией: она идёт первой всегда, и когда дропсы в ней кончались,
+    // «Начать фарминг» переставал делать хоть что-нибудь — остальные
+    // категории даже не проверялись.
+    const MAX_ATTEMPTS = 8;
+    const attempts = enabledCategories.slice(0, MAX_ATTEMPTS);
+
+    let category = null;
+    let streams = [];
+    const skipped = [];
+
+    for (const candidate of attempts) {
+      const found = await window.electronAPI.getStreamsWithDrops(candidate.name);
+      if (found && found.length > 0) {
+        category = candidate;
+        streams = found;
+        break;
+      }
+      skipped.push(candidate.name);
+    }
+
+    if (skipped.length > 0) {
+      console.log('[Фарминг] Без живых стримов, пропущено:', skipped.join(', '));
+    }
+    if (enabledCategories.length > MAX_ATTEMPTS) {
+      console.log('[Фарминг] Проверено', MAX_ATTEMPTS, 'категорий из', enabledCategories.length);
+    }
+
+    if (!category) {
+      window.utils.showToast(
+        `Нет стримов с дропсами: ${skipped.slice(0, 3).join(', ')}${skipped.length > 3 ? ' и др.' : ''}`,
+        'warning'
+      );
       return;
     }
     
@@ -3070,6 +3153,7 @@ class FarmingPage {
   stopFarming(showToast = true, preserveSession = false) {
     this.manualPlayLockCategoryId = null;
     this.manualCategoryId = null;
+    this.updateAutoFarmButton();
 
     if (showToast) {
       window.utils.showToast('Фарминг остановлен', 'info');
@@ -3208,6 +3292,27 @@ class FarmingPage {
       clearInterval(this.streamStatsInterval);
       this.streamStatsInterval = null;
     }
+
+    // Останавливаем обновление дропсов.
+    //
+    // Раньше этот интервал переживал остановку и продолжал тикать раз в
+    // полминуты: панель дропсов и полоска в сайдбаре появлялись снова уже
+    // при выключенном фарминге. Хуже того, оттуда же вызывается
+    // handleCategoryNoDrops — остановленное приложение могло само менять
+    // категорию.
+    if (this.dropsProgressInterval) {
+      clearInterval(this.dropsProgressInterval);
+      this.dropsProgressInterval = null;
+    }
+    this.dropsMissingChecks = 0;
+
+    const dropsPanel = document.getElementById('drops-progress-horizontal');
+    if (dropsPanel) dropsPanel.style.display = 'none';
+
+    const legacyDrops = document.getElementById('drops-progress-container');
+    if (legacyDrops) legacyDrops.style.display = 'none';
+
+    this.updateMiniDropsProgress(0);
     
     // Показываем контейнер обратно и очищаем UI текущего стрима
     const streamInfo = document.getElementById('current-stream-info');
@@ -3370,6 +3475,9 @@ class FarmingPage {
   }
   
   updateCurrentStreamUI(stream, category) {
+    // Ручной режим мог смениться вместе с категорией
+    setTimeout(() => this.updateAutoFarmButton(), 0);
+
     const streamInfo = document.getElementById('current-stream-info');
     const playerContainer = document.getElementById('twitch-player-container');
     const player = window.playerManager?.getWebview();
@@ -4790,6 +4898,41 @@ class FarmingPage {
    * успеваем взять. Проверяется на каждом обновлении дропсов, потому что
    * кампания может стать безнадёжной прямо посреди сессии.
    */
+/**
+   * Показывает кнопку перехода с ручного фарма на автоматический.
+   *
+   * Категорию, запущенную кнопкой Play, приложение намеренно не
+   * переключает само. Но узнать об этом было неоткуда, и со стороны
+   * выглядело как сломанное автопереключение — кнопка объясняет
+   * происходящее и даёт вернуться к автоматике, не останавливая сессию.
+   */
+  updateAutoFarmButton() {
+    const btn = document.getElementById('sidebar-to-autofarm-btn');
+    if (!btn) return;
+
+    const show = !!this.sessionStartTime && this.isManualCategoryActive();
+    btn.style.display = show ? 'flex' : 'none';
+  }
+
+  /**
+   * Снимает отметку ручного запуска, не прерывая текущую сессию.
+   *
+   * Стрим продолжает играть; меняется только то, что дальше приложение
+   * само уйдёт в следующую категорию, когда в этой брать станет нечего.
+   */
+  switchToAutoFarming() {
+    if (!this.isManualCategoryActive()) return;
+
+    console.log('[Фарминг] Ручной режим снят, дальше автоматически:', this.currentCategory?.name);
+
+    this.manualCategoryId = null;
+    this.manualPlayLockCategoryId = null;
+    this._exhaustedCategoryId = null;
+
+    this.updateAutoFarmButton();
+    window.utils?.showToast('Дальше категории переключаются автоматически', 'success');
+  }
+
   async checkCategoryStillWorthwhile(matched) {
     if (window.settings?.get('smartCategorySwitch') === false) return;
 
