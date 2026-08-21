@@ -4,10 +4,18 @@
 - **Категории перестали пропадать.** Полный список кампаний Twitch отдаёт только после запуска стрима; до этого приложение видело лишь начатые кампании — полтора десятка вместо сотни с лишним — и вычищало все остальные категории как «без дропсов». Именно так исчезали разом десятки только что добавленных. Теперь при неполных данных не удаляется ничего, а категория уходит только после трёх проверок подряд
 - **«Начать фарминг» работает, когда первая категория пуста.** Раньше проверялась ровно одна категория, и если у неё не было живых стримов, запуск молча заканчивался. С закреплённой категорией это ломало фарминг совсем: закреплённая идёт первой, и когда дропсы в ней кончались, кнопка переставала делать что-либо
 - **После остановки не остаётся мусора.** Прогресс дропсов и полоска в сайдбаре продолжали обновляться при выключенном фарминге; вдобавок оттуда же могла сама смениться категория
+- **Приложение перестало тяжелеть со временем.** При каждом переключении категории оставался работать лишний секундный таймер, остановить который было уже нечем: за ночь их набирался десяток, и каждый дёргал обновление сессии
+- Убрано двести строк кода, который не выполнялся, но выглядел рабочей логикой переключения категорий
 - В окне «что нового» важные пункты стали жирными — раньше вокруг них просто висели две звёздочки
 - Кнопка «Установить и перезагрузить» больше не вылезает за край окна, и на ней не пропадает значок
 
 ## ✨ Что нового
+
+- **Прогноз окончания.** В панели дропсов видно, сколько ещё смотреть и к какому времени всё соберётся: «Все награды через 4ч 12м — к 06:13». Недостижимые награды в расчёт не идут, чтобы прогноз не обещал невозможного
+- **План к автовыключению.** Если заведён таймер, рядом сказано, что из задуманного успеется: «До выключения в 03:01 успеется 1 из 2»
+- **Значок в трее показывает состояние.** По наведению — категория, процент и время до следующей награды; прогресс идёт полосой прямо на кнопке панели задач. Разворачивать окно ради этого больше не нужно
+- **Сообщение о выходе избранного канала.** Приложение раз в несколько минут проверяет избранные подписки и говорит, когда стример начал трансляцию, отдельно отмечая, если по его игре идут дропсы. Про один эфир — один раз. Отключается в настройках
+- **Сэкономленный трафик** в разделе «Аналитика»: во что обошёлся бы тот же просмотр в 720p60. Оценка приблизительная — битрейт у Twitch плавает
 
 - **Шкала дропсов в сайдбаре стала подробнее.** Чёрточки отмечают рубежи выдачи наград: видно, где следующая и сколько их впереди; полученные отмечены зелёным. При наведении всплывает окно со значком следующей награды, её названием и временем до неё
 - Заполнение шкалы теперь считается по времени просмотра, а не по среднему проценту наград. Прогресс внутри кампании общий, поэтому среднее ни на что не указывало — а на шкале времени чёрточка встаёт ровно туда, где награду дадут
@@ -19,10 +27,18 @@
 - **Categories stopped disappearing.** Twitch returns the full campaign list only after a stream has been started; before that the app saw just the campaigns already in progress — a dozen or so instead of well over a hundred — and wiped every other category as having no drops. That is how dozens of freshly added ones vanished at once. Now nothing is removed while the data is incomplete, and a category only goes after three consecutive checks
 - **"Start farming" works when the first category is empty.** Only one category used to be tried, and if it had no live streams the launch silently ended. With a pinned category this broke farming entirely: a pinned one always comes first, so once its drops ran out the button stopped doing anything
 - **Stopping leaves nothing behind.** The drops panel and the sidebar bar kept refreshing while farming was off, and the category could even switch on its own
+- **The app no longer gets heavier over time.** Every category switch left behind an extra one-second timer that could no longer be stopped; a dozen would pile up overnight, each firing a session refresh
+- Two hundred lines of code that never ran — but looked like the category-switching logic — have been removed
 - Important lines in the "What's new" window are bold now — previously two asterisks just sat around them
 - The "Install and restart" button no longer overflows its window, and keeps its icon
 
 ## ✨ What's new
+
+- **A finish forecast.** The drops panel now shows how much longer to watch and when everything will be collected: "Все награды через 4ч 12м — к 06:13". Unreachable rewards are left out so the forecast never promises the impossible
+- **A plan for the shutdown timer.** When one is set, the panel says what will actually be collected before it fires
+- **The tray icon shows the state.** Hovering gives the category, the percentage, and the time to the next reward; progress also runs along the taskbar button. No need to open the window for that any more
+- **Favourite channels going live are announced.** Every few minutes the app checks favourite subscriptions and says when a streamer starts broadcasting, pointing out when their game has drops. Once per broadcast. Can be turned off in Settings
+- **Traffic saved** in the Analytics section: what the same watching would have cost at 720p60. This is an estimate — Twitch bitrates vary
 
 - **The sidebar drops bar shows more.** Tick marks show where each reward is handed out, so the next one and everything ahead are visible at a glance; collected ones are green. Hovering brings up a card with the next reward's icon, its name, and the time left to it
 - The bar now fills by watch time rather than by the average reward percentage. Progress inside a campaign is shared, so that average pointed at nothing — on a time scale each tick sits exactly where the reward lands
