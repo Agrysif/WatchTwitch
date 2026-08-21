@@ -13,7 +13,7 @@
 
 - **Выбор категории по выгоде.** Приложение считает, сколько наград реально возьмётся за час просмотра, и берётся за ту категорию, где их больше; при равной выгоде — за ту, что заканчивается раньше, потому что долгоиграющую можно догнать потом. Отключается в «Настройках»
 - Категории, которые уже не успеть добить, опускаются в конец списка с пометкой «Не успеть» — награды в них есть, но времени на них не хватит
-- Когда все дропсы категории собраны, приложение сразу предлагает перейти к следующей категории с дропсами
+- **Категория меняется сама**, когда в ней больше нечего взять — все награды собраны либо оставшиеся уже не успеть. Исключение одно: категорию, запущенную вручную кнопкой Play, приложение не переключает, а предлагает перейти — и на странице появляется кнопка перехода к следующей категории с дропсами
 
 ## 🇬🇧 Fixed
 
@@ -30,4 +30,4 @@
 
 - **Categories are picked by value.** The app works out how many rewards a category will actually yield per hour of watching and takes the richer one; on a tie it prefers the campaign ending sooner, since a long-running one can be caught up later. Can be turned off in Settings
 - Categories that can no longer be finished in time sink to the bottom of the list, marked "Не успеть" — they still have rewards, but there is no time left for them
-- When every drop in a category is collected, the app offers to move straight to the next category with drops
+- **Categories switch on their own** once nothing is left to gain — every reward collected, or the remaining ones no longer reachable in time. One exception: a category started by hand with Play is never switched automatically; the app offers the move instead, and a button to the next category with drops appears on the page

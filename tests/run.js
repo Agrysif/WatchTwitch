@@ -229,6 +229,21 @@ function loadClass(relativePath, className, globals = {}) {
 
   check('пояснение о нехватке времени',
     CampaignValue.describe(оценка), 'Не успеть: нужно 40 мин, осталось 31');
+
+  // Когда уходить из категории. Автопереключение висело на условии
+  // «получены все награды» — при недостижимой награде оно не наступает
+  const всёСобрано = { endsAt: через(9000), drops: [дропс(60, 60, true), дропс(120, 120, true)] };
+  const ещёИдёт = { endsAt: через(9000), drops: [дропс(60, 10)] };
+
+  check('уходим, когда всё собрано', CampaignValue.shouldLeave([всёСобрано], now), true);
+  check('уходим, когда уже не успеть', CampaignValue.shouldLeave([безнадёжная], now), true);
+  check('остаёмся, пока есть смысл', CampaignValue.shouldLeave([ещёИдёт], now), false);
+  check('одной живой кампании хватает, чтобы остаться',
+    CampaignValue.shouldLeave([всёСобрано, безнадёжная, ещёИдёт], now), false);
+
+  // Пустой список — это «данные не загрузились», а не «фармить нечего»
+  check('без данных категорию не бросаем', CampaignValue.shouldLeave([], now), false);
+  check('null вместо списка', CampaignValue.shouldLeave(null, now), false);
 }
 
 // ─── Строки перевода ─────────────────────────────────────────────────
