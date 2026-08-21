@@ -6,6 +6,8 @@
 - **После остановки не остаётся мусора.** Прогресс дропсов и полоска в сайдбаре продолжали обновляться при выключенном фарминге; вдобавок оттуда же могла сама смениться категория
 - **Приложение перестало тяжелеть со временем.** При каждом переключении категории оставался работать лишний секундный таймер, остановить который было уже нечем: за ночь их набирался десяток, и каждый дёргал обновление сессии
 - Убрано двести строк кода, который не выполнялся, но выглядел рабочей логикой переключения категорий
+- **Кнопка «Начать фарминг» больше не может залипнуть навсегда.** Защёлка от двойного запуска снималась только по завершении поиска: если сетевой запрос зависал, кнопка молча переставала работать до перезапуска приложения. Теперь у защёлки есть срок, каждый запрос ограничен по времени, а сама кнопка на время поиска показывает «Ищем стрим…», а не молчит
+- Подсказка о следующей награде больше не прячется под мини-плеером в сайдбаре
 - В окне «что нового» важные пункты стали жирными — раньше вокруг них просто висели две звёздочки
 - Кнопка «Установить и перезагрузить» больше не вылезает за край окна, и на ней не пропадает значок
 
@@ -29,6 +31,8 @@
 - **Stopping leaves nothing behind.** The drops panel and the sidebar bar kept refreshing while farming was off, and the category could even switch on its own
 - **The app no longer gets heavier over time.** Every category switch left behind an extra one-second timer that could no longer be stopped; a dozen would pile up overnight, each firing a session refresh
 - Two hundred lines of code that never ran — but looked like the category-switching logic — have been removed
+- **The "Start farming" button can no longer stick forever.** The double-start guard was released only once the search finished: a hung network request left the button silently dead until the app restarted. The guard now expires, each request is time-limited, and the button shows "Ищем стрим…" while searching instead of staying silent
+- The next-reward tooltip no longer hides behind the sidebar mini player
 - Important lines in the "What's new" window are bold now — previously two asterisks just sat around them
 - The "Install and restart" button no longer overflows its window, and keeps its icon
 
