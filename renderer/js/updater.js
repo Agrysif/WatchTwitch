@@ -416,9 +416,22 @@ class UpdateManager {
     
     const btn = document.getElementById('update-download-btn');
     btn.disabled = true;
-    btn.textContent = 'Загрузка...';
+    this.setButtonLabel(btn, 'Загрузка...');
     
     document.getElementById('update-later-btn').style.display = 'none';
+  }
+
+  /**
+   * Меняет подпись кнопки, не трогая значок.
+   *
+   * Через btn.textContent значок пропадал: он лежит отдельным элементом
+   * внутри кнопки и стирался вместе с прежней подписью.
+   */
+  setButtonLabel(btn, text) {
+    if (!btn) return;
+    const label = btn.querySelector('span');
+    if (label) label.textContent = text;
+    else btn.textContent = text;
   }
 
   /**
@@ -430,7 +443,7 @@ class UpdateManager {
     
     const btn = document.getElementById('update-download-btn');
     btn.disabled = false;
-    btn.textContent = 'Установить и перезагрузить';
+    this.setButtonLabel(btn, 'Установить и перезагрузить');
     btn.onclick = () => this.installUpdate();
     
     const status = document.getElementById('update-status');
@@ -448,7 +461,7 @@ class UpdateManager {
     
     const btn = document.getElementById('update-download-btn');
     btn.disabled = false;
-    btn.textContent = 'Попробовать ещё';
+    this.setButtonLabel(btn, 'Попробовать ещё');
     btn.onclick = () => this.checkForUpdates();
     
     const status = document.getElementById('update-status');
