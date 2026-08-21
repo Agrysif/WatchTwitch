@@ -163,6 +163,62 @@ class CampaignValue {
     return !list.some(c => CampaignValue.evaluate(c, now).feasible);
   }
 
+  /**
+   * Ближайшая награда среди всех кампаний игры.
+   *
+   * «Ближайшая» — по оставшемуся времени просмотра, а не по порядку в
+   * списке: награды выдаются по мере набора минут, и первой придёт та,
+   * которой меньше всего не хватает.
+   */
+  static nextDrop(campaigns, now = Date.now()) {
+    let best = null;
+
+    for (const campaign of campaigns || []) {
+      if (CampaignValue.minutesLeft(campaign, now) <= 0) continue;
+
+      for (const drop of CampaignValue.unclaimedDrops(campaign)) {
+        const minutesNeeded = CampaignValue.minutesNeeded(drop);
+        if (!best || minutesNeeded < best.minutesNeeded) {
+          best = { drop, campaign, minutesNeeded };
+        }
+      }
+    }
+
+    return best;
+  }
+
+  /**
+   * Шкала кампании по времени просмотра и отметки выдачи наград.
+   *
+   * Считаем именно по времени, а не по среднему проценту наград. Прогресс
+   * внутри кампании общий, поэтому средний процент — величина без
+   * наглядного смысла: у наград на 60 и 300 минут при 12 просмотренных
+   * он даёт 20% и 4%, а их среднее ни на что не указывает. На шкале
+   * времени отметка каждой награды встаёт ровно туда, где её выдадут.
+   */
+  static timeline(campaign) {
+    const drops = (campaign?.drops || []).filter(d => Number(d.required) > 0);
+    if (!drops.length) return { percent: 0, marks: [] };
+
+    const longest = Math.max(...drops.map(d => Number(d.required) || 0));
+    if (!(longest > 0)) return { percent: 0, marks: [] };
+
+    // Прогресс общий, но у забранных наград он может быть подрезан
+    // до требуемого — берём наибольший как истинное время просмотра
+    const watched = Math.max(...drops.map(d => Number(d.progress) || 0));
+
+    const marks = drops
+      .map(drop => ({
+        percent: Math.min(100, (Number(drop.required) / longest) * 100),
+        name: drop.name || drop.benefitName || 'Награда',
+        earned: CampaignValue.isEarned(drop),
+        minutesNeeded: CampaignValue.minutesNeeded(drop)
+      }))
+      .sort((a, b) => a.percent - b.percent);
+
+    return { percent: Math.min(100, (watched / longest) * 100), watched, longest, marks };
+  }
+
   /** Короткое пояснение для интерфейса. */
   static describe(evaluation) {
     switch (evaluation.reason) {

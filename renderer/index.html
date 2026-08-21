@@ -96,7 +96,7 @@
         </div>
         
         <!-- Mini Drops Progress -->
-        <div id="sidebar-drops-progress" style="display: none; padding: 12px 14px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius-md); margin-bottom: 6px; opacity: 0; transform: translateY(-10px); transition: all 0.3s ease;">
+        <div id="sidebar-drops-progress" style="display: none; position: relative; padding: 12px 14px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius-md); margin-bottom: 6px; opacity: 0; transform: translateY(-10px); transition: all 0.3s ease;">
           <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
             <div style="display: flex; align-items: center; gap: 8px;">
               <svg width="14" height="14" viewBox="0 0 16 16" fill="#7c5cff">
@@ -106,9 +106,11 @@
             </div>
             <span id="sidebar-drops-percent" style="font-size: 16px; font-weight: 700; color: var(--text-primary);">0%</span>
           </div>
-          <div style="background: rgba(124, 92, 255, 0.1); height: 6px; border-radius: var(--radius-sm); overflow: hidden;">
+          <div class="drops-track">
             <div id="sidebar-drops-bar" style="height: 100%; background: #7c5cff; width: 0%; transition: width 0.5s ease;"></div>
+            <div id="sidebar-drops-marks" class="drops-marks"></div>
           </div>
+          <div id="sidebar-drops-tip" class="drops-tip" role="tooltip" aria-hidden="true"></div>
         </div>
         
         <div id="farming-session-info" style="display: none; padding: 16px; background: var(--bg-secondary); border-radius: var(--radius-md); margin-bottom: 8px; border: 1px solid var(--border-color); opacity: 0; transform: translateY(-10px); transition: opacity 0.3s ease, transform 0.3s ease;">

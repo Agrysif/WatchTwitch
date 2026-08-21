@@ -9,6 +9,8 @@
 
 ## ✨ Что нового
 
+- **Шкала дропсов в сайдбаре стала подробнее.** Чёрточки отмечают рубежи выдачи наград: видно, где следующая и сколько их впереди; полученные отмечены зелёным. При наведении всплывает окно со значком следующей награды, её названием и временем до неё
+- Заполнение шкалы теперь считается по времени просмотра, а не по среднему проценту наград. Прогресс внутри кампании общий, поэтому среднее ни на что не указывало — а на шкале времени чёрточка встаёт ровно туда, где награду дадут
 - **Кнопка «Переключить на автофарм»** над кнопкой остановки. Категорию, запущенную вручную кнопкой Play, приложение намеренно не переключает само — но узнать об этом было неоткуда, и выглядело как поломка. Теперь это видно, и вернуться к автоматике можно не прерывая сессию
 
 ## 🇬🇧 Fixed
@@ -22,4 +24,6 @@
 
 ## ✨ What's new
 
+- **The sidebar drops bar shows more.** Tick marks show where each reward is handed out, so the next one and everything ahead are visible at a glance; collected ones are green. Hovering brings up a card with the next reward's icon, its name, and the time left to it
+- The bar now fills by watch time rather than by the average reward percentage. Progress inside a campaign is shared, so that average pointed at nothing — on a time scale each tick sits exactly where the reward lands
 - **A "Switch to auto-farming" button** above the stop button. A category started by hand with Play is deliberately never switched automatically — but there was no way to know that, so it looked broken. Now it is visible, and you can return to automatic mode without interrupting the session
