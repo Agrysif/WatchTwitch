@@ -154,25 +154,51 @@ function loadClass(relativePath, className, globals = {}) {
   checkTrue('оценка не выходит за сотню', rate({ followers: 9999999, isLive: true, hasDrops: true }) <= 100);
 }
 
-// ─── Сравнение названий игр ──────────────────────────────────────────
+// ─── Выбор стрима и сравнение названий игр ───────────────────────────
 {
-  // Функция переписана после того, как сравнение по подстроке ловило
-  // «line» внутри «albion online». Проверка закрепляет это поведение.
-  const normalize = (value) => String(value || '').toLowerCase().replace(/[^a-zа-я0-9]+/gi, ' ').trim();
-  const isPrefix = (short, long) => short.length > 0 && short.length <= long.length && short.every((t, i) => t === long[i]);
-  const isSameGame = (a, b) => {
-    const left = normalize(a).split(' ').filter(Boolean);
-    const right = normalize(b).split(' ').filter(Boolean);
-    if (!left.length || !right.length) return false;
-    return isPrefix(left, right) || isPrefix(right, left);
-  };
+  // Раньше здесь лежала копия функции, переписанная в самом тесте, — то
+  // есть проверялась не та реализация, что работает в приложении.
+  // Теперь логика вынесена в модуль и проверяется настоящая.
+  const SP = loadClass('renderer/js/features/farming/stream-picker.js', 'StreamPicker');
 
-  checkTrue('точное совпадение', isSameGame('Albion Online', 'Albion Online'));
-  checkTrue('сокращённое название', isSameGame('Albion', 'Albion Online'));
-  check('подстрока внутри слова не считается', isSameGame('Line', 'Albion Online'), false);
-  check('хвост названия не считается', isSameGame('Online', 'Albion Online'), false);
-  checkTrue('регистр не важен', isSameGame('OVERWATCH', 'overwatch'));
-  check('пустое значение', isSameGame('', 'Overwatch'), false);
+  checkTrue('точное совпадение', SP.isSameGame('Albion Online', 'Albion Online'));
+  checkTrue('сокращённое название', SP.isSameGame('Albion', 'Albion Online'));
+  check('подстрока внутри слова не считается', SP.isSameGame('Line', 'Albion Online'), false);
+  check('хвост названия не считается', SP.isSameGame('Online', 'Albion Online'), false);
+  checkTrue('регистр не важен', SP.isSameGame('OVERWATCH', 'overwatch'));
+  check('пустое значение', SP.isSameGame('', 'Overwatch'), false);
+  checkTrue('приставка «Игра:» отбрасывается', SP.isSameGame('Игра: Overwatch', 'Overwatch'));
+  checkTrue('апостроф не мешает', SP.isSameGame("Baldur's Gate 3", 'Baldurs Gate 3'));
+
+  // Исключение канала для кнопки «Другой стрим»
+  const выдача = [{ login: 'aspen' }, { login: 'Bob' }, { login: 'carol' }];
+  check('исключённый канал убран',
+    SP.poolWithout(выдача, 'Bob').map(s => s.login), ['aspen', 'carol']);
+  check('регистр и собачка не мешают',
+    SP.poolWithout(выдача, '@BOB').map(s => s.login), ['aspen', 'carol']);
+  // Показать тот же канал лучше, чем не показать никакой
+  check('единственный канал не отсеивается',
+    SP.poolWithout([{ login: 'aspen' }], 'aspen').map(s => s.login), ['aspen']);
+  check('без исключения список цел', SP.poolWithout(выдача, null).length, 3);
+  check('пустая выдача', SP.poolWithout([], 'aspen'), []);
+
+  // Порядок проверки подписок: избранные вперёд, дальше по приоритету
+  const подписки = [
+    { login: 'dave', priority: 1 },
+    { login: 'erin', isFavorite: true, priority: 5 },
+    { login: 'frank', isFavorite: true, priority: 2 },
+    { login: 'grace' }
+  ];
+  check('избранные вперёд, затем приоритет',
+    SP.orderSubscriptions(подписки).map(s => s.login), ['frank', 'erin', 'dave', 'grace']);
+  check('исключённый не попадает в очередь',
+    SP.orderSubscriptions(подписки, 'frank').map(s => s.login), ['erin', 'dave', 'grace']);
+  check('без подписок', SP.orderSubscriptions(null), []);
+
+  // Подписка, случайно попавшая в общую выдачу
+  check('подписка найдена в выдаче',
+    SP.findInList(выдача, [{ login: 'CAROL' }]).login, 'carol');
+  check('подписки в выдаче нет', SP.findInList(выдача, [{ login: 'zoe' }]), null);
 }
 
 // ─── Приведение качества плеера ──────────────────────────────────────

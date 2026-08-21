@@ -1579,15 +1579,10 @@ class FarmingPage {
   async pickPreferredStream(streams, categoryName, options = {}) {
     if (!Array.isArray(streams) || streams.length === 0) return null;
 
-    const norm = (value) => String(value || '').replace(/^@/, '').toLowerCase();
+    const SP = window.StreamPicker;
 
     // Канал, который просили не выбирать (кнопка «Другой стрим»)
-    const excluded = norm(options.exclude);
-    const pool = excluded
-      ? streams.filter(stream => norm(stream.login) !== excluded)
-      : streams;
-
-    const fallback = pool.length > 0 ? pool : streams;
+    const fallback = SP.poolWithout(streams, options.exclude);
 
     try {
       const priorityEnabled = await Storage.getItem('subscriptions_priority_enabled');
@@ -1604,19 +1599,13 @@ class FarmingPage {
       if (subscriptions.length === 0) return fallback[0];
 
       // Избранные вперёд, внутри группы — по заданному пользователем порядку
-      const ordered = subscriptions
-        .filter(sub => norm(sub.login) !== excluded)
-        .sort((a, b) => {
-          if (!!a.isFavorite !== !!b.isFavorite) return a.isFavorite ? -1 : 1;
-          return (a.priority ?? 9999) - (b.priority ?? 9999);
-        });
+      const ordered = SP.orderSubscriptions(subscriptions, options.exclude);
 
       const direct = await this.findLivePreferredChannel(ordered, categoryName);
       if (direct) return direct;
 
       // Подстраховка: вдруг подписка всё же попала в выдачу
-      const known = new Set(ordered.map(sub => norm(sub.login)));
-      const inList = fallback.find(stream => known.has(norm(stream.login)));
+      const inList = SP.findInList(fallback, ordered);
       if (inList) {
         console.log('[Выбор стрима] Канал из подписок в выдаче:', inList.displayName || inList.login);
         return inList;
@@ -1647,14 +1636,7 @@ class FarmingPage {
         if (!stats || !stats.gameName) return null;
         if (!this.isSameGame(stats.gameName, categoryName)) return null;
 
-        return {
-          login: sub.login,
-          displayName: sub.displayName || sub.login,
-          title: stats.title || '',
-          viewers: stats.viewers || 0,
-          fromSubscription: true,
-          isFavorite: !!sub.isFavorite
-        };
+        return window.StreamPicker.toStream(sub, stats);
       } catch (error) {
         return null;
       }
@@ -1674,15 +1656,7 @@ class FarmingPage {
    * Подстрока здесь опасна: в «albion online» содержится «line».
    */
   isSameGame(a, b) {
-    const tokens = (value) => this.normalizeGameName(value).split(' ').filter(Boolean);
-    const left = tokens(a);
-    const right = tokens(b);
-    if (left.length === 0 || right.length === 0) return false;
-
-    const isPrefix = (short, long) =>
-      short.length <= long.length && short.every((t, i) => t === long[i]);
-
-    return isPrefix(left, right) || isPrefix(right, left);
+    return window.StreamPicker.isSameGame(a, b);
   }
 
   async startFarmingForCategory(category) {
@@ -1750,6 +1724,17 @@ class FarmingPage {
     this.resetSessionPointsTracking();
 
     this.updateSessionInfo();
+
+    // Старый таймер обязательно глушим. Без этого каждый запуск категории
+    // (ручной кнопкой Play и всякое автопереключение идут именно сюда)
+    // оставлял позади живой секундный интервал без ссылки — заглушить его
+    // потом было уже нечем. За ночь с десятком переключений набегал
+    // десяток таймеров, и каждый дёргал обновление сессии с запросом
+    // трафика и записью в DOM.
+    if (this.sessionInterval) {
+      clearInterval(this.sessionInterval);
+      this.sessionInterval = null;
+    }
     this.sessionInterval = setInterval(() => {
       this.updateSessionInfo();
     }, 1000);
@@ -2617,14 +2602,9 @@ class FarmingPage {
    * регистр, апострофы, тире и лишние пробелы — из-за этого точное сравнение
    * регулярно промахивалось и дропсы выглядели как отсутствующие.
    */
+  /** Логика вынесена в StreamPicker, метод оставлен ради мест вызова. */
   normalizeGameName(name) {
-    if (!name) return '';
-    return String(name)
-      .toLowerCase()
-      .replace(/^\s*(игра|game)\s*:\s*/i, '')
-      .replace(/[''`’]/g, '')
-      .replace(/[^a-zа-я0-9]+/gi, ' ')
-      .trim();
+    return window.StreamPicker.normalizeGameName(name);
   }
 
   /**
@@ -4135,178 +4115,6 @@ class FarmingPage {
     this.dropsProgressInterval = setInterval(updateDrops, 30000);
   }
   
-  renderDropsProgress(dropsData) {
-    const container = document.getElementById('drops-progress-container');
-    const campaignsList = document.getElementById('drops-campaigns-list');
-    const overallProgress = document.getElementById('drops-overall-progress');
-    const timeRemaining = document.getElementById('drops-time-remaining');
-    
-    if (!container || !campaignsList) return;
-    
-    container.style.display = 'block';
-    
-    // Общий прогресс
-    if (dropsData.totalProgress) {
-      overallProgress.textContent = `Общий прогресс: ${dropsData.totalProgress.completed}/${dropsData.totalProgress.total} (${dropsData.totalProgress.percentage}%)`;
-    }
-    
-    // Очищаем список
-    campaignsList.innerHTML = '';
-    
-    // Рендерим каждую кампанию
-    dropsData.campaigns.forEach(campaign => {
-      const campaignEl = document.createElement('div');
-      campaignEl.style.cssText = 'margin-bottom: 16px; padding: 16px; background: rgba(255, 255, 255, 0.03); border-radius: var(--radius-sm); border: 1px solid var(--border-color);';
-      
-      // Заголовок кампании
-      let headerHTML = `
-        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
-      `;
-      
-      if (campaign.game && campaign.game.boxArtURL) {
-        headerHTML += `<img src="${campaign.game.boxArtURL}" alt="${campaign.game.name}" style="width: 40px; height: 56px; border-radius: var(--radius-sm); object-fit: cover;">`;
-      }
-      
-      headerHTML += `
-          <div style="flex: 1;">
-            <div style="font-size: 15px; font-weight: 600; color: var(--text-primary);">${campaign.name}</div>
-            ${campaign.game ? `<div style="font-size: 13px; color: var(--text-secondary); margin-top: 2px;">${campaign.game.name}</div>` : ''}
-          </div>
-          <div style="font-size: 13px; color: var(--text-tertiary);">${campaign.completedDrops}/${campaign.totalDrops}</div>
-        </div>
-      `;
-      
-      // Дропсы
-      let dropsHTML = '';
-      campaign.drops.forEach(drop => {
-        const progressColor = drop.claimed ? '#35d08a' : '#7c5cff';
-        const statusText = drop.claimed ? 'Получено' : `${drop.progress}/${drop.required} мин`;
-        
-        dropsHTML += `
-          <div style="margin-bottom: 12px; ${drop === campaign.drops[campaign.drops.length - 1] ? '' : 'padding-bottom: 12px; border-bottom: 1px solid rgba(255, 255, 255, 0.05);'}">
-            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 6px;">
-              ${drop.imageURL ? `<img src="${drop.imageURL}" alt="${drop.name}" style="width: 32px; height: 32px; border-radius: var(--radius-sm); object-fit: cover;">` : ''}
-              <div style="flex: 1;">
-                <div style="font-size: 13px; color: var(--text-primary); margin-bottom: 2px;">${drop.name}</div>
-                <div style="font-size: 11px; color: var(--text-tertiary);">${statusText}</div>
-              </div>
-              <div style="font-size: 13px; font-weight: 600; color: ${progressColor};">${drop.percentage}%</div>
-            </div>
-            <div style="width: 100%; height: 4px; background: rgba(255, 255, 255, 0.1); border-radius: var(--radius-sm); overflow: hidden;">
-              <div style="width: ${drop.percentage}%; height: 100%; background: ${progressColor}; transition: width 0.3s ease;"></div>
-            </div>
-          </div>
-        `;
-      });
-      
-      campaignEl.innerHTML = headerHTML + dropsHTML;
-      campaignsList.appendChild(campaignEl);
-    });
-    
-    // Рассчитываем оставшееся время
-    const totalMinutesRemaining = this.calculateRemainingTime(dropsData.campaigns);
-    if (totalMinutesRemaining > 0) {
-      timeRemaining.style.display = 'block';
-      const hours = Math.floor(totalMinutesRemaining / 60);
-      const minutes = totalMinutesRemaining % 60;
-      timeRemaining.innerHTML = `
-        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style="vertical-align: middle; margin-right: 6px;">
-          <circle cx="8" cy="8" r="7" stroke="currentColor" fill="none" stroke-width="1.5"/>
-          <path d="M8 4v4l3 3" stroke="currentColor" fill="none" stroke-width="1.5"/>
-        </svg>
-        Примерно ${hours > 0 ? hours + 'ч ' : ''}${minutes}м до получения всех дропсов
-      `;
-    } else {
-      timeRemaining.style.display = 'none';
-    }
-    
-    // Проверяем завершенность дропсов для автопереключения
-    this.checkDropsCompletion(dropsData);
-  }
-  
-  calculateRemainingTime(campaigns) {
-    let totalMinutes = 0;
-    
-    campaigns.forEach(campaign => {
-      campaign.drops.forEach(drop => {
-        if (!drop.claimed) {
-          totalMinutes += (drop.required - drop.progress);
-        }
-      });
-    });
-    
-    return Math.max(0, totalMinutes);
-  }
-  
-  checkDropsCompletion(dropsData) {
-    // Проверяем, все ли дропсы получены
-    const allCampaignsCompleted = dropsData.campaigns.every(campaign => 
-      campaign.completedDrops === campaign.totalDrops
-    );
-    
-    if (allCampaignsCompleted && this.currentCategory) {
-      // Помечаем категорию как завершенную
-      const category = this.categories.find(c => c.id === this.currentCategory.id);
-      if (category) {
-        category.dropsCompleted = true;
-        category.dropsCompletedDate = new Date().toISOString();
-        
-        // Сохраняем
-        Storage.saveCategories(this.categories);
-        
-        // Показываем уведомление
-        window.utils.showToast(`Все дропсы получены для ${category.name}!`, 'success');
-        
-        // Переключаемся на следующую категорию
-        setTimeout(() => {
-          this.switchToNextCategoryWithDrops();
-        }, 5000);
-      }
-    }
-  }
-  
-  async switchToNextCategoryWithDrops() {
-    // Находим следующую категорию с незавершенными дропсами
-    const nextCategory = this.categories.find(cat => 
-      cat.hasDrops && !cat.dropsCompleted && cat.id !== this.currentCategory?.id
-    );
-    
-    if (nextCategory) {
-      window.utils.showToast(`Переключение на ${nextCategory.name}...`, 'info');
-      
-      // Закрываем текущий стрим
-      await window.electronAPI.closeStream();
-      
-      // Запускаем новый стрим
-      setTimeout(async () => {
-        try {
-          // Получаем стримы для категории
-          const streams = await window.electronAPI.getStreamsWithDrops(nextCategory.name);
-          
-          if (!streams || streams.length === 0) {
-            window.utils.showToast(`Нет активных стримов для ${nextCategory.name}`, 'error');
-            return;
-          }
-          
-          // Берём первый стрим
-          const stream = await this.pickPreferredStream(streams, nextCategory.name);
-          
-          // Открываем стрим
-          await window.electronAPI.openStream(`https://www.twitch.tv/${stream.login}`);
-          
-          // КРИТИЧЕСКИ ВАЖНО: обновляем UI и устанавливаем currentCategory
-          this.updateCurrentStreamUI(stream, nextCategory);
-          
-          window.utils.showToast(`Переключено на: ${stream.displayName}`, 'success');
-        } catch (error) {
-          console.error('Error switching stream:', error);
-          window.utils.showToast('Ошибка при переключении стрима', 'error');
-        }
-      }, 2000);
-    } else {
-      window.utils.showToast('Нет категорий с активными дропсами', 'warning');
-    }
-  }
   
   setupViewersChart() {
     const viewersEl = document.getElementById('stream-viewers');

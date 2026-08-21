@@ -234,7 +234,12 @@ class SlottedWebview {
       this._resizeObserver.observe(document.body);
     }
 
-    this._pollInterval = setInterval(this._onGeometryChange, 500);
+    // Страховка на случай перемещений, которые не дают ни события прокрутки,
+    // ни срабатывания ResizeObserver. Раньше опрос шёл дважды в секунду, и
+    // каждый тик читал getBoundingClientRect, заставляя браузер пересчитывать
+    // раскладку. Оба обработчика выше покрывают все обычные случаи, поэтому
+    // страховке хватает пары секунд.
+    this._pollInterval = setInterval(this._onGeometryChange, 2000);
 
     this._sync();
   }
