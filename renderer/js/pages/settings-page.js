@@ -112,6 +112,17 @@ class SettingsPage {
 
           <div class="settings-item">
             <div class="settings-item-info">
+              <div class="settings-item-label">${i18n.t('settings.smartCategorySwitch')}</div>
+              <div class="settings-item-description">${i18n.t('settings.smartCategorySwitchDesc')}</div>
+            </div>
+            <label class="settings-toggle">
+              <input type="checkbox" id="setting-smart-switch" ${settings.get('smartCategorySwitch') !== false ? 'checked' : ''}>
+              <span class="settings-slider"></span>
+            </label>
+          </div>
+
+          <div class="settings-item">
+            <div class="settings-item-info">
               <div class="settings-item-label">${i18n.t('settings.notifyOnDropClaimed')}</div>
               <div class="settings-item-description">${i18n.t('settings.notifyOnDropClaimedDesc')}</div>
             </div>
@@ -530,6 +541,20 @@ class SettingsPage {
         settings.set('autoClaimDrops', e.target.checked);
         window.utils.showToast(
           e.target.checked ? i18n.t('settings.autoClaimDrops') : i18n.t('settings.autoClaimDrops'),
+          'info'
+        );
+      });
+    }
+
+    // Выбор категории по выгоде
+    const smartSwitchToggle = document.getElementById('setting-smart-switch');
+    if (smartSwitchToggle) {
+      smartSwitchToggle.addEventListener('change', (e) => {
+        settings.set('smartCategorySwitch', e.target.checked);
+        window.utils.showToast(
+          e.target.checked
+            ? 'Категории выбираются по выгоде'
+            : 'Категории выбираются по прежним правилам',
           'info'
         );
       });

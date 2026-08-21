@@ -1218,8 +1218,24 @@ class FarmingPage {
         : '';
       const autoBadge = cat.autoDrops ? `<span class="category-tag" style="background: rgba(124, 92, 255, 0.2); color: #bda0ff; border: 1px solid rgba(124, 92, 255, 0.4);">${this.i18n.t('farming.auto')}</span>` : '';
       
+      // Безнадёжная кампания — это не «всё собрано», а «уже не успеть»:
+      // награды есть, но времени до конца кампании на них не хватит
+      const catValue = this.getCategoryValue(cat);
+      const tooLate = catValue && !catValue.feasible && catValue.reason === 'tooLate';
+      const skipHint = tooLate
+        ? window.CampaignValue.describe(catValue)
+        : (cat.skipReason || '');
+
       const dropsStatusHtml = cat.hasDrops ? (
-        cat.dropsCompleted 
+        tooLate
+          ? `<span class="category-drops-status too-late" title="${skipHint}">
+               <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6">
+                 <circle cx="6" cy="6" r="5"/>
+                 <path d="M6 3.2V6l1.9 1.9"/>
+               </svg>
+               Не успеть
+             </span>`
+        : cat.dropsCompleted 
           ? `<span class="category-drops-status completed">
                <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
                  <path d="M3.5 7L1 4.5L1.7 3.8L3.5 5.6L8.3 0.8L9 1.5L3.5 7Z"/>
@@ -1889,6 +1905,10 @@ class FarmingPage {
         if (aIsSubscribed !== bIsSubscribed) return aIsSubscribed ? -1 : 1;
         
         // Если оба подписанные или оба нет, сортируем по остальным критериям
+        // Выгода: безнадёжные вниз, впереди та, где за час возьмём больше
+        const byValue = this.compareCategoryValue(a, b);
+        if (byValue !== 0) return byValue;
+
         const aNoDrops = a.hasDrops ? 0 : 1;
         const bNoDrops = b.hasDrops ? 0 : 1;
         if (aNoDrops !== bNoDrops) return aNoDrops - bNoDrops;
@@ -1904,6 +1924,10 @@ class FarmingPage {
         const bManual = b.autoDrops ? 0 : 1;
         if (aManual !== bManual) return bManual - aManual;
         
+        // Выгода: безнадёжные вниз, впереди та, где за час возьмём больше
+        const byValue = this.compareCategoryValue(a, b);
+        if (byValue !== 0) return byValue;
+
         const aNoDrops = a.hasDrops ? 0 : 1;
         const bNoDrops = b.hasDrops ? 0 : 1;
         if (aNoDrops !== bNoDrops) return aNoDrops - bNoDrops;
@@ -2241,7 +2265,9 @@ class FarmingPage {
     }
 
     window.utils.showToast('Ищем стрим с дропсами...', 'info');
-    
+
+    await this.refreshCategoryValues();
+
     // Находим первую включенную категорию: приоритет ручных, затем по наличию дропсов и priority
     const enabledCategories = this.categories
       .filter(c => c.enabled !== false && !c.dropsCompleted)
@@ -2251,6 +2277,10 @@ class FarmingPage {
         const aManual = a.autoDrops ? 1 : 0;
         const bManual = b.autoDrops ? 1 : 0;
         if (aManual !== bManual) return aManual - bManual;
+        // Выгода: безнадёжные вниз, впереди та, где за час возьмём больше
+        const byValue = this.compareCategoryValue(a, b);
+        if (byValue !== 0) return byValue;
+
         const aNoDrops = a.hasDrops ? 0 : 1;
         const bNoDrops = b.hasDrops ? 0 : 1;
         if (aNoDrops !== bNoDrops) return aNoDrops - bNoDrops;
@@ -2751,6 +2781,11 @@ class FarmingPage {
       this.trackSessionDrops(matched);
       this.warnAboutEndingCampaigns(matched);
       await this.autoClaimReadyDrops(matched);
+
+      // Порядок важен: сначала забираем готовые награды, потом решаем,
+      // осталось ли ради чего смотреть дальше
+      this.updateCategoryValues(result.campaigns);
+      await this.checkCategoryStillWorthwhile(matched);
 
       horizontal.style.display = 'block';
 
@@ -4648,6 +4683,162 @@ class FarmingPage {
    * Предупреждаем один раз на кампанию, иначе это превратится в напоминание
    * каждые полминуты.
    */
+/**
+   * Пересчитывает выгодность категорий по свежим данным о кампаниях.
+   *
+   * Результат — карта «название игры → оценка», которой пользуется
+   * сортировка при выборе следующей категории.
+   */
+  updateCategoryValues(allCampaigns) {
+    const CV = window.CampaignValue;
+    if (!CV || !Array.isArray(allCampaigns)) return;
+
+    const now = Date.now();
+    const values = new Map();
+
+    for (const campaign of allCampaigns) {
+      if (!Array.isArray(campaign.drops) || campaign.drops.length === 0) continue;
+
+      const game = campaign.game?.displayName || campaign.game?.name || campaign.name;
+      if (!game) continue;
+
+      const key = String(game).toLowerCase();
+      const value = CV.evaluate(campaign, now);
+      const known = values.get(key);
+
+      // У игры может идти несколько кампаний сразу — берём лучшую
+      if (!known || CV.compare(campaign, known.campaign, now) < 0) {
+        values.set(key, { ...value, campaign });
+      }
+    }
+
+    this._categoryValues = values;
+  }
+
+  /**
+   * Оценка категории по названию игры.
+   *
+   * Точного совпадения мало: в списке категорий имя может быть записано
+   * не так, как его отдаёт Twitch, поэтому при промахе сверяемся тем же
+   * способом, что и везде в приложении.
+   */
+  getCategoryValue(category) {
+    if (!this._categoryValues || !category?.name) return null;
+
+    const exact = this._categoryValues.get(String(category.name).toLowerCase());
+    if (exact) return exact;
+
+    for (const [name, value] of this._categoryValues) {
+      if (this.isSameGame(category.name, name)) return value;
+    }
+    return null;
+  }
+
+  /**
+   * Сравнение категорий по выгоде: успеваем ли и сколько наград за час.
+   *
+   * Ноль означает «не мне решать» — тогда работают прежние правила
+   * сортировки. Так же ведёт себя выключенная настройка.
+   */
+  compareCategoryValue(a, b) {
+    if (window.settings?.get('smartCategorySwitch') === false) return 0;
+
+    const va = this.getCategoryValue(a);
+    const vb = this.getCategoryValue(b);
+
+    if (!va && !vb) return 0;
+    if (!va) return 1;
+    if (!vb) return -1;
+
+    if (va.feasible !== vb.feasible) return va.feasible ? -1 : 1;
+    if (va.perHour !== vb.perHour) return vb.perHour - va.perHour;
+    if (va.minutesLeft !== vb.minutesLeft) return va.minutesLeft - vb.minutesLeft;
+    return 0;
+  }
+
+  /**
+   * Подтягивает свежие оценки кампаний перед выбором категории.
+   *
+   * Нужна при запуске фарминга: карта оценок наполняется во время
+   * сессии, а на старте она ещё пуста — без этого первая категория
+   * выбиралась бы вслепую, в том числе безнадёжная.
+   */
+  async refreshCategoryValues() {
+    if (window.settings?.get('smartCategorySwitch') === false) return;
+    if (!window.electronAPI?.fetchDropsInventory) return;
+
+    try {
+      const result = await window.electronAPI.fetchDropsInventory();
+      if (result?.campaigns) this.updateCategoryValues(result.campaigns);
+    } catch (e) {
+      // Без оценок просто работают прежние правила сортировки
+      console.warn('[Дропсы] Не удалось обновить оценки категорий:', e.message);
+    }
+  }
+
+  /**
+   * Стоит ли продолжать смотреть текущую категорию.
+   *
+   * Причина появления: фарминг шёл всю ночь на кампании, где из двух
+   * наград одна была получена, а вторая требовала больше времени, чем
+   * оставалось до конца кампании. Переключение висело на условии
+   * «получены все награды» — и оно в такой ситуации не выполняется
+   * никогда. Вдобавок проверка жила в функции, которую никто не вызывал,
+   * так что автопереключение не срабатывало вообще ни разу.
+   *
+   * Условие теперь другое: осталась ли награда, которую мы реально
+   * успеваем взять. Проверяется на каждом обновлении дропсов, потому что
+   * кампания может стать безнадёжной прямо посреди сессии.
+   */
+  async checkCategoryStillWorthwhile(matched) {
+    if (window.settings?.get('smartCategorySwitch') === false) return;
+
+    const CV = window.CampaignValue;
+    if (!CV || !this.currentCategory || !this.sessionStartTime) return;
+    if (!Array.isArray(matched) || matched.length === 0) return;
+
+    const now = Date.now();
+    const evaluations = matched.map(c => CV.evaluate(c, now));
+
+    if (evaluations.some(e => e.feasible)) {
+      this._exhaustedCategoryId = null;
+      return;
+    }
+
+    // Одну и ту же категорию не бросаем повторно каждые полминуты
+    if (this._exhaustedCategoryId === this.currentCategory.id) return;
+    this._exhaustedCategoryId = this.currentCategory.id;
+
+    const tooLate = evaluations.find(e => e.reason === 'tooLate');
+    const reason = tooLate
+      ? CV.describe(tooLate)
+      : (evaluations.every(e => e.reason === 'done') ? 'Все награды получены' : 'Кампания закончилась');
+
+    console.log('[Дропсы] Смысла продолжать нет:', this.currentCategory.name, '—', reason);
+
+    const category = this.categories.find(c => c.id === this.currentCategory.id);
+    if (category) {
+      // Пометка снимается сама, когда у игры начинается новая кампания
+      category.dropsCompleted = true;
+      category.dropsCompletedDate = new Date().toISOString();
+      category.skipReason = reason;
+      Storage.saveCategories(this.categories).catch(() => {});
+    }
+
+    window.notifyFarmingEvent?.('Категория отработана', `${this.currentCategory.name}: ${reason}`);
+    window.utils?.showToast(`${this.currentCategory.name}: ${reason}`, 'warning');
+
+    // Категорию, запущенную вручную, приложение не меняет само — как и
+    // при отсутствии дропсов, только предлагаем переключиться
+    if (this.isManualCategoryActive()) {
+      console.log('[Ручной запуск] Категория отработана, но не меняем:', this.currentCategory.name);
+      this.showSwitchOffer();
+      return;
+    }
+
+    await this.switchToNextEnabledCategory();
+  }
+
   warnAboutEndingCampaigns(campaigns) {
     if (!this._endWarned) this._endWarned = new Set();
 

@@ -172,6 +172,103 @@ function loadClass(relativePath, className, globals = {}) {
   check('исходный поток поддерживается', resolve('chunked'), 'chunked');
 }
 
+// ─── Выгодность кампаний ─────────────────────────────────────────────
+{
+  const CampaignValue = loadClass('renderer/js/features/farming/campaign-value.js', 'CampaignValue');
+
+  const now = new Date('2026-08-21T12:00:00Z').getTime();
+  const через = (minutes) => new Date(now + minutes * 60000).toISOString();
+  const дропс = (required, progress, claimed = false) => ({ required, progress, claimed });
+
+  // Случай, ради которого всё затевалось: приложение семь часов фармило
+  // кампанию, где оставшаяся награда не влезала в остаток времени
+  const безнадёжная = { endsAt: через(31), drops: [дропс(60, 60, true), дропс(120, 80)] };
+  const оценка = CampaignValue.evaluate(безнадёжная, now);
+  check('не успеть до конца кампании', оценка.reason, 'tooLate');
+  check('безнадёжная не годится для фарминга', оценка.feasible, false);
+  check('ближайшая награда требует минут', оценка.minNeeded, 40);
+
+  check('все награды получены', CampaignValue.evaluate(
+    { endsAt: через(600), drops: [дропс(60, 60, true)] }, now).reason, 'done');
+
+  check('кампания закончилась', CampaignValue.evaluate(
+    { endsAt: через(-5), drops: [дропс(60, 10)] }, now).reason, 'expired');
+
+  check('обычная кампания годится', CampaignValue.evaluate(
+    { endsAt: через(600), drops: [дропс(60, 10)] }, now).feasible, true);
+
+  // Прогресс внутри кампании общий: 12 минут видны у всех наград сразу
+  const общийПрогресс = {
+    endsAt: через(10000),
+    drops: [дропс(60, 12), дропс(120, 12), дропс(180, 12), дропс(300, 12)]
+  };
+  check('за час возьмётся одна награда', CampaignValue.dropsWithin(общийПрогресс, 60, now), 1);
+  check('за два часа — две', CampaignValue.dropsWithin(общийПрогресс, 120, now), 2);
+
+  // Дольше, чем живёт кампания, смотреть бессмысленно
+  const скороКонец = { endsAt: через(50), drops: [дропс(60, 12), дропс(120, 12)] };
+  check('окно урезано концом кампании', CampaignValue.dropsWithin(скороКонец, 600, now), 1);
+
+  // Выбор выгоднейшей: за час здесь берётся две награды против одной
+  const однаЗаЧас = { endsAt: через(10000), drops: [дропс(60, 20)] };
+  const двеЗаЧас = { endsAt: через(10000), drops: [дропс(60, 30), дропс(60, 25)] };
+  check('выбирается кампания с большей отдачей',
+    CampaignValue.best([однаЗаЧас, двеЗаЧас], now), двеЗаЧас);
+
+  // Безнадёжную не выбираем даже когда других нет
+  check('безнадёжных не выбираем', CampaignValue.best([безнадёжная], now), null);
+  check('пустой список', CampaignValue.best([], now), null);
+
+  // При равной выгоде вперёд идёт горящая: долгоиграющую догоним потом
+  const горит = { endsAt: через(120), drops: [дропс(60, 30)] };
+  const неГорит = { endsAt: через(100000), drops: [дропс(60, 30)] };
+  check('при равной выгоде вперёд горящая', CampaignValue.best([неГорит, горит], now), горит);
+
+  // Без срока окончания кампания просто всегда успевает
+  check('кампания без срока', CampaignValue.evaluate({ drops: [дропс(600, 0)] }, now).feasible, true);
+
+  check('пояснение о нехватке времени',
+    CampaignValue.describe(оценка), 'Не успеть: нужно 40 мин, осталось 31');
+}
+
+// ─── Строки перевода ─────────────────────────────────────────────────
+{
+  // Ключи уже однажды молча не добавились: разметку я поправил, а строку
+  // забыл, и на экране висело FARMING.SESSIONPOINTS. Проверка следит,
+  // чтобы у каждого ключа, который спрашивает интерфейс, был перевод
+  // на обоих языках.
+  const code = fs.readFileSync(path.join(__dirname, '..', 'renderer/js/i18n.js'), 'utf8');
+  const sandbox = { window: {}, console: { log() {}, warn() {} }, Object, JSON, String, Array };
+  sandbox.globalThis = sandbox;
+  vm.createContext(sandbox);
+  vm.runInContext(code + '; this.__t = translations;', sandbox);
+  const t = sandbox.__t;
+
+  const get = (lang, key) => key.split('.').reduce((o, k) => (o == null ? o : o[k]), t[lang]);
+
+  // Ключи, которые интерфейс запрашивает через i18n.t в исходниках
+  const sources = ['renderer/js/pages/settings-page.js', 'renderer/js/pages/farming-page.js'];
+  const used = new Set();
+  for (const file of sources) {
+    const src = fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
+    for (const m of src.matchAll(/i18n\.t\('([a-zA-Z0-9_.]+)'\)/g)) used.add(m[1]);
+  }
+
+  checkTrue('ключи перевода вообще найдены', used.size > 10);
+
+  const missingRu = [...used].filter(k => get('ru', k) === undefined);
+  const missingEn = [...used].filter(k => get('en', k) === undefined);
+
+  check('нет ключей без русского перевода', missingRu, []);
+  check('нет ключей без английского перевода', missingEn, []);
+
+  // Настройка выбора категории по выгоде
+  checkTrue('строка настройки выгоды (ru)', !!get('ru', 'settings.smartCategorySwitch'));
+  checkTrue('строка настройки выгоды (en)', !!get('en', 'settings.smartCategorySwitch'));
+  checkTrue('пояснение настройки выгоды (ru)', !!get('ru', 'settings.smartCategorySwitchDesc'));
+  checkTrue('пояснение настройки выгоды (en)', !!get('en', 'settings.smartCategorySwitchDesc'));
+}
+
 // ─── Итог ────────────────────────────────────────────────────────────
 console.log('');
 if (failures.length) {
