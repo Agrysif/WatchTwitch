@@ -201,38 +201,6 @@ function loadClass(relativePath, className, globals = {}) {
   check('подписки в выдаче нет', SP.findInList(выдача, [{ login: 'zoe' }]), null);
 }
 
-// ─── Процент прогресса категории ─────────────────────────────────────
-{
-  // Раньше считалась доля полностью завершённых наград: посмотрев 45
-  // минут из 60 и не забрав ничего, категория показывала 0 — и так до
-  // самого получения награды.
-  const percentOf = (drop) => {
-    const required = Number(drop.required) || Number(drop.requiredMinutes) ||
-      Number(drop.requiredMinutesWatched) || 0;
-    if (required <= 0) return 0;
-    const progress = Number(drop.progress) || Number(drop.currentMinutesWatched) || 0;
-    return Math.min(100, (progress / required) * 100);
-  };
-  const overall = (drops) => drops.length
-    ? Math.floor(drops.reduce((s, d) => s + ((d.claimed || d.isClaimed) ? 100 : percentOf(d)), 0) / drops.length)
-    : 0;
-
-  check('прогресс виден до получения награды',
-    overall([{ required: 60, progress: 45 }]), 75);
-  check('прогресс общий по наградам кампании',
-    overall([{ required: 60, progress: 12 }, { required: 120, progress: 12 }]), 15);
-  check('забранная считается за сто',
-    overall([{ required: 60, progress: 60, claimed: true }, { required: 600, progress: 60 }]), 55);
-  check('ничего не начато', overall([{ required: 60, progress: 0 }]), 0);
-  check('всё забрано', overall([{ required: 60, progress: 60, claimed: true }]), 100);
-  // Twitch присылает поля под разными именами в разных запросах
-  check('поля из другого запроса',
-    overall([{ requiredMinutesWatched: 60, currentMinutesWatched: 30 }]), 50);
-  check('перебор времени не даёт больше ста',
-    overall([{ required: 60, progress: 90 }]), 100);
-  check('без наград', overall([]), 0);
-}
-
 // ─── Потолок скорости загрузки стрима ────────────────────────────────
 {
   // Видео качается кусками: каждый отрезок на мгновение забивает канал,
@@ -430,16 +398,9 @@ function loadClass(relativePath, className, globals = {}) {
   check('в законченной кампании ближайшей нет',
     CampaignValue.nextDrop([{ endsAt: через(-10), drops: [дропс(60, 0)] }], now), null);
 
-  // Шкала: деления встают там, где награду выдадут
-  const шкала = CampaignValue.timeline(кампанияСкрина);
-  check('заполнение по времени просмотра', Math.round(шкала.percent), 4);
-  check('делений столько же, сколько наград', шкала.marks.length, 4);
-  check('положения делений', шкала.marks.map(m => Math.round(m.percent)), [20, 40, 60, 100]);
-  check('последняя награда в конце шкалы', шкала.marks[3].percent, 100);
-  check('деления отсортированы по возрастанию',
-    шкала.marks.map(m => m.percent).slice().sort((a, b) => a - b), шкала.marks.map(m => m.percent));
-
   // ── Прогноз окончания и план к выключению ──
+  // Эти проверки однажды пропали вместе с неаккуратной вырезкой блока, и
+  // отсутствие minutesToFinish никто не заметил до отказа в приложении.
   check('время до всех наград', CampaignValue.minutesToFinish([кампанияСкрина], now), 288);
   check('брать нечего', CampaignValue.minutesToFinish([всёСобрано], now), null);
 
@@ -457,6 +418,31 @@ function loadClass(relativePath, className, globals = {}) {
     CampaignValue.dropsBefore([общийПрогресс, однаЗаЧас], 60, now), 2);
   check('времени нет совсем', CampaignValue.dropsBefore([общийПрогресс], 0, now), 0);
   check('всего достижимо', CampaignValue.reachableCount([частичноДостижима], now), 1);
+
+  // ── Шкала: одно число во всех местах ──
+  // Раньше сайдбар считал по времени, панель под стримом — среднее по
+  // наградам, а список категорий по-своему. Под одним названием
+  // «дропсы» показывались разные проценты: 63 против 29.
+  const шкала = CampaignValue.timeline(кампанияСкрина);
+
+  check('заполнение по времени просмотра', Math.round(шкала.percent), 4);
+  check('делений столько же, сколько наград', шкала.marks.length, 4);
+  check('положения делений', шкала.marks.map(m => Math.round(m.percent)), [20, 40, 60, 100]);
+  check('последняя награда в конце шкалы', шкала.marks[3].percent, 100);
+  check('деления отсортированы по возрастанию',
+    шкала.marks.map(m => m.percent).slice().sort((a, b) => a - b), шкала.marks.map(m => m.percent));
+
+  // Общий процент берётся по кампании с ближайшей наградой
+  check('единый процент', CampaignValue.progressPercent([кампанияСкрина], now), 4);
+  check('без кампаний', CampaignValue.progressPercent([], now), 0);
+
+  // Забранная награда не должна занижать время просмотра
+  const частично = { endsAt: через(9000), drops: [
+    { required: 60, progress: 60, claimed: true },
+    { required: 300, progress: 150 }
+  ]};
+  check('время берётся наибольшее из наград',
+    Math.round(CampaignValue.timeline(частично).percent), 50);
 
   check('шкала без наград', CampaignValue.timeline({ drops: [] }), { percent: 0, marks: [] });
   check('шкала без кампании', CampaignValue.timeline(null), { percent: 0, marks: [] });
