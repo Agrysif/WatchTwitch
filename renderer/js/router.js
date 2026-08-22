@@ -6,6 +6,7 @@ class Router {
       accounts: './pages/accounts.html',
       drops: './pages/drops.html',
       subscriptions: './pages/subscriptions.html',
+      calendar: './pages/calendar.html',
       statistics: './pages/statistics.html',
       settings: './pages/settings.html'
     };
@@ -322,6 +323,11 @@ class Router {
         if (window.SubscriptionsPage) {
           console.log('Creating new SubscriptionsPage instance');
           window.subscriptionsPage = new SubscriptionsPage();
+        }
+        break;
+      case 'calendar':
+        if (window.CalendarPage) {
+          window.calendarPage = new CalendarPage();
         }
         break;
       case 'statistics':

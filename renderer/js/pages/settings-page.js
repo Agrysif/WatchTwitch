@@ -112,6 +112,28 @@ class SettingsPage {
 
           <div class="settings-item">
             <div class="settings-item-info">
+              <div class="settings-item-label">${i18n.t('settings.suggestCategories')}</div>
+              <div class="settings-item-description">${i18n.t('settings.suggestCategoriesDesc')}</div>
+            </div>
+            <label class="settings-toggle">
+              <input type="checkbox" id="setting-suggest" ${settings.get('suggestCategories') !== false ? 'checked' : ''}>
+              <span class="settings-slider"></span>
+            </label>
+          </div>
+
+          <div class="settings-item">
+            <div class="settings-item-info">
+              <div class="settings-item-label">${i18n.t('settings.globalShortcuts')}</div>
+              <div class="settings-item-description">${i18n.t('settings.globalShortcutsDesc')}</div>
+            </div>
+            <label class="settings-toggle">
+              <input type="checkbox" id="setting-shortcuts" ${settings.get('globalShortcuts') !== false ? 'checked' : ''}>
+              <span class="settings-slider"></span>
+            </label>
+          </div>
+
+          <div class="settings-item">
+            <div class="settings-item-info">
               <div class="settings-item-label">${i18n.t('settings.notifyFavouriteLive')}</div>
               <div class="settings-item-description">${i18n.t('settings.notifyFavouriteLiveDesc')}</div>
             </div>
@@ -444,6 +466,28 @@ class SettingsPage {
               </svg>
               ${i18n.t('settings.exportSettings')}
             </button>
+
+            <button class="btn btn-secondary" id="backup-export-btn" style="margin-left: 8px;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <path d="M7 10l5 5 5-5M12 15V3"/>
+              </svg>
+              Сохранить копию всего
+            </button>
+
+            <button class="btn btn-secondary" id="backup-import-btn" style="margin-left: 8px;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <path d="M7 9l5-5 5 5M12 4v12"/>
+              </svg>
+              Восстановить из копии
+            </button>
+            <input type="file" id="backup-file-input" accept="application/json,.json" style="display: none;">
+
+            <div class="settings-item-description" style="width: 100%; margin-top: 10px;">
+              В копию попадают категории с порядком и закреплениями, подписки, статистика и настройки.
+              Аккаунты и токены не сохраняются — после переноса нужно войти заново.
+            </div>
           </div>
         </div>
 
@@ -518,8 +562,11 @@ class SettingsPage {
     if (soundToggle) {
       soundToggle.addEventListener('change', (e) => {
         settings.set('soundEnabled', e.target.checked);
+        // Сразу проигрываем тот самый сигнал: понять, что включаешь,
+        // проще на слух, чем по названию
+        if (e.target.checked) window.chime?.dropClaimed();
         window.utils.showToast(
-          e.target.checked ? i18n.t('settings.soundNotifications') : i18n.t('settings.soundNotifications'),
+          e.target.checked ? i18n.t('settings.enabled') : i18n.t('settings.disabled'),
           'info'
         );
       });
@@ -554,6 +601,28 @@ class SettingsPage {
           e.target.checked ? i18n.t('settings.autoClaimDrops') : i18n.t('settings.autoClaimDrops'),
           'info'
         );
+      });
+    }
+
+    // Подсказки о выгодных категориях
+    const suggestToggle = document.getElementById('setting-suggest');
+    if (suggestToggle) {
+      suggestToggle.addEventListener('change', (e) => {
+        settings.set('suggestCategories', e.target.checked);
+        window.utils.showToast(
+          e.target.checked ? i18n.t('settings.enabled') : i18n.t('settings.disabled'), 'info');
+      });
+    }
+
+    // Горячие клавиши перехватываются у всей системы, поэтому их
+    // включение и выключение выполняет главный процесс
+    const shortcutsToggle = document.getElementById('setting-shortcuts');
+    if (shortcutsToggle) {
+      shortcutsToggle.addEventListener('change', (e) => {
+        settings.set('globalShortcuts', e.target.checked);
+        window.electronAPI?.setGlobalShortcuts?.(e.target.checked);
+        window.utils.showToast(
+          e.target.checked ? i18n.t('settings.enabled') : i18n.t('settings.disabled'), 'info');
       });
     }
 
@@ -846,6 +915,71 @@ class SettingsPage {
     }
 
     // Экспорт
+    // Полная копия: категории, подписки, статистика, настройки
+    const backupExportBtn = document.getElementById('backup-export-btn');
+    if (backupExportBtn) {
+      backupExportBtn.addEventListener('click', async () => {
+        try {
+          const data = await window.Backup.collect(new Date().toISOString());
+          const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+
+          const a = document.createElement('a');
+          a.href = url;
+          const день = new Date().toISOString().slice(0, 10);
+          a.download = `watchtwitch-backup-${день}.json`;
+          a.click();
+
+          URL.revokeObjectURL(url);
+          window.utils.showToast('Копия сохранена: ' + window.Backup.describe(data), 'success');
+        } catch (error) {
+          console.error('[Копия] Не удалось сохранить:', error);
+          window.utils.showToast('Не удалось сохранить копию', 'error');
+        }
+      });
+    }
+
+    const backupImportBtn = document.getElementById('backup-import-btn');
+    const backupInput = document.getElementById('backup-file-input');
+    if (backupImportBtn && backupInput) {
+      backupImportBtn.addEventListener('click', () => backupInput.click());
+
+      backupInput.addEventListener('change', async () => {
+        const file = backupInput.files?.[0];
+        if (!file) return;
+
+        try {
+          const text = await file.text();
+          const data = JSON.parse(text);
+
+          const check = window.Backup.validate(data);
+          if (!check.ok) {
+            window.utils.showToast(check.error, 'error');
+            return;
+          }
+
+          // Восстановление затирает текущий список, поэтому спрашиваем
+          const ok = confirm(
+            `Восстановить копию от ${new Date(data.createdAt).toLocaleString('ru-RU')}?
+
+` +
+            `Будет заменено: ${window.Backup.describe(data)}.
+` +
+            'Текущие данные перезапишутся.'
+          );
+          if (!ok) return;
+
+          const applied = await window.Backup.restore(data);
+          window.utils.showToast('Восстановлено: ' + applied.join(', ') + '. Перезапустите приложение', 'success');
+        } catch (error) {
+          console.error('[Копия] Не удалось восстановить:', error);
+          window.utils.showToast('Не удалось прочитать копию: ' + error.message, 'error');
+        } finally {
+          backupInput.value = '';
+        }
+      });
+    }
+
     const exportBtn = document.getElementById('export-settings-btn');
     if (exportBtn) {
       exportBtn.addEventListener('click', () => {

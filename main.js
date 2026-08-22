@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, Notification, powerSaveBlocker, shell, Tray, Menu, webContents } = require('electron');
+const { app, BrowserWindow, ipcMain, Notification, powerSaveBlocker, shell, Tray, Menu, webContents, globalShortcut } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const Store = require('electron-store');
@@ -893,6 +893,59 @@ ipcMain.on('tray-status', (event, status) => {
     console.warn('[Трей] Не удалось обновить состояние:', error.message);
   }
 });
+
+/**
+ * Горячие клавиши, работающие поверх других окон.
+ *
+ * Фарминг идёт фоном, пока пользователь занят игрой или браузером, и
+ * ради «остановить» приходилось искать окно приложения. Сочетания редкие
+ * намеренно: глобальная клавиша перехватывается у всей системы, и занять
+ * что-то ходовое было бы свинством.
+ *
+ * Если сочетание уже занято другой программой, Electron молча вернёт
+ * false — поэтому о каждой неудаче сообщаем в журнал.
+ */
+const SHORTCUTS = [
+  { accelerator: 'Control+Alt+F', action: 'toggle-farming', title: 'запуск и остановка' },
+  { accelerator: 'Control+Alt+N', action: 'next-stream', title: 'другой стрим' },
+  { accelerator: 'Control+Alt+W', action: 'toggle-window', title: 'показать или скрыть окно' }
+];
+
+function registerShortcuts() {
+  if (store.get('settings.globalShortcuts') === false) {
+    console.log('[Клавиши] Отключены в настройках');
+    return;
+  }
+
+  for (const item of SHORTCUTS) {
+    const ok = globalShortcut.register(item.accelerator, () => {
+      if (item.action === 'toggle-window') {
+        if (!mainWindow || mainWindow.isDestroyed()) return;
+        if (mainWindow.isVisible()) mainWindow.hide();
+        else { mainWindow.show(); mainWindow.focus(); }
+        return;
+      }
+      sendToMain('shortcut', item.action);
+    });
+
+    if (!ok) {
+      console.warn('[Клавиши] Сочетание занято другой программой:', item.accelerator, '—', item.title);
+    }
+  }
+}
+
+function unregisterShortcuts() {
+  globalShortcut.unregisterAll();
+}
+
+ipcMain.on('set-global-shortcuts', (event, enabled) => {
+  store.set('settings.globalShortcuts', !!enabled);
+  unregisterShortcuts();
+  if (enabled) registerShortcuts();
+});
+
+// Оставлять перехват клавиш после закрытия приложения нельзя
+app.on('will-quit', unregisterShortcuts);
 
 // OAuth авторизация Twitch
 let authServer = null;
@@ -1818,6 +1871,7 @@ app.whenReady().then(() => {
   setTimeout(() => {
     createMainWindow();
     createTray();
+    registerShortcuts();
 
     if (app.isPackaged) {
       autoUpdater.checkForUpdates();
