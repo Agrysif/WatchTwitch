@@ -3596,12 +3596,30 @@ ipcMain.handle('get-channel-points', async (event, channelId, userId) => {
         }
       }]);
 
+      // Здесь стояло headers: unsubscribeHeaders — переменная из совсем
+      // другого обработчика, объявленная восемью сотнями строк ниже.
+      // Каждый запрос баллов падал с «unsubscribeHeaders is not defined»,
+      // а ошибка гасилась внутрь ответа: наружу выходило просто 0 баллов.
+      const pointsHeaders = {
+        'Client-ID': 'kimne78kx3ncx6brgo4mv6wki5h1ko',
+        'Authorization': `OAuth ${authToken}`,
+        'Content-Type': 'text/plain;charset=UTF-8',
+        'Content-Length': Buffer.byteLength(postData)
+      };
+
+      if (hasFreshIntegrity()) {
+        pointsHeaders['Client-Integrity'] = twitchGqlHeaders.integrity;
+        if (twitchGqlHeaders.deviceId) pointsHeaders['X-Device-Id'] = twitchGqlHeaders.deviceId;
+        if (twitchGqlHeaders.clientVersion) pointsHeaders['Client-Version'] = twitchGqlHeaders.clientVersion;
+        if (twitchGqlHeaders.sessionId) pointsHeaders['Client-Session-Id'] = twitchGqlHeaders.sessionId;
+      }
+
       const options = {
         hostname: 'gql.twitch.tv',
         port: 443,
         path: '/gql',
         method: 'POST',
-        headers: unsubscribeHeaders
+        headers: pointsHeaders
       };
 
       const req = https.request(options, (res) => {

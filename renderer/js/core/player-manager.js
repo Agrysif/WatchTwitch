@@ -164,21 +164,43 @@ class PlayerManager extends SlottedWebview {
    * «Источник» с прошлого раза означает лишние гигабайты трафика.
    */
   resetQualityForNewSession() {
-    const lowest = PlayerManager.QUALITIES[0].value;
-    const current = window.settings?.get('preferredStreamQuality');
+    // Сбрасываем временные значения, а настройку из «Настроек» не трогаем.
+    // Раньше сюда записывался минимум поверх выбора пользователя, и сам
+    // выбор в настройках терял смысл.
+    this.sessionQuality = null;
+    this.fallbackQuality = null;
+    this._fallbackFor = null;
 
-    if (current !== lowest) {
-      console.log('[PlayerManager] Новая сессия: качество сброшено на', lowest);
-      window.settings?.set('preferredStreamQuality', lowest);
-    }
-
+    console.log('[PlayerManager] Новая сессия: качество', this.resolveQuality());
     this.syncBar();
   }
 
+  /**
+   * Какое качество запрашивать.
+   *
+   * Три уровня, от временного к постоянному:
+   *   fallbackQuality — куда лестница поднялась, потому что запрошенного
+   *                     качества у канала не оказалось. Живёт до смены канала;
+   *   sessionQuality  — что пользователь выбрал на панели плеера. Живёт до
+   *                     конца сессии;
+   *   настройка       — постоянный выбор в «Настройках».
+   *
+   * Раньше все три писались в одно поле настроек. Из-за этого один
+   * неудачный старт навсегда превращал выбор пользователя в «Источник»:
+   * лестница поднималась и сохраняла верхнюю ступень, а автопереключение
+   * категорий грузит стримы помногу раз за сессию.
+   */
   resolveQuality() {
-    const stored = window.settings?.get('preferredStreamQuality');
-    const known = PlayerManager.QUALITIES.some(q => q.value === stored);
-    return known ? stored : '160p30';
+    const candidates = [
+      this.fallbackQuality,
+      this.sessionQuality,
+      window.settings?.get('preferredStreamQuality')
+    ];
+
+    for (const value of candidates) {
+      if (value && PlayerManager.QUALITIES.some(q => q.value === value)) return value;
+    }
+    return PlayerManager.QUALITIES[0].value;
   }
 
   syncBar() {
@@ -268,7 +290,9 @@ class PlayerManager extends SlottedWebview {
       if (next) {
         console.warn('[PlayerManager] Качество', requestedQuality,
           'не запускается, пробую', next);
-        window.settings?.set('preferredStreamQuality', next);
+        // В настройку не пишем: это вынужденный подъём, а не выбор
+        this.fallbackQuality = next;
+        this._fallbackFor = this.channel;
         this.syncBar();
 
         const channel = this.channel;
@@ -342,7 +366,10 @@ class PlayerManager extends SlottedWebview {
    * требует перезагрузки. Делаем это только по явному выбору пользователя.
    */
   async setQuality(value) {
-    window.settings?.set('preferredStreamQuality', value);
+    // Выбор на панели действует до конца сессии; постоянное значение
+    // меняется только в «Настройках»
+    this.sessionQuality = value;
+    this.fallbackQuality = null;
 
     if (!this.webview || !this.channel) return;
 
@@ -396,6 +423,14 @@ class PlayerManager extends SlottedWebview {
     if (this.channel === login && webview.src) {
       console.log('[PlayerManager] Канал не изменился, перезагрузка не нужна:', login);
       return;
+    }
+
+    // Подъём лестницы относится к тому каналу, у которого не оказалось
+    // нужной дорожки. На новом канале начинаем с желаемого качества снова,
+    // иначе вынужденный подъём тянулся бы через все следующие стримы.
+    if (this._fallbackFor && this._fallbackFor !== login) {
+      this.fallbackQuality = null;
+      this._fallbackFor = null;
     }
 
     // Качество берём из настроек: это прямой рычаг расхода трафика.
