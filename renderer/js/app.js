@@ -76,6 +76,31 @@ document.addEventListener('DOMContentLoaded', async () => {
   // поэтому запускается один раз при старте приложения
   window.favouritesWatch?.start();
 
+  // Горячие клавиши работают поверх других окон, поэтому обрабатываются
+  // здесь, а не на странице: страница фарминга может быть не открыта
+  window.electronAPI?.onShortcut?.((action) => {
+    console.log('[Клавиши] Действие:', action);
+
+    if (!window.farmingPage && window.FarmingPage) {
+      window.farmingPage = new FarmingPage();
+    }
+
+    if (action === 'toggle-farming') {
+      const идёт = !!window.farmingPage?.sessionStartTime;
+      if (идёт) window.farmingPage.stopFarming();
+      else window.farmingPage?.startFarming();
+      return;
+    }
+
+    if (action === 'next-stream') {
+      if (!window.farmingPage?.sessionStartTime) {
+        window.utils?.showToast('Фарминг не запущен', 'info');
+        return;
+      }
+      window.farmingPage.switchToNextStream?.();
+    }
+  });
+
   // Settings manager is already initialized in settings-manager.js
   // Just ensure it exists
   if (!window.settings) {

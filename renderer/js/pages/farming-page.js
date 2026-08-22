@@ -2896,6 +2896,7 @@ class FarmingPage {
       // Порядок важен: сначала забираем готовые награды, потом решаем,
       // осталось ли ради чего смотреть дальше
       this.updateCategoryValues(result.campaigns);
+      this.renderCategorySuggestion(result.campaigns);
       await this.checkCategoryStillWorthwhile(matched);
 
       horizontal.style.display = 'block';
@@ -4801,6 +4802,115 @@ class FarmingPage {
    * Результат — карта «название игры → оценка», которой пользуется
    * сортировка при выборе следующей категории.
    */
+  /**
+   * Подсказывает игру с дропсами, которой нет в списке категорий.
+   *
+   * Приложение видит все кампании Twitch, но пользовалось этим только для
+   * своих категорий: узнать, что рядом идёт кампания выгоднее текущей,
+   * было неоткуда — оставалось искать вручную.
+   *
+   * Показываем ровно одну, самую выгодную: список из двадцати «а ещё
+   * посмотри вот это» превратился бы в шум.
+   */
+  renderCategorySuggestion(allCampaigns) {
+    const box = document.getElementById('category-suggestion');
+    if (!box) return;
+
+    const CV = window.CampaignValue;
+    const SP = window.StreamPicker;
+    if (!CV || !SP || !Array.isArray(allCampaigns)) return;
+
+    if (window.settings?.get('suggestCategories') === false) {
+      box.innerHTML = '';
+      return;
+    }
+
+    const now = Date.now();
+    const скрытые = this._dismissedSuggestions || (this._dismissedSuggestions = new Set());
+
+    const кандидаты = allCampaigns.filter(campaign => {
+      if (!Array.isArray(campaign.drops) || campaign.drops.length === 0) return false;
+
+      const game = campaign.game?.displayName || campaign.game?.name || campaign.name;
+      if (!game || скрытые.has(game)) return false;
+
+      // Уже в списке — предлагать нечего
+      if (this.categories.some(cat => SP.isSameGame(cat.name, game))) return false;
+
+      const value = CV.evaluate(campaign, now);
+      return value.feasible && value.perHour > 0;
+    });
+
+    if (кандидаты.length === 0) {
+      box.innerHTML = '';
+      return;
+    }
+
+    кандидаты.sort((a, b) => CV.compare(a, b, now));
+    const лучшая = кандидаты[0];
+    const game = лучшая.game?.displayName || лучшая.game?.name || лучшая.name;
+    const value = CV.evaluate(лучшая, now);
+
+    const escape = (t) => String(t ?? '').replace(/[&<>"']/g, ch => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[ch]));
+
+    box.innerHTML = `
+      <div class="suggestion">
+        <img class="suggestion-art" src="${escape(this.normalizeBoxArtURL(лучшая.game?.boxArtURL, '52x72'))}"
+             alt="" onerror="this.style.visibility='hidden'">
+        <div class="suggestion-text">
+          <div class="suggestion-title">${escape(game)} — ${value.perHour} ${value.perHour === 1 ? 'награда' : 'награды'} за час</div>
+          <div class="suggestion-sub">Этой категории нет в вашем списке · осталось ${window.CampaignCalendar.formatLeft(value.minutesLeft)}</div>
+        </div>
+        <button class="btn btn-primary suggestion-add" id="suggestion-add">Добавить</button>
+        <button class="suggestion-hide" id="suggestion-hide" title="Не предлагать эту игру">✕</button>
+      </div>
+    `;
+
+    box.querySelector('#suggestion-add').addEventListener('click', () => this.addSuggestedCategory(game, лучшая));
+    box.querySelector('#suggestion-hide').addEventListener('click', () => {
+      скрытые.add(game);
+      box.innerHTML = '';
+    });
+  }
+
+  /** Добавляет предложенную игру в список категорий. */
+  async addSuggestedCategory(game, campaign) {
+    try {
+      let fresh = null;
+      try {
+        const all = await window.electronAPI.fetchTwitchCategories();
+        fresh = (all || []).find(c => window.StreamPicker.isSameGame(c.name, game)) || null;
+      } catch (e) {
+        // без свежих данных категория тоже работает
+      }
+
+      this.categories.push({
+        id: fresh?.id || campaign.game?.id || ('sug-' + String(game).toLowerCase().replace(/\s+/g, '-')),
+        name: fresh?.name || game,
+        boxArtURL: this.normalizeBoxArtURL(fresh?.boxArtURL || campaign.game?.boxArtURL, '52x72'),
+        viewersCount: fresh?.viewersCount || 0,
+        tags: fresh?.tags || [],
+        hasDrops: true,
+        enabled: true,
+        priority: this.categories.length + 1,
+        dropsCompleted: false
+      });
+
+      await Storage.saveCategories(this.categories);
+      this.renderCategories();
+
+      const box = document.getElementById('category-suggestion');
+      if (box) box.innerHTML = '';
+
+      window.utils?.showToast('«' + game + '» добавлена в категории', 'success');
+    } catch (error) {
+      console.error('[Подсказка] Не удалось добавить категорию:', error);
+      window.utils?.showToast('Не удалось добавить категорию', 'error');
+    }
+  }
+
   updateCategoryValues(allCampaigns) {
     const CV = window.CampaignValue;
     if (!CV || !Array.isArray(allCampaigns)) return;
@@ -5054,6 +5164,7 @@ class FarmingPage {
           const result = await window.electronAPI.claimDrop(id);
 
           if (result?.success) {
+            window.chime?.dropClaimed();
             drop.claimed = true;
             window.utils?.showToast(`Награда получена: ${name}`, 'success');
             window.showDropNotification?.(name, campaign.game?.name || campaign.name || '', drop.imageURL);

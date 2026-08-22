@@ -66,6 +66,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Обработчик навигации из трея
   onNavigateToPage: (callback) => ipcRenderer.on('navigate-to-page', callback),
+  onShortcut: (callback) => ipcRenderer.on('shortcut', (e, action) => callback(action)),
+  setGlobalShortcuts: (enabled) => ipcRenderer.send('set-global-shortcuts', enabled),
 
   // Auto updater
   checkForUpdates: () => ipcRenderer.send('check-for-updates'),

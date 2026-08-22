@@ -351,6 +351,54 @@ function loadClass(relativePath, className, globals = {}) {
   check('шкала без кампании', CampaignValue.timeline(null), { percent: 0, marks: [] });
 }
 
+// ─── Календарь кампаний ──────────────────────────────────────────────
+{
+  const CC = loadClass('renderer/js/features/calendar/campaign-calendar.js', 'CampaignCalendar');
+
+  // Полдень, чтобы «завтра» не зависело от часа
+  const сейчас = new Date('2026-08-22T12:00:00').getTime();
+  const через = (ч) => new Date(сейчас + ч * 3600000).toISOString();
+
+  // Дни календарные, а не сутки по 24 часа: до полуночи 12 часов,
+  // поэтому «через 13 часов» — это уже завтра, а не сегодня
+  check('сегодня', CC.daysUntil(через(6), сейчас), 0);
+  check('завтра, хотя прошло меньше суток', CC.daysUntil(через(13), сейчас), 1);
+  check('вчера', CC.daysUntil(через(-20), сейчас), -1);
+
+  const кампания = (endsAt, startsAt) => ({ endsAt, startsAt });
+
+  check('кончается сегодня', CC.bucketFor(кампания(через(5)), сейчас), 'today');
+  check('кончается завтра', CC.bucketFor(кампания(через(20)), сейчас), 'tomorrow');
+  check('на этой неделе', CC.bucketFor(кампания(через(96)), сейчас), 'week');
+  check('ещё не скоро', CC.bucketFor(кампания(через(24 * 11)), сейчас), 'later');
+  check('уже закончилась', CC.bucketFor(кампания(через(-1)), сейчас), 'ended');
+  check('ещё не началась',
+    CC.bucketFor(кампания(через(200), через(48)), сейчас), 'upcoming');
+
+  // Раскладка: закончившиеся выбрасываются, внутри группы ближайшее вверху
+  const список = [
+    кампания(через(-5)),
+    кампания(через(8)),
+    кампания(через(2)),
+    кампания(через(24 * 11)),
+    кампания(через(200), через(48))
+  ];
+  const группы = CC.group(список, сейчас);
+  check('закончившиеся выброшены',
+    Object.values(группы).reduce((n, g) => n + g.length, 0), 4);
+  check('ближайшее вверху группы',
+    группы.today.map(c => c.endsAt), [через(2), через(8)]);
+  check('не начавшаяся в своей группе', группы.upcoming.length, 1);
+  check('пустой список', CC.group([], сейчас).today, []);
+
+  // Подписи остатка
+  check('дни и часы', CC.formatLeft(11 * 1440 + 5 * 60), '11 д 5 ч');
+  check('ровно дни', CC.formatLeft(3 * 1440), '3 д');
+  check('часы и минуты', CC.formatLeft(260), '4ч 20м');
+  check('только минуты', CC.formatLeft(17), '17 мин');
+  check('завершена', CC.formatLeft(0), 'завершена');
+}
+
 // ─── Слежение за избранными каналами ─────────────────────────────────
 {
   const FW = loadClass('renderer/js/core/favourites-watch.js', 'FavouritesWatch');

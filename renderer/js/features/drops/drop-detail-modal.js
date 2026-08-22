@@ -361,6 +361,7 @@
           const result = await window.electronAPI.claimDrop(dropInstanceID);
 
           if (result?.success) {
+            window.chime?.dropClaimed();
             claimBtn.textContent = 'Награда получена';
             window.utils?.showToast('Награда получена', 'success');
             // Обновляем список, чтобы состояние совпало с Twitch
@@ -368,6 +369,7 @@
           } else {
             claimBtn.disabled = false;
             claimBtn.textContent = 'Получить награду';
+            window.chime?.failed();
             window.utils?.showToast(
               'Не удалось получить: ' + (result?.error || 'неизвестная ошибка'),
               'error'

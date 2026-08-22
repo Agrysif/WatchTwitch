@@ -3771,3 +3771,199 @@ body.no-animations * {
   border: 1px solid rgba(240, 173, 78, 0.32);
   color: #f0ad4e;
 }
+
+/* ===== Календарь кампаний ===== */
+.calendar-summary {
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* Неполные данные нельзя подавать как полный список */
+.calendar-warn {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: var(--radius-md);
+  background: rgba(240, 173, 78, 0.14);
+  border: 1px solid rgba(240, 173, 78, 0.32);
+  color: #f0ad4e;
+}
+
+.calendar-group {
+  margin-bottom: 12px;
+}
+
+.calendar-group-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.calendar-group-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.calendar-group-count {
+  padding: 1px 8px;
+  border-radius: var(--radius-md);
+  background: rgba(124, 92, 255, 0.15);
+  border: 1px solid rgba(124, 92, 255, 0.3);
+  font-size: 11px;
+  font-weight: 700;
+  color: #bda0ff;
+}
+
+.calendar-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.calendar-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+}
+
+/* Кампания, которую уже не догнать, не должна выглядеть как рабочая */
+.calendar-item.hopeless {
+  opacity: 0.6;
+}
+
+.calendar-art {
+  width: 40px;
+  height: 55px;
+  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+}
+
+.calendar-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.calendar-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.calendar-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.calendar-when {
+  font-weight: 700;
+  color: #bda0ff;
+}
+
+.calendar-when.upcoming {
+  color: #35d08a;
+}
+
+.calendar-tag {
+  padding: 1px 7px;
+  border-radius: var(--radius-md);
+  background: rgba(53, 208, 138, 0.14);
+  border: 1px solid rgba(53, 208, 138, 0.3);
+  color: #35d08a;
+  font-weight: 600;
+}
+
+.calendar-tag.late {
+  background: rgba(240, 173, 78, 0.14);
+  border-color: rgba(240, 173, 78, 0.32);
+  color: #f0ad4e;
+}
+
+.calendar-owned {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+}
+
+.calendar-add {
+  flex-shrink: 0;
+  padding: 7px 14px;
+  font-size: 12px;
+}
+
+/* Подсказка о выгодной категории, которой нет в списке */
+.suggestion {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(124, 92, 255, 0.35);
+  border-radius: var(--radius-md);
+  background: rgba(124, 92, 255, 0.08);
+}
+
+.suggestion-art {
+  width: 36px;
+  height: 50px;
+  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+}
+
+.suggestion-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.suggestion-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.suggestion-sub {
+  margin-top: 3px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.suggestion-add {
+  flex-shrink: 0;
+  padding: 8px 16px;
+  font-size: 12px;
+}
+
+/* Отказаться от подсказки должно быть так же просто, как согласиться */
+.suggestion-hide {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-tertiary);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.suggestion-hide:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+}

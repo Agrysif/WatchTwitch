@@ -1,0 +1,32 @@
+<div class="calendar-page">
+  <div class="page-header">
+    <h1 class="page-title">Календарь кампаний</h1>
+    <p class="page-subtitle">Что заканчивается, что только начинается</p>
+  </div>
+
+  <div class="card">
+    <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+      <span class="input-label">Показывать:</span>
+      <button class="btn btn-secondary calendar-filter active" data-filter="all">Все кампании</button>
+      <button class="btn btn-secondary calendar-filter" data-filter="mine">Только мои категории</button>
+      <button class="btn btn-secondary calendar-filter" data-filter="new">Которых у меня нет</button>
+
+      <button class="btn btn-primary" id="calendar-refresh" style="margin-left: auto;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <path d="M4 12a8 8 0 0 1 13.7-5.7L20 8"/>
+          <path d="M20 4v4h-4"/>
+          <path d="M20 12a8 8 0 0 1-13.7 5.7L4 16"/>
+          <path d="M4 20v-4h4"/>
+        </svg>
+        <span>Обновить</span>
+      </button>
+    </div>
+    <div id="calendar-summary" class="calendar-summary"></div>
+  </div>
+
+  <div id="calendar-body">
+    <div class="card" style="text-align: center; padding: 40px; color: var(--text-secondary);">
+      Загружаю кампании…
+    </div>
+  </div>
+</div>
