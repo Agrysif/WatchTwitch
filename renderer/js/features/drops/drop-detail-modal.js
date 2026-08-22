@@ -331,10 +331,15 @@
       drop3DCard.style.cursor = 'grabbing';
     });
     
+    // Слушаем на документе, чтобы отпускание за пределами карточки тоже
+    // считалось. Снимается вместе с окном: без этого каждое открытие
+    // дропса оставляло на документе обработчик со ссылкой на удалённый
+    // элемент, а дропсы открывают часто.
+    const modalAbort = new AbortController();
     document.addEventListener('mouseup', () => {
       isMouseDown = false;
       drop3DCard.style.cursor = 'grab';
-    });
+    }, { signal: modalAbort.signal });
     
     drop3DContainer.addEventListener('mousemove', (e) => {
       const rect = drop3DContainer.getBoundingClientRect();
@@ -390,9 +395,14 @@
     closeBtn.addEventListener('mouseleave', function() {
       this.style.background = 'rgba(255, 255, 255, 0.1)';
       });
-    closeBtn.addEventListener('click', () => modal.remove());
+    const closeModal = () => {
+      modalAbort.abort();
+      modal.remove();
+    };
+
+    closeBtn.addEventListener('click', closeModal);
     modal.addEventListener('click', (e) => {
-      if (e.target === modal) modal.remove();
+      if (e.target === modal) closeModal();
     });
   };
 

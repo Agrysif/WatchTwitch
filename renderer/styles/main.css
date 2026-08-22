@@ -1392,10 +1392,6 @@ body {
 }
 
 /* Compact Mode */
-body.compact-mode .category-card {
-  height: 180px;
-}
-
 /* Light Theme - Drop Cards & Campaign Cards */
 .theme-light .campaign-card {
   background: var(--bg-secondary) !important;
@@ -4125,4 +4121,73 @@ body.no-animations * {
   margin-top: 10px;
   font-size: 11px;
   color: var(--text-tertiary);
+}
+
+/* ===== Компактный режим =====
+   Переключатель существовал давно, но правила под него целились в классы,
+   которых после обновления оформления в разметке уже нет (.category-card),
+   а остальное трогало мелочи — со стороны режим не делал ничего.
+   Здесь ужимается то, что действительно занимает место: строки категорий,
+   отступы карточек и заголовки страниц. */
+body.compact-mode .card {
+  padding: 12px 14px;
+  margin-bottom: 10px;
+}
+
+body.compact-mode .page-header {
+  margin-bottom: 12px;
+}
+
+body.compact-mode .page-title {
+  font-size: 20px;
+}
+
+/* Подзаголовок страницы в компактном режиме — чистая трата высоты */
+body.compact-mode .page-subtitle {
+  display: none;
+}
+
+body.compact-mode .category-item {
+  padding: 6px 10px;
+  gap: 8px;
+}
+
+body.compact-mode .category-item .category-image img {
+  width: 34px;
+  height: 46px;
+}
+
+body.compact-mode .category-name {
+  font-size: 13px;
+}
+
+body.compact-mode .category-status {
+  font-size: 11px;
+}
+
+body.compact-mode .category-drag-handle {
+  display: none;
+}
+
+body.compact-mode .calendar-item {
+  padding: 6px 10px;
+}
+
+body.compact-mode .calendar-art {
+  width: 30px;
+  height: 41px;
+}
+
+body.compact-mode .calendar-group {
+  margin-bottom: 8px;
+}
+
+body.compact-mode .tl-track,
+body.compact-mode .tl-scale {
+  height: 16px;
+}
+
+body.compact-mode .analytics-item,
+body.compact-mode .stat-card {
+  padding: 10px 12px;
 }

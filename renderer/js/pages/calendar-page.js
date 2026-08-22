@@ -80,6 +80,12 @@ class CalendarPage {
     }
 
     this.campaigns = [...byId.values()];
+
+    // Запоминаем увиденное: Twitch выбрасывает закончившиеся кампании из
+    // ответа, и без своей памяти показать их было бы неоткуда
+    await window.CampaignHistory.remember(this.campaigns);
+    this.ended = await window.CampaignHistory.loadEnded();
+
     this.loading = false;
 
     console.log('[Календарь] Кампаний:', this.campaigns.length,
@@ -109,8 +115,19 @@ class CalendarPage {
     return this.categories.some(cat => SP.isSameGame(cat.name, game));
   }
 
+  /** Показывать ли кампании, которые уже закончились. */
+  get includeEnded() {
+    return window.settings?.get('showExpiredCampaigns') === true;
+  }
+
   visibleCampaigns() {
-    const list = this.campaigns.filter(c => Array.isArray(c.drops) && c.drops.length > 0);
+    // Завершённые берутся из своей памяти и подмешиваются, только когда
+    // об этом попросили настройкой
+    const источник = this.includeEnded
+      ? [...this.campaigns, ...(this.ended || [])]
+      : this.campaigns;
+
+    const list = источник.filter(c => Array.isArray(c.drops) && c.drops.length > 0);
 
     if (this.filter === 'mine') return list.filter(c => this.isMine(c));
     if (this.filter === 'new') return list.filter(c => !this.isMine(c));
@@ -147,7 +164,7 @@ class CalendarPage {
 
     this.renderTimeline(visible, now);
 
-    const groups = CC.group(visible, now);
+    const groups = CC.group(visible, now, { includeEnded: this.includeEnded });
 
     body.innerHTML = CC.ORDER
       .filter(key => groups[key].length > 0)
@@ -269,27 +286,34 @@ class CalendarPage {
 
     // Для ещё не начавшихся важен срок начала, а не остаток
     const upcoming = bucket === 'upcoming';
+    const ended = bucket === 'ended';
+
     const when = upcoming
       ? 'старт ' + new Date(campaign.startsAt || campaign.startAt)
           .toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })
-      : CC.formatLeft(value.minutesLeft);
+      : (ended
+          ? 'закончилась ' + new Date(campaign.endsAt || campaign.endAt)
+              .toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })
+          : CC.formatLeft(value.minutesLeft));
 
     const drops = (campaign.drops || []).length;
     const left = CV.unclaimedDrops(campaign).length;
 
     return `
-      <div class="calendar-item ${value.reason === 'tooLate' ? 'hopeless' : ''}">
+      <div class="calendar-item ${value.reason === 'tooLate' || ended ? 'hopeless' : ''}">
         ${art ? `<img class="calendar-art" src="${escape(art)}" alt="" onerror="this.style.visibility='hidden'">` : ''}
         <div class="calendar-info">
           <div class="calendar-name">${escape(game)}</div>
           <div class="calendar-meta">
             <span class="calendar-when ${upcoming ? 'upcoming' : ''}">${escape(when)}</span>
             <span>${left} из ${drops} наград осталось</span>
-            ${!upcoming && value.reason === 'tooLate'
-              ? '<span class="calendar-tag late">Не успеть</span>'
-              : (!upcoming && value.perHour > 0
-                  ? `<span class="calendar-tag">${value.perHour} за час</span>`
-                  : '')}
+            ${ended
+              ? ''
+              : (!upcoming && value.reason === 'tooLate'
+                  ? '<span class="calendar-tag late">Не успеть</span>'
+                  : (!upcoming && value.perHour > 0
+                      ? `<span class="calendar-tag">${value.perHour} за час</span>`
+                      : ''))}
           </div>
         </div>
         ${mine

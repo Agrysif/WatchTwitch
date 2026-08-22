@@ -389,6 +389,16 @@ function loadClass(relativePath, className, globals = {}) {
   check('ближайшее вверху группы',
     группы.today.map(c => c.endsAt), [через(2), через(8)]);
   check('не начавшаяся в своей группе', группы.upcoming.length, 1);
+
+  // Настройка «показывать завершённые»: по умолчанию их нет
+  check('завершённых не видно по умолчанию', группы.ended.length, 0);
+
+  const сЗавершёнными = CC.group(список, сейчас, { includeEnded: true });
+  check('с настройкой завершённые появляются', сЗавершёнными.ended.length, 1);
+  check('и стоят последней группой',
+    CC.ORDER[CC.ORDER.length - 1], 'ended');
+  check('остальные группы не изменились',
+    сЗавершёнными.today.length, группы.today.length);
   check('пустой список', CC.group([], сейчас).today, []);
 
   // ── Лента времени ──
@@ -426,6 +436,52 @@ function loadClass(relativePath, className, globals = {}) {
   check('часы и минуты', CC.formatLeft(260), '4ч 20м');
   check('только минуты', CC.formatLeft(17), '17 мин');
   check('завершена', CC.formatLeft(0), 'завершена');
+}
+
+// ─── Память о кампаниях ──────────────────────────────────────────────
+{
+  // Замер показал, что Twitch выбрасывает закончившиеся кампании из
+  // ответа: их там ровно ноль. Поэтому настройка «показывать
+  // завершённые» опирается на память самого приложения.
+  const CH = loadClass('renderer/js/features/calendar/campaign-history.js', 'CampaignHistory');
+
+  const сейчас = new Date('2026-08-22T12:00:00Z').getTime();
+  const день = 86400000;
+  const кампания = (id, черезДней, drops) => ({
+    id, game: { displayName: 'Игра ' + id, boxArtURL: '' },
+    endsAt: new Date(сейчас + черезДней * день).toISOString(),
+    drops: drops || [{ required: 60, progress: 60, claimed: true }]
+  });
+
+  const свежие = CH.merge([], [кампания('a', 2), кампания('b', -1)], сейчас);
+  check('запомнены обе', свежие.length, 2);
+  check('позже кончающаяся впереди', свежие.map(c => c.id), ['a', 'b']);
+
+  check('завершённой считается только прошедшая',
+    CH.ended(свежие, сейчас).map(c => c.id), ['b']);
+
+  // Свежая запись вытесняет старую: прогресс мог измениться
+  const обновлённые = CH.merge(свежие, [кампания('a', 2, [{ required: 60, progress: 60, claimed: true }])], сейчас);
+  check('дубликатов не появляется', обновлённые.length, 2);
+
+  // Слишком давнее забываем, иначе список растёт без конца
+  const древняя = CH.merge([кампания('старая', -40)], [], сейчас);
+  check('кампании старше месяца забываются', древняя.length, 0);
+
+  // Лишнее сверх предела отбрасывается
+  const много = [];
+  for (let i = 0; i < CH.LIMIT + 25; i++) много.push(кампания('к' + i, -1));
+  check('список ограничен', CH.merge([], много, сейчас).length, CH.LIMIT);
+
+  // Урезание оставляет то, что нужно для показа
+  const урезанная = CH.trim({ id: 'x', game: { displayName: 'Игра' },
+    endsAt: 'дата', drops: [{ name: 'Награда', required: 60, progress: 12 }] });
+  check('название игры сохранено', урезанная.game.displayName, 'Игра');
+  check('награды сохранены', урезанная.drops.length, 1);
+  check('прогресс сохранён', урезанная.drops[0].progress, 12);
+
+  check('без записей', CH.ended([], сейчас), []);
+  check('без входных данных', CH.merge(null, null, сейчас), []);
 }
 
 // ─── Слежение за избранными каналами ─────────────────────────────────
