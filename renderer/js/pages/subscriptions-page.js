@@ -106,23 +106,30 @@ class SubscriptionsPage {
       }
 
       this.showContentSection();
-      this.showLoadingState();
+
+      // Сохранённое показываем ПЕРВЫМ делом, до всяких запросов.
+      //
+      // Раньше сначала включался спиннер, а он прячет список целиком:
+      // возвращаясь на вкладку, пользователь видел, как всё пропадает и
+      // собирается заново — вместе с аватарками, хотя они и так лежат в
+      // кеше браузера. Спиннер теперь появляется, только когда показать
+      // действительно нечего.
+      const savedSubs = (await Storage.getSubscriptions()) || [];
+      if (savedSubs.length > 0) {
+        this.subscriptions = savedSubs;
+        this.applyFilter();
+        this.showRefreshingHint();
+      } else {
+        this.showLoadingState();
+      }
 
       // Загружаем подписки
-      console.log('[Subscriptions] Fetching subscriptions...');
+      console.log('[Subscriptions] Обновляю список…');
 
       const fetchPromise = window.electronAPI.getUserSubscriptions(account.accessToken);
       const timeoutPromise = new Promise((_, reject) => {
         setTimeout(() => reject(new Error('API timeout after 10 seconds')), 10000);
       });
-
-      // Сохранённое показываем сразу: страница не должна висеть пустым
-      // спиннером, пока Twitch отвечает (а он может и не ответить)
-      const savedSubs = (await Storage.getSubscriptions()) || [];
-      if (savedSubs.length > 0) {
-        this.subscriptions = savedSubs;
-        this.applyFilter();
-      }
 
       let fetched = null;
       try {
@@ -378,6 +385,7 @@ class SubscriptionsPage {
 
     // Скрываем loading
     if (loading) loading.style.display = 'none';
+    this.hideRefreshingHint();
 
     if (this.filteredSubscriptions.length === 0) {
       list.style.display = 'none';
@@ -400,6 +408,18 @@ class SubscriptionsPage {
       }
     }
     html += regular.map(sub => this.renderSubscriptionItem(sub)).join('');
+
+    // Если разметка не изменилась, DOM не трогаем вовсе.
+    //
+    // Возвращаясь на вкладку, пользователь чаще всего видит ровно тот же
+    // список: перезапись innerHTML пересоздала бы все элементы и заставила
+    // браузер заново раскладывать картинки — отсюда и ощущение, что
+    // аватарки грузятся каждый раз. Обработчики при этом остаются на
+    // месте, потому что сами узлы не менялись.
+    if (html === this._renderedHtml && list.children.length > 0) {
+      return;
+    }
+    this._renderedHtml = html;
 
     list.innerHTML = html;
 
@@ -879,6 +899,23 @@ class SubscriptionsPage {
     document.getElementById('subscriptions-content').style.display = 'block';
   }
 
+  /**
+   * Ненавязчивая отметка «обновляю» поверх уже показанного списка.
+   *
+   * Прятать список ради спиннера незачем: старые данные полезнее пустого
+   * места, а обновление занимает секунду-другую.
+   */
+  showRefreshingHint() {
+    const list = document.getElementById('subscriptions-list');
+    if (!list) return;
+
+    list.classList.add('refreshing');
+  }
+
+  hideRefreshingHint() {
+    document.getElementById('subscriptions-list')?.classList.remove('refreshing');
+  }
+
   showLoadingState() {
     document.getElementById('subscriptions-loading').style.display = 'block';
     document.getElementById('subscriptions-list').style.display = 'none';
@@ -887,6 +924,7 @@ class SubscriptionsPage {
 
   hideLoadingState() {
     document.getElementById('subscriptions-loading').style.display = 'none';
+    this.hideRefreshingHint();
   }
 
   showEmptyState() {

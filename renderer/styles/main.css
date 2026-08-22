@@ -4289,3 +4289,10 @@ body.compact-mode .stat-card {
   color: #f0ad4e;
   white-space: nowrap;
 }
+
+/* Список подписок во время фонового обновления: старые данные остаются
+   на месте, а не пропадают ради спиннера */
+#subscriptions-list.refreshing {
+  opacity: 0.75;
+  transition: opacity 0.2s ease;
+}
