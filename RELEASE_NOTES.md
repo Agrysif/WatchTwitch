@@ -13,7 +13,7 @@
 
 ## ✨ Что нового
 
-- **Календарь кампаний — новая вкладка.** Все кампании Twitch разложены по срокам: что заканчивается сегодня, что завтра, что на этой неделе и что только начнётся. Видно, сколько наград осталось и сколько берётся за час; категорию можно добавить в работу прямо оттуда. Раньше эти сроки приложение знало, но нигде не показывало
+- **Календарь кампаний — новая вкладка.** Сверху лента времени: каждая кампания полосой от начала до конца, с делениями по дням и меткой «сейчас», окно на 7, 14 или 30 дней. Ниже те же кампании разложены по срокам: что заканчивается сегодня, что завтра, что на этой неделе и что только начнётся. Видно, сколько наград осталось и сколько берётся за час; категорию можно добавить в работу прямо оттуда. Раньше эти сроки приложение знало, но нигде не показывало
 - **Подсказка о выгодной категории.** На странице фарминга появляется игра с дропсами, которой нет в вашем списке: «Genshin Impact — 2 награды за час». Одним нажатием добавляется, крестиком убирается насовсем
 - **Горячие клавиши поверх других окон.** Ctrl+Alt+F — запуск и остановка, Ctrl+Alt+N — другой стрим, Ctrl+Alt+W — показать или скрыть окно. Отключаются в настройках
 - **Звук при получении награды.** Настройка «Звуковые уведомления» была в приложении всегда, но за ней не стояло ни одного звука — теперь она работает. При включении сигнал сразу проигрывается
@@ -43,7 +43,7 @@
 
 ## ✨ What's new
 
-- **A campaign calendar — a new tab.** Every Twitch campaign laid out by deadline: ending today, tomorrow, this week, and not started yet. Rewards left and rewards per hour are visible, and a category can be added to work straight from there. The app knew these dates before but showed them nowhere
+- **A campaign calendar — a new tab.** A timeline on top: every campaign as a bar from start to end, with day ticks and a "now" marker, over a 7, 14 or 30 day window. Below, the same campaigns grouped by deadline: ending today, tomorrow, this week, and not started yet. Rewards left and rewards per hour are visible, and a category can be added to work straight from there. The app knew these dates before but showed them nowhere
 - **A suggestion for a worthwhile category.** The farming page now surfaces a game with drops that is missing from your list. One click adds it, the cross dismisses it for good
 - **Global hotkeys.** Ctrl+Alt+F starts and stops, Ctrl+Alt+N switches stream, Ctrl+Alt+W shows or hides the window. Can be turned off in Settings
 - **A sound when a reward is claimed.** The "Sound notifications" setting had always existed with no sound behind it — it works now, and previews itself when switched on
