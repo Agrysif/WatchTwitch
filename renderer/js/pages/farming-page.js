@@ -214,26 +214,23 @@ class FarmingPage {
         continue;
       }
 
-      // Прогресс — по набранному времени, а не по доле завершённых наград.
+      // Прогресс — по набранному времени, тем же счётом, что в панели под
+      // стримом и в сайдбаре.
       //
       // Раньше здесь стояло completedDrops / totalDrops: посмотрев 45 минут
       // из 60 и не забрав ничего, категория честно показывала 0, и так до
-      // самого получения награды. Панель дропсов при этом писала в то же
-      // поле настоящие проценты, а обновление категорий затирало их нулём.
-      const percentOf = (drop) => {
-        const required = Number(drop.required) || Number(drop.requiredMinutes) ||
-          Number(drop.requiredMinutesWatched) || 0;
-        if (required <= 0) return 0;
+      // самого получения награды. Панель при этом писала в то же поле свои
+      // проценты, а обновление категорий затирало их нулём.
+      const withMinutes = drops.map(d => ({
+        required: Number(d.required) || Number(d.requiredMinutes) ||
+          Number(d.requiredMinutesWatched) || 0,
+        progress: Number(d.progress) || Number(d.currentMinutesWatched) || 0,
+        claimed: !!(d.claimed || d.isClaimed)
+      }));
 
-        const progress = Number(drop.progress) || Number(drop.currentMinutesWatched) || 0;
-        return Math.min(100, (progress / required) * 100);
-      };
-
-      const progressPercent = totalDrops > 0
-        ? Math.floor(drops.reduce((sum, d) => sum + (
-            (d.claimed || d.isClaimed) ? 100 : percentOf(d)
-          ), 0) / totalDrops)
-        : 0;
+      const progressPercent = Math.floor(
+        window.CampaignValue.timeline({ drops: withMinutes }).percent
+      );
 
       activeCampaignsMap.set(normalizedGameKey, {
         campaign,
@@ -2939,8 +2936,11 @@ class FarmingPage {
       // Общий прогресс — по всем дропсам всех кампаний сразу
       const totalDrops = sections.reduce((sum, s) => sum + s.total, 0);
       const completedDrops = sections.reduce((sum, s) => sum + s.completed, 0);
-      const weightedProgress = sections.reduce((sum, s) => sum + s.percent * s.total, 0);
-      const overallPercent = totalDrops > 0 ? Math.floor(weightedProgress / totalDrops) : 0;
+      // Единое число для панели, сайдбара и списка категорий. Раньше здесь
+      // считалось среднее по наградам, а сайдбар — по времени просмотра, и
+      // под одним названием «дропсы» показывались разные проценты: 63
+      // против 29. Считает CampaignValue, чтобы определение было одно.
+      const overallPercent = window.CampaignValue.progressPercent(matched);
 
       // Ближайшее время окончания среди всех кампаний
       const soonestEnd = matched
@@ -3050,7 +3050,7 @@ class FarmingPage {
         // Сайдбарная шкала идёт по времени просмотра, чтобы деления
         // совпадали с рубежами выдачи наград
         const timeline = this.updateSidebarDropsDetail(matched);
-        this.updateMiniDropsProgress(timeline ? timeline.percent : overallPercent);
+        this.updateMiniDropsProgress(overallPercent);
         this.updateTrayStatus(matched, timeline);
 
         // Если все дропсы получены - сразу переключаемся

@@ -190,14 +190,19 @@ class CampaignValue {
   /**
    * Шкала кампании по времени просмотра и отметки выдачи наград.
    *
-   * Считаем именно по времени, а не по среднему проценту наград. Прогресс
-   * внутри кампании общий, поэтому средний процент — величина без
+   * Считаем именно по времени, а не по среднему проценту наград.
+   * Прогресс внутри кампании общий, поэтому среднее — величина без
    * наглядного смысла: у наград на 60 и 300 минут при 12 просмотренных
-   * он даёт 20% и 4%, а их среднее ни на что не указывает. На шкале
+   * оно даёт 20 % и 4 %, а их среднее ни на что не указывает. На шкале
    * времени отметка каждой награды встаёт ровно туда, где её выдадут.
+   *
+   * Этим же числом пользуется панель под стримом и список категорий:
+   * раньше каждое место считало по-своему, и под одним названием
+   * «дропсы» показывались разные проценты — 63 в панели против 29 в
+   * сайдбаре.
    */
   static timeline(campaign) {
-    const drops = (campaign?.drops || []).filter(d => Number(d.required) > 0);
+    const drops = (campaign?.drops || []).filter(d => Number(d?.required) > 0);
     if (!drops.length) return { percent: 0, marks: [] };
 
     const longest = Math.max(...drops.map(d => Number(d.required) || 0));
@@ -217,6 +222,23 @@ class CampaignValue {
       .sort((a, b) => a.percent - b.percent);
 
     return { percent: Math.min(100, (watched / longest) * 100), watched, longest, marks };
+  }
+
+  /**
+   * Единый процент выполнения по игре, 0..100.
+   *
+   * Берётся кампания с ближайшей наградой — та же, по которой рисуется
+   * шкала в сайдбаре. Так панель, сайдбар и список категорий показывают
+   * одно и то же число, а не три разных.
+   */
+  static progressPercent(campaigns, now = Date.now()) {
+    const list = campaigns || [];
+    if (!list.length) return 0;
+
+    const next = CampaignValue.nextDrop(list, now);
+    const source = next?.campaign || list[0];
+
+    return Math.floor(CampaignValue.timeline(source).percent);
   }
 
   /**
