@@ -1492,9 +1492,11 @@ class FarmingPage {
           console.log('Manual play category:', category.name);
           window.utils.showToast(`Запуск категории ${category.name}...`, 'info');
 
-          // Останавливаем текущий стрим если есть
+          // Останавливаем текущий стрим без уведомления: рядом с «Запуск
+          // категории» сообщение «Фарминг остановлен» читается как отказ,
+          // хотя это лишь смена одного стрима на другой
           if (this.currentStream) {
-            this.stopFarming();
+            this.stopFarming(false);
             await new Promise(resolve => setTimeout(resolve, 1000));
           }
 
@@ -1732,16 +1734,41 @@ class FarmingPage {
       return;
     }
     
-    // Получаем стримы для этой категории
-    const streams = await window.electronAPI.getStreamsWithDrops(category.name);
-    
-    if (streams.length === 0) {
+    // Получаем стримы для этой категории.
+    //
+    // Раньше этот запрос стоял голым: отказ сети выбрасывал исключение
+    // прямо из обработчика нажатия, и дальше не происходило ничего —
+    // пользователь видел «Запуск категории…» и тишину. Теперь у запроса
+    // есть срок, а любая неудача называется вслух.
+    let streams = null;
+    try {
+      streams = await Promise.race([
+        window.electronAPI.getStreamsWithDrops(category.name),
+        new Promise(resolve => setTimeout(() => resolve(null), 15000))
+      ]);
+    } catch (error) {
+      console.error('[Фарминг] Не удалось получить стримы:', error);
+      window.utils.showToast(`Не удалось запустить ${category.name}: ${error?.message || 'ошибка сети'}`, 'error');
+      return;
+    }
+
+    if (streams === null) {
+      window.utils.showToast(`Twitch не ответил по категории ${category.name}`, 'error');
+      return;
+    }
+
+    if (!Array.isArray(streams) || streams.length === 0) {
       window.utils.showToast(`Нет стримов для ${category.name}`, 'warning');
       return;
     }
-    
+
     // Выбираем первый стрим
     const stream = await this.pickPreferredStream(streams, category.name);
+
+    if (!stream || !stream.login) {
+      window.utils.showToast(`Не удалось выбрать стрим в ${category.name}`, 'error');
+      return;
+    }
     const streamUrl = `https://www.twitch.tv/${stream.login}`;
     
     console.log('Starting stream:', stream.displayName, streamUrl);
@@ -1751,8 +1778,7 @@ class FarmingPage {
     this.currentCategory = category;
     this.currentStream = stream;
     this.dropsMissingChecks = 0;
-    this.dropsMissingChecks = 0;
-    this.dropsMissingChecks = 0;
+    this._emptyDropsChecks = 0;
     
     // Открываем стрим
     await window.electronAPI.openStream(streamUrl, accounts[0]);
@@ -3434,6 +3460,7 @@ class FarmingPage {
     }
     this.dropsMissingChecks = 0;
     this._emptyDropsChecks = 0;
+    this._leaveVotes = 0;
 
     const dropsPanel = document.getElementById('drops-progress-horizontal');
     if (dropsPanel) dropsPanel.style.display = 'none';
@@ -5153,8 +5180,20 @@ class FarmingPage {
 
     if (!CV.shouldLeave(matched, now)) {
       this._exhaustedCategoryId = null;
+      this._leaveVotes = 0;
       return;
     }
+
+    // Уходить по одной выборке нельзя. Список кампаний приходит от Twitch
+    // неровно: неполный ответ выглядит как «брать больше нечего», и
+    // категория бросалась недоработанной. Требуем, чтобы приговор
+    // повторился на следующей проверке.
+    this._leaveVotes = (this._leaveVotes || 0) + 1;
+    if (this._leaveVotes < 2) {
+      console.log('[Дропсы] Похоже, брать нечего — жду подтверждения на следующей проверке');
+      return;
+    }
+    this._leaveVotes = 0;
 
     const evaluations = matched.map(c => CV.evaluate(c, now));
 
