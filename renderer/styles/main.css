@@ -3967,3 +3967,162 @@ body.no-animations * {
   background: rgba(255, 255, 255, 0.08);
   color: var(--text-primary);
 }
+
+/* ===== Лента времени календаря =====
+   Списки по группам отвечают на «что горит», лента — на «как всё это
+   накладывается»: видно, что три кампании кончаются в один день. */
+#calendar-timeline {
+  --tl-name-width: 150px;
+}
+
+.calendar-timeline-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.calendar-range {
+  display: flex;
+  gap: 6px;
+}
+
+.calendar-days {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
+.calendar-days.active {
+  background: #7c5cff;
+  color: #fff;
+  border-color: transparent;
+}
+
+.tl-scale {
+  display: grid;
+  grid-template-columns: var(--tl-name-width) 1fr;
+  gap: 10px;
+  height: 20px;
+  margin-bottom: 8px;
+}
+
+.tl-scale .tl-track {
+  position: relative;
+}
+
+.tl-tick {
+  position: absolute;
+  top: 16px;
+  bottom: -9999px;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* Выходные чуть заметнее — по ним удобно ориентироваться */
+.tl-tick.weekend {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.tl-label {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  font-size: 10px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+.tl-rows {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow: hidden;
+}
+
+.tl-row {
+  display: grid;
+  grid-template-columns: var(--tl-name-width) 1fr;
+  gap: 10px;
+  align-items: center;
+}
+
+.tl-name {
+  font-size: 11px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tl-track {
+  position: relative;
+  height: 20px;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.tl-bar {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  min-width: 3px;
+  padding: 0 6px;
+  display: flex;
+  align-items: center;
+  border-radius: var(--radius-sm);
+  background: rgba(124, 92, 255, 0.35);
+  border: 1px solid rgba(124, 92, 255, 0.5);
+  overflow: hidden;
+}
+
+/* Свои категории выделяем: их на ленте ищут в первую очередь */
+.tl-bar.mine {
+  background: rgba(124, 92, 255, 0.75);
+  border-color: #7c5cff;
+}
+
+.tl-bar.upcoming {
+  background: rgba(53, 208, 138, 0.3);
+  border-color: rgba(53, 208, 138, 0.55);
+}
+
+.tl-bar.late {
+  background: rgba(240, 173, 78, 0.25);
+  border-color: rgba(240, 173, 78, 0.45);
+}
+
+/* Полоса, уходящая за край окна, не должна выглядеть законченной */
+.tl-bar.clipped-end {
+  border-right-style: dashed;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.tl-bar-text {
+  font-size: 10px;
+  font-weight: 600;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tl-now {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: #f0555f;
+  box-shadow: 0 0 6px rgba(240, 85, 95, 0.6);
+  pointer-events: none;
+}
+
+.tl-hidden {
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--text-tertiary);
+}

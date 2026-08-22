@@ -107,6 +107,72 @@ class CampaignCalendar {
     return groups;
   }
 
+  /**
+   * Раскладка ленты времени: где на шкале начинается и кончается каждая
+   * кампания.
+   *
+   * Ширина окна задаётся в днях от начала сегодняшних суток. Полосы
+   * подрезаются по краям окна: кампания, начавшаяся неделю назад,
+   * рисуется от левого края, а уходящая за горизонт — до правого, и обе
+   * помечаются, чтобы обрезка не читалась как настоящий срок.
+   *
+   * Возвращает проценты, а не пиксели: ширину знает только вёрстка.
+   */
+  static timelineBars(campaigns, options = {}) {
+    const now = options.now === undefined ? Date.now() : options.now;
+    const days = options.days || 14;
+
+    const from = CampaignCalendar.startOfDay(now);
+    const to = from + days * 86400000;
+    const span = to - from;
+
+    const percent = (time) => ((time - from) / span) * 100;
+
+    const ticks = [];
+    for (let i = 0; i <= days; i++) {
+      const day = from + i * 86400000;
+      ticks.push({
+        at: (i / days) * 100,
+        date: day,
+        label: new Date(day).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }),
+        weekend: [0, 6].includes(new Date(day).getDay())
+      });
+    }
+
+    const bars = [];
+    for (const campaign of campaigns || []) {
+      const endsRaw = new Date(campaign?.endsAt || campaign?.endAt).getTime();
+      if (!Number.isFinite(endsRaw) || endsRaw <= now) continue;
+
+      const startsRaw = new Date(campaign?.startsAt || campaign?.startAt).getTime();
+      const starts = Number.isFinite(startsRaw) ? startsRaw : from;
+
+      // Кампании целиком за горизонтом окна не рисуем
+      if (starts >= to) continue;
+
+      const left = Math.max(0, percent(starts));
+      const right = Math.min(100, percent(endsRaw));
+      if (right <= left) continue;
+
+      bars.push({
+        campaign,
+        left,
+        width: right - left,
+        clippedStart: starts < from,
+        clippedEnd: endsRaw > to,
+        upcoming: starts > now
+      });
+    }
+
+    bars.sort((a, b) => {
+      const ea = new Date(a.campaign.endsAt || a.campaign.endAt).getTime();
+      const eb = new Date(b.campaign.endsAt || b.campaign.endAt).getTime();
+      return ea - eb;
+    });
+
+    return { from, to, days, ticks, bars, nowAt: percent(now) };
+  }
+
   /** Человеческий остаток времени: «11 дней», «4ч 20м», «17 мин». */
   static formatLeft(minutes) {
     if (!Number.isFinite(minutes) || minutes <= 0) return 'завершена';

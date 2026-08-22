@@ -11,6 +11,7 @@ class CalendarPage {
     this.campaigns = [];
     this.categories = [];
     this.filter = 'all';
+    this.days = 7;
 
     this.init();
   }
@@ -26,6 +27,15 @@ class CalendarPage {
         document.querySelectorAll('.calendar-filter').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         this.filter = btn.dataset.filter;
+        this.render();
+      });
+    });
+
+    document.querySelectorAll('.calendar-days').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.calendar-days').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        this.days = Number(btn.dataset.days) || 7;
         this.render();
       });
     });
@@ -135,6 +145,8 @@ class CalendarPage {
       return;
     }
 
+    this.renderTimeline(visible, now);
+
     const groups = CC.group(visible, now);
 
     body.innerHTML = CC.ORDER
@@ -155,6 +167,88 @@ class CalendarPage {
     body.querySelectorAll('[data-add-game]').forEach(btn => {
       btn.addEventListener('click', () => this.addCategory(btn.dataset.addGame, btn));
     });
+  }
+
+  /**
+   * Лента времени: каждая кампания — полоса от начала до конца.
+   *
+   * Списки по группам отвечают на вопрос «что горит», а лента — на
+   * вопрос «как всё это накладывается друг на друга»: сразу видно, что
+   * три кампании кончаются в один день, а между ними есть просвет.
+   */
+  renderTimeline(campaigns, now) {
+    const host = document.getElementById('calendar-timeline');
+    const card = document.getElementById('calendar-timeline-card');
+    if (!host) return;
+
+    const CC = window.CampaignCalendar;
+    const layout = CC.timelineBars(campaigns, { now, days: this.days });
+
+    if (layout.bars.length === 0) {
+      if (card) card.style.display = 'none';
+      return;
+    }
+    if (card) card.style.display = '';
+
+    const escape = (t) => String(t ?? '').replace(/[&<>"']/g, ch => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[ch]));
+
+    // Подписи дней при узком окне ставим не у каждого деления, иначе
+    // они наезжают друг на друга
+    const step = this.days <= 7 ? 1 : (this.days <= 14 ? 2 : 5);
+
+    const ticks = layout.ticks.map((tick, i) => `
+      <div class="tl-tick ${tick.weekend ? 'weekend' : ''}" style="left: ${tick.at}%"></div>
+      ${i % step === 0 ? `<div class="tl-label" style="left: ${tick.at}%">${escape(tick.label)}</div>` : ''}
+    `).join('');
+
+    const МАКСИМУМ = 40;
+    const видимые = layout.bars.slice(0, МАКСИМУМ);
+
+    const rows = видимые.map(bar => {
+      const game = this.gameName(bar.campaign);
+      const mine = this.isMine(bar.campaign);
+      const value = window.CampaignValue.evaluate(bar.campaign, now);
+
+      const classes = [
+        'tl-bar',
+        mine ? 'mine' : '',
+        bar.upcoming ? 'upcoming' : '',
+        value.reason === 'tooLate' ? 'late' : '',
+        bar.clippedEnd ? 'clipped-end' : ''
+      ].filter(Boolean).join(' ');
+
+      const hint = bar.upcoming
+        ? `${game} · начнётся ${new Date(bar.campaign.startsAt || bar.campaign.startAt).toLocaleString('ru-RU')}`
+        : `${game} · осталось ${CC.formatLeft(value.minutesLeft)}${bar.clippedEnd ? ' (уходит за край ленты)' : ''}`;
+
+      return `
+        <div class="tl-row">
+          <div class="tl-name" title="${escape(game)}">${escape(game)}</div>
+          <div class="tl-track">
+            <div class="${classes}" style="left: ${bar.left}%; width: ${bar.width}%" title="${escape(hint)}">
+              <span class="tl-bar-text">${escape(game)}</span>
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    // Молча обрезать список нельзя: иначе кажется, что кампаний меньше
+    const hidden = layout.bars.length - видимые.length;
+
+    host.innerHTML = `
+      <div class="tl-scale">
+        <div class="tl-name"></div>
+        <div class="tl-track">${ticks}</div>
+      </div>
+      <div class="tl-rows">
+        ${rows}
+        <div class="tl-now" style="left: calc(var(--tl-name-width) + (100% - var(--tl-name-width)) * ${layout.nowAt / 100})"></div>
+      </div>
+      ${hidden > 0 ? `<div class="tl-hidden">Ещё ${hidden} ${hidden === 1 ? 'кампания' : 'кампаний'} не поместилось — они есть в списках ниже</div>` : ''}
+    `;
   }
 
   renderCampaign(campaign, bucket, now) {
