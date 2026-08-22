@@ -214,8 +214,25 @@ class FarmingPage {
         continue;
       }
 
+      // Прогресс — по набранному времени, а не по доле завершённых наград.
+      //
+      // Раньше здесь стояло completedDrops / totalDrops: посмотрев 45 минут
+      // из 60 и не забрав ничего, категория честно показывала 0, и так до
+      // самого получения награды. Панель дропсов при этом писала в то же
+      // поле настоящие проценты, а обновление категорий затирало их нулём.
+      const percentOf = (drop) => {
+        const required = Number(drop.required) || Number(drop.requiredMinutes) ||
+          Number(drop.requiredMinutesWatched) || 0;
+        if (required <= 0) return 0;
+
+        const progress = Number(drop.progress) || Number(drop.currentMinutesWatched) || 0;
+        return Math.min(100, (progress / required) * 100);
+      };
+
       const progressPercent = totalDrops > 0
-        ? Math.floor((completedDrops / totalDrops) * 100)
+        ? Math.floor(drops.reduce((sum, d) => sum + (
+            (d.claimed || d.isClaimed) ? 100 : percentOf(d)
+          ), 0) / totalDrops)
         : 0;
 
       activeCampaignsMap.set(normalizedGameKey, {
@@ -2882,9 +2899,24 @@ class FarmingPage {
       if (!horizontal) return { hasDrops: false };
 
       if (matched.length === 0) {
-        horizontal.style.display = 'none';
+        // Одной пустой выборки мало: Twitch отвечает неровно, и на один
+        // сбойный ответ панель исчезала целиком, а через полминуты
+        // возвращалась. Прячем только когда кампаний нет несколько
+        // проверок подряд — тем же порогом, по которому меняется
+        // категория, чтобы панель не пропадала раньше времени.
+        this._emptyDropsChecks = (this._emptyDropsChecks || 0) + 1;
+
+        if (this._emptyDropsChecks >= 3) {
+          horizontal.style.display = 'none';
+        } else {
+          console.log('[Дропсы] Пустой ответ', this._emptyDropsChecks,
+            'из 3 — панель оставляю как есть');
+        }
+
         return { hasDrops: false };
       }
+
+      this._emptyDropsChecks = 0;
 
       console.log('[Drops] Кампаний для', currentGameName + ':', matched.length,
         matched.map(c => c.name).join(' | '));
@@ -3339,6 +3371,7 @@ class FarmingPage {
       this.dropsProgressInterval = null;
     }
     this.dropsMissingChecks = 0;
+    this._emptyDropsChecks = 0;
 
     const dropsPanel = document.getElementById('drops-progress-horizontal');
     if (dropsPanel) dropsPanel.style.display = 'none';

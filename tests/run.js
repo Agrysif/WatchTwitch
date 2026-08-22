@@ -201,15 +201,59 @@ function loadClass(relativePath, className, globals = {}) {
   check('подписки в выдаче нет', SP.findInList(выдача, [{ login: 'zoe' }]), null);
 }
 
-// ─── Приведение качества плеера ──────────────────────────────────────
+// ─── Процент прогресса категории ─────────────────────────────────────
 {
-  const known = ['160p30', '360p30', '480p30', '720p60', 'chunked'];
-  const resolve = (stored) => known.includes(stored) ? stored : '160p30';
+  // Раньше считалась доля полностью завершённых наград: посмотрев 45
+  // минут из 60 и не забрав ничего, категория показывала 0 — и так до
+  // самого получения награды.
+  const percentOf = (drop) => {
+    const required = Number(drop.required) || Number(drop.requiredMinutes) ||
+      Number(drop.requiredMinutesWatched) || 0;
+    if (required <= 0) return 0;
+    const progress = Number(drop.progress) || Number(drop.currentMinutesWatched) || 0;
+    return Math.min(100, (progress / required) * 100);
+  };
+  const overall = (drops) => drops.length
+    ? Math.floor(drops.reduce((s, d) => s + ((d.claimed || d.isClaimed) ? 100 : percentOf(d)), 0) / drops.length)
+    : 0;
 
-  check('известное качество сохраняется', resolve('480p30'), '480p30');
-  check('устаревшее auto приводится к минимуму', resolve('auto'), '160p30');
-  check('пустое значение приводится к минимуму', resolve(undefined), '160p30');
-  check('исходный поток поддерживается', resolve('chunked'), 'chunked');
+  check('прогресс виден до получения награды',
+    overall([{ required: 60, progress: 45 }]), 75);
+  check('прогресс общий по наградам кампании',
+    overall([{ required: 60, progress: 12 }, { required: 120, progress: 12 }]), 15);
+  check('забранная считается за сто',
+    overall([{ required: 60, progress: 60, claimed: true }, { required: 600, progress: 60 }]), 55);
+  check('ничего не начато', overall([{ required: 60, progress: 0 }]), 0);
+  check('всё забрано', overall([{ required: 60, progress: 60, claimed: true }]), 100);
+  // Twitch присылает поля под разными именами в разных запросах
+  check('поля из другого запроса',
+    overall([{ requiredMinutesWatched: 60, currentMinutesWatched: 30 }]), 50);
+  check('перебор времени не даёт больше ста',
+    overall([{ required: 60, progress: 90 }]), 100);
+  check('без наград', overall([]), 0);
+}
+
+// ─── Выбор качества плеера ───────────────────────────────────────────
+{
+  // Три уровня, от временного к постоянному. Раньше все три писались в
+  // одно поле настроек, и один неудачный старт навсегда превращал выбор
+  // пользователя в «Источник»: лестница поднималась и сохраняла верхнюю
+  // ступень, а автопереключение категорий грузит стримы помногу раз.
+  const known = ['160p30', '360p30', '480p30', '720p60', 'chunked'];
+  const resolve = (fallback, session, stored) => {
+    for (const v of [fallback, session, stored]) {
+      if (v && known.includes(v)) return v;
+    }
+    return '160p30';
+  };
+
+  check('без временных берём настройку', resolve(null, null, '480p30'), '480p30');
+  check('выбор на сессию важнее настройки', resolve(null, '360p30', '480p30'), '360p30');
+  check('вынужденный подъём важнее всего', resolve('720p60', '360p30', '480p30'), '720p60');
+  check('устаревшее auto приводится к минимуму', resolve(null, null, 'auto'), '160p30');
+  check('пустое значение приводится к минимуму', resolve(null, null, undefined), '160p30');
+  check('исходный поток поддерживается', resolve(null, null, 'chunked'), 'chunked');
+  check('негодное временное не мешает настройке', resolve('чушь', null, '480p30'), '480p30');
 }
 
 // ─── Выгодность кампаний ─────────────────────────────────────────────
