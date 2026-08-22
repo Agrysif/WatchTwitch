@@ -570,9 +570,12 @@ autoUpdater.on('update-available', (info) => {
 });
 
 autoUpdater.on('update-not-available', () => {
-  console.log('[Updater] ===== UPDATE NOT AVAILABLE =====');
-  console.log('[Updater] Current version is up-to-date');
-  console.log('[Updater] App version:', app.getVersion());
+  console.log('[Updater] Обновлений нет, установлена', app.getVersion());
+
+  // Раньше это событие только писалось в журнал. Нажав «Проверить
+  // обновления» на свежей версии, пользователь не видел ровно ничего —
+  // и кнопка выглядела сломанной, хотя отрабатывала верно.
+  sendToMain('update-not-available', { version: app.getVersion() });
 });
 
 autoUpdater.on('error', (error) => {
@@ -610,9 +613,11 @@ ipcMain.on('check-for-updates', async () => {
   console.log('[IPC] Проверка обновлений... (app version:', app.getVersion(), ')');
   try {
     const result = await autoUpdater.checkForUpdates();
-    console.log('[Updater] Check result:', result);
+    console.log('[Updater] Проверка завершена:', result && result.updateInfo
+      ? result.updateInfo.version : 'без результата');
   } catch (err) {
-    console.error('[Updater] Error during check:', err);
+    console.error('[Updater] Ошибка проверки:', err);
+    sendToMain('update-error', err?.message || 'Не удалось проверить обновления');
   }
 });
 

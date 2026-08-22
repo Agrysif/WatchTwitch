@@ -323,6 +323,16 @@ class UpdateManager {
     });
 
     // Ошибка обновления
+    // Без этого нажатие «Проверить обновления» на свежей версии не давало
+    // никакого отклика, и кнопка казалась неработающей
+    window.electronAPI.onUpdateNotAvailable?.((info) => {
+      this.checking = false;
+      window.utils?.showToast(
+        'У вас последняя версия' + (info?.version ? ' (' + info.version + ')' : ''),
+        'success'
+      );
+    });
+
     window.electronAPI.onUpdateError?.((error) => {
       console.error('[UpdateManager] Update error:', error);
       this.showError(error);
@@ -478,15 +488,19 @@ class UpdateManager {
     if (this.checking || this.downloading) return;
     
     this.checking = true;
-    console.log('[UpdateManager] Checking for updates...');
-    
+    console.log('[UpdateManager] Проверяю обновления…');
+
+    // Отклик сразу: проверка идёт по сети и может занять пару секунд,
+    // а до ответа кнопка выглядела бы мёртвой
+    window.utils?.showToast('Проверяю обновления…', 'info');
+
     if (window.electronAPI?.checkForUpdates) {
       window.electronAPI.checkForUpdates();
     }
-    
+
     setTimeout(() => {
       this.checking = false;
-    }, 2000);
+    }, 5000);
   }
 
   /**
