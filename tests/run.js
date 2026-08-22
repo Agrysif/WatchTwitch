@@ -233,6 +233,73 @@ function loadClass(relativePath, className, globals = {}) {
   check('без наград', overall([]), 0);
 }
 
+// ─── Потолок скорости загрузки стрима ────────────────────────────────
+{
+  // Видео качается кусками: каждый отрезок на мгновение забивает канал,
+  // очередь в роутере распухает, и пинг в игре подскакивает. Лечится
+  // сглаживанием, а не уменьшением объёма.
+  const NL = loadClass('renderer/js/core/network-limit.js', 'NetworkLimit');
+
+  check('минимальное качество', NL.forQuality('160p30'), 690);
+  check('480p', NL.forQuality('480p30'), 3600);
+  check('исходное', NL.forQuality('chunked'), 18000);
+
+  // Слишком тесный предел не даст плееру набрать буфер — он встанет,
+  // и подбор качества полезет вверх, сделав только хуже
+  check('ниже пола не опускаемся', NL.forQuality('160p30', 0.5), 500);
+  check('запас можно поднять', NL.forQuality('160p30', 5), 1150);
+  check('негодный запас берёт значение по умолчанию',
+    NL.forQuality('160p30', 0), NL.forQuality('160p30'));
+
+  // Неизвестное качество ограничиваем слабо: лучше не сгладить,
+  // чем задушить поток
+  check('неизвестное качество', NL.forQuality('9000p'), NL.forQuality('chunked'));
+
+  check('перевод в байты в секунду', NL.toBytesPerSecond(800), 100000);
+  check('ноль', NL.toBytesPerSecond(0), 0);
+
+  const c = NL.conditions('160p30');
+  check('скачивание ограничено', c.downloadThroughput, NL.toBytesPerSecond(690));
+  check('отдачу не трогаем', c.uploadThroughput, -1);
+  check('задержку не добавляем', c.latency, 0);
+  check('не уводим в офлайн', c.offline, false);
+
+  check('снятие ограничения', NL.UNLIMITED.downloadThroughput, -1);
+}
+
+// ─── Разовое лечение настройки качества ──────────────────────────────
+{
+  // Прежняя версия записывала вынужденный подъём лестницы в постоянную
+  // настройку, и у многих там осело «Источник»: приложение качало по
+  // шесть мегабит вместо двухсот килобит, а выбора такого не было.
+  const лечить = (settings) => {
+    if (settings.qualityRepaired) return settings;
+    const испорчено = settings.preferredStreamQuality === 'chunked' ||
+      settings.preferredStreamQuality === '720p60';
+    settings.qualityRepaired = true;
+    if (испорчено) settings.preferredStreamQuality = '160p30';
+    return settings;
+  };
+
+  check('исходное сбрасывается',
+    лечить({ preferredStreamQuality: 'chunked' }).preferredStreamQuality, '160p30');
+  check('720p тоже сбрасывается',
+    лечить({ preferredStreamQuality: '720p60' }).preferredStreamQuality, '160p30');
+
+  // Осознанный выбор среднего качества не трогаем
+  check('480p оставляем',
+    лечить({ preferredStreamQuality: '480p30' }).preferredStreamQuality, '480p30');
+  check('минимальное оставляем',
+    лечить({ preferredStreamQuality: '160p30' }).preferredStreamQuality, '160p30');
+
+  // Лечим ровно один раз: дальше настройка снова принадлежит пользователю
+  const после = лечить({ preferredStreamQuality: 'chunked' });
+  после.preferredStreamQuality = 'chunked';
+  check('повторно не вмешиваемся',
+    лечить(после).preferredStreamQuality, 'chunked');
+  checkTrue('отметка о лечении ставится', после.qualityRepaired);
+}
+
 // ─── Выбор качества плеера ───────────────────────────────────────────
 {
   // Три уровня, от временного к постоянному. Раньше все три писались в

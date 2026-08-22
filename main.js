@@ -387,6 +387,75 @@ function resetTrafficSession() {
  * хотя интересен только расход на просмотр. Считаем у плеера и у окна
  * стрима, остальное пропускаем.
  */
+const NetworkLimit = require('./renderer/js/core/network-limit');
+
+// Плееры, за которыми следит отладчик: к ним же применяется потолок скорости
+const playerWebContents = new Map();
+
+/**
+ * Ограничивает скорость загрузки стрима.
+ *
+ * Видео качается кусками: каждый отрезок на мгновение забивает канал,
+ * очередь в роутере распухает, и в игре подскакивает пинг — «резко
+ * подрастает, потом отпускает». Потолок растягивает ту же закачку во
+ * времени, и чужие пакеты перестают ждать.
+ *
+ * Условия ставятся на тот же сеанс отладчика, который уже открыт ради
+ * подсчёта трафика, поэтому ничего дополнительно подключать не нужно.
+ */
+function applyStreamLimit(webContents, conditions) {
+  if (!webContents || webContents.isDestroyed()) return false;
+
+  try {
+    if (!webContents.debugger.isAttached()) return false;
+    webContents.debugger.sendCommand('Network.emulateNetworkConditions', conditions);
+    return true;
+  } catch (error) {
+    console.warn('[Скорость] Не удалось применить потолок:', error.message);
+    return false;
+  }
+}
+
+// Качество, которое плеер использует прямо сейчас. Может отличаться от
+// настройки: пользователь мог выбрать другое на панели, а подбор — сам
+// подняться на ступень выше. Потолок обязан следовать за действующим,
+// иначе слишком тесный предел не даст плееру набрать буфер, тот встанет,
+// и подбор полезет ещё выше — получилась бы петля.
+let activeStreamQuality = null;
+
+/** Текущие условия по настройкам приложения. */
+function currentStreamConditions() {
+  const enabled = store.get('settings.limitStreamSpeed');
+  if (enabled === false) return NetworkLimit.UNLIMITED;
+
+  const quality = activeStreamQuality || store.get('settings.preferredStreamQuality') || '160p30';
+  return NetworkLimit.conditions(quality, store.get('settings.streamSpeedHeadroom'));
+}
+
+/** Переприменяет потолок ко всем наблюдаемым плеерам. */
+function refreshStreamLimits() {
+  const conditions = currentStreamConditions();
+  let applied = 0;
+
+  for (const wc of playerWebContents.values()) {
+    if (applyStreamLimit(wc, conditions)) applied++;
+  }
+
+  if (applied > 0) {
+    const kbps = conditions.downloadThroughput > 0
+      ? Math.round(conditions.downloadThroughput * 8 / 1000) + ' кбит/с'
+      : 'без ограничения';
+    console.log('[Скорость] Потолок загрузки:', kbps, '| плееров:', applied);
+  }
+
+  return applied;
+}
+
+ipcMain.on('refresh-stream-limit', (event, quality) => {
+  if (quality) activeStreamQuality = quality;
+  refreshStreamLimits();
+});
+
 function shouldCountTraffic(webContents) {
   try {
     if (webContents.getType() === 'browserView') return true;
@@ -431,6 +500,10 @@ function setupTrafficMonitoring(webContents) {
     }
     webContents.debugger.sendCommand('Network.enable');
 
+    // Потолок ставим сразу: иначе первые же куски видео уйдут рывком
+    playerWebContents.set(webContents.id, webContents);
+    applyStreamLimit(webContents, currentStreamConditions());
+
     webContents.debugger.on('message', (_event, method, params) => {
       // Считаем ТОЛЬКО dataReceived: encodedDataLength здесь — размер конкретного
       // чанка. Событие loadingFinished отдаёт encodedDataLength всего запроса
@@ -449,6 +522,7 @@ function setupTrafficMonitoring(webContents) {
 
     webContents.on('destroyed', () => {
       monitoredWebContents.delete(webContents.id);
+      playerWebContents.delete(webContents.id);
       try {
         if (!webContents.isDestroyed() && webContents.debugger.isAttached()) {
           webContents.debugger.detach();
