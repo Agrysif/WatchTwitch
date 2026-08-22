@@ -370,6 +370,7 @@ class PlayerManager extends SlottedWebview {
     // меняется только в «Настройках»
     this.sessionQuality = value;
     this.fallbackQuality = null;
+    window.electronAPI?.refreshStreamLimit?.(value);
 
     if (!this.webview || !this.channel) return;
 
@@ -443,6 +444,10 @@ class PlayerManager extends SlottedWebview {
 
     console.log('[PlayerManager] Загружаю канал:', login);
     this.channel = login;
+
+    // Потолок скорости считается от действующего качества, а не от
+    // настройки: иначе после подъёма лестницы предел оказался бы тесным
+    window.electronAPI?.refreshStreamLimit?.(quality);
     this.lastPlaybackTime = null;
     this.stallStrikes = 0;
     // Новый канал всегда начинается без звука. Исключение — перезагрузка

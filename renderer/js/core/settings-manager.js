@@ -40,6 +40,11 @@ class SettingsManager {
       // Фарминг
       autoSwitchStreams: false,
       preferredStreamQuality: '160p30',
+
+      // Потолок скорости загрузки стрима. Включён по умолчанию: видео
+      // качается рывками, и каждый рывок подбрасывает пинг в играх
+      limitStreamSpeed: true,
+      streamSpeedHeadroom: 3,
       autostart: false,
       lastSeenVersion: null,
       
@@ -215,7 +220,39 @@ class SettingsManager {
   /**
    * Применить все настройки
    */
+  /**
+   * Разовое лечение настройки качества.
+   *
+   * Подбор качества при неудачном старте записывал поднятую ступень в
+   * постоянную настройку, а автопереключение категорий грузит стримы
+   * помногу раз за сессию. В итоге у многих там осело «Источник» —
+   * приложение месяцами качало по шесть мегабит вместо двухсот килобит,
+   * а пользователь этого не выбирал.
+   *
+   * Отличить испорченное значение от осознанного выбора задним числом
+   * нельзя, поэтому сбрасываем один раз и оставляем отметку. Дальше
+   * настройка снова полностью принадлежит пользователю.
+   */
+  repairQualityAfterLadderBug() {
+    if (this.settings.qualityRepaired) return;
+
+    const текущее = this.settings.preferredStreamQuality;
+    const испорчено = текущее === 'chunked' || текущее === '720p60';
+
+    this.settings.qualityRepaired = true;
+
+    if (испорчено) {
+      console.log('[Настройки] Качество', текущее, 'сброшено на минимальное:',
+        'прежняя версия записывала туда вынужденный подъём');
+      this.settings.preferredStreamQuality = '160p30';
+    }
+
+    this.saveSettings();
+  }
+
   applyAll() {
+    this.repairQualityAfterLadderBug();
+
     this.applySoundSettings();
     this.applyAutoClaimSettings();
     

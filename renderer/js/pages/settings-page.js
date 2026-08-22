@@ -112,6 +112,18 @@ class SettingsPage {
 
           <div class="settings-item">
             <div class="settings-item-info">
+              <div class="settings-item-label">${i18n.t('settings.limitStreamSpeed')}</div>
+              <div class="settings-item-description">${i18n.t('settings.limitStreamSpeedDesc')}</div>
+              <div class="quiet-note" id="limit-note" style="margin-top: 8px;"></div>
+            </div>
+            <label class="settings-toggle">
+              <input type="checkbox" id="setting-limit-speed" ${settings.get('limitStreamSpeed') !== false ? 'checked' : ''}>
+              <span class="settings-slider"></span>
+            </label>
+          </div>
+
+          <div class="settings-item">
+            <div class="settings-item-info">
               <div class="settings-item-label">${i18n.t('settings.quietHours')}</div>
               <div class="settings-item-description">${i18n.t('settings.quietHoursDesc')}</div>
               <div class="quiet-range">
@@ -621,6 +633,31 @@ class SettingsPage {
       });
     }
 
+    // Потолок скорости загрузки стрима
+    const limitToggle = document.getElementById('setting-limit-speed');
+    const limitNote = document.getElementById('limit-note');
+
+    const обновитьПотолок = () => {
+      if (!limitNote) return;
+      limitNote.textContent = settings.get('limitStreamSpeed') === false
+        ? 'Выключено — стрим качается на полной скорости'
+        : window.NetworkLimit.describe(
+            settings.get('preferredStreamQuality'), settings.get('streamSpeedHeadroom'));
+    };
+    обновитьПотолок();
+
+    if (limitToggle) {
+      limitToggle.addEventListener('change', (e) => {
+        settings.set('limitStreamSpeed', e.target.checked);
+        обновитьПотолок();
+        // Настройка зеркалится в главный процесс не мгновенно, поэтому
+        // просим переприменить потолок явно
+        setTimeout(() => window.electronAPI?.refreshStreamLimit?.(), 300);
+        window.utils.showToast(
+          e.target.checked ? i18n.t('settings.enabled') : i18n.t('settings.disabled'), 'info');
+      });
+    }
+
     // Тихие часы
     const quietToggle = document.getElementById('setting-quiet');
     const quietFrom = document.getElementById('setting-quiet-from');
@@ -739,6 +776,8 @@ class SettingsPage {
     if (qualitySelect) {
       qualitySelect.addEventListener('change', (e) => {
         settings.set('preferredStreamQuality', e.target.value);
+        обновитьПотолок();
+        setTimeout(() => window.electronAPI?.refreshStreamLimit?.(), 300);
         window.utils.showToast(i18n.t('settings.qualityApplied'), 'info');
       }, { signal: this._abort.signal });
     }
