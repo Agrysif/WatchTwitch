@@ -13,6 +13,11 @@
 
 ## ✨ Что нового
 
+- **Календарь кампаний — новая вкладка.** Все кампании Twitch разложены по срокам: что заканчивается сегодня, что завтра, что на этой неделе и что только начнётся. Видно, сколько наград осталось и сколько берётся за час; категорию можно добавить в работу прямо оттуда. Раньше эти сроки приложение знало, но нигде не показывало
+- **Подсказка о выгодной категории.** На странице фарминга появляется игра с дропсами, которой нет в вашем списке: «Genshin Impact — 2 награды за час». Одним нажатием добавляется, крестиком убирается насовсем
+- **Горячие клавиши поверх других окон.** Ctrl+Alt+F — запуск и остановка, Ctrl+Alt+N — другой стрим, Ctrl+Alt+W — показать или скрыть окно. Отключаются в настройках
+- **Звук при получении награды.** Настройка «Звуковые уведомления» была в приложении всегда, но за ней не стояло ни одного звука — теперь она работает. При включении сигнал сразу проигрывается
+- **Резервная копия всего.** Категории с порядком и закреплениями, подписки, статистика и настройки — в один файл, чтобы перенести на другой компьютер. Аккаунты и токены в копию не попадают намеренно
 - **Прогноз окончания.** В панели дропсов видно, сколько ещё смотреть и к какому времени всё соберётся: «Все награды через 4ч 12м — к 06:13». Недостижимые награды в расчёт не идут, чтобы прогноз не обещал невозможного
 - **План к автовыключению.** Если заведён таймер, рядом сказано, что из задуманного успеется: «До выключения в 03:01 успеется 1 из 2»
 - **Значок в трее показывает состояние.** По наведению — категория, процент и время до следующей награды; прогресс идёт полосой прямо на кнопке панели задач. Разворачивать окно ради этого больше не нужно
@@ -38,6 +43,11 @@
 
 ## ✨ What's new
 
+- **A campaign calendar — a new tab.** Every Twitch campaign laid out by deadline: ending today, tomorrow, this week, and not started yet. Rewards left and rewards per hour are visible, and a category can be added to work straight from there. The app knew these dates before but showed them nowhere
+- **A suggestion for a worthwhile category.** The farming page now surfaces a game with drops that is missing from your list. One click adds it, the cross dismisses it for good
+- **Global hotkeys.** Ctrl+Alt+F starts and stops, Ctrl+Alt+N switches stream, Ctrl+Alt+W shows or hides the window. Can be turned off in Settings
+- **A sound when a reward is claimed.** The "Sound notifications" setting had always existed with no sound behind it — it works now, and previews itself when switched on
+- **A full backup.** Categories with their order and pins, subscriptions, statistics and settings in a single file to carry to another computer. Accounts and tokens are deliberately left out
 - **A finish forecast.** The drops panel now shows how much longer to watch and when everything will be collected: "Все награды через 4ч 12м — к 06:13". Unreachable rewards are left out so the forecast never promises the impossible
 - **A plan for the shutdown timer.** When one is set, the panel says what will actually be collected before it fires
 - **The tray icon shows the state.** Hovering gives the category, the percentage, and the time to the next reward; progress also runs along the taskbar button. No need to open the window for that any more
