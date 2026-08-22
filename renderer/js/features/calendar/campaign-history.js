@@ -104,6 +104,16 @@ class CampaignHistory {
     }
   }
 
+  /** Все запомненные кампании — и текущие, и уже закончившиеся. */
+  static async loadKnown() {
+    try {
+      return (await Storage.get(CampaignHistory.KEY, [])) || [];
+    } catch (error) {
+      console.warn('[История кампаний] Не удалось прочитать:', error?.message);
+      return [];
+    }
+  }
+
   /** Завершённые кампании из памяти приложения. */
   static async loadEnded(now = Date.now()) {
     try {

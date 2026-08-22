@@ -243,6 +243,65 @@ class StatisticsPage {
    * а решения принимаются по другим: выгодно ли это, что окупается, чего
    * ждать дальше.
    */
+  /**
+   * Сколько наград не удалось добрать до конца кампаний.
+   *
+   * Полезна тут не столько сумма, сколько разбивка: награда, до которой
+   * не дотянули двадцать минут, и награда, требовавшая ещё десять часов,
+   * — совсем разные поводы. Первое исправляется вниманием, второе не
+   * стоило и начинать.
+   */
+  async renderMissed() {
+    const box = document.getElementById('missed-card');
+    if (!box || !window.MissedDrops || !window.CampaignHistory) return;
+
+    const history = await window.CampaignHistory.loadKnown();
+    const result = window.MissedDrops.analyze(history);
+
+    // Пока приложение не накопило историю, блок честнее спрятать
+    if (result.total === 0) {
+      box.style.display = 'none';
+      return;
+    }
+    box.style.display = '';
+
+    const escape = (t) => String(t ?? '').replace(/[&<>"']/g, ch => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[ch]));
+
+    const часы = Math.round(result.shortMinutes / 60);
+
+    box.innerHTML = `
+      <div class="missed-head">
+        <span class="missed-title">Упущенные награды</span>
+        <span class="missed-sum">${escape(window.MissedDrops.describe(result))}</span>
+      </div>
+      <div class="missed-note">
+        Всего не хватило около ${часы} ч просмотра · считается по кампаниям,
+        которые приложение видело за последний месяц
+      </div>
+      <div class="missed-list">
+        ${result.closest.map(m => `
+          <div class="missed-item ${m.shortBy <= window.MissedDrops.CLOSE_MINUTES ? 'close' : ''}">
+            <div class="missed-name">${escape(m.name)}</div>
+            <div class="missed-game">${escape(m.game)}</div>
+            <div class="missed-short">не хватило ${this.formatShort(m.shortBy)}</div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }
+
+  /** Недобор в человеческом виде. */
+  formatShort(minutes) {
+    const total = Math.max(1, Math.round(minutes));
+    if (total < 60) return `${total} мин`;
+
+    const hours = Math.floor(total / 60);
+    const rest = total % 60;
+    return rest > 0 ? `${hours} ч ${rest} мин` : `${hours} ч`;
+  }
+
   renderAnalytics(sessions, totals) {
     const card = document.getElementById('analytics-card');
     const grid = document.getElementById('analytics-grid');
@@ -306,6 +365,10 @@ class StatisticsPage {
           : `если бы смотрели в ${TE.BASELINE_LABEL}`
       });
     }
+
+    // Упущенные награды: данные о них появились вместе с памятью о
+    // кампаниях — раньше они исчезали вместе с самой кампанией
+    this.renderMissed().catch(e => console.warn('[Статистика] Упущенные:', e?.message));
 
     grid.innerHTML = items.map(item => `
       <div class="analytics-item">

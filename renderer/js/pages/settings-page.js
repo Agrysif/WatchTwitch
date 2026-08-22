@@ -112,6 +112,23 @@ class SettingsPage {
 
           <div class="settings-item">
             <div class="settings-item-info">
+              <div class="settings-item-label">${i18n.t('settings.quietHours')}</div>
+              <div class="settings-item-description">${i18n.t('settings.quietHoursDesc')}</div>
+              <div class="quiet-range">
+                <input type="time" id="setting-quiet-from" value="${settings.get('quietFrom') || '23:00'}">
+                <span>—</span>
+                <input type="time" id="setting-quiet-to" value="${settings.get('quietTo') || '09:00'}">
+                <span class="quiet-note" id="quiet-note"></span>
+              </div>
+            </div>
+            <label class="settings-toggle">
+              <input type="checkbox" id="setting-quiet" ${settings.get('quietHours') !== false ? 'checked' : ''}>
+              <span class="settings-slider"></span>
+            </label>
+          </div>
+
+          <div class="settings-item">
+            <div class="settings-item-info">
               <div class="settings-item-label">${i18n.t('settings.suggestCategories')}</div>
               <div class="settings-item-description">${i18n.t('settings.suggestCategoriesDesc')}</div>
             </div>
@@ -604,6 +621,47 @@ class SettingsPage {
       });
     }
 
+    // Тихие часы
+    const quietToggle = document.getElementById('setting-quiet');
+    const quietFrom = document.getElementById('setting-quiet-from');
+    const quietTo = document.getElementById('setting-quiet-to');
+    const quietNote = document.getElementById('quiet-note');
+
+    const обновитьПодпись = () => {
+      if (!quietNote) return;
+      const включено = settings.get('quietHours') !== false;
+      quietNote.textContent = включено
+        ? window.QuietHours.describe(settings.get('quietFrom'), settings.get('quietTo'))
+        : 'Выключено';
+    };
+    обновитьПодпись();
+
+    if (quietToggle) {
+      quietToggle.addEventListener('change', (e) => {
+        settings.set('quietHours', e.target.checked);
+        обновитьПодпись();
+        window.utils.showToast(
+          e.target.checked ? i18n.t('settings.enabled') : i18n.t('settings.disabled'), 'info');
+      });
+    }
+
+    // Пустое или неразобранное время не сохраняем: иначе тишина
+    // выключилась бы молча, а пользователь думал бы, что она работает
+    const сохранитьВремя = (input, key) => {
+      if (!input) return;
+      input.addEventListener('change', () => {
+        if (window.QuietHours.toMinutes(input.value) === null) {
+          input.value = settings.get(key);
+          window.utils.showToast('Время указано неверно', 'warning');
+          return;
+        }
+        settings.set(key, input.value);
+        обновитьПодпись();
+      });
+    };
+    сохранитьВремя(quietFrom, 'quietFrom');
+    сохранитьВремя(quietTo, 'quietTo');
+
     // Подсказки о выгодных категориях
     const suggestToggle = document.getElementById('setting-suggest');
     if (suggestToggle) {
@@ -923,17 +981,37 @@ class SettingsPage {
       backupExportBtn.addEventListener('click', async () => {
         try {
           const data = await window.Backup.collect(new Date().toISOString());
-          const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-          const url = URL.createObjectURL(blob);
-
-          const a = document.createElement('a');
-          a.href = url;
           const день = new Date().toISOString().slice(0, 10);
-          a.download = `watchtwitch-backup-${день}.json`;
-          a.click();
 
-          URL.revokeObjectURL(url);
-          window.utils.showToast('Копия сохранена: ' + window.Backup.describe(data), 'success');
+          const сохранить = (содержимое, тип, имя) => {
+            const blob = new Blob([содержимое], { type: тип });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = имя;
+            a.click();
+            URL.revokeObjectURL(url);
+          };
+
+          сохранить(JSON.stringify(data, null, 2), 'application/json',
+            `watchtwitch-backup-${день}.json`);
+
+          // Заодно сроки кампаний для обычного календаря: приложение знает,
+          // когда что заканчивается, но это знание жило только внутри него
+          const известные = await window.CampaignHistory.loadKnown();
+          const календарь = window.IcsExport.build(известные);
+
+          if (календарь.events > 0) {
+            сохранить(календарь.text, 'text/calendar',
+              `watchtwitch-drops-${день}.ics`);
+          }
+
+          const итог = window.Backup.describe(data) +
+            (календарь.events > 0
+              ? `; сроков в календарь: ${календарь.events}`
+              : '; сроков календаря пока нет');
+
+          window.utils.showToast('Копия сохранена: ' + итог, 'success');
         } catch (error) {
           console.error('[Копия] Не удалось сохранить:', error);
           window.utils.showToast('Не удалось сохранить копию', 'error');
