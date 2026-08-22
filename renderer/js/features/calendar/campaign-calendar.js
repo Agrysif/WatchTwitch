@@ -64,9 +64,9 @@ class CampaignCalendar {
     return 'later';
   }
 
-  /** Порядок групп на экране: сначала то, что горит. */
+  /** Порядок групп на экране: сначала то, что горит, завершённые в конце. */
   static get ORDER() {
-    return ['today', 'tomorrow', 'week', 'later', 'upcoming'];
+    return ['today', 'tomorrow', 'week', 'later', 'upcoming', 'ended'];
   }
 
   static get TITLES() {
@@ -75,7 +75,8 @@ class CampaignCalendar {
       tomorrow: 'Заканчивается завтра',
       week: 'На этой неделе',
       later: 'Ещё не скоро',
-      upcoming: 'Скоро начнётся'
+      upcoming: 'Скоро начнётся',
+      ended: 'Уже завершились'
     };
   }
 
@@ -86,13 +87,15 @@ class CampaignCalendar {
    * сортировка по сроку — ближайшее вверху; у ещё не начавшихся по дате
    * начала, там важно противоположное.
    */
-  static group(campaigns, now = Date.now()) {
+  static group(campaigns, now = Date.now(), options = {}) {
     const groups = {};
     for (const key of CampaignCalendar.ORDER) groups[key] = [];
 
     for (const campaign of campaigns || []) {
       const bucket = CampaignCalendar.bucketFor(campaign, now);
-      if (bucket === 'ended') continue;
+      // Завершённые показываем, только если об этом попросили настройкой:
+      // по умолчанию они лишь мешают
+      if (bucket === 'ended' && !options.includeEnded) continue;
       groups[bucket].push(campaign);
     }
 
@@ -103,6 +106,9 @@ class CampaignCalendar {
     for (const key of CampaignCalendar.ORDER) {
       groups[key].sort((a, b) => timeOf(a, key === 'upcoming') - timeOf(b, key === 'upcoming'));
     }
+
+    // Среди завершённых интереснее те, что кончились только что
+    groups.ended.reverse();
 
     return groups;
   }

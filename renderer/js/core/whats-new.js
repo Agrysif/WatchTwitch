@@ -78,17 +78,26 @@ class WhatsNew {
 
     document.body.appendChild(overlay);
 
-    const close = () => overlay.remove();
-    overlay.querySelector('#whats-new-close').addEventListener('click', close);
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
-
-    const onKey = (e) => {
-      if (e.key === 'Escape') {
-        close();
-        document.removeEventListener('keydown', onKey);
-      }
+    // Обработчики снимаются одним махом при любом способе закрытия.
+    // Раньше клавиатурный слушатель убирался только внутри себя, по
+    // Escape: закрыв окно крестиком или щелчком мимо, пользователь
+    // оставлял на документе живой обработчик со ссылкой на уже удалённое
+    // окно — и так при каждом открытии.
+    const abort = new AbortController();
+    const close = () => {
+      abort.abort();
+      overlay.remove();
     };
-    document.addEventListener('keydown', onKey);
+
+    overlay.querySelector('#whats-new-close')
+      .addEventListener('click', close, { signal: abort.signal });
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) close();
+    }, { signal: abort.signal });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') close();
+    }, { signal: abort.signal });
 
     await this.renderBody(options);
   }

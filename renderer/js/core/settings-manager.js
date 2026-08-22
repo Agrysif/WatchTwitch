@@ -222,6 +222,12 @@ class SettingsManager {
     } else {
       document.body.classList.remove('no-animations');
     }
+
+    // Компактный режим. Класс вешается ПОСЛЕ строки с темой: присваивание
+    // className выше затирает всё остальное. Переключатель в настройках
+    // вешал этот класс сам, но при следующем запуске он не возвращался —
+    // режим включался и молча пропадал.
+    document.body.classList.toggle('compact-mode', this.get('compactMode') === true);
   }
 
   /**

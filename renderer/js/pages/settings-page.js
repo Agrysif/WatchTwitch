@@ -756,6 +756,8 @@ class SettingsPage {
     if (showExpiredToggle) {
       showExpiredToggle.addEventListener('change', (e) => {
         settings.set('showExpiredCampaigns', e.target.checked);
+        // Календарь может быть уже открыт — показываем изменение сразу
+        window.calendarPage?.render?.();
         window.utils.showToast(
           e.target.checked ? i18n.t('settings.showExpiredCampaigns') : i18n.t('settings.showExpiredCampaigns'),
           'info'
