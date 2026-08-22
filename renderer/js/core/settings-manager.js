@@ -22,6 +22,12 @@ class SettingsManager {
       notifications: true,
       toastNotifications: true,
       notifyOnDropClaimed: true,
+
+      // Тихие часы: включены по умолчанию намеренно — про эту настройку
+      // узнаёшь ровно тогда, когда она уже разбудила
+      quietHours: true,
+      quietFrom: '23:00',
+      quietTo: '09:00',
       
       // Авто-получение
       autoClaimDrops: true,

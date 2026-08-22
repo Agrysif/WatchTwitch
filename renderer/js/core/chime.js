@@ -47,6 +47,12 @@ class Chime {
     // ней не стояло ни одного звука. Оживляем её, а не заводим вторую
     if (window.settings?.get('soundEnabled') === false) return;
 
+    // Ночью фарминг идёт сам, и сигнал о награде только будит
+    if (window.QuietHours?.active()) {
+      console.log('[Звук] Тихие часы — сигнал пропущен');
+      return;
+    }
+
     const ctx = this.ensureContext();
     if (!ctx) return;
 

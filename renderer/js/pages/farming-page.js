@@ -5458,6 +5458,14 @@ window.showDropNotification = function(dropName, gameName, dropIcon = null) {
  */
 window.notifyFarmingEvent = function(title, body) {
   if (window.settings && window.settings.get('notifications') === false) return;
+
+  // В тихие часы событие всё равно происходит и попадает в журнал —
+  // молчит только само уведомление
+  if (window.QuietHours?.active()) {
+    console.log('[Уведомления] Тихие часы, не показываю:', title);
+    return;
+  }
+
   window.electronAPI?.showNotification?.(title, body);
 };
 
