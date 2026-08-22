@@ -4,6 +4,9 @@
 - **Категории перестали пропадать.** Полный список кампаний Twitch отдаёт только после запуска стрима; до этого приложение видело лишь начатые кампании — полтора десятка вместо сотни с лишним — и вычищало все остальные категории как «без дропсов». Именно так исчезали разом десятки только что добавленных. Теперь при неполных данных не удаляется ничего, а категория уходит только после трёх проверок подряд
 - **«Начать фарминг» работает, когда первая категория пуста.** Раньше проверялась ровно одна категория, и если у неё не было живых стримов, запуск молча заканчивался. С закреплённой категорией это ломало фарминг совсем: закреплённая идёт первой, и когда дропсы в ней кончались, кнопка переставала делать что-либо
 - **После остановки не остаётся мусора.** Прогресс дропсов и полоска в сайдбаре продолжали обновляться при выключенном фарминге; вдобавок оттуда же могла сама смениться категория
+- **Тихие часы.** Ночью приложение молчит: ни звука, ни уведомлений. Включено по умолчанию, промежуток по умолчанию с 23:00 до 9:00 и настраивается
+- **Упущенные награды** в статистике: видно не просто сколько наград не добрано, а на чём именно теряется время — до одних не дотянули двадцать минут, до других не хватало десяти часов. Первые выделены
+- **Сроки кампаний в обычный календарь.** Кнопка «Сохранить копию всего» отдаёт заодно файл .ics: окончания кампаний попадают в календарь на телефоне или в почте, с напоминанием за час
 - **Компактный режим наконец работает.** Переключатель был, но правила оформления под него целились в элементы, которых в приложении давно нет, а после перезапуска режим молча слетал
 - **Показ завершённых кампаний тоже заработал.** Twitch выбрасывает закончившиеся кампании из ответа, поэтому приложение теперь помнит их само и показывает отдельной группой в конце календаря
 - Окна «Что нового» и просмотра дропса больше не оставляют после себя обработчики: раньше каждое открытие добавляло по одному навсегда
@@ -37,6 +40,9 @@
 - **Categories stopped disappearing.** Twitch returns the full campaign list only after a stream has been started; before that the app saw just the campaigns already in progress — a dozen or so instead of well over a hundred — and wiped every other category as having no drops. That is how dozens of freshly added ones vanished at once. Now nothing is removed while the data is incomplete, and a category only goes after three consecutive checks
 - **"Start farming" works when the first category is empty.** Only one category used to be tried, and if it had no live streams the launch silently ended. With a pinned category this broke farming entirely: a pinned one always comes first, so once its drops ran out the button stopped doing anything
 - **Stopping leaves nothing behind.** The drops panel and the sidebar bar kept refreshing while farming was off, and the category could even switch on its own
+- **Quiet hours.** At night the app stays silent — no sounds, no notifications. On by default, 23:00 to 09:00, adjustable
+- **Missed rewards** in statistics: not just how many were left unfinished, but where the time actually goes — some were twenty minutes short, others needed ten more hours. The near misses are highlighted
+- **Campaign deadlines in your own calendar.** The "Save full backup" button also produces an .ics file, so campaign endings land in your phone or mail calendar with an hour's reminder
 - **Compact mode finally does something.** The toggle existed, but its styling targeted elements the app no longer has, and the mode silently reset on restart
 - **Showing finished campaigns works too.** Twitch drops expired campaigns from its response, so the app now remembers them itself and lists them as a separate group at the end of the calendar
 - The "What's new" and drop detail windows no longer leave listeners behind — each opening used to add one permanently
