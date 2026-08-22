@@ -105,15 +105,38 @@ window.drawViewersChart = function (ctx, history) {
   ctx.stroke();
   ctx.shadowBlur = 0;
   
-  // Заголовок
+  // Заголовок со значком.
+  //
+  // Раньше здесь стоял эмодзи 📊: система подставляет под него свой
+  // цветной шрифт, и на тёмном фоне он выпадал из оформления. Рисуем
+  // столбики сами — тем же цветом, что и остальное.
+  const title = 'Зрители';
   ctx.font = '700 16px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-  ctx.textAlign = 'center';
+  ctx.textAlign = 'left';
   ctx.fillStyle = '#7c5cff';
-  ctx.fillText('📊 Зрители', width / 2, outerPadding + 18);
+
+  const titleWidth = ctx.measureText(title).width;
+  const iconWidth = 14;
+  const iconGap = 7;
+  const blockLeft = (width - (iconWidth + iconGap + titleWidth)) / 2;
+  const baseline = outerPadding + 18;
+
+  // Три столбика разной высоты
+  const bars = [
+    { dx: 0, h: 6 },
+    { dx: 5, h: 10 },
+    { dx: 10, h: 14 }
+  ];
+  for (const bar of bars) {
+    ctx.fillRect(blockLeft + bar.dx, baseline - bar.h, 3, bar.h);
+  }
+
+  ctx.fillText(title, blockLeft + iconWidth + iconGap, baseline);
 
   // Нижняя панель со значениями
   const barWidth = width - outerPadding * 2;
-  const barHeight = 30;
+  // Панель со значениями была тесной: подпись и число почти слипались
+  const barHeight = 44;
   const barX = outerPadding;
   const barY = height - outerPadding - barHeight;
   const segment = barWidth / 3;
@@ -160,9 +183,9 @@ window.drawViewersChart = function (ctx, history) {
     ctx.textAlign = 'center';
     ctx.font = '11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
     ctx.fillStyle = '#8f9099';
-    ctx.fillText(item.label, cx, barY + 12);
-    ctx.font = 'bold 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.fillText(item.label, cx, barY + 16);
+    ctx.font = 'bold 15px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
     ctx.fillStyle = item.color;
-    ctx.fillText(item.value, cx, barY + 26);
+    ctx.fillText(item.value, cx, barY + 35);
   });
 };

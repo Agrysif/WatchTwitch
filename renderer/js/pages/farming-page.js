@@ -56,10 +56,6 @@ class FarmingPage {
     this.autoDropsModeEnabled = await Storage.get('autoDropsModeEnabled', this.categories.some(cat => cat.autoDrops === true));
     this.renderCategories();
     this.setupEventListeners();
-    this.startAutoUpdate();
-
-    // Загружаем подписанные каналы и добавляем их в фарминг
-    await this.loadAndAddSubscribedChannels();
 
     // Завершаем сессию при закрытии приложения (сохраняем активную сессию).
     // Подписка одна на всё приложение: страница пересоздаётся при каждой
@@ -78,8 +74,24 @@ class FarmingPage {
       });
     }
 
-    // Восстанавливаем активную сессию после перезапуска/переключения вкладок
+    // Восстанавливаем активную сессию ПЕРВЫМ делом.
+    //
+    // Раньше перед этим запускались периодические проверки, а следом шла
+    // загрузка подписанных каналов — десятки запросов к Twitch. Пока она
+    // тянулась, страница не знала, что именно фармит: проверки дропсов
+    // работали с пустой категорией, заключали «дропсов нет» и через три
+    // круга переключали категорию. Со стороны это выглядело так, будто
+    // приложение забыло про Overwatch, стоило уйти на другую вкладку.
     await this.resumeActiveSession();
+
+    // Только теперь заводим периодические проверки: им нужна
+    // восстановленная категория
+    this.startAutoUpdate();
+
+    // Подписанные каналы подгружаются в фоне: это десятки запросов, и
+    // ждать их, блокируя остальное, незачем
+    this.loadAndAddSubscribedChannels()
+      .catch(e => console.warn('[Фарминг] Подписанные каналы не загрузились:', e?.message));
 
     // Если есть авто-категории, автоматически запускаем фарминг (если не восстановили активную)
     if (!this.activeSessionResumed && this.categories.some(cat => cat.enabled) && (!window.streamingManager || !window.streamingManager.isFarmingActive || !window.streamingManager.isFarmingActive())) {
@@ -607,7 +619,9 @@ class FarmingPage {
       const nextStreamBtn = document.getElementById('next-stream-btn');
       const prevCategoryBtn = document.getElementById('prev-category-btn');
       const nextCategoryBtn = document.getElementById('next-category-btn');
-      const toggleChatBtn = document.getElementById('toggle-chat-btn');
+      // Кнопка чата убрана: она открывала окно, которое почти всегда
+      // сообщало «нет активного стрима». Сам чат по-прежнему работает
+      // фоном и собирает бонусные сундуки — видимым он и не был нужен.
 
       if (dropsFilterBtn) {
         on(dropsFilterBtn, 'click', () => {
@@ -685,13 +699,6 @@ class FarmingPage {
         });
       }
 
-      // Показать/скрыть чат
-      if (toggleChatBtn) {
-        on(toggleChatBtn, 'click', () => {
-          this.toggleChat();
-        });
-      }
-      
       // Подписаться на канал
       const followBtn = document.getElementById('follow-channel-btn');
       if (followBtn) {
@@ -780,6 +787,46 @@ class FarmingPage {
     }
   }
 
+  /**
+   * Проверяет, идёт ли ещё восстановленный эфир.
+   *
+   * Возобновлять сессию на давно погасшем канале незачем: в сайдбаре шёл
+   * бы таймер и капал трафик впустую. Но и держать из-за этой проверки
+   * всю страницу тоже нельзя, поэтому она идёт фоном.
+   *
+   * Один неудачный ответ ничего не решает — Twitch отвечает неровно, а
+   * бросать рабочую сессию из-за сетевой заминки хуже, чем подождать.
+   */
+  async verifyResumedStream(stream) {
+    if (!stream?.login || !window.electronAPI?.getStreamStats) return;
+
+    let stats = null;
+    for (let попытка = 1; попытка <= 2; попытка++) {
+      try {
+        stats = await window.electronAPI.getStreamStats(stream.login);
+      } catch (e) {
+        stats = null;
+      }
+      if (stats) break;
+      if (попытка === 1) await new Promise(r => setTimeout(r, 4000));
+    }
+
+    if (stats) {
+      if (stats.title) this.currentStream = { ...this.currentStream, title: stats.title };
+      return;
+    }
+
+    console.log('[Сессия] Восстановленный канал не в эфире:', stream.login);
+    await Storage.delete('activeSession').catch(() => {});
+
+    // Категорию менять только если пользователь не запускал её сам
+    if (this.isManualCategoryActive()) {
+      this.showSwitchOffer();
+      return;
+    }
+    await this.switchToNextEnabledCategory();
+  }
+
   async resumeActiveSession() {
     try {
       const sessionState = await Storage.get('activeSession', null);
@@ -797,26 +844,17 @@ class FarmingPage {
         title: sessionState.streamTitle || ''
       };
 
-      // Проверяем, идёт ли ещё тот стрим.
-      //
-      // Раньше сессия восстанавливалась без этой проверки: после запуска
-      // приложения в сайдбаре шёл таймер и капал трафик, хотя канал давно
-      // офлайн и смотреть нечего. Возобновлять имеет смысл только реально
-      // идущий эфир — иначе пусть отработает обычный подбор категории.
-      if (stream.login && window.electronAPI?.getStreamStats) {
-        const stats = await window.electronAPI.getStreamStats(stream.login);
-        if (!stats) {
-          console.log('[Сессия] Сохранённый канал офлайн, сессию не восстанавливаем:', stream.login);
-          await Storage.delete('activeSession').catch(() => {});
-          return;
-        }
-        stream.title = stats.title || stream.title;
-      }
-
       // Восстанавливаем время сессии
       this.sessionStartTime = sessionState.startTime || Date.now();
       this.currentCategory = category;
       this.currentStream = stream;
+
+      // Ручной запуск переживает переход между вкладками
+      this.manualCategoryId = sessionState.manualCategoryId || null;
+      this.manualPlayLockCategoryId = sessionState.manualPlayLockCategoryId || null;
+      if (this.manualCategoryId) {
+        console.log('[Сессия] Категория запущена вручную — переключать её не будем:', category.name);
+      }
       this.dropsMissingChecks = 0;
       this.activeSessionResumed = true;
 
@@ -831,7 +869,15 @@ class FarmingPage {
       this.showFarmingState();
 
       this.updateSessionInfo();
-      
+
+      // Проверку эфира делаем ПОСЛЕ восстановления и не дожидаясь её.
+      //
+      // Раньше она стояла до всего остального, и страница молчала о том,
+      // что фармит, пока Twitch отвечал. Возвращаясь на вкладку,
+      // пользователь видел приложение, которое «забыло» про категорию, —
+      // а проверки дропсов в это время уже шли и делали свои выводы.
+      this.verifyResumedStream(stream);
+
       // Очищаем старый интервал если он существует
       if (this.sessionInterval) {
         clearInterval(this.sessionInterval);
@@ -869,6 +915,12 @@ class FarmingPage {
       startTime: this.sessionStartTime || Date.now(),
       categoryId: category.id,
       categoryName: category.name,
+      // Отметка ручного запуска жила только на странице, а страница
+      // пересоздаётся при каждом переходе между вкладками. Достаточно было
+      // уйти и вернуться, чтобы приложение забыло, что категорию выбрали
+      // руками, и снова начало переключать её само.
+      manualCategoryId: this.manualCategoryId || null,
+      manualPlayLockCategoryId: this.manualPlayLockCategoryId || null,
       streamLogin: stream.login,
       streamDisplayName: stream.displayName,
       streamTitle: stream.title || ''
@@ -2883,7 +2935,17 @@ class FarmingPage {
           currentGameName = gameEl.textContent.replace(/^\s*Игра:\s*/i, '').trim();
         }
       }
-      if (!currentGameName) return { hasDrops: false };
+      if (!currentGameName) {
+        // Сессия идёт, но страница ещё не знает, что фармит — например,
+        // только что вернулись на вкладку. Это незнание, а не отсутствие
+        // дропсов: считать его пропуском нельзя, иначе через три круга
+        // приложение сменит категорию на ровном месте.
+        if (this.sessionStartTime) {
+          console.log('[Дропсы] Категория ещё не восстановлена — проверку пропускаю');
+          return { hasDrops: true, unknown: true };
+        }
+        return { hasDrops: false };
+      }
 
       const result = await window.electronAPI.fetchDropsInventory();
       if (!result || !result.campaigns) return { hasDrops: false };
