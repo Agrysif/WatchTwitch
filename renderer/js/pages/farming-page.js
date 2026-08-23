@@ -3038,6 +3038,11 @@ class FarmingPage {
 
       // Порядок важен: сначала забираем готовые награды, потом решаем,
       // осталось ли ради чего смотреть дальше
+      // Пополняем память кампаний прямо во время фарминга: тогда календарь
+      // будет полным, даже если его ни разу не открывали при живом стриме
+      window.CampaignHistory?.remember(result.campaigns)
+        .catch(e => console.warn('[Дропсы] Память кампаний:', e?.message));
+
       this.updateCategoryValues(result.campaigns);
       this.renderCategorySuggestion(result.campaigns);
       await this.checkCategoryStillWorthwhile(matched);

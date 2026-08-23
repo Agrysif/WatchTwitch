@@ -79,17 +79,33 @@ class CalendarPage {
       if (key && !byId.has(key)) byId.set(key, campaign);
     }
 
-    this.campaigns = [...byId.values()];
+    const живые = [...byId.values()];
 
     // Запоминаем увиденное: Twitch выбрасывает закончившиеся кампании из
     // ответа, и без своей памяти показать их было бы неоткуда
-    await window.CampaignHistory.remember(this.campaigns);
+    await window.CampaignHistory.remember(живые);
+
+    // Дополняем памятью приложения.
+    //
+    // Оба запроса работают только с cookie-токеном и Client-Integrity, а те
+    // появляются лишь после того, как в приложении запустится стрим. Без
+    // него календарь оказывался пустым — «кампании не загрузились», хотя
+    // приложение прекрасно знало о сотне с лишним из прошлых запусков.
+    // Живые данные главнее: память лишь добавляет то, чего в них нет.
+    const память = await window.CampaignHistory.loadKnown();
+    for (const campaign of память) {
+      const key = campaign?.id || this.gameName(campaign);
+      if (key && !byId.has(key)) byId.set(key, campaign);
+    }
+
+    this.campaigns = [...byId.values()];
+    this.liveCount = живые.length;
     this.ended = await window.CampaignHistory.loadEnded();
 
     this.loading = false;
 
     console.log('[Календарь] Кампаний:', this.campaigns.length,
-      '(инвентарь:', inventory.length + ', список:', dashboard.length + ')');
+      '(живых:', живые.length + ', из памяти:', (this.campaigns.length - живые.length) + ')');
 
     this.render();
   }
@@ -145,9 +161,14 @@ class CalendarPage {
 
     if (summary) {
       const мои = this.campaigns.filter(c => this.isMine(c)).length;
+      const изПамяти = Math.max(0, this.campaigns.length - (this.liveCount || 0));
+
       summary.innerHTML = this.campaigns.length === 0
         ? ''
-        : `Кампаний видно: <b>${this.campaigns.length}</b> · в вашем списке: <b>${мои}</b>`;
+        : `Кампаний видно: <b>${this.campaigns.length}</b> · в вашем списке: <b>${мои}</b>` +
+          (изПамяти > 0
+            ? ` <span class="calendar-warn">${изПамяти} из памяти приложения — запустите стрим, чтобы обновить</span>`
+            : '');
     }
 
     if (visible.length === 0) {
@@ -156,7 +177,7 @@ class CalendarPage {
           ${this.loading
             ? 'Загружаю кампании…'
             : (this.campaigns.length === 0
-                ? 'Кампании не загрузились. Запустите стрим — Twitch отдаёт список после этого.'
+                ? 'Кампаний пока нет. Twitch отдаёт список только после того, как в приложении запустится стрим — запустите фарминг, и календарь наполнится.'
                 : 'Под этот фильтр ничего не подходит')}
         </div>`;
       return;
