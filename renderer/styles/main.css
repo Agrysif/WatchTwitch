@@ -3589,11 +3589,29 @@ body.no-animations * {
   padding-right: 24px;
 }
 
+/* Подпись переносится по словам, а не обрезается: «Установить и
+   перезагрузить» в одну строку не влезает ни при каких отступах, а
+   обрезанная подпись хуже двухстрочной.
+   Окно обновления строится в updater.js с классом .update-actions —
+   правила, привязанные только к .update-modal-actions из разметки
+   index.html, до настоящей кнопки не доставали вовсе. */
+.update-actions .update-btn,
+.update-modal-actions .update-btn {
+  white-space: normal;
+  min-height: 46px;
+  line-height: 1.25;
+  padding-left: 20px;
+  padding-right: 20px;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.update-actions .update-btn span,
 .update-modal-actions .update-btn span {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  text-align: center;
 }
 
 /* Разметка в окне «что нового»: важные пункты выделены звёздочками */

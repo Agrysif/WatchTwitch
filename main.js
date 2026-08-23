@@ -646,9 +646,49 @@ ipcMain.on('check-for-updates', async () => {
   }
 });
 
+/**
+ * Установка обновления.
+ *
+ * Перед запуском установщика приложение нужно разобрать до конца. Иначе
+ * NSIS натыкается на занятые файлы и говорит «Не удалось удалить старые
+ * файлы приложения»: закрытие обычным путём оставляет и трей, и скрытые
+ * окна (уведомление о награде, окно отписки), и перехваченные глобальные
+ * клавиши, а окно приложения вдобавок умеет прятаться в трей вместо
+ * закрытия — процесс продолжает жить и держать файлы.
+ */
 ipcMain.on('install-update', () => {
-  console.log('[IPC] Установка обновления...');
-  autoUpdater.quitAndInstall(true, true);
+  console.log('[IPC] Готовлюсь к установке обновления…');
+
+  app.isQuitting = true;
+
+  try { unregisterShortcuts(); } catch (e) { /* не повод останавливаться */ }
+
+  try {
+    // Переменная объявлена без значения, поэтому проверяем именно число
+    if (typeof powerSaveBlockerId === 'number' && powerSaveBlocker.isStarted(powerSaveBlockerId)) {
+      powerSaveBlocker.stop(powerSaveBlockerId);
+    }
+  } catch (e) { /* не повод останавливаться */ }
+
+  try {
+    if (tray && !tray.isDestroyed()) tray.destroy();
+    tray = null;
+  } catch (e) { /* не повод останавливаться */ }
+
+  // Снимаем обработчики закрытия: у главного окна на 'close' висит
+  // сворачивание в трей, и без этого оно просто спрячется
+  for (const win of BrowserWindow.getAllWindows()) {
+    try {
+      win.removeAllListeners('close');
+      win.destroy();
+    } catch (e) { /* окно могло уже закрыться */ }
+  }
+
+  // Небольшая пауза: дать процессам отрисовки закрыться и отпустить файлы
+  setTimeout(() => {
+    console.log('[IPC] Запускаю установщик');
+    autoUpdater.quitAndInstall(true, true);
+  }, 800);
 });
 
 ipcMain.on('download-update', async () => {
