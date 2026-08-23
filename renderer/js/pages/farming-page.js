@@ -2270,6 +2270,7 @@ class FarmingPage {
         return;
       }
       console.warn('[Фарминг] Прошлый запуск завис, снимаю защёлку');
+      this.setStartButtonBusy(false);
     }
 
     window._farmingStarting = true;
@@ -2290,10 +2291,19 @@ class FarmingPage {
     }
   }
 
-  /** Показывает, что приложение занято поиском стрима. */
+  /**
+   * Показывает, что приложение занято поиском стрима.
+   *
+   * Возврат в рабочий вид подстрахован таймером. Раньше он делался только
+   * в finally: если запуск подвисал, кнопка навсегда оставалась серой с
+   * подписью «Ищем стрим…», и нажать её было уже нельзя — приходилось
+   * перезапускать приложение.
+   */
   setStartButtonBusy(busy) {
     const btn = document.getElementById('sidebar-start-farming-btn');
     if (!btn) return;
+
+    clearTimeout(this._startButtonTimer);
 
     const label = btn.querySelector('span');
     if (busy) {
@@ -2303,6 +2313,13 @@ class FarmingPage {
         if (!this._startButtonLabel) this._startButtonLabel = label.textContent;
         label.textContent = 'Ищем стрим…';
       }
+
+      // Поиск ограничен и по числу категорий, и по времени. Всё, что
+      // дольше минуты, — зависание, и кнопку надо вернуть пользователю
+      this._startButtonTimer = setTimeout(() => {
+        console.warn('[Фарминг] Поиск затянулся, разблокирую кнопку');
+        this.setStartButtonBusy(false);
+      }, 60000);
     } else {
       btn.disabled = false;
       btn.style.opacity = '1';
@@ -2484,7 +2501,16 @@ class FarmingPage {
       new Promise(resolve => setTimeout(() => resolve(null), ms))
     ]);
 
+    // Общий срок на весь перебор: восемь категорий по двенадцать секунд —
+    // это полторы минуты, и всё это время кнопка выглядит занятой впустую
+    const deadline = Date.now() + 45000;
+
     for (const candidate of attempts) {
+      if (Date.now() > deadline) {
+        console.warn('[Фарминг] Перебор затянулся, останавливаюсь');
+        break;
+      }
+
       const found = await withTimeout(window.electronAPI.getStreamsWithDrops(candidate.name), 12000);
       if (found === null) console.warn('[Фарминг] Категория не ответила вовремя:', candidate.name);
       if (found && found.length > 0) {
