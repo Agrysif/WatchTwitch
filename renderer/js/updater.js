@@ -277,10 +277,13 @@ class UpdateManager {
 
         <div class="update-actions">
           <button class="update-btn update-btn-secondary" id="update-later-btn" onclick="updateManager.closeWindow()">
-            Позже
+            <span>Позже</span>
           </button>
+          <!-- Подпись обязана лежать в span: смена подписи ищет именно его,
+               а правила переноса привязаны к нему же. Без span длинное
+               «Установить и перезагрузить» вылезало за края кнопки. -->
           <button class="update-btn update-btn-primary" id="update-download-btn" onclick="updateManager.downloadUpdate()">
-            Загрузить и установить
+            <span>Загрузить и установить</span>
           </button>
         </div>
       </div>
