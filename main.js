@@ -195,6 +195,31 @@ const getFollowersFromIvr = (login) => new Promise((resolve) => {
   req.on('error', () => resolve(null));
   req.end();
 });
+/**
+ * Сеть безопасности главного процесса.
+ *
+ * Электрон по умолчанию показывает окно «A JavaScript error occurred» и
+ * дальше процесс уже ничего не делает: фарминг встаёт до утра из-за одной
+ * необработанной ошибки где-нибудь в уведомлении о награде. Именно так и
+ * случилось — ночь ушла впустую.
+ *
+ * Ошибку не прячем: пишем её целиком и сообщаем в окно, если оно живо.
+ * Молчаливое проглатывание было бы хуже падения — просто цена падения
+ * здесь слишком велика.
+ */
+process.on('uncaughtException', (error) => {
+  console.error('[Главный процесс] Необработанная ошибка:', error);
+  try {
+    sendToMain('main-process-error', String(error?.message || error));
+  } catch (e) {
+    // окна может не быть — это не повод падать ещё раз
+  }
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[Главный процесс] Необработанный отказ промиса:', reason);
+});
+
 let mainWindow;
 
 /**
@@ -2276,16 +2301,21 @@ function createDropNotification(dropName, gameName, dropIcon) {
   // Формируем URL с параметрами - передаем напрямую через IPC
   dropNotificationWindow.loadFile('renderer/notification.html');
 
-  dropNotificationWindow.once('ready-to-show', () => {
-    dropNotificationWindow.show();
+  // Ссылку держим свою, а не глобальную: окно живёт несколько секунд и
+  // закрывается само, обработчик 'closed' обнуляет dropNotificationWindow.
+  // Если это случится до 'ready-to-show' — а так бывает при подряд идущих
+  // наградах, — обращение к глобальной ссылке уронит весь главный процесс.
+  // Ровно это и произошло: приложение упало ночью, и фарминг встал до утра.
+  const notificationWindow = dropNotificationWindow;
 
-    // Картинка качается асинхронно, а окно уведомления живёт несколько
-    // секунд и закрывается само. Ответ (или ошибка TLS) нередко приходит
-    // уже после закрытия, когда ссылка обнулена обработчиком 'closed', —
-    // обращение к webContents роняло весь главный процесс с
-    // «Cannot read properties of null». Держим ссылку на своё окно и
-    // проверяем, живо ли оно.
-    const targetWindow = dropNotificationWindow;
+  dropNotificationWindow.once('ready-to-show', () => {
+    if (!notificationWindow || notificationWindow.isDestroyed()) {
+      console.log('[Main] Окно уведомления закрылось до показа');
+      return;
+    }
+    notificationWindow.show();
+
+    const targetWindow = notificationWindow;
     const sendToNotification = (dropIconData) => {
       if (!targetWindow || targetWindow.isDestroyed()) {
         console.log('[Main] Окно уведомления уже закрыто, картинка не нужна');
