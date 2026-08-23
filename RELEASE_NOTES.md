@@ -1,24 +1,11 @@
 ## 🇷🇺 Исправлено
 
-- **Фарминг больше не сбивается при переходе между вкладками.** Вернувшись на «Фарминг», приложение «забывало», что смотрит: сообщало, что дропсов у категории нет, и переключалось на другую. Причина — восстановление сессии стояло в очереди после загрузки подписанных каналов, а это десятки запросов к Twitch. Теперь сессия восстанавливается первым делом, за пару секунд
-- **Кнопка Play у категории больше не молчит.** Запрос стримов не был ничем прикрыт: обрыв связи убивал запуск на месте, и после «Запуск категории…» не происходило ничего. Теперь у запроса есть срок, а неудача называется вслух
-- **Убрано уведомление «Фарминг остановлен» при запуске категории** — оно появлялось рядом с «Запуск категории» и выглядело как отказ, хотя означало лишь смену стрима
-- **Категория больше не бросается недоработанной.** Решение уйти принималось по одному ответу Twitch, а он приходит неровно: неполный список выглядел как «брать нечего». Теперь нужно подтверждение на следующей проверке
-- **Категория, запущенная вручную, остаётся запущенной.** Отметка ручного запуска жила только на странице, а та пересоздаётся при каждом переходе: достаточно было уйти и вернуться, чтобы приложение снова начало переключать категорию само
-- **Кнопка чата убрана** — она открывала окно, почти всегда сообщавшее «нет активного стрима». Сам чат работает фоном и по-прежнему собирает бонусные сундуки
-- **Один процент выполнения вместо трёх разных.** Панель под стримом показывала среднее по наградам, сайдбар — пройденный путь по времени, а список категорий считал по-своему: под одним названием «дропсы» выходили 63 % и 29 % одновременно. Оставлен счёт по времени просмотра — тот, что в сайдбаре
-- **Кнопка «Проверить обновления» отвечает.** Раньше на свежей версии она не давала никакого отклика — событие «обновлений нет» до интерфейса не доходило, и кнопка казалась сломанной. Теперь сообщает «У вас последняя версия», а ошибка проверки больше не гаснет молча
-
-- **Подписки больше не пропадают при возврате на вкладку.** Сохранённый список показывается сразу, а обновление идёт фоном — раньше сначала включался спиннер, прятавший список целиком, и всё собиралось заново вместе с аватарками. Если данные не изменились, список вообще не перерисовывается
+- **Приложение больше не падает во время ночного фарминга.** Окно уведомления о награде закрывается само через несколько секунд, и если следующая награда приходила в этот момент, приложение обращалось к уже закрытому окну — главный процесс падал целиком, показывал окно с ошибкой JavaScript, и фарминг стоял до утра
+- **Необработанная ошибка больше не останавливает приложение.** Раньше любая такая ошибка означала конец сессии; теперь она записывается в журнал, а работа продолжается
+- **Кнопка «Начать фарминг» перестала залипать.** Если поиск стрима подвисал, кнопка навсегда оставалась серой с подписью «Ищем стрим…» и не нажималась — помогал только перезапуск. Теперь она возвращается в рабочий вид сама, а сам поиск ограничен по времени
 
 ## 🇬🇧 Fixed
 
-- **Farming no longer breaks when you switch tabs.** Coming back to Farming, the app "forgot" what it was watching: it reported the category had no drops and switched away. Session restore was queued behind loading subscribed channels — dozens of Twitch requests. It now happens first, within a couple of seconds
-- **A category's Play button no longer goes silent.** The stream request had no protection: a network drop killed the launch on the spot and nothing followed "Starting category…". It now has a timeout and says what went wrong
-- **The "Farming stopped" toast no longer appears when launching a category** — next to "Starting category" it read as a failure, though it only meant swapping one stream for another
-- **Categories are no longer abandoned half-done.** The decision to leave was made on a single Twitch response, and those arrive unevenly: an incomplete list looked like "nothing left to earn". It now needs confirmation on the next check
-- **A manually started category stays started.** The manual-start marker lived only on the page, and the page is recreated on every navigation
-- **The chat button is gone** — it opened a window that almost always said there was no active stream. Chat still runs in the background and collects bonus chests
-- **One completion percentage instead of three different ones.** The panel under the stream showed an average across rewards, the sidebar showed watch-time progress, and the category list counted its own way — so "drops" meant 63% and 29% at the same time. The watch-time count, the one in the sidebar, is now used everywhere
-- **Subscriptions no longer vanish when you return to the tab.** The saved list shows immediately and refreshes in the background — previously a spinner hid the whole list first and everything was rebuilt, avatars included. When nothing changed, the list is not re-rendered at all
-- **The "Check for updates" button responds.** On an up-to-date version it gave no feedback at all — the "no updates" event never reached the interface, so the button looked broken. It now reports "you have the latest version", and check failures are no longer swallowed
+- **The app no longer crashes during overnight farming.** The reward notification window closes itself after a few seconds, and if the next reward arrived at that moment the app reached into an already-closed window — the main process died outright, showed a JavaScript error dialog, and farming stood still until morning
+- **An unhandled error no longer stops the app.** Any such error used to end the session; it is now logged and work continues
+- **The "Start farming" button no longer sticks.** If the stream search hung, the button stayed greyed out reading "Ищем стрим…" and could not be pressed — only a restart helped. It now recovers on its own, and the search itself is time-limited
