@@ -3946,7 +3946,9 @@ class FarmingPage {
 
     registerWebviewLabel('twitch-player', 'Twitch Player (Main)');
     registerWebviewLabel('twitch-chat', 'Twitch Chat');
-    registerWebviewLabel('drops-data-extractor', 'Drops Data Extractor');
+    // drops-data-extractor убран: скрытый webview не использовался ни
+    // одной строкой кода, но исправно поднимал отдельный процесс
+    // отрисовки и сыпал предупреждением о недоступности
   }
 
   setupStreamInfoClick() {
@@ -4275,10 +4277,17 @@ class FarmingPage {
     const updateStats = async () => {
       try {
         const stats = await window.electronAPI.getStreamStats(channelLogin);
+
+        // Запрос идёт по сети, и за это время можно уйти на другую
+        // страницу: разметка уже другая, а продолжение обработчика
+        // пыталось писать в исчезнувший элемент и падало
+        const viewersEl = document.getElementById('stream-viewers');
+        if (this._destroyed || !viewersEl) return;
+
         if (stats) {
           // Обновляем зрителей
           const viewers = stats.viewers || 0;
-          document.getElementById('stream-viewers').textContent = viewers.toLocaleString();
+          viewersEl.textContent = viewers.toLocaleString();
           
           // Сохраняем в историю (максимум 100 значений)
           this.viewersHistory.push({

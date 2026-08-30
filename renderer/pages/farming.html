@@ -41,12 +41,6 @@
         </div>
       </div>
       
-      <!-- Hidden WebView for drops data extraction -->
-      <webview id="drops-data-extractor"
-           style="display: none; width: 1px; height: 1px; position: absolute; left: -9999px;"
-               partition="persist:twitch"
-               webpreferences="contextIsolation=false"></webview>
-      
       <!-- Preload setup script for all webviews on this page -->
       <script>
         const setupPreloads = async () => {

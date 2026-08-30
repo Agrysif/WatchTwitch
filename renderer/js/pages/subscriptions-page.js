@@ -317,7 +317,28 @@ class SubscriptionsPage {
       inactive: this.subscriptions.filter(s => !this.isChannelActive(s)).length
     };
 
-    document.getElementById('subs-count').textContent = `${this.subscriptionStats.total} ${this.i18n.t('subscriptions.subsCount')}`;
+    // Подпись тоже склоняется: было «62 подписок» вместо «62 подписки»
+    const n = this.subscriptionStats.total;
+    const слово = (this.i18n?.currentLang || 'ru') === 'ru'
+      ? this.plural(n, 'подписка', 'подписки', 'подписок')
+      : this.i18n.t('subscriptions.subsCount');
+
+    document.getElementById('subs-count').textContent = `${n} ${слово}`;
+  }
+
+  /**
+   * Падеж существительного по числу.
+   * Русский требует трёх форм: 1 неделю, 2 недели, 5 недель — а раньше
+   * везде подставлялась третья, и выходило «1 недель назад».
+   */
+  plural(n, одна, две, много) {
+    const десятки = Math.abs(n) % 100;
+    const единицы = десятки % 10;
+
+    if (десятки > 10 && десятки < 20) return много;
+    if (единицы === 1) return одна;
+    if (единицы >= 2 && единицы <= 4) return две;
+    return много;
   }
 
   isChannelActive(subscription) {
@@ -326,6 +347,11 @@ class SubscriptionsPage {
   }
 
   applyFilter() {
+    // Счётчик считался только после успешного ответа Twitch, а сохранённый
+    // список показывается раньше — в шапке висело «0 подписок» при полном
+    // списке на экране
+    this.updateStats();
+
     let filtered = this.subscriptions;
 
     // Применяем фильтр
@@ -719,9 +745,11 @@ class SubscriptionsPage {
     if (days === 0) return this.i18n.t('subscriptions.today');
     if (days === 1) return this.i18n.t('subscriptions.yesterday');
     if (days < 7) return `${days} ${this.i18n.t('subscriptions.daysAgo')}`;
-    if (days < 30) return `${Math.floor(days / 7)} недель назад`;
-    if (days < 365) return `${Math.floor(days / 30)} месяцев назад`;
-    return `${Math.floor(days / 365)} лет назад`;
+
+    // Падежи по числу: раньше выходило «1 недель назад» и «1 месяцев назад»
+    if (days < 30) return `${Math.floor(days / 7)} ${this.plural(Math.floor(days / 7), 'неделю', 'недели', 'недель')} назад`;
+    if (days < 365) return `${Math.floor(days / 30)} ${this.plural(Math.floor(days / 30), 'месяц', 'месяца', 'месяцев')} назад`;
+    return `${Math.floor(days / 365)} ${this.plural(Math.floor(days / 365), 'год', 'года', 'лет')} назад`;
   }
 
   showChannelDetails(sub) {
