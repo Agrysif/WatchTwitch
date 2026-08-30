@@ -846,6 +846,9 @@ class FarmingPage {
 
       // Восстанавливаем время сессии
       this.sessionStartTime = sessionState.startTime || Date.now();
+      // Отсчёт времени категории тоже восстанавливаем: без него следующая
+      // смена категории записала бы ей всё время сессии целиком
+      this.categoryStartTime = sessionState.categoryStartTime || this.sessionStartTime;
       this.currentCategory = category;
       this.currentStream = stream;
 
@@ -909,10 +912,29 @@ class FarmingPage {
     }
   }
 
+  /**
+   * Записывает время, проведённое в текущей категории, и начинает отсчёт
+   * для следующей.
+   *
+   * Раньше ради этого обнулялся sessionStartTime — то есть счётчик всей
+   * сессии в сайдбаре прыгал на ноль при каждой смене категории, хотя
+   * сессия не прерывалась. Смена категории и продолжительность сессии —
+   * разные величины, и считаются теперь порознь.
+   */
+  async noteCategoryWatchTime() {
+    const начало = this.categoryStartTime || this.sessionStartTime;
+
+    if (this.currentCategory?.name && начало) {
+      await this.saveWatchTimeForCategory(this.currentCategory.name, Date.now() - начало);
+    }
+    this.categoryStartTime = Date.now();
+  }
+
   async saveActiveSession(stream, category) {
     if (!stream || !category) return;
     await Storage.set('activeSession', {
       startTime: this.sessionStartTime || Date.now(),
+      categoryStartTime: this.categoryStartTime || this.sessionStartTime || Date.now(),
       categoryId: category.id,
       categoryName: category.name,
       // Отметка ручного запуска жила только на странице, а страница
@@ -1810,6 +1832,7 @@ class FarmingPage {
     
     // Запускаем трекинг
     this.sessionStartTime = Date.now();
+    this.categoryStartTime = Date.now();
     this.estimatedBandwidth = 0;
     this.bandwidthHistory = [];
     window.electronAPI?.resetTrafficSession?.();
@@ -2000,12 +2023,7 @@ class FarmingPage {
     console.log('All categories:', this.categories.map(c => ({ name: c.name, id: c.id, enabled: c.enabled })));
     
     // Сохраняем статистику текущей категории перед переключением
-    if (this.currentCategory?.name && this.sessionStartTime) {
-      const categoryWatchTime = Date.now() - this.sessionStartTime;
-      await this.saveWatchTimeForCategory(this.currentCategory.name, categoryWatchTime);
-      // Сбрасываем sessionStartTime для новой категории
-      this.sessionStartTime = Date.now();
-    }
+    await this.noteCategoryWatchTime();
     
     // Находим следующую включенную категорию (пропускаем завершенные)
     // Приоритет: 1) ручные категории, 2) подписанные каналы с дропсами (если включен приоритет), 3) наличие дропсов, 4) сохранённый порядок/priority
@@ -2586,6 +2604,7 @@ class FarmingPage {
     
     // Запускаем трекинг сессии
     this.sessionStartTime = Date.now();
+    this.categoryStartTime = Date.now();
     this.estimatedBandwidth = 0;
     this.bandwidthHistory = [];
     window.electronAPI?.resetTrafficSession?.();
@@ -4502,11 +4521,7 @@ class FarmingPage {
     }
 
     // Сохраняем статистику текущей категории
-    if (this.currentCategory?.name && this.sessionStartTime) {
-      const categoryWatchTime = Date.now() - this.sessionStartTime;
-      await this.saveWatchTimeForCategory(this.currentCategory.name, categoryWatchTime);
-      this.sessionStartTime = Date.now();
-    }
+    await this.noteCategoryWatchTime();
 
     try {
       // Находим текущую категорию в активных
@@ -4540,7 +4555,12 @@ class FarmingPage {
       
       this.updateCurrentStreamUI(stream, prevCategory);
       this.startStreamStatsUpdate(stream.login);
-      
+
+      // Сохраняем сессию, иначе в хранилище останется прежняя категория:
+      // стоило уйти на другую вкладку и вернуться, как приложение
+      // восстанавливало старую и откатывало стрим назад
+      await this.saveActiveSession(stream, prevCategory);
+
       window.utils.showToast(`Переключено на ${prevCategory.name}`, 'success');
     } catch (error) {
       console.error('Error switching to prev category:', error);
@@ -4563,11 +4583,7 @@ class FarmingPage {
     }
 
     // Сохраняем статистику текущей категории
-    if (this.currentCategory?.name && this.sessionStartTime) {
-      const categoryWatchTime = Date.now() - this.sessionStartTime;
-      await this.saveWatchTimeForCategory(this.currentCategory.name, categoryWatchTime);
-      this.sessionStartTime = Date.now();
-    }
+    await this.noteCategoryWatchTime();
 
     try {
       // Находим текущую категорию в активных
@@ -4601,7 +4617,8 @@ class FarmingPage {
       
       this.updateCurrentStreamUI(stream, nextCategory);
       this.startStreamStatsUpdate(stream.login);
-      
+      await this.saveActiveSession(stream, nextCategory);
+
       window.utils.showToast(`Переключено на ${nextCategory.name}`, 'success');
     } catch (error) {
       console.error('Error switching to next category:', error);
@@ -4771,7 +4788,13 @@ class FarmingPage {
     
     // Обновляем статистику
     this.startStreamStatsUpdate(stream.login);
-    
+
+    // Смена стрима тоже должна попадать в сохранённую сессию: иначе после
+    // возврата на вкладку приложение вернуло бы прежний канал
+    if (this.currentCategory) {
+      await this.saveActiveSession(stream, this.currentCategory);
+    }
+
     // Автоматически кликаем на кнопку Continue Watching если появится mature content warning
     this.setupMatureContentHandler(player);
   }

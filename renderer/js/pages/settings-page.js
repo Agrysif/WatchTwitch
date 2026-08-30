@@ -112,6 +112,17 @@ class SettingsPage {
 
           <div class="settings-item">
             <div class="settings-item-info">
+              <div class="settings-item-label">${i18n.t('settings.lowGraphics')}</div>
+              <div class="settings-item-description">${i18n.t('settings.lowGraphicsDesc')}</div>
+            </div>
+            <label class="settings-toggle">
+              <input type="checkbox" id="setting-low-graphics" ${settings.get('lowGraphics') !== false ? 'checked' : ''}>
+              <span class="settings-slider"></span>
+            </label>
+          </div>
+
+          <div class="settings-item">
+            <div class="settings-item-info">
               <div class="settings-item-label">${i18n.t('settings.limitStreamSpeed')}</div>
               <div class="settings-item-description">${i18n.t('settings.limitStreamSpeedDesc')}</div>
               <div class="quiet-note" id="limit-note" style="margin-top: 8px;"></div>
@@ -630,6 +641,16 @@ class SettingsPage {
           e.target.checked ? i18n.t('settings.autoClaimDrops') : i18n.t('settings.autoClaimDrops'),
           'info'
         );
+      });
+    }
+
+    // Экономный режим графики. Аппаратное ускорение отключается только до
+    // готовности приложения, поэтому меняется оно лишь при следующем запуске
+    const lowGraphicsToggle = document.getElementById('setting-low-graphics');
+    if (lowGraphicsToggle) {
+      lowGraphicsToggle.addEventListener('change', (e) => {
+        settings.set('lowGraphics', e.target.checked);
+        window.utils.showToast('Вступит в силу после перезапуска приложения', 'info');
       });
     }
 

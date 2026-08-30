@@ -8,6 +8,28 @@ const url = require('url');
 const { pathToFileURL } = require('url');
 const { autoUpdater } = require('electron-updater');
 
+/**
+ * Экономный режим графики.
+ *
+ * Приложение показывает видео в 160p фоном, и полноценное аппаратное
+ * ускорение ему не нужно. Замер: с ускорением 1105 МБ и процесс графики
+ * на 180 МБ, без него — 1006 МБ и 78 МБ, видео при этом играет так же.
+ * Вдобавок приложение перестаёт бороться за видеокарту с играми.
+ *
+ * Отключать можно только до готовности приложения, поэтому значение
+ * читается напрямую из хранилища, а смена настройки требует перезапуска.
+ */
+try {
+  const Store = require('electron-store');
+  const раннийStore = new Store();
+  if (раннийStore.get('settings.lowGraphics') !== false) {
+    app.disableHardwareAcceleration();
+    console.log('[Графика] Экономный режим: аппаратное ускорение отключено');
+  }
+} catch (e) {
+  console.warn('[Графика] Не удалось прочитать настройку:', e.message);
+}
+
 app.commandLine.appendSwitch('disable-logging');
 app.commandLine.appendSwitch('log-level', '3');
 
