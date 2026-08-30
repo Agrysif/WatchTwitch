@@ -11,8 +11,17 @@
 - Убран скрытый webview, на который не ссылалась ни одна строка кода, но который поднимал отдельный процесс
 - Обновление статистики стрима больше не падает при уходе со страницы
 
+- **Счётчик сессии больше не обнуляется.** При каждой смене категории он прыгал на ноль, хотя сессия не прерывалась: время по категориям считалось тем же отсчётом. Теперь это две разные величины
+- **Переключение категории и стрима запоминается.** Ни одна из трёх кнопок переключения не сохраняла сессию: стоило уйти на другую вкладку и вернуться, как приложение восстанавливало прежнюю категорию и откатывало стрим назад
+- **Экономный режим графики.** Приложению не нужно аппаратное ускорение ради видео в 160p фоном: около ста мегабайт памяти меньше и никакой борьбы за видеокарту с играми. Включено по умолчанию, отключается в настройках
+- Страница календаря наконец освобождается при уходе — раньше её обработчики копились с каждым заходом
+
 ## 🇬🇧 Fixed
 
+- **The session timer no longer resets.** It jumped to zero on every category switch even though the session continued; per-category time now has its own counter
+- **Category and stream switches are remembered.** None of the three switch buttons saved the session, so leaving the tab and coming back restored the previous category and rolled the stream back
+- **Light graphics mode.** The app does not need GPU acceleration for background 160p video: about a hundred megabytes less memory and no competition with games. On by default
+- The calendar page is finally released when you leave it
 - **The Drops tab opens again.** It showed "authorization required" even when signed in: the sign-in check relied on a request that returns nothing, and now uses the saved account
 - **The subscriptions counter no longer reads zero** while the full list is on screen
 - **Russian plurals.** "1 недель назад" and "62 подписок" are now declined correctly
