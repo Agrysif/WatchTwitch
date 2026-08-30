@@ -3484,20 +3484,24 @@ body.no-animations * {
 }
 
 /* ===== АНАЛИТИКА ===== */
+/* Сетка была рассчитана ровно на одну строку: нулевые отступы и
+   разделители слева. Стоило показателям не поместиться в строку, как
+   вторая наезжала на подписи первой, а разделитель доставался первому
+   элементу новой строки. Теперь раскладка не зависит от их числа. */
 .analytics-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-  gap: 0;
+  column-gap: 10px;
+  row-gap: 10px;
 }
 
 .analytics-item {
-  padding: 0 16px;
+  padding: 12px 14px;
   min-width: 0;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
 }
-
-.analytics-item:first-child { padding-left: 0; }
-.analytics-item:last-child { padding-right: 0; }
-.analytics-item + .analytics-item { border-left: 1px solid var(--border-color); }
 
 .analytics-label {
   font-size: 10px;

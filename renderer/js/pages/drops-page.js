@@ -41,10 +41,26 @@
     async init() {
       console.log('DropsPage init');
       
-      // Проверяем авторизацию
+      // Проверяем авторизацию.
+      //
+      // Раньше страница смотрела только на getOAuthUser(), а он возвращает
+      // null даже у полностью авторизованного пользователя — вся вкладка
+      // показывала «Требуется авторизация», хотя фарминг шёл и подписки
+      // грузились. Настоящий признак входа лежит в сохранённом аккаунте,
+      // как это и делает страница подписок; ответ getOAuthUser лишь
+      // дополняет его свежими полями, если он вообще пришёл.
       try {
-        const oauthData = await window.electronAPI.getOAuthUser();
-        const user = oauthData?.user; // Извлекаем user из новой структуры
+        const oauthData = await window.electronAPI.getOAuthUser().catch(() => null);
+        const accounts = (await Storage.getAccounts().catch(() => [])) || [];
+        const account = accounts[0] || null;
+
+        const user = (oauthData?.user) || (account && account.accessToken ? {
+          displayName: account.displayName || account.username,
+          login: account.username,
+          email: account.email || '',
+          profileImageUrl: account.avatar || ''
+        } : null);
+
         console.log('DropsPage user:', user ? 'authorized' : 'not authorized');
         
         const authSection = document.getElementById('authSection');
