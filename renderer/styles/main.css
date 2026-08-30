@@ -3987,6 +3987,11 @@ body.no-animations * {
    накладывается»: видно, что три кампании кончаются в один день. */
 #calendar-timeline {
   --tl-name-width: 150px;
+  /* Деления намеренно тянутся вниз, чтобы пройти через все строки, но
+     обрезать их было нечем: ближайший позиционированный предок обрезки
+     не делает, и полоски уходили вниз через всё приложение */
+  position: relative;
+  overflow: hidden;
 }
 
 .calendar-timeline-head {
@@ -4029,7 +4034,8 @@ body.no-animations * {
 .tl-tick {
   position: absolute;
   top: 16px;
-  bottom: -9999px;
+  /* Хватает высоты самой ленты; лишнее обрезает #calendar-timeline */
+  bottom: -1000px;
   width: 1px;
   background: rgba(255, 255, 255, 0.06);
 }
