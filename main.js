@@ -1120,11 +1120,18 @@ function createMainWindow() {
   // В dev-режиме дублируем консоль renderer в терминал: без этого ошибки
   // интерфейса видны только в DevTools и легко проходят мимо.
   if (!app.isPackaged) {
-    mainWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
-      if (level >= 2) { // предупреждения и ошибки
-        const source = (sourceId || '').split('/').pop();
-        console.log(`[Renderer:${level === 3 ? 'error' : 'warn'}] ${message} (${source}:${line})`);
-      }
+    // Electron 36 передаёт параметры в объекте события; старую форму с
+    // отдельными аргументами оставляем для совместимости
+    mainWindow.webContents.on('console-message', (event, legacyLevel, legacyMessage, legacyLine, legacySource) => {
+      const modern = event && typeof event.message === 'string';
+      const message = modern ? event.message : legacyMessage;
+      const line = modern ? event.lineNumber : legacyLine;
+      const sourceId = modern ? event.sourceId : legacySource;
+      const level = modern ? event.level : (legacyLevel === 3 ? 'error' : (legacyLevel === 2 ? 'warning' : 'info'));
+      if (level !== 'warning' && level !== 'error') return;
+
+      const source = String(sourceId || '').split('/').pop();
+      console.log('[Renderer:' + (level === 'error' ? 'error' : 'warn') + '] ' + message + ' (' + source + ':' + line + ')');
     });
   }
 
