@@ -44,6 +44,8 @@
 
 - **Кнопка «Остановить» больше не уезжает за край.** Когда в сайдбаре плеер, шкала дропсов и сессия, блок фарминга держится внизу, а место уступают нижние пункты меню (их можно прокрутить). Пустой жёлтый значок игрового режима, который был виден без игры, скрыт
 
+- **Пустой инвентарь больше не читается как «дропсов нет».** Нет cookie-токена, пауза после 429, обрыв сети или ошибка разбора — это незнание, и проверка дропсов его пропускает. Раньше на таком ответе приложение за две минуты удаляло категории при живых кампаниях
+
 ## 🇬🇧 Network and load
 
 - **40× fewer requests to Twitch.** Measured ~1000 requests per minute with up to 266 concurrent connections: the inventory fetch issued one request per campaign (130 of them) for a number nobody read, and five places asked for the campaign list independently. Twitch responses are now cached in one place — inventory at most once a minute, campaign list every ten minutes. Now 28 requests per minute, at most 12 concurrent. This also removes ping spikes in games
