@@ -42,6 +42,8 @@
 - **Пауза после 429.** Если Twitch отвечает «слишком много запросов», все запросы приложения ждут: столько, сколько просит Retry-After, иначе 30 с, потом 60 с, 2 мин… до десяти минут. Раньше приложение повторяло запрос через полторы секунды и получало отказ снова
 - **Экспорт статистики в CSV.** Кнопка в статистике вместо JSON отдаёт таблицу сессий: дата, время, минуты, категория, канал, баллы, сундуки, дропсы, трафик. Разделитель «;» и BOM — Excel открывает двойным щелчком
 
+- **Кнопка «Остановить» больше не уезжает за край.** Когда в сайдбаре плеер, шкала дропсов и сессия, блок фарминга держится внизу, а место уступают нижние пункты меню (их можно прокрутить). Пустой жёлтый значок игрового режима, который был виден без игры, скрыт
+
 ## 🇬🇧 Network and load
 
 - **40× fewer requests to Twitch.** Measured ~1000 requests per minute with up to 266 concurrent connections: the inventory fetch issued one request per campaign (130 of them) for a number nobody read, and five places asked for the campaign list independently. Twitch responses are now cached in one place — inventory at most once a minute, campaign list every ten minutes. Now 28 requests per minute, at most 12 concurrent. This also removes ping spikes in games
