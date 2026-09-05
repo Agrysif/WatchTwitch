@@ -53,6 +53,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   fetchTwitchDrops: () => ipcRenderer.invoke('fetch-twitch-drops'),
   // options.force — ручное обновление: main сбрасывает свой кэш инвентаря
   fetchDropsInventory: (options) => ipcRenderer.invoke('fetch-drops-inventory', options),
+  // Какой канал Twitch засчитывает сейчас: прямая проверка, что фарминг идёт
+  getDropSession: (channelLogin) => ipcRenderer.invoke('get-drop-session', channelLogin),
   claimAllDrops: () => ipcRenderer.invoke('claim-all-drops'),
   claimDrop: (dropInstanceID) => ipcRenderer.invoke('claim-drop', dropInstanceID),
   updateTrayStatus: (status) => ipcRenderer.send('tray-status', status),

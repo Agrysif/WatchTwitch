@@ -4365,3 +4365,47 @@ body.low-graphics .checkpoint-active {
   animation: none !important;
   filter: none !important;
 }
+
+/* Индикатор зачёта дропсов под шкалой в сайдбаре: зелёный — Twitch
+   подтверждает зачёт на этом канале, жёлтый — ждём ответа, красный —
+   канал не засчитывает и стрим будет сменён. */
+.drops-credit {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.drops-credit-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #f5b942;
+  flex: none;
+}
+
+.drops-credit[data-state="waiting"] .drops-credit-dot {
+  animation: dropsCreditBlink 1.6s ease-in-out infinite;
+}
+
+.drops-credit[data-state="ok"] .drops-credit-dot {
+  background: #35d08a;
+}
+
+.drops-credit[data-state="none"] .drops-credit-dot {
+  background: #f0555f;
+}
+
+.drops-credit[data-state="none"] {
+  color: #f0555f;
+}
+
+@keyframes dropsCreditBlink {
+  50% { opacity: 0.35; }
+}
+
+body.low-graphics .drops-credit-dot {
+  animation: none !important;
+}
