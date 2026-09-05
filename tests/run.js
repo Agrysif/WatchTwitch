@@ -948,6 +948,42 @@ function loadClass(relativePath, className, globals = {}) {
   check('путь отрезается', GM.normalize('C:\\Games\\Overwatch.exe'), 'overwatch.exe');
 }
 
+// ─── Пауза после 429 ─────────────────────────────────────────────────
+{
+  const RL = loadClass('renderer/js/core/rate-limit.js', 'TwitchRateLimit');
+  const t0 = 1000000;
+  const rl = new RL();
+  check('без 429 ограничений нет', rl.isLimited(t0), false);
+  check('обычный ответ не даёт паузы', rl.noteResponse(200, {}, t0), 0);
+  check('первый 429 — 30 секунд', rl.noteResponse(429, {}, t0), 30000);
+  check('пауза действует', rl.isLimited(t0 + 10000), true);
+  check('пауза кончается', rl.isLimited(t0 + 30001), false);
+  check('второй 429 подряд удваивает', rl.noteResponse(429, {}, t0 + 31000), 60000);
+  check('Retry-After главнее', new RL().noteResponse(429, { 'retry-after': '7' }, t0), 7000);
+  const long = new RL(); for (let i = 0; i < 10; i++) long.noteResponse(429, {}, t0);
+  check('не дольше десяти минут', long.remainingMs(t0), 600000);
+  const reset = new RL(); reset.noteResponse(429, {}, t0); reset.noteResponse(200, {}, t0 + 31000);
+  check('успех сбрасывает серию', reset.noteResponse(429, {}, t0 + 32000), 30000);
+  check('описание с секундами', rl.describe(t0 + 31000).includes('60 с'), true);
+}
+
+// ─── Экспорт CSV ─────────────────────────────────────────────────────
+{
+  const CE = loadClass('renderer/js/core/csv-export.js', 'CsvExport');
+  check('простое поле как есть', CE.escape('Apex'), 'Apex');
+  check('точка с запятой — в кавычках', CE.escape('a;b'), '"a;b"');
+  check('кавычки удваиваются', CE.escape('x"y'), '"x""y"');
+  const s = { timestamp: new Date(2026, 8, 5, 14, 7).getTime(), duration: 90, category: 'Apex Legends', channel: 'mande',
+    pointsEarned: 120, chestsCollected: 2, dropsCollected: 1, bandwidth: 52428800 };
+  check('строка сессии', CE.row(s), ['05.09.2026', '14:07', 90, 'Apex Legends', 'mande', 120, 2, 1, '50,0']);
+  const csv = CE.sessions([s, { ...s, channel: 'later' }]);
+  check('начинается с BOM', csv.charCodeAt(0), 0xFEFF);
+  check('заголовок первой строкой', csv.split('\r\n')[0].slice(1).startsWith('Дата;Начало;Минут'), true);
+  check('свежие сессии сверху', csv.split('\r\n')[1].includes('later'), true);
+  check('пустой список — только заголовок', CE.sessions([]).split('\r\n').filter(Boolean).length, 1);
+  check('имя файла по дате', CE.fileName(new Date(2026, 8, 5)), 'watchtwitch-sessions-2026-09-05.csv');
+}
+
 // ─── Итог ────────────────────────────────────────────────────────────
 console.log('');
 if (failures.length) {
