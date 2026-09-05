@@ -984,6 +984,20 @@ function loadClass(relativePath, className, globals = {}) {
   check('имя файла по дате', CE.fileName(new Date(2026, 8, 5)), 'watchtwitch-sessions-2026-09-05.csv');
 }
 
+// ─── Экран повторного входа ──────────────────────────────────────────
+{
+  const LG = loadClass('renderer/js/core/login-guard.js', 'LoginGuard');
+  const t0 = 10_000_000;
+  const acc = [{ username: 'egor' }];
+  check('без аккаунтов не спрашиваем', LG.shouldPrompt({ accounts: [], loggedIn: false, now: t0 }), false);
+  check('вход есть — не спрашиваем', LG.shouldPrompt({ accounts: acc, loggedIn: true, now: t0 }), false);
+  check('аккаунт есть, входа нет — спрашиваем', LG.shouldPrompt({ accounts: acc, loggedIn: false, now: t0 }), true);
+  check('повтор не раньше чем через час', LG.shouldPrompt({ accounts: acc, loggedIn: false, lastPromptAt: t0 - 60000, now: t0 }), false);
+  check('через час — снова', LG.shouldPrompt({ accounts: acc, loggedIn: false, lastPromptAt: t0 - 3600001, now: t0 }), true);
+  check('значок висит без входа', LG.shouldBadge({ accounts: acc, loggedIn: false }), true);
+  check('значок пропадает при входе', LG.shouldBadge({ accounts: acc, loggedIn: true }), false);
+}
+
 // ─── Итог ────────────────────────────────────────────────────────────
 console.log('');
 if (failures.length) {

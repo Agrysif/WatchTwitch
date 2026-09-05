@@ -1060,3 +1060,5 @@ window.AccountsPage = function() {
 };
 
 window.initAccountsPage = initAccountsPage;
+// Окно входа зовёт и экран повторного входа (LoginGuard)
+window.handleTwitchWebLogin = handleTwitchWebLogin;

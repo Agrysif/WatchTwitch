@@ -659,6 +659,9 @@ function setGameModeState(game) {
 
 ipcMain.handle('get-game-mode', () => gameModeState);
 
+// Есть ли вход в Twitch: cookie auth-token в webview. Дёшево — без сети.
+ipcMain.handle('has-twitch-session', async () => ({ loggedIn: !!(await getCookieAuthToken()) }));
+
 // Плееры, за которыми следит отладчик: к ним же применяется потолок скорости
 const playerWebContents = new Map();
 

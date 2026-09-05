@@ -4463,3 +4463,15 @@ body.low-graphics .drops-credit-dot {
   outline: none;
   border-color: var(--accent-color, #7c5cff);
 }
+
+/* Значок «Нет входа в Twitch»: красный вариант значка режима */
+.game-mode-badge.login-badge {
+  border-color: rgba(240, 85, 95, 0.45);
+  background: rgba(240, 85, 95, 0.1);
+  color: #f0555f;
+  cursor: pointer;
+}
+
+.game-mode-badge.login-badge:hover {
+  background: rgba(240, 85, 95, 0.18);
+}

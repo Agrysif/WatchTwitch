@@ -76,6 +76,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   // поэтому запускается один раз при старте приложения
   window.favouritesWatch?.start();
 
+  // Экран повторного входа: cookie Twitch может пропасть, и без него
+  // минуты не идут. Значок в сайдбаре ведёт на вкладку аккаунтов
+  window.loginGuard?.start();
+  document.getElementById('login-badge')?.addEventListener('click', () => {
+    window.loginGuard?.openLogin();
+  });
+
   // Игровой режим: main следит за процессами, здесь — плеер и значок
   const applyGameMode = (state, announce) => {
     if (!state) return;
