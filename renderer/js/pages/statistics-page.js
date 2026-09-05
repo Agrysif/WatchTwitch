@@ -830,21 +830,27 @@ class StatisticsPage {
 
   async exportStatistics() {
     try {
+      // Раньше здесь выгружался JSON целиком — в таблицу его не вставить.
+      // CSV с «;» и BOM русский Excel открывает двойным щелчком.
       const stats = await Storage.getStatistics();
-      const dataStr = JSON.stringify(stats, null, 2);
-      
-      // Создаем blob и скачиваем
-      const blob = new Blob([dataStr], { type: 'application/json' });
+      const sessions = Array.isArray(stats?.sessions) ? stats.sessions : [];
+      if (sessions.length === 0) {
+        window.utils.showToast('Сессий пока нет — экспортировать нечего', 'info');
+        return;
+      }
+
+      const csv = window.CsvExport.sessions(sessions);
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
       const url = URL.createObjectURL(blob);
-      
+
       const a = document.createElement('a');
       a.href = url;
-      a.download = `watchtwitch-stats-${Date.now()}.json`;
+      a.download = window.CsvExport.fileName();
       a.click();
-      
+
       URL.revokeObjectURL(url);
-      
-      window.utils.showToast('Статистика экспортирована', 'success');
+
+      window.utils.showToast('Сессии выгружены в CSV: ' + sessions.length, 'success');
     } catch (error) {
       console.error('Export error:', error);
       window.utils.showToast('Ошибка экспорта', 'error');

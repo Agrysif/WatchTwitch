@@ -459,7 +459,11 @@ function twitchPost(postData, headers, options = {}) {
     }, (res) => {
       let data = '';
       res.on('data', (chunk) => { data += chunk; });
-      res.on('end', () => resolve({ ok: res.statusCode < 400, statusCode: res.statusCode, data }));
+      res.on('end', () => {
+        const pause = twitchRateLimit.noteResponse(res.statusCode, res.headers);
+        if (pause) console.warn('[Twitch] Ответ 429 — пауза', Math.round(pause / 1000), 'с для всех запросов');
+        resolve({ ok: res.statusCode < 400, statusCode: res.statusCode, data });
+      });
     });
 
     req.on('error', (e) => resolve({ ok: false, statusCode: 0, error: e.message }));
@@ -476,15 +480,25 @@ function twitchPost(postData, headers, options = {}) {
     let last = null;
 
     for (let attempt = 1; attempt <= attempts; attempt++) {
+      // Пауза после 429 общая: пока она идёт, в сеть не выходим вовсе.
+      // Дождаться можно только короткую — длинную честно возвращаем как отказ.
+      const remaining = twitchRateLimit.remainingMs();
+      if (remaining > 0) {
+        if (remaining > 30000 || attempt === attempts) {
+          return { ok: false, statusCode: 429, error: twitchRateLimit.describe() };
+        }
+        await new Promise(r => setTimeout(r, remaining));
+      }
+
       last = await once();
 
       if (last.ok) return last;
 
-      const worthRetry = last.statusCode === 0 || last.statusCode >= 500;
+      const worthRetry = last.statusCode === 0 || last.statusCode >= 500 || last.statusCode === 429;
       if (!worthRetry || attempt === attempts) return last;
 
       // Пауза растёт: при длительном обрыве нет смысла долбить сеть
-      const wait = baseDelay * attempt;
+      const wait = last.statusCode === 429 ? 0 : baseDelay * attempt;
       console.warn('[Twitch] Запрос не удался (' + (last.error || last.statusCode) +
         '), повтор через ' + wait + ' мс');
       await new Promise(r => setTimeout(r, wait));
@@ -593,6 +607,10 @@ function resetTrafficSession() {
  */
 const NetworkLimit = require('./renderer/js/core/network-limit');
 const GameMode = require('./renderer/js/core/game-mode');
+const TwitchRateLimit = require('./renderer/js/core/rate-limit');
+
+// Общая пауза после 429: одна на все запросы к Twitch
+const twitchRateLimit = new TwitchRateLimit();
 
 /**
  * Игровой режим: пока запущена игра, плеер сидит на минимальном качестве с
@@ -3194,6 +3212,12 @@ function fetchViewerDropsDashboardCampaignsUncached(authToken) {
     if (twitchGqlHeaders.clientVersion) headers['Client-Version'] = twitchGqlHeaders.clientVersion;
     if (twitchGqlHeaders.sessionId) headers['Client-Session-Id'] = twitchGqlHeaders.sessionId;
 
+    if (twitchRateLimit.isLimited()) {
+      console.log('[Drops] Список кампаний не запрашиваю:', twitchRateLimit.describe());
+      resolve([]);
+      return;
+    }
+
     const req = httpsRequestWithTimeout({
       hostname: 'gql.twitch.tv',
       port: 443,
@@ -3204,6 +3228,7 @@ function fetchViewerDropsDashboardCampaignsUncached(authToken) {
       let data = '';
       res.on('data', (chunk) => { data += chunk; });
       res.on('end', () => {
+        twitchRateLimit.noteResponse(res.statusCode, res.headers);
         try {
           const response = JSON.parse(data);
           const root = Array.isArray(response) ? response[0] : response;
@@ -3356,6 +3381,12 @@ function fetchDropsInventoryUncached() {
       }
     };
 
+    if (twitchRateLimit.isLimited()) {
+      console.log('[Drops] Инвентарь не запрашиваю:', twitchRateLimit.describe());
+      resolve({ campaigns: [], currentDrop: null, rateLimited: true });
+      return;
+    }
+
     const req = httpsRequestWithTimeout(options, (res) => {
       let data = '';
 
@@ -3364,6 +3395,7 @@ function fetchDropsInventoryUncached() {
       });
 
       res.on('end', async () => {
+        twitchRateLimit.noteResponse(res.statusCode, res.headers);
         try {
           const responses = JSON.parse(data);
 
