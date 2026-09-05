@@ -166,7 +166,7 @@ class SessionState {
   noteChest(points) {
     this.points.chestsCollected += 1;
     this.points.chestsPoints += Number(points) || 0;
-    this._chestJustClaimed = Number(points) || 0;
+    this._chestClaimedAt = Date.now();
     this.renderPoints();
   }
 
@@ -199,9 +199,13 @@ class SessionState {
         this.points.earnedThisStream += diff;
         this.points.sessionEarned += diff;
 
-        if (this._chestJustClaimed) {
-          // Прирост уже учтён как сундук через noteChest
-          this._chestJustClaimed = 0;
+        // Сундук, собранный запросом из main, уже учтён через noteChest.
+        // Порядок событий между IPC-сообщением и ответом опроса не
+        // гарантирован, поэтому смотрим по времени: прирост в первые
+        // полторы минуты после сбора — тот самый сундук
+        const chestJustClaimed = this._chestClaimedAt && (Date.now() - this._chestClaimedAt) < 90000;
+        if (chestJustClaimed && diff >= SessionState.CHEST_THRESHOLD) {
+          this._chestClaimedAt = 0;
         } else if (diff >= SessionState.CHEST_THRESHOLD) {
           this.points.chestsCollected += 1;
           this.points.chestsPoints += diff;

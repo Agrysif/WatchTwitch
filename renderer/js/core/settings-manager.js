@@ -50,6 +50,10 @@ class SettingsManager {
       // Фоновый чат Twitch выключен: сундуки собираются запросом, а webview
       // чата стоил ~190 МБ памяти и процессор
       backgroundChat: false,
+      // Игровой режим: пока запущена игра, стрим на минимуме с жёстким
+      // потолком скорости. Дополнительные процессы — через запятую
+      gameMode: true,
+      gameModeProcesses: '',
       limitStreamSpeed: true,
       streamSpeedHeadroom: 3,
       autostart: false,

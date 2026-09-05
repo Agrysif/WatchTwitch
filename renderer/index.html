@@ -127,6 +127,13 @@
           <div id="sidebar-drops-tip" class="drops-tip" role="tooltip" aria-hidden="true"></div>
         </div>
         
+        <div id="game-mode-badge" class="game-mode-badge" hidden>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M6 12h4M8 10v4M15 11h.01M18 13h.01"/>
+            <path d="M17.32 5H6.68a4 4 0 0 0-3.98 3.6l-.7 7A3 3 0 0 0 5 19a3 3 0 0 0 2.4-1.2L9 16h6l1.6 1.8A3 3 0 0 0 19 19a3 3 0 0 0 3-3.4l-.7-7A4 4 0 0 0 17.32 5z"/>
+          </svg>
+          <span id="game-mode-text"></span>
+        </div>
         <div id="farming-session-info" style="display: none; padding: 16px; background: var(--bg-secondary); border-radius: var(--radius-md); margin-bottom: 8px; border: 1px solid var(--border-color); opacity: 0; transform: translateY(-10px); transition: opacity 0.3s ease, transform 0.3s ease;">
           <div style="font-size: 11px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 8px; letter-spacing: 0.5px;" data-i18n="sidebar.session">Сессия</div>
           <div style="display: flex; flex-direction: column; gap: 6px;">
@@ -203,6 +210,7 @@
   <!-- Features - функционал -->
   <script src="js/features/farming/bonus-collector-script.js"></script>
   <script src="js/core/network-limit.js"></script>
+  <script src="js/core/game-mode.js"></script>
   <script src="js/core/quiet-hours.js"></script>
   <script src="js/core/chime.js"></script>
   <script src="js/core/ics-export.js"></script>

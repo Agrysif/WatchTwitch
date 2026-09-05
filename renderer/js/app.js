@@ -76,6 +76,27 @@ document.addEventListener('DOMContentLoaded', async () => {
   // поэтому запускается один раз при старте приложения
   window.favouritesWatch?.start();
 
+  // Игровой режим: main следит за процессами, здесь — плеер и значок
+  const applyGameMode = (state, announce) => {
+    if (!state) return;
+    window.playerManager?.setGameMode?.(state.active);
+
+    const badge = document.getElementById('game-mode-badge');
+    const text = document.getElementById('game-mode-text');
+    if (badge && text) {
+      badge.hidden = !state.active;
+      text.textContent = state.active ? 'Игровой режим: ' + (state.game?.title || 'игра запущена') : '';
+    }
+
+    if (announce) {
+      window.utils?.showToast(state.active
+        ? 'Запущена ' + (state.game?.title || 'игра') + ': стрим на минимуме, чтобы не мешать'
+        : 'Игра закрыта: качество и скорость стрима возвращены', 'info');
+    }
+  };
+  window.electronAPI?.getGameMode?.().then(state => applyGameMode(state, false)).catch(() => {});
+  window.electronAPI?.onGameMode?.((state) => applyGameMode(state, true));
+
   // Сундук забран запросом из main-процесса: показываем и отмечаем
   window.electronAPI?.onChestClaimed?.((data) => {
     const points = Number(data?.points) || 0;

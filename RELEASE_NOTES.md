@@ -33,6 +33,10 @@
 - **Сундуки собираются запросом к Twitch, без webview чата.** Раньше ради одной кнопки раз в четверть часа в фоне жил целый чат Twitch — около 190 МБ памяти и заметный процессор — плюс скрипт, перебиравший его DOM. Теперь опрос баллов заодно получает готовый сундук и забирает его мутацией. Замер: память приложения 1032 → 622 МБ, процессор 53 → 46 % ядра. Client-Integrity, нужный для запросов кампаний, плеер даёт сам
 - Фоновый чат остался как настройка «Фоновый чат Twitch» (выключена по умолчанию) — на случай, если сундуки перестанут собираться
 
+## 🇷🇺 Новое: игровой режим
+
+- **Запущена игра — стрим не мешает.** Приложение раз в двадцать секунд смотрит список процессов и, увидев игру (Overwatch, Apex, CS2, VALORANT, Dota 2, Fortnite и ещё полсотни известных; свои можно дописать в настройках), переводит плеер на 160p с потолком скорости впритык к битрейту. Куски видео перестают подбрасывать пинг. Игра закрыта — качество и потолок возвращаются. В сайдбаре на это время висит значок «Игровой режим». Включено по умолчанию, выключается в настройках
+
 ## 🇬🇧 Network and load
 
 - **40× fewer requests to Twitch.** Measured ~1000 requests per minute with up to 266 concurrent connections: the inventory fetch issued one request per campaign (130 of them) for a number nobody read, and five places asked for the campaign list independently. Twitch responses are now cached in one place — inventory at most once a minute, campaign list every ten minutes. Now 28 requests per minute, at most 12 concurrent. This also removes ping spikes in games
@@ -61,3 +65,7 @@
 - **Chests are claimed via a Twitch request, without the chat webview.** A whole Twitch chat used to live in the background for one button every fifteen minutes (~190 MB and noticeable CPU). The points poll now returns the ready chest and claims it with a mutation. Measured: 1032 → 622 MB, 53 → 46 % CPU. Client-Integrity comes from the player itself
 - Background chat remains as an opt-in setting
 
+
+## 🇬🇧 New: game mode
+
+- **A running game gets priority.** Every twenty seconds the app checks the process list; when it sees a game (Overwatch, Apex, CS2, VALORANT, Dota 2, Fortnite and ~50 more; add your own in Settings) the player drops to 160p with a bandwidth cap right at the bitrate, so video chunks stop spiking your ping. Close the game and everything is restored. A sidebar badge shows while it is active. On by default
