@@ -146,6 +146,20 @@ class SettingsPage {
 
           <div class="settings-item">
             <div class="settings-item-info">
+              <div class="settings-item-label">Игровой режим</div>
+              <div class="settings-item-description">Пока запущена игра, стрим переходит на 160p с потолком скорости впритык к битрейту — куски видео не подбрасывают пинг. Игра закрыта — всё возвращается. Известны Overwatch, Apex, CS2, VALORANT, Dota 2, Fortnite и десятки других; свои процессы добавьте ниже</div>
+              <input type="text" id="setting-game-processes" class="settings-input" placeholder="Свои игры: например, mygame.exe, other.exe"
+                     value="${String(settings.get('gameModeProcesses') || '').replace(/"/g, '&quot;')}"
+                     style="margin-top: 8px; width: 100%;">
+            </div>
+            <label class="settings-toggle">
+              <input type="checkbox" id="setting-game-mode" ${settings.get('gameMode') !== false ? 'checked' : ''}>
+              <span class="settings-slider"></span>
+            </label>
+          </div>
+
+          <div class="settings-item">
+            <div class="settings-item-info">
               <div class="settings-item-label">${i18n.t('settings.quietHours')}</div>
               <div class="settings-item-description">${i18n.t('settings.quietHoursDesc')}</div>
               <div class="quiet-range">
@@ -692,6 +706,23 @@ class SettingsPage {
     }
 
     // Потолок скорости загрузки стрима
+    const gameToggle = document.getElementById('setting-game-mode');
+    if (gameToggle) {
+      gameToggle.addEventListener('change', (e) => {
+        settings.set('gameMode', e.target.checked);
+        window.utils.showToast(e.target.checked
+          ? 'Игровой режим включён: игра замечается в течение 20 секунд'
+          : 'Игровой режим выключен', 'info');
+      });
+    }
+    const gameProcesses = document.getElementById('setting-game-processes');
+    if (gameProcesses) {
+      gameProcesses.addEventListener('change', (e) => {
+        settings.set('gameModeProcesses', e.target.value.trim());
+        window.utils.showToast('Список игр сохранён', 'success');
+      });
+    }
+
     const limitToggle = document.getElementById('setting-limit-speed');
     const limitNote = document.getElementById('limit-note');
 

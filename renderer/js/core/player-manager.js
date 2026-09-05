@@ -192,6 +192,8 @@ class PlayerManager extends SlottedWebview {
    */
   resolveQuality() {
     const candidates = [
+      // Игровой режим главнее всего: пока идёт игра, только минимум
+      this.gameQuality,
       this.fallbackQuality,
       this.sessionQuality,
       window.settings?.get('preferredStreamQuality')
@@ -438,6 +440,7 @@ class PlayerManager extends SlottedWebview {
     // Раньше значение было прибито в коде, а настройка в интерфейсе
     // отсутствовала вовсе.
     const quality = options.quality || this.resolveQuality();
+    this.currentQuality = quality;
     // controls=false убирает панель управления и наложенную поверх видео
     // подпись с названием стрима — для фонового просмотра они не нужны.
     const url = `https://player.twitch.tv/?channel=${login}&parent=localhost&muted=true&autoplay=true&controls=false&quality=${quality}`;
@@ -625,6 +628,27 @@ class PlayerManager extends SlottedWebview {
     } catch (e) {
       // ignore
     }
+  }
+
+  /**
+   * Игровой режим: на время игры плеер переходит на минимальное качество.
+   * Если качество и так минимальное, перезагружать нечего. Когда игра
+   * закрыта, канал перезагружается с прежним качеством.
+   */
+  setGameMode(active) {
+    const GM = window.GameMode;
+    const wanted = active && GM ? GM.QUALITY : null;
+    if ((this.gameQuality || null) === wanted) return;
+    this.gameQuality = wanted;
+
+    if (!this.channel || !this.webview) return;
+    const next = this.resolveQuality();
+    if (next === this.currentQuality) return;
+
+    console.log('[PlayerManager] Игровой режим', active ? 'включён' : 'выключен', '— качество', next);
+    const channel = this.channel;
+    this.channel = null;
+    this.load(channel, { quality: next, keepSound: this.muted === false });
   }
 
   /** Полная остановка: используется только при реальном завершении фарминга. */

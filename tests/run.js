@@ -930,6 +930,24 @@ function loadClass(relativePath, className, globals = {}) {
   check('подпись при зачёте', DC.describe({ state: 'ok', minutes: 12, required: 60 }), 'Зачёт идёт: 12 из 60 мин');
 }
 
+// ─── Игровой режим: распознавание игры по процессам ──────────────────
+{
+  const GM = loadClass('renderer/js/core/game-mode.js', 'GameMode');
+  const список = ['System', 'explorer.exe', 'Overwatch.exe', 'chrome.exe'];
+
+  check('известная игра найдена без учёта регистра', GM.match(список, '').title, 'Overwatch');
+  check('без игры — null', GM.match(['explorer.exe', 'chrome.exe'], ''), null);
+  check('пустой список — null', GM.match([], ''), null);
+  check('свой процесс без .exe', GM.match(['MyGame.exe'], 'mygame').exe, 'mygame.exe');
+  check('свой процесс главнее известного', GM.match(список, 'chrome').title, 'chrome');
+  check('разбор списка через запятую и точку с запятой',
+    GM.parseExtra(' a.exe, B; c '), ['a.exe', 'b.exe', 'c.exe']);
+  check('разбор tasklist берёт первое поле',
+    GM.parseTasklist('"System Idle Process","0","Services","0","8 K"\r\n"Overwatch.exe","12","Console","1","1,2 K"'),
+    ['System Idle Process', 'Overwatch.exe']);
+  check('путь отрезается', GM.normalize('C:\\Games\\Overwatch.exe'), 'overwatch.exe');
+}
+
 // ─── Итог ────────────────────────────────────────────────────────────
 console.log('');
 if (failures.length) {

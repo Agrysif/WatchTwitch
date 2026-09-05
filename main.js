@@ -592,6 +592,54 @@ function resetTrafficSession() {
  * стрима, остальное пропускаем.
  */
 const NetworkLimit = require('./renderer/js/core/network-limit');
+const GameMode = require('./renderer/js/core/game-mode');
+
+/**
+ * Игровой режим: пока запущена игра, плеер сидит на минимальном качестве с
+ * жёстким потолком скорости, чтобы куски видео не подбрасывали пинг.
+ * Список процессов берём у Windows раз в двадцать секунд — это дешевле,
+ * чем один кусок видео.
+ */
+let gameModeState = { active: false, game: null, since: null };
+let gameCheckBusy = false;
+
+function checkRunningGame() {
+  if (gameCheckBusy) return;
+  if (store.get('settings.gameMode') === false) {
+    if (gameModeState.active) setGameModeState(null);
+    return;
+  }
+  if (process.platform !== 'win32') return;
+
+  gameCheckBusy = true;
+  const { execFile } = require('child_process');
+  execFile('tasklist', ['/fo', 'csv', '/nh'], { windowsHide: true, maxBuffer: 8 * 1024 * 1024 }, (error, stdout) => {
+    gameCheckBusy = false;
+    if (error) {
+      console.warn('[Игра] Не удалось получить список процессов:', error.message);
+      return;
+    }
+    const names = GameMode.parseTasklist(stdout);
+    const game = GameMode.match(names, store.get('settings.gameModeProcesses') || '');
+    setGameModeState(game);
+  });
+}
+
+function setGameModeState(game) {
+  const active = !!game;
+  const sameGame = active && gameModeState.active && gameModeState.game?.exe === game.exe;
+  if (active === gameModeState.active && (sameGame || !active)) return;
+
+  gameModeState = { active, game: game || null, since: active ? Date.now() : null };
+  console.log(active
+    ? '[Игра] Запущена ' + game.title + ' (' + game.exe + ') — качество ' + GameMode.QUALITY + ', потолок ×' + GameMode.HEADROOM
+    : '[Игра] Игра закрыта — возвращаю обычные настройки');
+
+  refreshStreamLimits();
+  sendToMain('game-mode', gameModeState);
+}
+
+ipcMain.handle('get-game-mode', () => gameModeState);
 
 // Плееры, за которыми следит отладчик: к ним же применяется потолок скорости
 const playerWebContents = new Map();
@@ -631,6 +679,11 @@ let activeStreamQuality = null;
 function currentStreamConditions() {
   const enabled = store.get('settings.limitStreamSpeed');
   if (enabled === false) return NetworkLimit.UNLIMITED;
+
+  // Игра запущена: минимальное качество и потолок впритык к битрейту
+  if (gameModeState.active) {
+    return NetworkLimit.conditions(GameMode.QUALITY, GameMode.HEADROOM);
+  }
 
   const quality = activeStreamQuality || store.get('settings.preferredStreamQuality') || '160p30';
   return NetworkLimit.conditions(quality, store.get('settings.streamSpeedHeadroom'));
@@ -2162,6 +2215,10 @@ function setupAdBlock() {
 
 app.whenReady().then(() => {
   setupAdBlock();
+
+  // Игровой режим: первый опрос через 15 секунд, дальше каждые 20
+  setTimeout(checkRunningGame, 15000);
+  setInterval(checkRunningGame, 20000);
 
   app.on('web-contents-created', (_event, contents) => {
     const type = contents.getType();

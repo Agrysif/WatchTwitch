@@ -75,6 +75,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onShortcut: (callback) => ipcRenderer.on('shortcut', (e, action) => callback(action)),
   // Сундук собран запросом из main — для уведомления и звука
   onChestClaimed: (callback) => ipcRenderer.on('chest-claimed', (e, data) => callback(data)),
+  // Игровой режим: запущена ли игра (main следит за процессами)
+  getGameMode: () => ipcRenderer.invoke('get-game-mode'),
+  onGameMode: (callback) => ipcRenderer.on('game-mode', (e, state) => callback(state)),
   setGlobalShortcuts: (enabled) => ipcRenderer.send('set-global-shortcuts', enabled),
 
   // Auto updater

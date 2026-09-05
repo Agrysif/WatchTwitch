@@ -4409,3 +4409,36 @@ body.low-graphics .checkpoint-active {
 body.low-graphics .drops-credit-dot {
   animation: none !important;
 }
+
+/* Значок игрового режима в сайдбаре: пока запущена игра, стрим сидит на
+   минимуме, и пользователь видит, почему картинка стала хуже. */
+.game-mode-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-bottom: 6px;
+  border: 1px solid rgba(245, 185, 66, 0.45);
+  border-radius: var(--radius-md);
+  background: rgba(245, 185, 66, 0.1);
+  color: #f5b942;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* Текстовое поле в настройках (список своих игр) */
+.settings-input {
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm, 6px);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+}
+
+.settings-input:focus {
+  outline: none;
+  border-color: var(--accent-color, #7c5cff);
+}
