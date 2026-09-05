@@ -10,18 +10,31 @@
 - **Файл настроек не переписывается каждые полминуты.** Статистика хранит 100 последних сессий вместо всех (было 240), график скорости только у десяти последних; память кампаний пишется раз в десять минут и только если что-то изменилось
 - **Сайдбар не пересобирается целиком.** Список из сотни категорий перерисовывался через innerHTML каждые полминуты — теперь заменяются только изменившиеся карточки, остальные остаются на месте вместе с обработчиками. Заодно убрана утечка: обработчик перетаскивания добавлялся при каждой перерисовке
 - **Один сторож плеера вместо двух.** Проверка стрима на странице фарминга (каждые 10 с) спорила со сторожем плеера (каждые 30 с): перезагрузка плеера одним читалась другим как «стрим умер». Остался один, с лестницей «нажать → перезагрузить → переустановить адрес → сменить канал» и отдельным распознаванием «канал не в эфире»
+
+## 🇷🇺 Надёжность
+
+- **Подписки снова обновляются.** Список шёл через Helix с давно протухшим OAuth-токеном: Twitch отвечал 401, и страница молча показывала сохранённое. Теперь тот же GraphQL с cookie-токеном, что и всё остальное — 62 канала загружаются за один запрос, аватарки приходят сразу
+- **Лог в файл.** Всё, что приложение писало в невидимую консоль, теперь дублируется в `logs/app.log` рядом с настройками (2 МБ, старый уходит в `app.log.1`). Кнопка «Папка логов» — в настройках, рядом с копией. Ночные падения больше не пропадают без следа
+- **Один экземпляр приложения.** Второй запуск открывал второе окно с тем же файлом настроек; теперь он лишь поднимает окно первого
+- **Экран может гаснуть.** Блокировка сна ставилась при старте и держалась всегда, даже без фарминга. Теперь она включается вместе с плеером и снимается, когда стрим остановлен; система не уснёт, а экран — пожалуйста: минуты просмотра идут по сети, не по картинке
+- **Политика безопасности у окна.** Скрипты и стили только свои, картинки и запросы только по https; предупреждение Electron исчезло. Ради этого загрузчик страниц перестал пользоваться eval
+- **Вычищен мёртвый код:** пять неиспользуемых модулей, три давно не вызываемых обработчика, дублирующаяся разметка окна обновления с теми же id (из-за неё уже ловили переполнение кнопки), внешний скрипт embed.twitch.tv, который никто не использовал. Из зависимостей убраны playwright и puppeteer — 21 МБ, на которые не было ни одной ссылки
+- Опрос входа в модалке аккаунтов останавливается, если уйти со страницы, не закрыв окно
 - Страница календаря освобождается при уходе (в прошлом выпуске это было заявлено, но не попало в код)
 
 ## 🇬🇧 Network and load
 
-- **40× fewer requests to Twitch.** Measured ~1000 requests per minute with up to 266 concurrent connections: the inventory fetch issued one request per campaign (130 of them) for a number nobody read, and five places asked for the campaign list independently. Twitch responses are now cached in one place — inventory at most once a minute, campaign list every ten minutes — and every caller shares the same answer. Now 28 requests per minute, at most 12 concurrent. This also removes ping spikes in games
-- **The campaign list is complete again.** The request the farming page used silently returned nothing, so the app treated the list as partial: it probed every category separately and never removed auto-categories without drops. There is now a single source, and the existing cleanup of auto-categories without an active campaign finally works — the list shrinks on first launch (verified: every game with a live campaign stays)
-- **Every network request has a timeout.** 2 of 33 had one; the rest hung until restart on a dropped connection. Now 20 s of silence aborts the request cleanly
-- **No more log spam.** The full inventory was printed three times per request: 4 MB in five minutes
-- **Light graphics mode now lightens the UI too.** Without acceleration, blur, shadows and endless animations were drawn on the CPU; they are off in this mode, loading spinners stay
-- **Ads in the chat are blocked.** The Twitch chat pulled ad iframes nobody saw but which kept running in the background
-- **Chest auto-claim without a 1-second timer.** A debounced observer (300 ms) plus a once-a-minute safety check replace the constant polling
-- **The settings file is no longer rewritten every 30 s.** Statistics keep the last 100 sessions (was 240), bandwidth graphs only for the last ten; campaign memory is written every ten minutes and only when something changed
-- **The sidebar no longer rebuilds wholesale.** Only changed category cards are replaced; the rest keep their nodes and handlers. Also fixed: the drag-and-drop handler was added on every re-render
-- **One player watchdog instead of two.** The farming page's 10-second stream check fought the player's 30-second watchdog. One remains, with an escalation ladder and explicit offline detection
-- The calendar page is released on leave (claimed in the previous release, but the code never landed)
+- **40× fewer requests to Twitch.** Measured ~1000 requests per minute with up to 266 concurrent connections: the inventory fetch issued one request per campaign (130 of them) for a number nobody read, and five places asked for the campaign list independently. Twitch responses are now cached in one place — inventory at most once a minute, campaign list every ten minutes. Now 28 requests per minute, at most 12 concurrent. This also removes ping spikes in games
+- **The campaign list is complete again.** The request the farming page used silently returned nothing, so the app treated the list as partial: it probed every category separately and never removed auto-categories without drops. There is now a single source, and the existing cleanup finally works — the list shrinks on first launch (verified: every game with a live campaign stays)
+- **Every network request has a timeout.** 2 of 33 had one; the rest hung until restart on a dropped connection
+- **No more log spam**, light graphics mode also lightens the UI, chat ads are blocked, chest auto-claim runs on a debounced observer instead of a 1-second timer, the settings file is no longer rewritten every 30 s, the sidebar replaces only changed cards, and one player watchdog replaces two that fought each other
+
+## 🇬🇧 Reliability
+
+- **Subscriptions refresh again** — GraphQL with the cookie token instead of Helix with an expired OAuth token (which returned 401 forever)
+- **File log** in `logs/app.log` next to the settings, 2 MB with one rotation; "Logs folder" button in Settings
+- **Single instance**: a second launch focuses the first window instead of opening a second one on the same settings file
+- **The screen may sleep**: the power-save blocker now follows the player instead of running from startup, and it blocks system sleep only
+- **Content Security Policy** on the main window; the page loader no longer uses eval
+- **Dead code removed**: five unused modules, three dead IPC handlers, a duplicate update overlay with clashing ids, the unused embed.twitch.tv script; playwright and puppeteer (21 MB, zero references) dropped from dependencies
+- The login modal's polling stops when you leave the page; the calendar page is released on leave

@@ -455,6 +455,7 @@ class PlayerManager extends SlottedWebview {
     this.muted = options.keepSound ? false : true;
     this.syncBar();
     webview.src = url;
+    window.electronAPI?.keepAwake?.(true);
 
     if (options.keepSound) {
       this.restoreSoundAfterLoad();
@@ -633,6 +634,7 @@ class PlayerManager extends SlottedWebview {
     clearTimeout(this.playbackProbe);
     this.stopWatchdog();
     this.channel = null;
+    window.electronAPI?.keepAwake?.(false);
     try {
       this.webview.src = '';
     } catch (e) {

@@ -560,7 +560,15 @@ async function handleTwitchWebLogin(username) {
   };
   
   // Автоматическая проверка каждые 3 секунды (уменьшили частоту)
-  let autoCheckInterval = setInterval(checkTwitchLogin, 3000);
+  // Модалку могли снести переходом на другую вкладку — тогда остановить
+  // опрос было бы некому, а webview входа уже нет
+  let autoCheckInterval = setInterval(() => {
+    if (!document.body.contains(modal)) {
+      clearInterval(autoCheckInterval);
+      return;
+    }
+    checkTwitchLogin();
+  }, 3000);
   
   // Первая проверка через 2 секунды после открытия (даем время загрузиться)
   setTimeout(() => checkTwitchLogin(), 2000);
@@ -753,7 +761,15 @@ async function handleWebLoginForNewAccount() {
   };
   
   // Автоматическая проверка каждые 3 секунды
-  let autoCheckInterval = setInterval(checkAndAddAccount, 3000);
+  // Модалку могли снести переходом на другую вкладку — тогда остановить
+  // опрос было бы некому, а webview входа уже нет
+  let autoCheckInterval = setInterval(() => {
+    if (!document.body.contains(modal)) {
+      clearInterval(autoCheckInterval);
+      return;
+    }
+    checkAndAddAccount();
+  }, 3000);
   
   // Первая проверка через 2 секунды
   setTimeout(() => checkAndAddAccount(), 2000);

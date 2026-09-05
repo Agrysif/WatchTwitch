@@ -29,9 +29,7 @@
   },
   "dependencies": {
     "electron-store": "^8.1.0",
-    "electron-updater": "^6.7.3",
-    "playwright-core": "^1.57.0",
-    "puppeteer-core": "^24.35.0"
+    "electron-updater": "^6.7.3"
   },
   "build": {
     "appId": "com.watchtwitch.app",

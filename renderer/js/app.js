@@ -122,14 +122,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.utils.showToast(`Welcome back, ${savedAccounts[0].username}!`, 'success');
   }
 
-  // Auto-update watch time every minute
-  setInterval(async () => {
-    if (window.streamingManager && window.streamingManager.isFarmingActive()) {
-      const stats = await Storage.getStatistics();
-      // UI will be updated by streaming manager
-    }
-  }, 60000);
-
   // Safety: bind sidebar farming controls even if page init failed
   const startBtn = document.getElementById('sidebar-start-farming-btn');
   const stopBtn = document.getElementById('sidebar-stop-farming-btn');
