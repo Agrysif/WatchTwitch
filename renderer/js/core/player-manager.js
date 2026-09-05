@@ -496,27 +496,18 @@ class PlayerManager extends SlottedWebview {
   async checkPlayback() {
     if (!this.webview || !this.channel || !this.webview.src) return;
 
-    // Спрятанный плеер проверять нельзя: пока он не показан, замирание
-    // нормально, а вмешательство сторожа обернулось бы перезагрузкой
-    // и потерей накопленного просмотра.
-    if (this._parked) {
-      this.lastPlaybackTime = null;
-      this.stallStrikes = 0;
-      return;
-    }
-
     let state;
     try {
       state = await this.webview.executeJavaScript(`
         (function () {
           const video = document.querySelector('video');
           const text = document.body ? document.body.innerText || '' : '';
-          const hasError = /Ошибка\s*#?\d+|Error\s*#?\d+|ошибка сети|network error/i.test(text);
           return {
             hasVideo: !!video,
             time: video ? video.currentTime : 0,
             paused: video ? video.paused : true,
-            hasError: hasError
+            hasError: /Ошибка\\s*#?\\d+|Error\\s*#?\\d+|ошибка сети|network error/i.test(text),
+            offline: /не в сети|не в эфире|офлайн|\\boffline\\b/i.test(text)
           };
         })();
       `);
@@ -526,6 +517,28 @@ class PlayerManager extends SlottedWebview {
     }
 
     if (!state) return;
+
+    // Канал не в эфире: чинить плеер бессмысленно, нужен другой стрим.
+    // Ждём двух проверок подряд (минуту), чтобы не сорваться на мигание
+    // текста во время загрузки страницы.
+    if (state.offline && !state.hasVideo) {
+      this.offlineStrikes = (this.offlineStrikes || 0) + 1;
+      if (this.offlineStrikes >= 2) {
+        this.offlineStrikes = 0;
+        this.reportDead('канал не в эфире');
+      }
+      return;
+    }
+    this.offlineStrikes = 0;
+
+    // Спрятанный плеер дальше не проверяем: пока он не показан, замирание
+    // нормально, а вмешательство обернулось бы перезагрузкой и потерей
+    // накопленного просмотра.
+    if (this._parked) {
+      this.lastPlaybackTime = null;
+      this.stallStrikes = 0;
+      return;
+    }
 
     const advanced = this.lastPlaybackTime !== null && state.time > this.lastPlaybackTime + 0.5;
     const stalled = state.hasError || !state.hasVideo || (!advanced && this.lastPlaybackTime !== null);
@@ -543,19 +556,43 @@ class PlayerManager extends SlottedWebview {
     this.stallStrikes += 1;
     console.warn('[PlayerManager] Плеер стоит (попытка ' + this.stallStrikes + '), ошибка на странице:', state.hasError);
 
+    // Лестница починки: нажать кнопку → перезагрузить webview → заново
+    // выставить адрес → сдаться и попросить другой стрим. Раньше на
+    // четвёртой ступени лестница начиналась с начала, и мёртвый канал
+    // перезапускался всю ночь.
     if (this.stallStrikes === 1) {
       await this.nudgePlayer();
     } else if (this.stallStrikes === 2) {
       console.warn('[PlayerManager] Перезагружаю webview');
       try { this.webview.reload(); } catch (e) { /* ignore */ }
-    } else {
+    } else if (this.stallStrikes === 3) {
       console.warn('[PlayerManager] Переустанавливаю адрес плеера');
       const channel = this.channel;
       this.channel = null;
       this.load(channel);
-      this.stallStrikes = 0;
+      // Счётчик не сбрасываем: если и это не помогло, следующая ступень —
+      // смена канала
+      this.stallStrikes = 3;
       window.utils?.showToast('Плеер перезапущен автоматически', 'info');
+    } else {
+      this.stallStrikes = 0;
+      this.reportDead('плеер не ожил после перезапуска');
     }
+  }
+
+  /**
+   * Сообщает странице фарминга, что канал не оживить.
+   *
+   * Сторож теперь один. Раньше рядом работал второй, в самой странице
+   * фарминга, с проверкой каждые десять секунд: перезагрузку плеера
+   * отсюда он читал как «стрим умер» и менял канал посреди починки.
+   */
+  reportDead(reason) {
+    console.warn('[PlayerManager] Стрим не оживить:', reason);
+    this.lastPlaybackTime = null;
+    window.dispatchEvent(new CustomEvent('wt:player-dead', {
+      detail: { channel: this.channel, reason }
+    }));
   }
 
   /** Мягкая попытка: нажать кнопку перезагрузки Twitch или запустить видео. */

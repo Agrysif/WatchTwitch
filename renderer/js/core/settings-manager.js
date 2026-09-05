@@ -275,6 +275,11 @@ class SettingsManager {
     // вешал этот класс сам, но при следующем запуске он не возвращался —
     // режим включался и молча пропадал.
     document.body.classList.toggle('compact-mode', this.get('compactMode') === true);
+
+    // Экономный режим графики: отключение ускорения требует перезапуска,
+    // а вот размытие, тени и вечные анимации можно снять сразу — без
+    // видеокарты их рисует процессор, и в фоне это заметно
+    document.body.classList.toggle('low-graphics', this.get('lowGraphics') !== false);
   }
 
   /**

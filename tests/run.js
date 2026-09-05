@@ -846,6 +846,42 @@ function loadClass(relativePath, className, globals = {}) {
   check('ноль', н(0), 'недель');
 }
 
+// ─── Подрезка сессий статистики ──────────────────────────────────────
+{
+  const Storage = loadClass('renderer/js/storage.js', 'Storage');
+  const many = [];
+  for (let i = 0; i < 130; i++) many.push({ timestamp: i, bandwidthHistory: [1, 2, 3], isActive: false });
+  many.push({ timestamp: 999, bandwidthHistory: [7], isActive: true });
+
+  const trimmed = Storage.trimSessions(many);
+  check('сессий не больше предела', trimmed.length, Storage.SESSIONS_LIMIT);
+  check('старые сессии без графика', 'bandwidthHistory' in trimmed[0], false);
+  check('последние сессии с графиком', Array.isArray(trimmed[trimmed.length - 2].bandwidthHistory), true);
+  check('активная сессия сохраняет график', trimmed[trimmed.length - 1].bandwidthHistory, [7]);
+  check('самая свежая запись на месте', trimmed[trimmed.length - 1].timestamp, 999);
+  check('пустой список не ломает подрезку', Storage.trimSessions(null), []);
+}
+
+// ─── Память кампаний: без лишних записей ─────────────────────────────
+{
+  const CH = loadClass('renderer/js/features/calendar/campaign-history.js', 'CampaignHistory');
+  const t0 = new Date('2026-08-22T12:00:00Z').getTime();
+  const запись = (progress) => ({
+    id: 'a', game: { displayName: 'Игра' },
+    endsAt: new Date(t0 + 86400000).toISOString(),
+    drops: [{ name: 'Н', required: 60, progress }]
+  });
+
+  const первая = CH.merge([], [запись(10)], t0);
+  const таЖе = CH.merge(первая, [запись(10)], t0 + 60000);
+  check('без изменений список тот же', JSON.stringify(таЖе), JSON.stringify(первая));
+  check('seenAt не сдвигается без изменений', таЖе[0].seenAt, t0);
+
+  const другая = CH.merge(первая, [запись(11)], t0 + 60000);
+  check('прогресс вырос — запись обновлена', другая[0].drops[0].progress, 11);
+  check('seenAt обновлён при изменении', другая[0].seenAt, t0 + 60000);
+}
+
 // ─── Итог ────────────────────────────────────────────────────────────
 console.log('');
 if (failures.length) {

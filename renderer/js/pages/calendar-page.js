@@ -13,7 +13,18 @@ class CalendarPage {
     this.filter = 'all';
     this.days = 7;
 
+    // Обработчики снимаются одним сигналом при уходе со страницы: раньше
+    // объект календаря оставался жить после каждого захода вместе с ними
+    this._abort = new AbortController();
+    this._destroyed = false;
+
     this.init();
+  }
+
+  /** Освобождение при уходе со страницы (зовёт Router). */
+  destroy() {
+    this._destroyed = true;
+    this._abort.abort();
   }
 
   async init() {
@@ -22,13 +33,15 @@ class CalendarPage {
   }
 
   bindControls() {
+    const signal = this._abort.signal;
+
     document.querySelectorAll('.calendar-filter').forEach(btn => {
       btn.addEventListener('click', () => {
         document.querySelectorAll('.calendar-filter').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         this.filter = btn.dataset.filter;
         this.render();
-      });
+      }, { signal });
     });
 
     document.querySelectorAll('.calendar-days').forEach(btn => {
@@ -37,10 +50,10 @@ class CalendarPage {
         btn.classList.add('active');
         this.days = Number(btn.dataset.days) || 7;
         this.render();
-      });
+      }, { signal });
     });
 
-    document.getElementById('calendar-refresh')?.addEventListener('click', () => this.load(true));
+    document.getElementById('calendar-refresh')?.addEventListener('click', () => this.load(true), { signal });
   }
 
   /**
@@ -64,7 +77,7 @@ class CalendarPage {
     // Инвентарь идёт первым, потому что на практике отдаёт всё (включая
     // ещё не начавшиеся кампании), а dashboard-запрос почти всегда
     // возвращает пустой список.
-    const inventory = await window.electronAPI.fetchDropsInventory()
+    const inventory = await window.electronAPI.fetchDropsInventory(manual ? { force: true } : undefined)
       .then(r => this.normalize(r))
       .catch(e => { console.warn('[Календарь] Инвентарь не ответил:', e?.message); return []; });
 
@@ -83,7 +96,7 @@ class CalendarPage {
 
     // Запоминаем увиденное: Twitch выбрасывает закончившиеся кампании из
     // ответа, и без своей памяти показать их было бы неоткуда
-    await window.CampaignHistory.remember(живые);
+    await window.CampaignHistory.remember(живые, Date.now(), { force: manual });
 
     // Дополняем памятью приложения.
     //
@@ -151,6 +164,9 @@ class CalendarPage {
   }
 
   render() {
+    // Загрузка могла закончиться уже после ухода со страницы
+    if (this._destroyed) return;
+
     const body = document.getElementById('calendar-body');
     const summary = document.getElementById('calendar-summary');
     if (!body) return;

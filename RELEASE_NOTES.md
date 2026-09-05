@@ -1,32 +1,27 @@
-## 🇷🇺 Исправлено
+## 🇷🇺 Сеть и нагрузка
 
-- **Календарь наполняется без запущенного стрима.** Twitch отдаёт список кампаний только после того, как в приложении заиграет стрим, и до этого календарь оставался пустым — хотя приложение помнило сотню с лишним кампаний из прошлых запусков. Теперь живые данные дополняются этой памятью, а сколько записей пришло из неё, сказано прямо в сводке. Замер: без стрима было 34 кампании, стало 149
+- **В 40 раз меньше запросов к Twitch.** Замер показал около 1000 запросов в минуту и до 266 одновременных соединений: инвентарь слал отдельный запрос на каждую из 130 кампаний ради числа, которое никто не читал, а список кампаний пять разных мест запрашивали независимо. Теперь ответы Twitch кэшируются в одном месте — инвентарь не чаще раза в минуту, список кампаний раз в десять минут, — и все, кто спрашивает, получают один и тот же ответ. Стало 28 запросов в минуту, одновременных соединений не больше 12. Это же снимает скачки пинга в играх
+- **Список кампаний снова полный.** Запрос, которым пользовалась страница фарминга, молча отдавал пустоту, и приложение считало, что список неполный: проверяло каждую категорию отдельным запросом и никогда не убирало авто-категории без дропсов. Теперь источник один, и старая логика удаления авто-категорий без активной кампании заработала — при первом запуске список сократится (проверено: все игры с живой кампанией остались на месте)
+- **Таймаут у каждого сетевого запроса.** Из 33 запросов срок ожидания был у двух; остальные при обрыве связи висели до перезапуска. Теперь 20 секунд тишины — и запрос обрывается штатно
+- **Лог без тонн мусора.** Инвентарь печатался в консоль целиком три раза за запрос: 4 МБ за пять минут. Убрано
+- **Экономный режим графики теперь экономит и в интерфейсе.** Без ускорения размытие, тени и вечные анимации рисовал процессор; в этом режиме они отключены, спиннеры загрузки остались
+- **Реклама в чате заблокирована.** Чат Twitch подтягивал рекламные iframe, которые никто не видел, но которые крутились в фоне
+- **Сундуки собираются без интервала в секунду.** Раньше наблюдатель без задержки и таймер в 1 с вместе гоняли поиск кнопок по всему чату на каждое сообщение. Теперь одна проверка через 300 мс после последнего изменения и страховочная раз в минуту
+- **Файл настроек не переписывается каждые полминуты.** Статистика хранит 100 последних сессий вместо всех (было 240), график скорости только у десяти последних; память кампаний пишется раз в десять минут и только если что-то изменилось
+- **Сайдбар не пересобирается целиком.** Список из сотни категорий перерисовывался через innerHTML каждые полминуты — теперь заменяются только изменившиеся карточки, остальные остаются на месте вместе с обработчиками. Заодно убрана утечка: обработчик перетаскивания добавлялся при каждой перерисовке
+- **Один сторож плеера вместо двух.** Проверка стрима на странице фарминга (каждые 10 с) спорила со сторожем плеера (каждые 30 с): перезагрузка плеера одним читалась другим как «стрим умер». Остался один, с лестницей «нажать → перезагрузить → переустановить адрес → сменить канал» и отдельным распознаванием «канал не в эфире»
+- Страница календаря освобождается при уходе (в прошлом выпуске это было заявлено, но не попало в код)
 
-- **Полоски ленты календаря больше не тянутся вниз через всё приложение.** Деления должны проходить через строки ленты, но ограничить их было нечем
+## 🇬🇧 Network and load
 
-- **Вкладка «Дропсы» снова открывается.** Она показывала «Требуется авторизация» даже при выполненном входе: признак входа брался из запроса, который возвращает пусто, — теперь берётся из сохранённого аккаунта
-- **Счётчик подписок больше не показывает ноль** при полном списке на экране
-- **Падежи по числу.** Было «1 недель назад», «1 месяцев назад» и «62 подписок» — теперь «1 неделю», «1 месяц», «62 подписки»
-- **Раскладка «Аналитики» не наезжает сама на себя.** Сетка была рассчитана ровно на одну строку, и пятый показатель ломал её
-- Убран скрытый webview, на который не ссылалась ни одна строка кода, но который поднимал отдельный процесс
-- Обновление статистики стрима больше не падает при уходе со страницы
-
-- **Счётчик сессии больше не обнуляется.** При каждой смене категории он прыгал на ноль, хотя сессия не прерывалась: время по категориям считалось тем же отсчётом. Теперь это две разные величины
-- **Переключение категории и стрима запоминается.** Ни одна из трёх кнопок переключения не сохраняла сессию: стоило уйти на другую вкладку и вернуться, как приложение восстанавливало прежнюю категорию и откатывало стрим назад
-- **Экономный режим графики.** Приложению не нужно аппаратное ускорение ради видео в 160p фоном: около ста мегабайт памяти меньше и никакой борьбы за видеокарту с играми. Включено по умолчанию, отключается в настройках
-- Страница календаря наконец освобождается при уходе — раньше её обработчики копились с каждым заходом
-
-## 🇬🇧 Fixed
-
-- **The session timer no longer resets.** It jumped to zero on every category switch even though the session continued; per-category time now has its own counter
-- **Category and stream switches are remembered.** None of the three switch buttons saved the session, so leaving the tab and coming back restored the previous category and rolled the stream back
-- **Light graphics mode.** The app does not need GPU acceleration for background 160p video: about a hundred megabytes less memory and no competition with games. On by default
-- The calendar page is finally released when you leave it
-- **The Drops tab opens again.** It showed "authorization required" even when signed in: the sign-in check relied on a request that returns nothing, and now uses the saved account
-- **The subscriptions counter no longer reads zero** while the full list is on screen
-- **Russian plurals.** "1 недель назад" and "62 подписок" are now declined correctly
-- **The Analytics grid no longer overlaps itself.** It was laid out for exactly one row, and the fifth metric broke it
-- Removed a hidden webview that no code referenced but which spawned its own process
-- Stream stats updates no longer throw when you leave the page
-- **The calendar's timeline gridlines no longer stretch down across the whole app.** They are meant to run through the timeline rows, but nothing was clipping them
-- **The calendar fills up without a running stream.** Twitch only returns the campaign list once a stream is playing inside the app, so until then the calendar stayed empty — even though the app remembered well over a hundred campaigns from earlier runs. Live data is now topped up from that memory, and the summary says how many entries came from it. Measured: 34 campaigns without a stream before, 149 now
+- **40× fewer requests to Twitch.** Measured ~1000 requests per minute with up to 266 concurrent connections: the inventory fetch issued one request per campaign (130 of them) for a number nobody read, and five places asked for the campaign list independently. Twitch responses are now cached in one place — inventory at most once a minute, campaign list every ten minutes — and every caller shares the same answer. Now 28 requests per minute, at most 12 concurrent. This also removes ping spikes in games
+- **The campaign list is complete again.** The request the farming page used silently returned nothing, so the app treated the list as partial: it probed every category separately and never removed auto-categories without drops. There is now a single source, and the existing cleanup of auto-categories without an active campaign finally works — the list shrinks on first launch (verified: every game with a live campaign stays)
+- **Every network request has a timeout.** 2 of 33 had one; the rest hung until restart on a dropped connection. Now 20 s of silence aborts the request cleanly
+- **No more log spam.** The full inventory was printed three times per request: 4 MB in five minutes
+- **Light graphics mode now lightens the UI too.** Without acceleration, blur, shadows and endless animations were drawn on the CPU; they are off in this mode, loading spinners stay
+- **Ads in the chat are blocked.** The Twitch chat pulled ad iframes nobody saw but which kept running in the background
+- **Chest auto-claim without a 1-second timer.** A debounced observer (300 ms) plus a once-a-minute safety check replace the constant polling
+- **The settings file is no longer rewritten every 30 s.** Statistics keep the last 100 sessions (was 240), bandwidth graphs only for the last ten; campaign memory is written every ten minutes and only when something changed
+- **The sidebar no longer rebuilds wholesale.** Only changed category cards are replaced; the rest keep their nodes and handlers. Also fixed: the drag-and-drop handler was added on every re-render
+- **One player watchdog instead of two.** The farming page's 10-second stream check fought the player's 30-second watchdog. One remains, with an escalation ladder and explicit offline detection
+- The calendar page is released on leave (claimed in the previous release, but the code never landed)
