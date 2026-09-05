@@ -37,6 +37,11 @@
 
 - **Запущена игра — стрим не мешает.** Приложение раз в двадцать секунд смотрит список процессов и, увидев игру (Overwatch, Apex, CS2, VALORANT, Dota 2, Fortnite и ещё полсотни известных; свои можно дописать в настройках), переводит плеер на 160p с потолком скорости впритык к битрейту. Куски видео перестают подбрасывать пинг. Игра закрыта — качество и потолок возвращаются. В сайдбаре на это время висит значок «Игровой режим». Включено по умолчанию, выключается в настройках
 
+## 🇷🇺 Ещё
+
+- **Пауза после 429.** Если Twitch отвечает «слишком много запросов», все запросы приложения ждут: столько, сколько просит Retry-After, иначе 30 с, потом 60 с, 2 мин… до десяти минут. Раньше приложение повторяло запрос через полторы секунды и получало отказ снова
+- **Экспорт статистики в CSV.** Кнопка в статистике вместо JSON отдаёт таблицу сессий: дата, время, минуты, категория, канал, баллы, сундуки, дропсы, трафик. Разделитель «;» и BOM — Excel открывает двойным щелчком
+
 ## 🇬🇧 Network and load
 
 - **40× fewer requests to Twitch.** Measured ~1000 requests per minute with up to 266 concurrent connections: the inventory fetch issued one request per campaign (130 of them) for a number nobody read, and five places asked for the campaign list independently. Twitch responses are now cached in one place — inventory at most once a minute, campaign list every ten minutes. Now 28 requests per minute, at most 12 concurrent. This also removes ping spikes in games
@@ -69,3 +74,8 @@
 ## 🇬🇧 New: game mode
 
 - **A running game gets priority.** Every twenty seconds the app checks the process list; when it sees a game (Overwatch, Apex, CS2, VALORANT, Dota 2, Fortnite and ~50 more; add your own in Settings) the player drops to 160p with a bandwidth cap right at the bitrate, so video chunks stop spiking your ping. Close the game and everything is restored. A sidebar badge shows while it is active. On by default
+
+## 🇬🇧 Also
+
+- **Back-off after 429**: all requests pause for Retry-After or 30 s → 60 s → 2 min … up to ten minutes
+- **Statistics export to CSV** instead of JSON: one row per session, Excel-friendly
