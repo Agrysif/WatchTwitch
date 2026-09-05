@@ -882,6 +882,54 @@ function loadClass(relativePath, className, globals = {}) {
   check('seenAt обновлён при изменении', другая[0].seenAt, t0 + 60000);
 }
 
+// ─── Зачёт дропсов: прямой ответ Twitch ──────────────────────────────
+{
+  const DC = loadClass('renderer/js/features/farming/drop-credit.js', 'DropCredit');
+  const t0 = 1_000_000_000;
+  const мин = 60000;
+  const наш = { channel: { name: 'Mills' }, currentMinutesWatched: 12, requiredMinutesWatched: 60 };
+  const чужой = { channel: { name: 'other' }, currentMinutesWatched: 3, requiredMinutesWatched: 60 };
+
+  check('канал совпадает без учёта регистра', DC.matchesChannel(наш, 'mills'), true);
+  check('чужой канал не совпадает', DC.matchesChannel(чужой, 'mills'), false);
+  check('без сессии — не совпадает', DC.matchesChannel(null, 'mills'), false);
+
+  check('нет выборок — ждём', DC.evaluate({ startedAt: t0, login: 'mills', samples: [], now: t0 }).state, 'waiting');
+  check('зачёт на нашем канале — ok',
+    DC.evaluate({ startedAt: t0, login: 'mills', samples: [{ at: t0 + мин, session: наш }], now: t0 + мин }).state, 'ok');
+  check('минуты берутся из ответа',
+    DC.evaluate({ startedAt: t0, login: 'mills', samples: [{ at: t0 + мин, session: наш }], now: t0 + мин }).minutes, 12);
+  check('прогрев: пусто, но рано судить',
+    DC.evaluate({ startedAt: t0, login: 'mills', samples: [{ at: t0 + 2 * мин, session: null }], now: t0 + 2 * мин }).state, 'waiting');
+  check('после прогрева две пустые выборки — приговор',
+    DC.evaluate({ startedAt: t0, login: 'mills',
+      samples: [{ at: t0 + 4 * мин, session: null }, { at: t0 + 5 * мин, session: null }], now: t0 + 5 * мин }).state, 'none');
+  check('после прогрева одна пустая — ещё ждём',
+    DC.evaluate({ startedAt: t0, login: 'mills',
+      samples: [{ at: t0 + 5 * мин, session: null }], now: t0 + 5 * мин }).state, 'waiting');
+  check('зачёт на другом канале назван по имени',
+    DC.evaluate({ startedAt: t0, login: 'mills',
+      samples: [{ at: t0 + 4 * мин, session: чужой }, { at: t0 + 5 * мин, session: чужой }], now: t0 + 5 * мин }).reason,
+    'зачёт идёт на другом канале: other');
+
+  check('сессия пуста, но минуты ещё не признаны стоящими — ждём',
+    DC.evaluate({ startedAt: t0, login: 'mills', samples: [{ at: t0 + 5 * мин, session: null }, { at: t0 + 6 * мин, session: null }], now: t0 + 6 * мин, progressStale: false }).state, 'waiting');
+
+  check('минуты растут — зачёт есть, даже если сессия пустая',
+    DC.evaluate({ startedAt: t0, login: 'mills', samples: [{ at: t0 + 5 * мин, session: null }, { at: t0 + 6 * мин, session: null }], now: t0 + 6 * мин, progressGrew: true }).state, 'ok');
+
+  check('открытая кампания снимает ограничения',
+    DC.allowedLogins([{ allowedChannels: ['a', 'b'] }, { allowedChannels: [] }]), []);
+  check('только закрытые кампании — объединение каналов',
+    DC.allowedLogins([{ allowedChannels: ['A'] }, { allowedChannels: ['b', 'a'] }]), ['a', 'b']);
+  check('без кампаний ограничений нет', DC.allowedLogins([]), []);
+  check('фильтр оставляет разрешённых',
+    DC.filterAllowed([{ login: 'x' }, { login: 'A' }], ['a']).map(s => s.login), ['A']);
+  check('без ограничений фильтр не трогает',
+    DC.filterAllowed([{ login: 'x' }], []).length, 1);
+  check('подпись при зачёте', DC.describe({ state: 'ok', minutes: 12, required: 60 }), 'Зачёт идёт: 12 из 60 мин');
+}
+
 // ─── Итог ────────────────────────────────────────────────────────────
 console.log('');
 if (failures.length) {

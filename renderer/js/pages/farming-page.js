@@ -1736,6 +1736,27 @@ class FarmingPage {
 
     const SP = window.StreamPicker;
 
+    // Часть кампаний Twitch привязывает к конкретным стримерам: просмотр
+    // остальных не засчитывается вовсе. Раньше приложение выбирало стрим по
+    // зрителям и тегу «Drops» и могло всю ночь смотреть «не того».
+    const allowed = await this.allowedChannelsFor(categoryName);
+    if (allowed.length > 0) {
+      const permitted = window.DropCredit.filterAllowed(streams, allowed);
+      if (permitted.length > 0) {
+        console.log('[Выбор стрима] Кампания только для %d каналов, в выдаче подходят: %d', allowed.length, permitted.length);
+        streams = permitted;
+      } else {
+        const live = await this.findLiveAllowedChannel(allowed, categoryName, options.exclude);
+        if (live) {
+          console.log('[Выбор стрима] Разрешённый канал в эфире:', live.login);
+          return live;
+        }
+        console.warn('[Выбор стрима] Кампания только для %d каналов, никто из них не в эфире', allowed.length);
+        window.utils?.showToast('Кампания засчитывается только у ' + allowed.length + ' каналов, никто не в эфире', 'warning');
+        return null;
+      }
+    }
+
     // Канал, который просили не выбирать (кнопка «Другой стрим»)
     const fallback = SP.poolWithout(streams, options.exclude);
 
@@ -1770,6 +1791,50 @@ class FarmingPage {
     }
 
     return fallback[0];
+  }
+
+  /**
+   * Разрешённые каналы для кампаний игры. Пусто — любой канал категории.
+   * Берутся только кампании, которые ещё имеет смысл фармить.
+   */
+  async allowedChannelsFor(categoryName) {
+    if (!window.DropCredit || !window.electronAPI?.fetchDropsInventory) return [];
+    try {
+      const result = await window.electronAPI.fetchDropsInventory();
+      const matched = this.matchCampaignsForGame(result?.campaigns || [], categoryName);
+      const CV = window.CampaignValue;
+      const worthwhile = CV ? matched.filter(c => CV.evaluate(c).feasible) : matched;
+      return window.DropCredit.allowedLogins(worthwhile.length ? worthwhile : matched);
+    } catch (error) {
+      console.warn('[Выбор стрима] Не удалось прочитать список каналов кампании:', error?.message);
+      return [];
+    }
+  }
+
+  /** Кто из разрешённых каналов сейчас в эфире по нужной игре. */
+  async findLiveAllowedChannel(allowed, categoryName, exclude) {
+    if (!window.electronAPI?.getStreamStats) return null;
+    const skip = window.DropCredit.normalizeLogin(exclude);
+    const candidates = allowed.filter(login => login !== skip).slice(0, 12);
+
+    const checked = await Promise.all(candidates.map(async (login) => {
+      try {
+        const stats = await window.electronAPI.getStreamStats(login);
+        if (!stats || !stats.gameName) return null;
+        if (!this.isSameGame(stats.gameName, categoryName)) return null;
+        return {
+          login,
+          displayName: login,
+          title: stats.title || '',
+          viewersCount: stats.viewers || 0,
+          profileImageUrl: null
+        };
+      } catch (error) {
+        return null;
+      }
+    }));
+
+    return checked.find(Boolean) || null;
   }
 
   /**
@@ -2057,7 +2122,11 @@ class FarmingPage {
       }
 
       const stream = await this.pickPreferredStream(streams, channelLogin);
-      
+      if (!stream?.login) {
+        window.utils.showToast('На канале ' + channelLogin + ' нет подходящего стрима', 'warning');
+        return;
+      }
+
       // Переключаемся на стрим
       await window.electronAPI.openStream(`https://www.twitch.tv/${stream.login}`, account);
       
@@ -2210,6 +2279,13 @@ class FarmingPage {
         
         // Берём первый стрим
         const stream = await this.pickPreferredStream(streams, nextCategory.name);
+        if (!stream?.login) {
+          // Кампания привязана к каналам, и никто из них не в эфире: это не
+          // поломка категории, а вопрос времени — выключать её не надо
+          console.warn('[Категории] Разрешённые каналы не в эфире:', nextCategory.name);
+          window.utils.showToast(nextCategory.name + ': разрешённые каналы не в эфире, пробую следующую', 'info');
+          continue;
+        }
         console.log('Selected stream:', stream.displayName);
         
         // Открываем стрим
@@ -2637,6 +2713,10 @@ class FarmingPage {
     
     // Выбираем первый стрим
     const stream = await this.pickPreferredStream(streams, category.name);
+    if (!stream?.login) {
+      window.utils.showToast('В категории ' + category.name + ' нет подходящего стрима', 'warning');
+      return;
+    }
     const streamUrl = `https://www.twitch.tv/${stream.login}`;
     
     console.log('Starting stream:', stream.displayName, streamUrl);
@@ -3105,6 +3185,7 @@ class FarmingPage {
       // ВСЕ кампании этой игры, а не только первая найденная
       const matched = this.matchCampaignsForGame(result.campaigns, currentGameName)
         .filter(c => Array.isArray(c.drops) && c.drops.length > 0);
+      this._lastMatchedCount = matched.length;
 
       const horizontal = document.getElementById('drops-progress-horizontal');
       if (!horizontal) return { hasDrops: false };
@@ -3567,6 +3648,14 @@ class FarmingPage {
     // Закрываем стрим
     window.electronAPI.closeStream();
     
+    // Проверка зачёта дропсов
+    if (this.dropCreditInterval) {
+      clearInterval(this.dropCreditInterval);
+      this.dropCreditInterval = null;
+    }
+    clearTimeout(this._creditFirstTick);
+    this.renderDropCredit({ state: 'waiting', reason: '' });
+
     // Останавливаем обновление статистики
     if (this.streamStatsInterval) {
       clearInterval(this.streamStatsInterval);
@@ -4496,6 +4585,120 @@ class FarmingPage {
     
     updateDrops();
     this.dropsProgressInterval = setInterval(updateDrops, 30000);
+
+    this.startDropCreditCheck(channelLogin);
+  }
+
+  /**
+   * Прямая проверка зачёта: Twitch сам говорит, какой канал засчитывает.
+   *
+   * Раз в минуту (первый раз через полторы) спрашиваем dropCurrentSession.
+   * Первые четыре минуты ответа может не быть — это прогрев, не отказ.
+   * Дальше две выборки подряд без зачёта на нашем канале — стрим меняется.
+   * Индикатор под шкалой дропсов показывает состояние цветом.
+   */
+  startDropCreditCheck(channelLogin) {
+    if (this.dropCreditInterval) {
+      clearInterval(this.dropCreditInterval);
+      this.dropCreditInterval = null;
+    }
+    clearTimeout(this._creditFirstTick);
+
+    this._creditSamples = [];
+    this._creditProgress = [];
+    this._creditStartedAt = Date.now();
+    this._creditStrikes = 0;
+    this.renderDropCredit({ state: 'waiting', reason: 'жду первого ответа Twitch' });
+
+    if (!window.DropCredit || !window.electronAPI?.getDropSession) return;
+
+    const login = window.DropCredit.normalizeLogin(channelLogin);
+
+    const tick = async () => {
+      if (this._destroyed || !this.currentStream) return;
+      if (window.DropCredit.normalizeLogin(this.currentStream.login) !== login) return;
+
+      let response = null;
+      try {
+        response = await window.electronAPI.getDropSession(login);
+      } catch (error) {
+        return;
+      }
+      if (!response || response.ok === false) return;
+
+      this._creditSamples.push({ at: Date.now(), session: response.session || null });
+      if (this._creditSamples.length > 10) this._creditSamples.shift();
+
+      // Страховка: сумма минут по кампаниям игры из инвентаря. Растёт —
+      // значит зачёт идёт, и никакой другой ответ этого не перебьёт
+      let progressGrew = false;
+      let progressStale = true;
+      try {
+        const inv = await window.electronAPI.fetchDropsInventory();
+        const matched = this.matchCampaignsForGame(inv?.campaigns || [], this.currentCategory?.name || '');
+        const sum = matched.reduce((acc, c) => acc + (c.drops || []).reduce((a, d) => a + (Number(d.progress) || 0), 0), 0);
+        const prev = this._creditProgress;
+        progressGrew = prev.length > 0 && sum > Math.min(...prev.slice(-3));
+        // Пять проверок без роста — минуты и правда стоят
+        progressStale = prev.length >= 5 && sum <= Math.min(...prev.slice(-5));
+        prev.push(sum);
+        if (prev.length > 6) prev.shift();
+      } catch (error) {
+        // без инвентаря живём по ответу о сессии
+      }
+
+      const verdict = window.DropCredit.evaluate({
+        startedAt: this._creditStartedAt,
+        login,
+        samples: this._creditSamples,
+        progressGrew,
+        progressStale
+      });
+      this.renderDropCredit(verdict);
+
+      if (verdict.state !== 'none') {
+        this._creditStrikes = 0;
+        return;
+      }
+
+      // Если у игры вообще нет кампаний, ждать зачёт не от чего — этим
+      // занимается проверка выгодности, а не смена стрима
+      if (!this._lastMatchedCount) return;
+
+      this._creditStrikes += 1;
+      if (this._creditStrikes >= 2) {
+        this._creditStrikes = 0;
+        await this.onNoCredit(verdict);
+      }
+    };
+
+    this._creditFirstTick = setTimeout(tick, 90 * 1000);
+    this.dropCreditInterval = setInterval(tick, 60 * 1000);
+  }
+
+  renderDropCredit(verdict) {
+    const box = document.getElementById('sidebar-drops-credit');
+    const text = document.getElementById('sidebar-drops-credit-text');
+    if (!box || !text) return;
+
+    box.dataset.state = verdict?.state || 'waiting';
+    box.title = verdict?.reason || '';
+    text.textContent = window.DropCredit ? window.DropCredit.describe(verdict) : '';
+  }
+
+  /** Twitch подтвердил: этот канал не засчитывает. Ищем другой в категории. */
+  async onNoCredit(verdict) {
+    if (this._destroyed || !this.currentStream || !this.currentCategory) return;
+
+    console.warn('[Зачёт] Канал не засчитывает дропсы:', this.currentStream.login, '—', verdict?.reason || '');
+
+    if (window.settings && window.settings.get('autoSwitchStreams') === false) {
+      window.utils?.showToast('Канал не засчитывает дропсы. Автопереключение выключено', 'warning');
+      return;
+    }
+
+    window.utils?.showToast('Канал не засчитывает дропсы, ищу другой', 'warning');
+    await this.switchToNextStream();
   }
   
   
@@ -4626,6 +4829,10 @@ class FarmingPage {
       
       // Запускаем первый стрим
       const stream = await this.pickPreferredStream(streams, prevCategory.name);
+      if (!stream?.login) {
+        window.utils.showToast('В категории ' + prevCategory.name + ' нет подходящего стрима', 'warning');
+        return;
+      }
       this.currentCategory = prevCategory;
       this.currentStream = stream;
       this.resetChannelPointsTracking();
@@ -4688,6 +4895,10 @@ class FarmingPage {
       
       // Запускаем первый стрим
       const stream = await this.pickPreferredStream(streams, nextCategory.name);
+      if (!stream?.login) {
+        window.utils.showToast('В категории ' + nextCategory.name + ' нет подходящего стрима', 'warning');
+        return;
+      }
       this.currentCategory = nextCategory;
       this.currentStream = stream;
       this.resetChannelPointsTracking();
@@ -5554,6 +5765,7 @@ class FarmingPage {
       'statsUpdateInterval',
       'streamStatsInterval',
       'dropsProgressInterval',
+      'dropCreditInterval',
       'matureCheckInterval',
       'bonusCollectorInterval'
     ];

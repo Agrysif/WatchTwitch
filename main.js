@@ -3002,8 +3002,16 @@ ipcMain.handle('get-streams-with-drops', async (event, categoryName) => {
     const game = JSON.parse(res.data)?.data?.game;
     const edges = game?.streams?.edges || [];
 
-    return edges
-      .filter(edge => streamHasDropsSignal(edge.node))
+    // Тег «Drops» ставят не все стримеры, а открытая кампания засчитывается
+    // на любом канале категории. Раньше без тега приложение отвечало «Нет
+    // стримов». Помеченные — вперёд, без пометки — в запас.
+    const tagged = edges.filter(edge => streamHasDropsSignal(edge.node));
+    const pool = tagged.length ? tagged : edges;
+    if (!tagged.length && edges.length) {
+      console.log('[Стримы] Тега Drops нет ни у кого, беру все стримы категории:', edges.length);
+    }
+
+    return pool
       .map(edge => {
         const broadcaster = edge.node?.broadcaster;
         if (!broadcaster) return null;
@@ -3079,6 +3087,14 @@ function fetchViewerDropsDashboardCampaignsUncached(authToken) {
             status
             startAt
             endAt
+            allow {
+              isEnabled
+              channels {
+                id
+                name
+                displayName
+              }
+            }
             game {
               id
               name
@@ -3225,6 +3241,14 @@ function fetchDropsInventoryUncached() {
                 name
                 startAt
                 endAt
+                allow {
+                  isEnabled
+                  channels {
+                    id
+                    name
+                    displayName
+                  }
+                }
                 game {
                   id
                   name
@@ -3393,7 +3417,13 @@ function fetchDropsInventoryUncached() {
               endsAt: campaign.endAt,
               drops: drops,
               totalDrops: totalDrops,
-              completedDrops: claimedDropsCount
+              completedDrops: claimedDropsCount,
+              // Каналы, на которых кампания засчитывается. Пусто — на любом.
+              // Часть кампаний Twitch привязывает к конкретным стримерам, и
+              // просмотр остальных не даёт ничего.
+              allowedChannels: (campaign.allow?.isEnabled && Array.isArray(campaign.allow.channels))
+                ? campaign.allow.channels.map(c => String(c?.name || '').toLowerCase()).filter(Boolean)
+                : []
             };
           }));
 
@@ -3473,6 +3503,71 @@ function getDropsInventory(options = {}) {
 }
 
 ipcMain.handle('fetch-drops-inventory', async (event, options) => getDropsInventory(options));
+
+/**
+ * Какой канал Twitch засчитывает прямо сейчас и сколько минут набрано.
+ *
+ * Единственный прямой ответ на вопрос «идёт ли фарминг». Инвентарь
+ * показывает то же с опозданием и не говорит, на каком канале. Ответ
+ * кэшируется на 50 секунд: Twitch обновляет минуты раз в минуту.
+ */
+ipcMain.handle('get-drop-session', async (event, channelLogin) => {
+  const login = String(channelLogin || '').replace(/^@/, '').toLowerCase().replace(/[^a-z0-9_]/g, '');
+  const authToken = await getCookieAuthToken();
+  if (!authToken) return { ok: false, error: 'нет cookie-токена' };
+  if (!login) return { ok: false, error: 'не указан канал' };
+
+  const gqlHeaders = (postData) => {
+    const headers = {
+      'Client-ID': 'kimne78kx3ncx6brgo4mv6wki5h1ko',
+      'Authorization': 'OAuth ' + authToken,
+      'Content-Type': 'text/plain;charset=UTF-8',
+      'Content-Length': Buffer.byteLength(postData)
+    };
+    if (hasFreshIntegrity()) {
+      headers['Client-Integrity'] = twitchGqlHeaders.integrity;
+      if (twitchGqlHeaders.deviceId) headers['X-Device-Id'] = twitchGqlHeaders.deviceId;
+      if (twitchGqlHeaders.clientVersion) headers['Client-Version'] = twitchGqlHeaders.clientVersion;
+    }
+    return headers;
+  };
+
+  const parse = (res) => {
+    if (!res.ok) return { error: res.error || res.statusCode };
+    try {
+      const parsed = JSON.parse(res.data);
+      const root = Array.isArray(parsed) ? parsed[0] : parsed;
+      if (root?.errors?.length) return { error: root.errors[0]?.message || 'ошибка GraphQL', data: root.data };
+      return { data: root?.data };
+    } catch (e) {
+      return { error: e.message };
+    }
+  };
+
+  // Идентификатор канала: без него Twitch отвечает пустой сессией. Канал
+  // за время сессии не меняет id, поэтому запоминаем надолго.
+  const channelId = await cachedTwitchCall('channelId:' + login, async () => {
+    const postData = JSON.stringify({ query: 'query { user(login: "' + login + '") { id } }' });
+    const { data, error } = parse(await twitchPost(postData, gqlHeaders(postData)));
+    if (error) console.warn('[Зачёт] Не удалось узнать id канала', login, error);
+    return data?.user?.id || null;
+  }, id => (id ? 6 * 60 * 60 * 1000 : 15 * 1000));
+
+  if (!channelId) return { ok: false, error: 'канал не найден' };
+
+  return cachedTwitchCall('dropSession:' + login, async () => {
+    // Та же операция и те же переменные, что у сайта Twitch: без channelID
+    // сервер возвращает null даже когда минуты идут — проверено замером
+    const postData = JSON.stringify({
+      operationName: 'DropCurrentSessionContext',
+      variables: { channelLogin: login, channelID: channelId },
+      query: 'query DropCurrentSessionContext($channelLogin: String!, $channelID: ID!) { channel(id: $channelID) { id name } user(login: $channelLogin) { id } currentUser { dropCurrentSession { dropID requiredMinutesWatched currentMinutesWatched channel { id name displayName } game { id name displayName } } } }'
+    });
+    const { data, error } = parse(await twitchPost(postData, gqlHeaders(postData)));
+    if (error) return { ok: false, error };
+    return { ok: true, session: data?.currentUser?.dropCurrentSession || null };
+  }, result => (result && result.ok ? 50 * 1000 : 15 * 1000));
+});
 
 // Проверка наличия стримов с дропсами в категории
 ipcMain.handle('check-category-drops', async (event, categoryName) => {
