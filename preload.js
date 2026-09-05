@@ -77,6 +77,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onChestClaimed: (callback) => ipcRenderer.on('chest-claimed', (e, data) => callback(data)),
   // Игровой режим: запущена ли игра (main следит за процессами)
   getGameMode: () => ipcRenderer.invoke('get-game-mode'),
+  // Есть ли вход в Twitch (cookie auth-token)
+  hasTwitchSession: () => ipcRenderer.invoke('has-twitch-session'),
   onGameMode: (callback) => ipcRenderer.on('game-mode', (e, state) => callback(state)),
   setGlobalShortcuts: (enabled) => ipcRenderer.send('set-global-shortcuts', enabled),
 

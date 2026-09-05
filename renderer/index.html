@@ -127,6 +127,13 @@
           <div id="sidebar-drops-tip" class="drops-tip" role="tooltip" aria-hidden="true"></div>
         </div>
         
+        <div id="login-badge" class="game-mode-badge login-badge" hidden role="button" title="Нажмите, чтобы войти в Twitch">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/>
+            <path d="M12 8v4M12 16h.01"/>
+          </svg>
+          <span>Нет входа в Twitch</span>
+        </div>
         <div id="game-mode-badge" class="game-mode-badge" hidden>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M6 12h4M8 10v4M15 11h.01M18 13h.01"/>
@@ -198,6 +205,7 @@
   <script src="js/core/shutdown-manager.js"></script>
   <script src="js/core/whats-new.js"></script>
   <script src="js/core/favourites-watch.js"></script>
+  <script src="js/core/login-guard.js"></script>
   <script src="js/core/notification-service.js"></script>
   <script src="js/core/settings-manager.js"></script>
   <script src="js/core/tooltip-service.js"></script>

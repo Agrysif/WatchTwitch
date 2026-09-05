@@ -46,6 +46,8 @@
 
 - **Пустой инвентарь больше не читается как «дропсов нет».** Нет cookie-токена, пауза после 429, обрыв сети или ошибка разбора — это незнание, и проверка дропсов его пропускает. Раньше на таком ответе приложение за две минуты удаляло категории при живых кампаниях
 
+- **Экран повторного входа.** Если аккаунт сохранён, а Twitch входа не узнаёт (токен протух, разлогинил, хранилище браузера обновилось), приложение говорит об этом сразу: окно с кнопкой «Войти в Twitch» и красный значок в сайдбаре до восстановления входа. Проверка при запуске и раз в пять минут. Раньше стрим играл, а минуты не шли, и об этом узнавали утром
+
 ## 🇬🇧 Network and load
 
 - **40× fewer requests to Twitch.** Measured ~1000 requests per minute with up to 266 concurrent connections: the inventory fetch issued one request per campaign (130 of them) for a number nobody read, and five places asked for the campaign list independently. Twitch responses are now cached in one place — inventory at most once a minute, campaign list every ten minutes. Now 28 requests per minute, at most 12 concurrent. This also removes ping spikes in games
@@ -83,3 +85,5 @@
 
 - **Back-off after 429**: all requests pause for Retry-After or 30 s → 60 s → 2 min … up to ten minutes
 - **Statistics export to CSV** instead of JSON: one row per session, Excel-friendly
+
+- **Re-login screen**: when an account is saved but Twitch no longer recognises the session, a prompt with a “Log in to Twitch” button appears and a red sidebar badge stays until the login is restored
