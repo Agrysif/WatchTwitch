@@ -277,7 +277,8 @@ class Router {
       drops: 'dropsPage',
       subscriptions: 'subscriptionsPage',
       statistics: 'statisticsPage',
-      settings: 'settingsPage'
+      settings: 'settingsPage',
+      calendar: 'calendarPage'
     };
   }
 

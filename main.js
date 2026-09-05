@@ -9,6 +9,74 @@ const { pathToFileURL } = require('url');
 const { autoUpdater } = require('electron-updater');
 
 /**
+ * https.request с обязательным таймаутом.
+ *
+ * Из 33 сетевых запросов в этом файле срок ожидания был только у двух.
+ * Остальные при обрыве связи без ответа сервера висели бесконечно: сокет
+ * открыт, данных нет, обещание не разрешается — и опрос дропсов, который
+ * его ждал, застывал до перезапуска. Здесь один общий предел на простой
+ * соединения: нет данных 20 секунд — запрос обрывается с ошибкой, и у
+ * вызывающего срабатывает его же обработчик 'error'.
+ */
+const REQUEST_IDLE_TIMEOUT_MS = 20000;
+const rawHttpsRequest = https.request.bind(https);
+
+function httpsRequestWithTimeout(...args) {
+  const req = rawHttpsRequest(...args);
+  req.setTimeout(REQUEST_IDLE_TIMEOUT_MS, () => {
+    req.destroy(new Error('таймаут: сервер молчит ' + (REQUEST_IDLE_TIMEOUT_MS / 1000) + ' с'));
+  });
+  return req;
+}
+
+/**
+ * Кэш ответов Twitch с общим обещанием.
+ *
+ * Замер показал около тысячи запросов в минуту: список кампаний и
+ * инвентарь запрашивали пять разных мест независимо, каждое по своему
+ * таймеру, а инвентарь вдобавок слал по запросу на каждую из 130 кампаний
+ * ради числа, которое никто не читал. Twitch обновляет прогресс просмотра
+ * раз в минуту, список кампаний меняется раз в часы — чаще спрашивать
+ * бессмысленно. Пока запрос в полёте, все желающие получают одно и то же
+ * обещание, а не по соединению каждый.
+ */
+const TWITCH_CACHE_TTL = {
+  inventory: 60 * 1000,
+  inventoryEmpty: 15 * 1000,
+  dashboard: 10 * 60 * 1000,
+  dashboardEmpty: 20 * 1000,
+  inFlight: 30 * 1000
+};
+
+const twitchCache = new Map();
+
+function cachedTwitchCall(key, producer, ttlFor) {
+  const hit = twitchCache.get(key);
+  const now = Date.now();
+  if (hit && now < hit.expiresAt) return hit.promise;
+
+  const entry = { promise: null, expiresAt: now + TWITCH_CACHE_TTL.inFlight };
+  entry.promise = Promise.resolve()
+    .then(producer)
+    .then(result => {
+      const ttl = typeof ttlFor === 'function' ? ttlFor(result) : ttlFor;
+      entry.expiresAt = Date.now() + Math.max(0, Number(ttl) || 0);
+      return result;
+    })
+    .catch(error => {
+      twitchCache.delete(key);
+      throw error;
+    });
+  twitchCache.set(key, entry);
+  return entry.promise;
+}
+
+function invalidateTwitchCache(...keys) {
+  if (keys.length === 0) twitchCache.clear();
+  else keys.forEach(key => twitchCache.delete(key));
+}
+
+/**
  * Экономный режим графики.
  *
  * Приложение показывает видео в 160p фоном, и полноценное аппаратное
@@ -139,7 +207,7 @@ const getAppAccessToken = () => new Promise((resolve, reject) => {
     `&client_secret=${TWITCH_CLIENT_SECRET}` +
     `&grant_type=client_credentials`;
 
-  const req = https.request({
+  const req = httpsRequestWithTimeout({
     hostname: 'id.twitch.tv',
     path: tokenPath,
     method: 'POST'
@@ -169,7 +237,7 @@ const getAppAccessToken = () => new Promise((resolve, reject) => {
 });
 
 const getFollowersFromDecapi = (login) => new Promise((resolve) => {
-  const req = https.request({
+  const req = httpsRequestWithTimeout({
     hostname: 'api.decapi.me',
     path: `/twitch/followers/${encodeURIComponent(login)}`,
     method: 'GET'
@@ -191,7 +259,7 @@ const getFollowersFromDecapi = (login) => new Promise((resolve) => {
 });
 
 const getFollowersFromIvr = (login) => new Promise((resolve) => {
-  const req = https.request({
+  const req = httpsRequestWithTimeout({
     hostname: 'api.ivr.fi',
     path: `/v2/twitch/user?login=${encodeURIComponent(login)}`,
     method: 'GET'
@@ -295,7 +363,7 @@ function twitchPost(postData, headers, options = {}) {
   const baseDelay = options.delay || 1500;
 
   const once = () => new Promise((resolve) => {
-    const req = https.request({
+    const req = httpsRequestWithTimeout({
       hostname: 'gql.twitch.tv',
       port: 443,
       path: '/gql',
@@ -745,7 +813,7 @@ ipcMain.handle('fetch-release-notes', async (event, version = null) => {
     : '/repos/Agrysif/WatchTwitch/releases?per_page=10';
 
   return new Promise((resolve) => {
-    const req = https.request({
+    const req = httpsRequestWithTimeout({
       hostname: 'api.github.com',
       path,
       method: 'GET',
@@ -2014,7 +2082,50 @@ if (process.platform === 'win32') {
   app.setAppUserModelId('WatchTwitch.App');
 }
 
+/**
+ * Реклама внутри webview Twitch.
+ *
+ * Чат подтягивает рекламные iframe amazon-adsystem: они грузят скрипты,
+ * крутят анимации и едят процессор в фоне, где их никто не видит. Режем
+ * только сторонние рекламные домены. Сервисы самого Twitch (spade,
+ * video-edge, pubsub) не трогаем — через них засчитываются минуты
+ * просмотра.
+ */
+function setupAdBlock() {
+  const { session } = require('electron');
+  const AD_URLS = [
+    '*://*.amazon-adsystem.com/*',
+    '*://*.doubleclick.net/*',
+    '*://*.googlesyndication.com/*',
+    '*://imasdk.googleapis.com/*',
+    '*://*.scorecardresearch.com/*',
+    '*://*.adnxs.com/*',
+    '*://*.moatads.com/*',
+    '*://*.adsrvr.org/*',
+    '*://*.pubmatic.com/*',
+    '*://*.rubiconproject.com/*',
+    '*://*.casalemedia.com/*',
+    '*://*.3lift.com/*',
+    '*://*.openx.net/*'
+  ];
+
+  let blocked = 0;
+  try {
+    session.fromPartition('persist:twitch').webRequest.onBeforeRequest({ urls: AD_URLS }, (details, callback) => {
+      blocked++;
+      if (blocked === 1 || blocked % 200 === 0) {
+        console.log('[Реклама] Заблокировано запросов:', blocked);
+      }
+      callback({ cancel: true });
+    });
+  } catch (e) {
+    console.warn('[Реклама] Не удалось включить блокировку:', e.message);
+  }
+}
+
 app.whenReady().then(() => {
+  setupAdBlock();
+
   app.on('web-contents-created', (_event, contents) => {
     const type = contents.getType();
     if (type === 'window' || type === 'webview' || type === 'browserView') {
@@ -2505,7 +2616,7 @@ ipcMain.handle('follow-channel', async (event, channelLogin) => {
           }
         };
 
-        const req = https.request(options, (res) => {
+        const req = httpsRequestWithTimeout(options, (res) => {
           let data = '';
           res.on('data', (chunk) => { data += chunk; });
           res.on('end', () => {
@@ -2548,7 +2659,7 @@ ipcMain.handle('follow-channel', async (event, channelLogin) => {
           }
         };
 
-        const req = https.request(options, (res) => {
+        const req = httpsRequestWithTimeout(options, (res) => {
           let data = '';
           res.on('data', (chunk) => { data += chunk; });
           res.on('end', () => {
@@ -2606,12 +2717,11 @@ ipcMain.handle('follow-channel', async (event, channelLogin) => {
         }
       };
 
-      const req = https.request(options, (res) => {
+      const req = httpsRequestWithTimeout(options, (res) => {
         let data = '';
         res.on('data', (chunk) => { data += chunk; });
         res.on('end', () => {
           console.log('Follow response status:', res.statusCode);
-          console.log('Follow response:', data);
 
           if (res.statusCode === 204 || res.statusCode === 200) {
             resolve({ success: true, followed: true });
@@ -2657,7 +2767,7 @@ ipcMain.handle('check-following', async (event, channelLogin) => {
           }
         };
 
-        const req = https.request(options, (res) => {
+        const req = httpsRequestWithTimeout(options, (res) => {
           let data = '';
           res.on('data', (chunk) => { data += chunk; });
           res.on('end', () => {
@@ -2692,7 +2802,7 @@ ipcMain.handle('check-following', async (event, channelLogin) => {
           }
         };
 
-        const req = https.request(options, (res) => {
+        const req = httpsRequestWithTimeout(options, (res) => {
           let data = '';
           res.on('data', (chunk) => { data += chunk; });
           res.on('end', () => {
@@ -2732,7 +2842,7 @@ ipcMain.handle('check-following', async (event, channelLogin) => {
         }
       };
 
-      const req = https.request(options, (res) => {
+      const req = httpsRequestWithTimeout(options, (res) => {
         let data = '';
         res.on('data', (chunk) => { data += chunk; });
         res.on('end', () => {
@@ -2776,7 +2886,7 @@ ipcMain.handle('fetch-twitch-categories', async () => {
       }
     };
 
-    const req = https.request(options, (res) => {
+    const req = httpsRequestWithTimeout(options, (res) => {
       let data = '';
 
       res.on('data', (chunk) => {
@@ -2842,105 +2952,34 @@ function streamHasDropsSignal(node) {
     title.includes('дропы');
 }
 
+/**
+ * Есть ли у игры действующая кампания с наградами.
+ *
+ * true / false — ответ по полному списку кампаний; null — списка нет
+ * (нет cookie-токена или Client-Integrity), и судить не о чём.
+ *
+ * Раньше функция слала свой dashboard-запрос при каждом вызове, а звали
+ * её по разу на каждую категорию и каждую подписку — сотня с лишним
+ * одинаковых запросов при старте. Теперь список берётся из общего кэша.
+ */
 async function hasActiveInventoryDropsForCategory(categoryName) {
-  const https = require('https');
-  const { session } = require('electron');
-  const twitchSession = session.fromPartition('persist:twitch');
+  const authToken = await getCookieAuthToken();
+  if (!authToken) return null;
 
-  let authToken = null;
-  try {
-    const cookies = await twitchSession.cookies.get({
-      url: 'https://www.twitch.tv',
-      name: 'auth-token'
-    });
+  const campaigns = await fetchViewerDropsDashboardCampaigns(authToken);
+  if (!Array.isArray(campaigns) || campaigns.length === 0) return null;
 
-    if (cookies && cookies.length > 0) {
-      authToken = cookies[0].value;
-    }
-  } catch (e) {
-    console.error('[DropsCheck] Error getting auth-token cookie:', e.message);
-  }
+  const lookup = String(categoryName || '').toLowerCase();
+  if (!lookup) return false;
 
-  if (!authToken) {
-    return null;
-  }
-
-  const postData = JSON.stringify({
-    operationName: 'ViewerDropsDashboard',
-    variables: {},
-    extensions: {
-      persistedQuery: {
-        version: 1,
-        sha256Hash: 'e8b98b52bbd7ccd37d0b671ad0d47be5238caa5bea637d2a65776175b4a23a64'
-      }
-    }
+  const matching = campaigns.find(campaign => {
+    const gameName = String(campaign?.game?.name || '').toLowerCase();
+    const displayName = String(campaign?.game?.displayName || '').toLowerCase();
+    return gameName === lookup || displayName === lookup;
   });
 
-  const options = {
-    hostname: 'gql.twitch.tv',
-    port: 443,
-    path: '/gql',
-    method: 'POST',
-    headers: {
-      'Client-ID': 'kimne78kx3ncx6brgo4mv6wki5h1ko',
-      'Authorization': `OAuth ${authToken}`,
-      'Content-Type': 'text/plain;charset=UTF-8'
-    }
-  };
-
-  return new Promise((resolve) => {
-    const req = https.request(options, (res) => {
-      let data = '';
-
-      res.on('data', (chunk) => {
-        data += chunk;
-      });
-
-      res.on('end', () => {
-        try {
-          const response = JSON.parse(data);
-          const campaigns = response?.data?.currentUser?.dropCampaigns || [];
-          const lookup = String(categoryName || '').toLowerCase();
-          const now = Date.now();
-
-          const matchingCampaign = campaigns.find(campaign => {
-            const gameName = String(campaign?.game?.name || '').toLowerCase();
-            const displayName = String(campaign?.game?.displayName || '').toLowerCase();
-            const endAt = campaign?.endAt ? new Date(campaign.endAt).getTime() : null;
-            const startAt = campaign?.startAt ? new Date(campaign.startAt).getTime() : null;
-            const isExpired = endAt && endAt <= now;
-            const isFuture = startAt && startAt > now;
-            const status = String(campaign?.status || '').toUpperCase();
-
-            if (status === 'EXPIRED' || isExpired || isFuture) {
-              return false;
-            }
-
-            return gameName === lookup || displayName === lookup;
-          });
-
-          if (!matchingCampaign) {
-            resolve(false);
-            return;
-          }
-
-          const drops = matchingCampaign.timeBasedDrops || [];
-          resolve(drops.length > 0);
-        } catch (e) {
-          console.error('[DropsCheck] Campaign parse error:', e.message);
-          resolve(null);
-        }
-      });
-    });
-
-    req.on('error', (e) => {
-      console.error('[DropsCheck] Campaign request error:', e.message);
-      resolve(null);
-    });
-
-    req.write(postData);
-    req.end();
-  });
+  if (!matching) return false;
+  return (matching.timeBasedDrops || []).length > 0;
 }
 
 /**
@@ -2960,7 +2999,7 @@ ipcMain.handle('get-category-overview', async (event, categoryName) => {
         'query { game(name: "' + escapedName + '") { viewersCount streams(first: 30) { edges { node { title viewersCount broadcaster { login displayName profileImageURL(width: 70) } freeformTags { name } } } } } }'
     });
 
-    const req = https.request({
+    const req = httpsRequestWithTimeout({
       hostname: 'gql.twitch.tv',
       port: 443,
       path: '/gql',
@@ -3062,191 +3101,24 @@ ipcMain.handle('get-streams-with-drops', async (event, categoryName) => {
   }
 });
 
-// Получить активные кампании дропсов
+// Получить активные кампании дропсов.
+//
+// Раньше здесь стоял persisted-запрос без Client-Integrity: Twitch молча
+// отвечал на него пустым списком, страница фарминга считала список
+// кампаний неполным и проверяла каждую категорию отдельным запросом.
+// Теперь источник один — общий кэш инвентаря, куда уже подмешан полный
+// dashboard-список. Пустой ответ означает ровно одно: полного списка
+// пока нет (нет Client-Integrity), и делать по нему выводы нельзя.
 ipcMain.handle('fetch-twitch-drops', async () => {
-  const https = require('https');
+  const authToken = (await getCookieAuthToken()) || (await getAuthToken());
+  if (!authToken) return [];
 
-  return new Promise(async (resolve) => {
-    // Для ViewerDropsDashboard приоритетнее cookie auth-token из webview
-    let authToken = await getCookieAuthToken();
-    if (!authToken) {
-      authToken = await getAuthToken();
-    }
+  const dashboard = await fetchViewerDropsDashboardCampaigns(authToken);
+  if (!Array.isArray(dashboard) || dashboard.length === 0) return [];
 
-    console.log('Auth token available:', authToken ? 'YES (length: ' + authToken.length + ')' : 'NO');
-
-    if (!authToken) {
-      console.log('No auth token available, cannot fetch drops');
-      resolve([]);
-      return;
-    }
-
-    // Используем правильный GraphQL запрос для получения дропсов
-    const postData = JSON.stringify({
-      operationName: 'ViewerDropsDashboard',
-      variables: {},
-      extensions: {
-        persistedQuery: {
-          version: 1,
-          sha256Hash: 'e8b98b52bbd7ccd37d0b671ad0d47be5238caa5bea637d2a65776175b4a23a64'
-        }
-      }
-    });
-
-    const headers = {
-      'Client-ID': 'kimne78kx3ncx6brgo4mv6wki5h1ko',
-      'Authorization': `OAuth ${authToken}`,
-      'Content-Type': 'text/plain;charset=UTF-8'
-    };
-
-    const options = {
-      hostname: 'gql.twitch.tv',
-      port: 443,
-      path: '/gql',
-      method: 'POST',
-      headers: headers
-    };
-
-    const req = https.request(options, (res) => {
-      let data = '';
-
-      res.on('data', (chunk) => {
-        data += chunk;
-      });
-
-      res.on('end', () => {
-        try {
-          const response = JSON.parse(data);
-
-          // Получаем кампании из ответа (ответ может быть объектом или массивом)
-          const root = Array.isArray(response) ? response[0] : response;
-          const dropCampaigns = root?.data?.currentUser?.dropCampaigns || [];
-
-          // Форматируем кампании (ФИЛЬТРУЕМ ТОЛЬКО АКТИВНЫЕ)
-          const now = new Date();
-          const formatted = dropCampaigns
-            .filter(campaign => {
-              // Пропускаем завершенные кампании
-              if (campaign.status === 'EXPIRED') return false;
-              
-              // Проверяем, не истек ли срок
-              if (campaign.endAt) {
-                const endDate = new Date(campaign.endAt);
-                if (endDate < now) {
-                  console.log(`Filtering out expired campaign: ${campaign.name} (ended ${campaign.endAt})`);
-                  return false;
-                }
-              }
-              
-              // Проверяем, началась ли кампания
-              if (campaign.startAt) {
-                const startDate = new Date(campaign.startAt);
-                if (startDate > now) {
-                  console.log(`Filtering out future campaign: ${campaign.name} (starts ${campaign.startAt})`);
-                  return false;
-                }
-              }
-              
-              return true;
-            })
-            .map(campaign => {
-            const drops = (campaign.timeBasedDrops || []).map(drop => ({
-              id: drop.id,
-              name: drop.name,
-              requiredMinutes: drop.requiredMinutesWatched || 0,
-              requiredMinutesWatched: drop.requiredMinutesWatched || 0,
-              imageUrl: drop.benefitEdges?.[0]?.benefit?.imageAssetURL || '',
-              imageURL: drop.benefitEdges?.[0]?.benefit?.imageAssetURL || ''
-            }));
-
-            return {
-              id: campaign.id,
-              name: campaign.name,
-              game: campaign.game?.displayName || campaign.game?.name,
-              gameId: campaign.game?.id,
-              status: campaign.status,
-              startAt: campaign.startAt,
-              endAt: campaign.endAt,
-              imageUrl: campaign.game?.boxArtURL || '',
-              timeBasedDrops: drops,
-              drops: drops
-            };
-          });
-
-          resolve(formatted);
-        } catch (e) {
-          console.log('Error parsing drops:', e.message);
-          resolve([]);
-        }
-      });
-    });
-
-    req.on('error', (e) => {
-      console.log('Request error:', e.message);
-      resolve([]);
-    });
-
-    req.write(postData);
-    req.end();
-  });
+  const inventory = await getDropsInventory();
+  return Array.isArray(inventory?.campaigns) ? inventory.campaigns : [];
 });
-
-// Helper function to get stream count for a game
-async function getStreamCountForGame(gameName, authToken) {
-  const https = require('https');
-
-  return new Promise((resolve) => {
-    const query = `
-      query {
-        game(name: "${gameName.replace(/"/g, '\\"')}") {
-          viewersCount
-        }
-      }
-    `;
-
-    const postData = JSON.stringify({
-      query: query
-    });
-
-    const options = {
-      hostname: 'gql.twitch.tv',
-      port: 443,
-      path: '/gql',
-      method: 'POST',
-      headers: {
-        'Client-ID': 'kimne78kx3ncx6brgo4mv6wki5h1ko',
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(postData),
-        'Authorization': `OAuth ${authToken}`
-      }
-    };
-
-    const req = https.request(options, (res) => {
-      let data = '';
-
-      res.on('data', (chunk) => {
-        data += chunk;
-      });
-
-      res.on('end', () => {
-        try {
-          const response = JSON.parse(data);
-          const viewersCount = response?.data?.game?.viewersCount;
-          resolve(viewersCount);
-        } catch (e) {
-          resolve(undefined);
-        }
-      });
-    });
-
-    req.on('error', () => {
-      resolve(undefined);
-    });
-
-    req.write(postData);
-    req.end();
-  });
-}
 
 /**
  * Кампании из ViewerDropsDashboard — все активные кампании аккаунта.
@@ -3255,7 +3127,7 @@ async function getStreamCountForGame(gameName, authToken) {
  * дропсы там отсутствуют — и приложение делало вид, что дропсов нет вообще.
  * Возвращает сырые кампании в том же виде, что и inventory (game — объект).
  */
-function fetchViewerDropsDashboardCampaigns(authToken) {
+function fetchViewerDropsDashboardCampaignsUncached(authToken) {
   const https = require('https');
 
   return new Promise((resolve) => {
@@ -3324,7 +3196,7 @@ function fetchViewerDropsDashboardCampaigns(authToken) {
     if (twitchGqlHeaders.clientVersion) headers['Client-Version'] = twitchGqlHeaders.clientVersion;
     if (twitchGqlHeaders.sessionId) headers['Client-Session-Id'] = twitchGqlHeaders.sessionId;
 
-    const req = https.request({
+    const req = httpsRequestWithTimeout({
       hostname: 'gql.twitch.tv',
       port: 443,
       path: '/gql',
@@ -3371,8 +3243,22 @@ function fetchViewerDropsDashboardCampaigns(authToken) {
   });
 }
 
+/**
+ * Список кампаний из общего кэша: один запрос на десять минут для всех,
+ * кто спрашивает. Пустой ответ (Client-Integrity ещё не перехвачен)
+ * держим недолго, чтобы не пропустить момент, когда он появится.
+ */
+function fetchViewerDropsDashboardCampaigns(authToken) {
+  if (!authToken) return Promise.resolve([]);
+  return cachedTwitchCall(
+    'dashboard',
+    () => fetchViewerDropsDashboardCampaignsUncached(authToken),
+    result => (Array.isArray(result) && result.length ? TWITCH_CACHE_TTL.dashboard : TWITCH_CACHE_TTL.dashboardEmpty)
+  );
+}
+
 // Fetch Drops Inventory (full inventory with progress tracking)
-ipcMain.handle('fetch-drops-inventory', async () => {
+function fetchDropsInventoryUncached() {
   const https = require('https');
 
   return new Promise(async (resolve) => {
@@ -3464,7 +3350,7 @@ ipcMain.handle('fetch-drops-inventory', async () => {
       }
     };
 
-    const req = https.request(options, (res) => {
+    const req = httpsRequestWithTimeout(options, (res) => {
       let data = '';
 
       res.on('data', (chunk) => {
@@ -3473,16 +3359,13 @@ ipcMain.handle('fetch-drops-inventory', async () => {
 
       res.on('end', async () => {
         try {
-          console.log('GraphQL Response:', data);
           const responses = JSON.parse(data);
-          console.log('Parsed responses:', responses);
 
           // Parse inventory (only in-progress campaigns available due to integrity check)
           const currentUser = responses[0]?.data?.currentUser || {};
           const inventory = currentUser.inventory || {};
           const ongoingCampaigns = inventory.dropCampaignsInProgress || [];
 
-          console.log('Inventory:', inventory);
           console.log('Ongoing campaigns:', ongoingCampaigns.length);
 
           // Создаем мапу полученных дропсов из инвентаря ПЕРЕД использованием в map
@@ -3575,16 +3458,7 @@ ipcMain.handle('fetch-drops-inventory', async () => {
             const claimedDropsCount = drops.filter(d => d.claimed || d.progress >= d.required).length;
             const campaignProgress = totalDrops > 0 ? claimedDropsCount / totalDrops : 0;
 
-            // Получаем количество стримов для категории
-            let streamCount = undefined;
             const gameName = campaign.game?.displayName || campaign.game?.name;
-            if (gameName && authToken) {
-              try {
-                streamCount = await getStreamCountForGame(gameName, authToken);
-              } catch (e) {
-                console.error('Error getting stream count:', e);
-              }
-            }
 
             return {
               id: campaign.id,
@@ -3598,8 +3472,7 @@ ipcMain.handle('fetch-drops-inventory', async () => {
               endsAt: campaign.endAt,
               drops: drops,
               totalDrops: totalDrops,
-              completedDrops: claimedDropsCount,
-              streamCount: streamCount
+              completedDrops: claimedDropsCount
             };
           }));
 
@@ -3660,7 +3533,25 @@ ipcMain.handle('fetch-drops-inventory', async () => {
     req.write(postData);
     req.end();
   });
-});
+}
+
+/**
+ * Инвентарь из общего кэша: не чаще раза в минуту, сколько бы мест его
+ * ни спрашивало. Прогресс просмотра Twitch и сам считает по минутам.
+ * force — ручное обновление кнопкой: тогда кэш сбрасывается.
+ */
+function getDropsInventory(options = {}) {
+  if (options && options.force) invalidateTwitchCache('inventory');
+  return cachedTwitchCall(
+    'inventory',
+    fetchDropsInventoryUncached,
+    result => (Array.isArray(result?.campaigns) && result.campaigns.length
+      ? TWITCH_CACHE_TTL.inventory
+      : TWITCH_CACHE_TTL.inventoryEmpty)
+  );
+}
+
+ipcMain.handle('fetch-drops-inventory', async (event, options) => getDropsInventory(options));
 
 // Проверка наличия стримов с дропсами в категории
 ipcMain.handle('check-category-drops', async (event, categoryName) => {
@@ -3670,6 +3561,13 @@ ipcMain.handle('check-category-drops', async (event, categoryName) => {
   const hasInventoryDrops = await hasActiveInventoryDropsForCategory(categoryName);
   if (hasInventoryDrops === true) {
     return true;
+  }
+
+  // Список кампаний полный, а игры в нём нет — дропсов нет. Раньше здесь
+  // шёл ещё запрос стримов по каждой категории ради тега «Drops» в
+  // названиях: при старте их набегало больше сотни.
+  if (hasInventoryDrops === false) {
+    return false;
   }
 
   return new Promise((resolve) => {
@@ -3690,7 +3588,7 @@ ipcMain.handle('check-category-drops', async (event, categoryName) => {
       }
     };
 
-    const req = https.request(options, (res) => {
+    const req = httpsRequestWithTimeout(options, (res) => {
       let data = '';
 
       res.on('data', (chunk) => {
@@ -3793,7 +3691,7 @@ ipcMain.handle('get-channel-points', async (event, channelId, userId) => {
         headers: pointsHeaders
       };
 
-      const req = https.request(options, (res) => {
+      const req = httpsRequestWithTimeout(options, (res) => {
         let data = '';
 
         res.on('data', (chunk) => {
@@ -3946,6 +3844,7 @@ ipcMain.handle('claim-drop', async (event, dropInstanceID) => {
 
       // Уже полученная награда — не ошибка: результат тот же, она у пользователя
       if (status === 'ELIGIBLE_FOR_ALL' || status === 'DROP_INSTANCE_ALREADY_CLAIMED') {
+        invalidateTwitchCache('inventory');
         return { success: true, already: status === 'DROP_INSTANCE_ALREADY_CLAIMED' };
       }
 
@@ -4050,7 +3949,7 @@ ipcMain.handle('claim-all-drops', async () => {
           }
         };
 
-        const req = https.request(options, (res) => {
+        const req = httpsRequestWithTimeout(options, (res) => {
           let data = '';
           res.on('data', (chunk) => { data += chunk; });
           res.on('end', () => {
@@ -4130,7 +4029,7 @@ ipcMain.handle('claim-all-drops', async () => {
             headers: claimHeaders
           };
 
-          const req = https.request(options, (res) => {
+          const req = httpsRequestWithTimeout(options, (res) => {
             let data = '';
             res.on('data', (chunk) => { data += chunk; });
             res.on('end', () => {
@@ -4160,6 +4059,8 @@ ipcMain.handle('claim-all-drops', async () => {
         // Небольшая задержка между получениями
         await new Promise(r => setTimeout(r, 500));
       }
+
+      if (claimed > 0) invalidateTwitchCache('inventory');
 
       resolve({
         success: true,
@@ -4206,7 +4107,7 @@ ipcMain.handle('get-user-subscriptions', async (event, authToken) => {
         }
       };
 
-      const userReq = https.request(userOptions, (userRes) => {
+      const userReq = httpsRequestWithTimeout(userOptions, (userRes) => {
         let userData = '';
         userRes.on('data', (chunk) => { userData += chunk; });
         userRes.on('end', () => {
@@ -4217,7 +4118,7 @@ ipcMain.handle('get-user-subscriptions', async (event, authToken) => {
 
             if (!userId) {
               console.log('[GetSubscriptions] No user ID found in response!');
-              console.log('[GetSubscriptions] Full response:', userData);
+              console.log('[GetSubscriptions] Ответ:', String(userData).slice(0, 160));
               resolve([]);
               return;
             }
@@ -4233,7 +4134,7 @@ ipcMain.handle('get-user-subscriptions', async (event, authToken) => {
               }
             };
 
-            const followsReq = https.request(followsOptions, (followsRes) => {
+            const followsReq = httpsRequestWithTimeout(followsOptions, (followsRes) => {
               let followsData = '';
               followsRes.on('data', (chunk) => { followsData += chunk; });
               followsRes.on('end', () => {
@@ -4347,7 +4248,7 @@ function isFollowingChannel(login) {
       query: 'query { user(login: "' + safeLogin + '") { id self { follower { followedAt } } } }'
     });
 
-    const req = https.request({
+    const req = httpsRequestWithTimeout({
       hostname: 'gql.twitch.tv', port: 443, path: '/gql', method: 'POST',
       headers: {
         'Client-ID': 'kimne78kx3ncx6brgo4mv6wki5h1ko',
@@ -4597,12 +4498,11 @@ ipcMain.handle('unsubscribe-channel-legacy', async (event, authToken, broadcaste
 
       console.log('[Unsubscribe] Sending GraphQL request to unfollow broadcaster:', broadcasterId);
 
-      const req = https.request(options, (res) => {
+      const req = httpsRequestWithTimeout(options, (res) => {
         let data = '';
         res.on('data', (chunk) => { data += chunk; });
         res.on('end', () => {
           console.log('[Unsubscribe] Response status:', res.statusCode);
-          console.log('[Unsubscribe] Response data:', data);
           
           try {
             const response = JSON.parse(data);
@@ -4689,7 +4589,7 @@ ipcMain.handle('get-channel-details', async (event, authToken, channelLogin) => 
       }
     };
 
-    https.request(userOptions, (res) => {
+    httpsRequestWithTimeout(userOptions, (res) => {
       let data = '';
       res.on('data', chunk => data += chunk);
       res.on('end', () => {
@@ -4753,7 +4653,7 @@ ipcMain.handle('get-channel-details', async (event, authToken, channelLogin) => 
             }
           };
 
-          https.request(gqlOptions, (res) => {
+          httpsRequestWithTimeout(gqlOptions, (res) => {
             let data = '';
             res.on('data', chunk => data += chunk);
             res.on('end', () => {
@@ -4791,7 +4691,7 @@ ipcMain.handle('get-channel-details', async (event, authToken, channelLogin) => 
                   }
                 };
 
-                https.request(gqlOptionsNoAuth, (res2) => {
+                httpsRequestWithTimeout(gqlOptionsNoAuth, (res2) => {
                   let data2 = '';
                   res2.on('data', chunk => data2 += chunk);
                   res2.on('end', () => {
@@ -4833,7 +4733,7 @@ ipcMain.handle('get-channel-details', async (event, authToken, channelLogin) => 
                 }
               };
 
-              https.request(followersOptions, (res) => {
+              httpsRequestWithTimeout(followersOptions, (res) => {
                 let data = '';
                 res.on('data', chunk => data += chunk);
                 res.on('end', () => {
@@ -4922,7 +4822,7 @@ ipcMain.handle('get-channel-details', async (event, authToken, channelLogin) => 
             }
           };
 
-          https.request(streamOptions, (res) => {
+          httpsRequestWithTimeout(streamOptions, (res) => {
             let data = '';
             res.on('data', chunk => data += chunk);
             res.on('end', () => {
@@ -4957,7 +4857,7 @@ ipcMain.handle('get-channel-details', async (event, authToken, channelLogin) => 
             }
           };
 
-          https.request(videosOptions, (res) => {
+          httpsRequestWithTimeout(videosOptions, (res) => {
             let data = '';
             res.on('data', chunk => data += chunk);
             res.on('end', () => {
@@ -5003,7 +4903,7 @@ ipcMain.handle('load-image', async (event, imageUrl) => {
       const hostname = urlObj.hostname;
       const path = urlObj.pathname + urlObj.search;
 
-      const imgReq = https.request({
+      const imgReq = httpsRequestWithTimeout({
         hostname: hostname,
         path: path,
         method: 'GET'

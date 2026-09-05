@@ -175,7 +175,7 @@
       // Кнопка обновления
       const refreshBtn = document.getElementById('refreshButton');
       if (refreshBtn) {
-        refreshBtn.addEventListener('click', () => this.loadDrops());
+        refreshBtn.addEventListener('click', () => this.loadDrops({ force: true }));
       }
       
       // Кнопка получения всех наград
@@ -220,7 +220,7 @@
       }, { signal: this._abort.signal });
     }
 
-    async loadDrops() {
+    async loadDrops(options = {}) {
       const loadingEl = document.getElementById('loadingState');
       const containerEl = document.getElementById('campaignsContainer');
       const emptyEl = document.getElementById('emptyState');
@@ -231,7 +231,7 @@
 
       try {
         console.log('Fetching drops inventory...');
-        const data = await window.electronAPI.fetchDropsInventory();
+        const data = await window.electronAPI.fetchDropsInventory(options.force ? { force: true } : undefined);
         console.log('Drops data received:', data);
         
         if (data && data.campaigns && data.campaigns.length > 0) {

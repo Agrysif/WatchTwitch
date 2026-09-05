@@ -4324,3 +4324,44 @@ body.compact-mode .stat-card {
   opacity: 0.75;
   transition: opacity 0.2s ease;
 }
+
+/* ──────────────────────────────────────────────────────────────
+   Экономный режим графики.
+   Аппаратное ускорение в нём выключено, и размытие, тени и вечные
+   анимации рисует процессор. Убираем их: интерфейс тот же, нагрузка в
+   фоне меньше. Крутящиеся индикаторы загрузки оставляем — без них не
+   понять, что приложение работает.
+   ────────────────────────────────────────────────────────────── */
+body.low-graphics *,
+body.low-graphics *::before,
+body.low-graphics *::after {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+}
+
+body.low-graphics .update-overlay,
+body.low-graphics .update-modal,
+body.low-graphics .drop-notification {
+  background-color: var(--bg-secondary, #16161c) !important;
+}
+
+body.low-graphics .particle {
+  display: none !important;
+}
+
+body.low-graphics .update-modal-icon,
+body.low-graphics .update-modal-icon svg,
+body.low-graphics .update-progress-fill,
+body.low-graphics .update-notification-badge,
+body.low-graphics .progress-fill-animated::before,
+body.low-graphics .waiting-ring-outer,
+body.low-graphics .waiting-ring-inner,
+body.low-graphics .waiting-dot,
+body.low-graphics .pulse,
+body.low-graphics .glow,
+body.low-graphics .checkpoint-active {
+  animation: none !important;
+  filter: none !important;
+}

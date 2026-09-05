@@ -68,6 +68,13 @@ class CampaignHistory {
     for (const campaign of fresh || []) {
       const trimmed = CampaignHistory.trim(campaign);
       if (!trimmed.id || !trimmed.endsAt) continue;
+
+      // Не изменилась — оставляем прежнюю запись целиком. Иначе новая
+      // отметка времени делала бы список «другим» при каждом слиянии, и
+      // файл переписывался бы каждую минуту ради одного числа.
+      const known = byId.get(trimmed.id);
+      if (known && CampaignHistory.sameRecord(known, trimmed)) continue;
+
       trimmed.seenAt = now;
       byId.set(trimmed.id, trimmed);
     }
@@ -83,6 +90,16 @@ class CampaignHistory {
       .slice(0, CampaignHistory.LIMIT);
   }
 
+  /** Одинаковы ли две записи, если не считать отметку времени. */
+  static sameRecord(a, b) {
+    return JSON.stringify({ ...a, seenAt: null }) === JSON.stringify({ ...b, seenAt: null });
+  }
+
+  /** Как часто память вообще стоит трогать. */
+  static get MIN_WRITE_INTERVAL_MS() {
+    return 10 * 60 * 1000;
+  }
+
   /** Записи, у которых срок уже прошёл. */
   static ended(history, now) {
     return (history || []).filter(item => {
@@ -91,13 +108,25 @@ class CampaignHistory {
     });
   }
 
-  /** Запоминает кампании. Ошибки хранилища не должны ломать загрузку. */
-  static async remember(campaigns, now = Date.now()) {
+  /**
+   * Запоминает кампании. Ошибки хранилища не должны ломать загрузку.
+   *
+   * Инвентарь приходит каждую минуту, и прогресс в нём каждый раз чуть
+   * другой. Переписывать ради этого 160 КБ файла каждую минуту незачем:
+   * памяти хватает точности в десять минут. Ручное обновление (force)
+   * пишет сразу. Если после слияния ничего не изменилось — не пишем.
+   */
+  static async remember(campaigns, now = Date.now(), options = {}) {
     if (!Array.isArray(campaigns) || campaigns.length === 0) return;
+
+    const last = CampaignHistory._lastRememberAt || 0;
+    if (!options.force && now - last < CampaignHistory.MIN_WRITE_INTERVAL_MS) return;
 
     try {
       const known = (await Storage.get(CampaignHistory.KEY, [])) || [];
       const merged = CampaignHistory.merge(known, campaigns, now);
+      CampaignHistory._lastRememberAt = now;
+      if (JSON.stringify(merged) === JSON.stringify(known)) return;
       await Storage.set(CampaignHistory.KEY, merged);
     } catch (error) {
       console.warn('[История кампаний] Не удалось сохранить:', error?.message);

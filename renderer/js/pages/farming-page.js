@@ -609,6 +609,10 @@ class FarmingPage {
       if (el) el.addEventListener(type, handler, { signal: listenerSignal });
     };
 
+    // Сторож плеера один, в PlayerManager; сюда приходит только итог
+    // «канал не оживить» — и страница решает, куда переключиться
+    on(window, 'wt:player-dead', (event) => this.onPlayerDead(event.detail || {}));
+
     // Используем setTimeout для гарантии, что DOM загружен
     setTimeout(() => {
       const addBtn = document.getElementById('add-category-btn');
@@ -902,7 +906,6 @@ class FarmingPage {
       // Запускаем сборщик бонусов и проверку здоровья стрима
       this.resetChannelPointsTracking();
       this.startBackgroundBonusCollector(stream.login);
-      this.startStreamHealthCheck();
 
       // Показываем баллы
       const pointsCard = document.getElementById('channel-points-card');
@@ -1349,7 +1352,7 @@ class FarmingPage {
     // первой незакреплённой категорией, но только если закреплённые есть
     const pinnedCount = categoriesToRender.filter(cat => cat.pinned).length;
 
-    container.innerHTML = categoriesToRender.map((cat, index) => {
+    const html = categoriesToRender.map((cat, index) => {
       const divider = (pinnedCount > 0 && index === pinnedCount)
         ? `<div class="pinned-divider"><span>${this.i18n.t('farming.pinnedDivider')}</span></div>`
         : '';
@@ -1447,6 +1450,8 @@ class FarmingPage {
       `;
     }).join('');
 
+    this.applyCategoriesMarkup(container, html);
+
     this.setupPinControls();
     this.setupDragAndDrop();
     this.setupRemoveButtons();
@@ -1454,6 +1459,60 @@ class FarmingPage {
     this.setupPlayButtons();
     this.setupCategoryImageClick();
     this.updateAutoDropsButtonState();
+  }
+
+  /**
+   * Обновляет список категорий, не пересобирая то, что не изменилось.
+   *
+   * Список из сотни с лишним карточек раньше собирался через innerHTML
+   * каждые полминуты — число зрителей меняется всегда. Вместе с разметкой
+   * пропадали состояние наведения и загруженные обложки, а браузер
+   * перекладывал сотню узлов ради одной цифры. Теперь карточка заменяется
+   * только когда её разметка действительно другая; остальные узлы
+   * переезжают на новое место как есть, вместе со своими обработчиками.
+   * Поэтому все setup*-методы ниже вешают обработчик один раз на узел.
+   */
+  applyCategoriesMarkup(container, html) {
+    const template = document.createElement('template');
+    template.innerHTML = html;
+
+    const keyOf = (el) => (el.dataset && el.dataset.categoryId)
+      ? 'c:' + el.dataset.categoryId
+      : 'x:' + (el.className || el.tagName);
+
+    const existing = new Map();
+    for (const el of container.children) {
+      const key = keyOf(el);
+      if (!existing.has(key)) existing.set(key, el);
+    }
+
+    const previousHtml = this._categoryCardHtml || new Map();
+    const nextHtml = new Map();
+    const nodes = [];
+    const reused = new Set();
+    let replaced = 0;
+
+    for (const fresh of Array.from(template.content.children)) {
+      const key = keyOf(fresh);
+      const markup = fresh.outerHTML;
+      nextHtml.set(key, markup);
+
+      const old = existing.get(key);
+      if (old && !reused.has(old) && previousHtml.get(key) === markup) {
+        reused.add(old);
+        nodes.push(old);
+      } else {
+        replaced++;
+        nodes.push(fresh);
+      }
+    }
+
+    this._categoryCardHtml = nextHtml;
+    container.replaceChildren(...nodes);
+
+    if (replaced > 0 && reused.size > 0) {
+      console.log('[Категории] Обновлено карточек:', replaced, 'из', nodes.length);
+    }
   }
 
   /**
@@ -1471,6 +1530,8 @@ class FarmingPage {
    */
   setupPinControls() {
     document.querySelectorAll('.category-pin-btn').forEach(btn => {
+      if (btn.dataset.bound) return;
+      btn.dataset.bound = '1';
       btn.addEventListener('click', async (event) => {
         event.stopPropagation();
         await this.togglePinned(btn.dataset.categoryId);
@@ -1505,6 +1566,8 @@ class FarmingPage {
   setupPlayButtons() {
     const playButtons = document.querySelectorAll('.category-play-btn');
     playButtons.forEach(btn => {
+      if (btn.dataset.bound) return;
+      btn.dataset.bound = '1';
       btn.addEventListener('click', async (e) => {
         e.stopPropagation();
         const categoryId = e.currentTarget.dataset.categoryId;
@@ -1539,6 +1602,8 @@ class FarmingPage {
   setupCategoryImageClick() {
     const categoryImages = document.querySelectorAll('.category-image');
     categoryImages.forEach(img => {
+      if (img.dataset.bound) return;
+      img.dataset.bound = '1';
       img.style.cursor = 'pointer';
       img.addEventListener('click', async (e) => {
         e.stopPropagation();
@@ -1884,7 +1949,6 @@ class FarmingPage {
     this.startBackgroundBonusCollector(stream.login);
     
     // Запускаем проверку состояния трансляции
-    this.startStreamHealthCheck();
 
     // Отображаем корректное состояние кнопок
     this.showFarmingState();
@@ -1893,6 +1957,8 @@ class FarmingPage {
   setupToggleButtons() {
     const toggles = document.querySelectorAll('.category-toggle-switch input[type="checkbox"]');
     toggles.forEach(toggle => {
+      if (toggle.dataset.bound) return;
+      toggle.dataset.bound = '1';
       toggle.addEventListener('change', async (e) => {
         const categoryId = e.target.dataset.categoryId;
         const category = this.categories.find(c => c.id === categoryId);
@@ -2186,12 +2252,18 @@ class FarmingPage {
   }
 
   setupDragAndDrop() {
-    const items = document.querySelectorAll('.category-item');
-    let draggedItem = null;
+    const container = document.getElementById('categories-list');
+    if (!container) return;
 
-    items.forEach(item => {
-      item.addEventListener('dragstart', (e) => {
-        draggedItem = item;
+    // Перетаскиваемый элемент храним на странице, а не в замыкании:
+    // карточки, пережившие перерисовку, держат старые обработчики, и
+    // общая переменная нужна им всем.
+    container.querySelectorAll('.category-item').forEach(item => {
+      if (item.dataset.dndBound) return;
+      item.dataset.dndBound = '1';
+
+      item.addEventListener('dragstart', () => {
+        this._draggedItem = item;
         item.classList.add('dragging');
       });
 
@@ -2201,30 +2273,37 @@ class FarmingPage {
 
       item.addEventListener('dragover', (e) => {
         e.preventDefault();
+        const dragged = this._draggedItem;
+        if (!dragged || dragged === item) return;
         const afterElement = this.getDragAfterElement(e.clientY);
-        const container = document.getElementById('categories-list');
         if (afterElement == null) {
-          container.appendChild(draggedItem);
+          container.appendChild(dragged);
         } else {
-          container.insertBefore(draggedItem, afterElement);
+          container.insertBefore(dragged, afterElement);
         }
       });
     });
 
-    // Save new order on drop
-    document.getElementById('categories-list').addEventListener('drop', async () => {
-      const items = document.querySelectorAll('.category-item');
-      const newOrder = Array.from(items).map(item => item.getAttribute('data-category-id'));
-      
-      // Reorder categories array
-      this.categories = newOrder.map(id => this.categories.find(cat => cat.id === id));
-      this.categories.forEach((cat, index) => {
-        cat.priority = index + 1;
+    // Обработчик сброса — один на контейнер. Раньше он добавлялся при
+    // каждой перерисовке: за ночь их набегали десятки, и одно
+    // перетаскивание сохраняло и перерисовывало список десятки раз.
+    if (!container.dataset.dropBound) {
+      container.dataset.dropBound = '1';
+      container.addEventListener('drop', async () => {
+        const items = container.querySelectorAll('.category-item');
+        const newOrder = Array.from(items).map(item => item.getAttribute('data-category-id'));
+
+        this.categories = newOrder
+          .map(id => this.categories.find(cat => cat.id === id))
+          .filter(Boolean);
+        this.categories.forEach((cat, index) => {
+          cat.priority = index + 1;
+        });
+
+        await Storage.saveCategories(this.categories);
+        this.renderCategories();
       });
-      
-      await Storage.saveCategories(this.categories);
-      this.renderCategories();
-    });
+    }
   }
 
   getDragAfterElement(y) {
@@ -2244,6 +2323,8 @@ class FarmingPage {
 
   setupRemoveButtons() {
     document.querySelectorAll('.category-remove').forEach(btn => {
+      if (btn.dataset.bound) return;
+      btn.dataset.bound = '1';
       btn.addEventListener('click', async (e) => {
         e.stopPropagation();
         const categoryId = btn.getAttribute('data-category-id');
@@ -3471,11 +3552,6 @@ class FarmingPage {
     window.sessionState?.stopPointsPolling();
 
 
-    // Останавливаем проверку состояния трансляции
-    if (this.streamHealthCheckInterval) {
-      clearInterval(this.streamHealthCheckInterval);
-      this.streamHealthCheckInterval = null;
-    }
     
     // Сбрасываем счетчики баллов.
     //
@@ -3960,7 +4036,14 @@ class FarmingPage {
       };
 
       webview.addEventListener('dom-ready', setLabel, { once: true });
-      setTimeout(setLabel, 0);
+      // Если dom-ready уже прошёл, событие не придёт — пробуем сразу, но
+      // молча: до готовности webview этот вызов выбрасывает исключение,
+      // и раньше оно шло в лог предупреждением при каждом запуске
+      try {
+        if (webview.getWebContentsId?.()) setLabel();
+      } catch (e) {
+        // ещё не готов — дождёмся dom-ready
+      }
     };
 
     registerWebviewLabel('twitch-player', 'Twitch Player (Main)');
@@ -5412,103 +5495,33 @@ class FarmingPage {
   }
 
   // Проверка состояния трансляции
-  startStreamHealthCheck() {
-    // Останавливаем предыдущий интервал если есть
-    if (this.streamHealthCheckInterval) {
-      clearInterval(this.streamHealthCheckInterval);
+  /**
+   * Плеер сообщил, что стрим не оживить.
+   *
+   * Раньше здесь был собственный сторож с проверкой каждые десять секунд —
+   * второй, независимый от сторожа плеера. Они спорили: перезагрузка
+   * плеера одним читалась другим как «стрим умер», и канал менялся зря.
+   * Вдобавок он искал ошибки по всему документу Twitch селектором
+   * [class*="error"] и срабатывал на чужие классы. Теперь надзор один, в
+   * PlayerManager, а страница лишь решает, что делать, когда лестница
+   * починки исчерпана.
+   */
+  async onPlayerDead(detail = {}) {
+    if (this._destroyed) return;
+    if (!this.currentStream || !this.currentCategory) return;
+
+    // Настройка «Автопереключение стримов» должна что-то значить
+    if (window.settings && window.settings.get('autoSwitchStreams') === false) {
+      console.log('[Плеер] Стрим недоступен, но автопереключение выключено в настройках');
+      window.utils.showToast('Стрим недоступен. Автопереключение выключено', 'warning');
+      return;
     }
-    
-    // Счетчик неудачных проверок
-    this.streamHealthFailCount = 0;
-    
-    // Проверяем каждые 10 секунд (более агрессивно)
-    this.streamHealthCheckInterval = setInterval(async () => {
-      if (!this.currentStream || !this.currentCategory) return;
-      
-      try {
-        const player = window.playerManager?.getWebview();
 
-        if (!player || !player.src) {
-          console.warn('Player not found or no src');
-          this.streamHealthFailCount++;
-        } else {
-          // Проверяем состояние загрузки webview
-          try {
-            // Проверяем на ошибки, оффлайн, черный экран
-            const hasIssue = await player.executeJavaScript(`
-              (function() {
-                // Проверяем ошибки
-                const errorElements = document.querySelectorAll('[class*="error"], [class*="Error"], [data-test-selector*="error"]');
-                const offlineElements = document.querySelectorAll('[class*="offline"], [class*="Offline"], [data-a-target*="offline"]');
-                
-                if (errorElements.length > 0 || offlineElements.length > 0) {
-                  console.log('❌ Stream error detected:', errorElements.length + offlineElements.length, 'elements');
-                  return true;
-                }
-                
-                // Проверяем черный экран - нет видео элемента или он не играет
-                const video = document.querySelector('video');
-                if (video) {
-                  // Проверяем что видео действительно играет
-                  const isPlaying = !video.paused && !video.ended && video.readyState > 2;
-                  const hasBlackScreen = video.videoWidth === 0 || video.videoHeight === 0;
-                  
-                  if (!isPlaying || hasBlackScreen) {
-                    console.log('❌ Video issue:', { 
-                      paused: video.paused, 
-                      ended: video.ended, 
-                      readyState: video.readyState,
-                      width: video.videoWidth,
-                      height: video.videoHeight
-                    });
-                    return true;
-                  }
-                } else {
-                  console.log('❌ No video element found');
-                  return true;
-                }
-                
-                return false;
-              })()
-            `);
-            
-            if (hasIssue) {
-              console.warn('Stream health issue detected');
-              this.streamHealthFailCount++;
-            } else {
-              // Стрим загрузился и играет успешно
-              this.streamHealthFailCount = 0;
-            }
-          } catch (e) {
-            console.log('Error checking webview state:', e);
-            this.streamHealthFailCount++;
-          }
-        }
-        
-        // Если 2 проверки подряд провалились - переключаемся на другой стрим (быстрее реакция)
-        if (this.streamHealthFailCount >= 2) {
-          this.streamHealthFailCount = 0;
-
-          // Настройка «Автопереключение стримов» раньше сохранялась,
-          // но нигде не проверялась — переключение шло всегда.
-          if (window.settings && window.settings.get('autoSwitchStreams') === false) {
-            console.log('[Health] Стрим недоступен, но автопереключение выключено в настройках');
-            window.utils.showToast('Стрим недоступен. Автопереключение выключено', 'warning');
-            return;
-          }
-
-          console.warn('Stream health check failed 2 times, switching to another stream...');
-          window.utils.showToast('Стрим недоступен, переключение...', 'warning');
-
-          // Переключаемся на другой стрим той же категории
-          await this.switchToNextStream();
-        }
-      } catch (error) {
-        console.error('Error in stream health check:', error);
-      }
-    }, 10000); // Каждые 10 секунд (более частая проверка)
+    console.warn('[Плеер] Стрим не оживить, переключаюсь:', detail.reason || '');
+    window.utils.showToast('Стрим недоступен, переключение...', 'warning');
+    await this.switchToNextStream();
   }
-  
+
   // Форматирование оставшегося времени
   formatTimeRemaining(endsAt) {
     if (!endsAt) return '';
@@ -5541,7 +5554,6 @@ class FarmingPage {
       'statsUpdateInterval',
       'streamStatsInterval',
       'dropsProgressInterval',
-      'streamHealthCheckInterval',
       'matureCheckInterval',
       'bonusCollectorInterval'
     ];

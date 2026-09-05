@@ -56,6 +56,7 @@ class Storage {
   static async updateStatistics(update) {
     const stats = await this.getStatistics();
     Object.assign(stats, update);
+    stats.sessions = Storage.trimSessions(stats.sessions);
     await this.set('statistics', stats);
   }
 
@@ -69,7 +70,41 @@ class Storage {
       timestamp: session.timestamp || Date.now(),
       isActive: session.isActive || false
     });
+    stats.sessions = Storage.trimSessions(stats.sessions);
     await this.set('statistics', stats);
+  }
+
+  /** Сколько сессий храним. */
+  static get SESSIONS_LIMIT() {
+    return 100;
+  }
+
+  /** У скольких последних сессий оставляем график скорости. */
+  static get SESSIONS_WITH_GRAPH() {
+    return 10;
+  }
+
+  /**
+   * Подрезает список сессий перед записью.
+   *
+   * Список рос без предела: 240 записей на 240 КБ, и каждые полминуты
+   * файл переписывался целиком. Страница статистики показывает десять
+   * последних сессий, и график скорости рисуется только у них — остальным
+   * он не нужен, а всё старше сотни не нужно вовсе. Активная сессия
+   * график сохраняет всегда: он ещё пишется.
+   */
+  static trimSessions(sessions) {
+    const list = Array.isArray(sessions) ? sessions.slice(-Storage.SESSIONS_LIMIT) : [];
+    const keepGraphFrom = list.length - Storage.SESSIONS_WITH_GRAPH;
+
+    return list.map((session, index) => {
+      if (!session || typeof session !== 'object') return session;
+      if (index >= keepGraphFrom || session.isActive) return session;
+      if (!('bandwidthHistory' in session)) return session;
+
+      const { bandwidthHistory, ...rest } = session;
+      return rest;
+    });
   }
 
   static async updateCurrentSession(sessionData) {
@@ -97,6 +132,8 @@ class Storage {
       });
     }
     
+    stats.sessions = Storage.trimSessions(stats.sessions);
+    
     await this.set('statistics', stats);
   }
 
@@ -113,6 +150,7 @@ class Storage {
         ...finalData,
         isActive: false
       };
+      stats.sessions = Storage.trimSessions(stats.sessions);
       await this.set('statistics', stats);
     }
   }
@@ -188,4 +226,8 @@ class Storage {
   static async setItem(key, value) {
     await this.set(key, value);
   }
+}
+
+if (typeof window !== 'undefined') {
+  window.Storage = Storage;
 }

@@ -117,26 +117,52 @@ function tryClaimChests() {
   }
 }
 
+/**
+ * Наблюдатель за чатом с задержкой.
+ *
+ * Раньше здесь стояли наблюдатель без задержки и интервал в одну секунду
+ * разом: в живом чате каждое сообщение запускало поиск кнопок по всему
+ * документу, а между сообщениями его запускал таймер. Причём наблюдатель
+ * подключался, пока document.body ещё не существовал, и молча падал —
+ * всю работу делал интервал. Сундук появляется раз в четверть часа, и
+ * ждать его можно спокойно: одна проверка через 300 мс после последнего
+ * изменения в чате, и страховочная — раз в минуту.
+ */
 function setupAutoClaimObserver() {
-  try {
-    const observer = new MutationObserver(() => {
+  if (!isChatPage()) {
+    console.log('[AutoClaim] Не страница чата — автосбор здесь не нужен');
+    return;
+  }
+
+  let pending = null;
+  const schedule = () => {
+    if (pending) return;
+    pending = setTimeout(() => {
+      pending = null;
       tryClaimChests();
-    });
+    }, 300);
+  };
 
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true
-    });
-
+  try {
+    const observer = new MutationObserver(schedule);
+    observer.observe(document.body, { childList: true, subtree: true });
     console.log('[AutoClaim] ✅ MutationObserver ready');
   } catch (e) {
     console.warn('[AutoClaim] ❌ Observer error:', e.message);
   }
+
+  setInterval(tryClaimChests, 60000);
+  tryClaimChests();
 }
 
 refreshAutoClaimSetting();
-setInterval(refreshAutoClaimSetting, 30000);
-setupAutoClaimObserver();
-setInterval(tryClaimChests, 1000);
+setInterval(refreshAutoClaimSetting, 60000);
+
+// Preload выполняется до разбора страницы: body появится позже
+if (document.body) {
+  setupAutoClaimObserver();
+} else {
+  document.addEventListener('DOMContentLoaded', setupAutoClaimObserver, { once: true });
+}
 
 console.log('[WebviewPreload] ✅ Preload fully initialized');
