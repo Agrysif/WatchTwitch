@@ -5190,6 +5190,12 @@ class FarmingPage {
       return;
     }
 
+    // Без фонового чата сундуки забирает main запросом при опросе баллов
+    if (window.ChatManager && !window.ChatManager.enabled) {
+      this.startPointsPolling();
+      return;
+    }
+
     console.log('[Chest] Запускаю фоновый сборщик сундуков для', channelLogin);
 
     // Скрипт регистрируем до загрузки: ChatManager внедрит его сам,

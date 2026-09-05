@@ -509,7 +509,7 @@ let twitchGqlHeaders = {
   capturedAt: 0
 };
 
-function captureTwitchGqlHeaders(params) {
+function captureTwitchGqlHeaders(params, sourceUrl) {
   try {
     const url = params?.request?.url || '';
     if (!url.includes('gql.twitch.tv')) return;
@@ -535,7 +535,9 @@ function captureTwitchGqlHeaders(params) {
     // Twitch подписывает каждый запрос заново, поэтому сообщаем только о первом
     // перехвате — иначе лог заполняется одинаковыми строками.
     if (!hadIntegrity) {
-      console.log('[Twitch] Перехвачен Client-Integrity — гейтед-запросы дропсов теперь доступны');
+      let source = '';
+      try { source = new URL(sourceUrl || '').host; } catch (e) { /* без источника */ }
+      console.log('[Twitch] Перехвачен Client-Integrity — гейтед-запросы дропсов теперь доступны. Источник:', source || 'неизвестен');
     }
   } catch (e) {
     // перехват заголовков не критичен
@@ -718,7 +720,9 @@ function setupTrafficMonitoring(webContents) {
       // собственным GraphQL-запросам. Без Client-Integrity часть операций
       // (в частности список кампаний дропсов) отвечает IntegrityCheckFailed.
       if (method === 'Network.requestWillBeSent') {
-        captureTwitchGqlHeaders(params);
+        let sourceUrl = '';
+        try { sourceUrl = webContents.isDestroyed() ? '' : webContents.getURL(); } catch (e) { /* ignore */ }
+        captureTwitchGqlHeaders(params, sourceUrl);
       }
     });
 
@@ -3638,108 +3642,97 @@ ipcMain.handle('check-category-drops', async (event, categoryName) => {
 });
 
 // Получить баллы канала через Twitch API
-ipcMain.handle('get-channel-points', async (event, channelId, userId) => {
-  const https = require('https');
+/**
+ * Баллы канала и бонусный сундук.
+ *
+ * Тот же запрос ChannelPointsContext, что и раньше, но полным текстом и с
+ * полем availableClaim: если сундук готов, Twitch отдаёт его id, и мы
+ * забираем его мутацией — без чата. До сих пор сундуки собирал скрипт
+ * внутри webview чата (около 190 МБ памяти и заметный процессор ради
+ * одной кнопки раз в четверть часа). Чат теперь выключен по умолчанию.
+ */
+const claimedChests = new Set();
 
-  return new Promise(async (resolve) => {
-    try {
-      // Получаем cookie token из webview
-      const { session } = require('electron');
-      const twitchSession = session.fromPartition('persist:twitch');
+ipcMain.handle('get-channel-points', async (event, channelLogin) => {
+  const login = String(channelLogin || '').replace(/^@/, '').toLowerCase().replace(/[^a-z0-9_]/g, '');
+  const authToken = await getCookieAuthToken();
+  if (!authToken) return { points: 0, error: 'No auth token' };
+  if (!login) return { points: 0, error: 'no channel' };
 
-      let authToken = null;
-      try {
-        const cookies = await twitchSession.cookies.get({
-          url: 'https://www.twitch.tv',
-          name: 'auth-token'
-        });
-
-        if (cookies && cookies.length > 0) {
-          authToken = cookies[0].value;
-        }
-      } catch (e) {
-        console.error('Error getting cookie token:', e.message);
-      }
-
-      if (!authToken) {
-        console.log('No auth token available');
-        resolve({ points: 0, error: 'No auth token' });
-        return;
-      }
-
-      // GraphQL запрос для получения баллов
-      const postData = JSON.stringify([{
-        operationName: 'ChannelPointsContext',
-        variables: {
-          channelLogin: channelId
-        },
-        extensions: {
-          persistedQuery: {
-            version: 1,
-            sha256Hash: '1530a003a7d374b0380b79db0be0534f30ff46e61cffa2bc0e2468a909fbc024'
-          }
-        }
-      }]);
-
-      // Здесь стояло headers: unsubscribeHeaders — переменная из совсем
-      // другого обработчика, объявленная восемью сотнями строк ниже.
-      // Каждый запрос баллов падал с «unsubscribeHeaders is not defined»,
-      // а ошибка гасилась внутрь ответа: наружу выходило просто 0 баллов.
-      const pointsHeaders = {
-        'Client-ID': 'kimne78kx3ncx6brgo4mv6wki5h1ko',
-        'Authorization': `OAuth ${authToken}`,
-        'Content-Type': 'text/plain;charset=UTF-8',
-        'Content-Length': Buffer.byteLength(postData)
-      };
-
-      if (hasFreshIntegrity()) {
-        pointsHeaders['Client-Integrity'] = twitchGqlHeaders.integrity;
-        if (twitchGqlHeaders.deviceId) pointsHeaders['X-Device-Id'] = twitchGqlHeaders.deviceId;
-        if (twitchGqlHeaders.clientVersion) pointsHeaders['Client-Version'] = twitchGqlHeaders.clientVersion;
-        if (twitchGqlHeaders.sessionId) pointsHeaders['Client-Session-Id'] = twitchGqlHeaders.sessionId;
-      }
-
-      const options = {
-        hostname: 'gql.twitch.tv',
-        port: 443,
-        path: '/gql',
-        method: 'POST',
-        headers: pointsHeaders
-      };
-
-      const req = httpsRequestWithTimeout(options, (res) => {
-        let data = '';
-
-        res.on('data', (chunk) => {
-          data += chunk;
-        });
-
-        res.on('end', () => {
-          try {
-            const response = JSON.parse(data);
-            const channelData = response[0]?.data?.community?.channel;
-            const points = channelData?.self?.communityPoints?.balance || 0;
-
-            resolve({ points, error: null });
-          } catch (e) {
-            console.error('Error parsing points response:', e);
-            resolve({ points: 0, error: e.message });
-          }
-        });
-      });
-
-      req.on('error', (e) => {
-        console.error('Request error:', e);
-        resolve({ points: 0, error: e.message });
-      });
-
-      req.write(postData);
-      req.end();
-    } catch (error) {
-      console.error('Error getting channel points:', error);
-      resolve({ points: 0, error: error.message });
+  const gqlHeaders = (postData) => {
+    const headers = {
+      'Client-ID': 'kimne78kx3ncx6brgo4mv6wki5h1ko',
+      'Authorization': 'OAuth ' + authToken,
+      'Content-Type': 'text/plain;charset=UTF-8',
+      'Content-Length': Buffer.byteLength(postData)
+    };
+    if (hasFreshIntegrity()) {
+      headers['Client-Integrity'] = twitchGqlHeaders.integrity;
+      if (twitchGqlHeaders.deviceId) headers['X-Device-Id'] = twitchGqlHeaders.deviceId;
+      if (twitchGqlHeaders.clientVersion) headers['Client-Version'] = twitchGqlHeaders.clientVersion;
+      if (twitchGqlHeaders.sessionId) headers['Client-Session-Id'] = twitchGqlHeaders.sessionId;
     }
+    return headers;
+  };
+
+  const parse = (res) => {
+    if (!res.ok) return { error: res.error || res.statusCode };
+    try {
+      const parsed = JSON.parse(res.data);
+      const root = Array.isArray(parsed) ? parsed[0] : parsed;
+      return { data: root?.data, error: root?.errors?.[0]?.message || null };
+    } catch (e) {
+      return { error: e.message };
+    }
+  };
+
+  const postData = JSON.stringify({
+    operationName: 'ChannelPointsContext',
+    variables: { channelLogin: login },
+    query: 'query ChannelPointsContext($channelLogin: String!) { community: user(login: $channelLogin) { id channel { id self { communityPoints { balance availableClaim { id } } } } } }'
   });
+
+  const { data, error } = parse(await twitchPost(postData, gqlHeaders(postData)));
+  if (error && !data?.community) {
+    console.warn('[Баллы] Twitch не ответил:', error);
+    return { points: 0, error: String(error) };
+  }
+
+  const community = data?.community || {};
+  const points = community.channel?.self?.communityPoints?.balance || 0;
+  const claimId = community.channel?.self?.communityPoints?.availableClaim?.id || null;
+  const channelId = community.channel?.id || community.id || null;
+
+  const result = { points, error: null, claimed: null };
+
+  // Сундук готов — забираем. Настройка автосбора та же, что и у наград.
+  const autoClaim = store.get('settings.autoClaimDrops');
+  if (claimId && channelId && autoClaim !== false && !claimedChests.has(claimId)) {
+    claimedChests.add(claimId);
+    if (claimedChests.size > 200) claimedChests.delete(claimedChests.values().next().value);
+
+    const claimData = JSON.stringify({
+      operationName: 'ClaimCommunityPoints',
+      variables: { input: { channelID: String(channelId), claimID: String(claimId) } },
+      query: 'mutation ClaimCommunityPoints($input: ClaimCommunityPointsInput!) { claimCommunityPoints(input: $input) { claim { id pointsEarnedTotal pointsEarnedBaseline } error { code } } }'
+    });
+    const claimed = parse(await twitchPost(claimData, gqlHeaders(claimData)));
+    const claim = claimed.data?.claimCommunityPoints?.claim;
+    const claimError = claimed.error || claimed.data?.claimCommunityPoints?.error?.code;
+
+    if (claim) {
+      const earned = Number(claim.pointsEarnedTotal) || 0;
+      result.claimed = { id: claim.id, points: earned };
+      console.log('[Сундук] Собран запросом:', login, '+' + earned);
+      sendToMain('chest-claimed', { channel: login, points: earned, timestamp: Date.now() });
+    } else {
+      // Не вышло — дадим следующему опросу попробовать снова
+      claimedChests.delete(claimId);
+      console.warn('[Сундук] Не удалось забрать:', login, claimError || 'неизвестно');
+    }
+  }
+
+  return result;
 });
 
 // Выключение компьютера

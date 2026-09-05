@@ -158,6 +158,18 @@ class SessionState {
     }
   }
 
+  /**
+   * Сундук забран запросом из main. Учитываем здесь, а прирост баланса,
+   * который увидит следующий опрос, в сундуки уже не записываем — иначе
+   * он посчитается дважды.
+   */
+  noteChest(points) {
+    this.points.chestsCollected += 1;
+    this.points.chestsPoints += Number(points) || 0;
+    this._chestJustClaimed = Number(points) || 0;
+    this.renderPoints();
+  }
+
   async pollPoints() {
     if (!this.streamLogin || !window.electronAPI?.getChannelPoints) return;
 
@@ -187,7 +199,10 @@ class SessionState {
         this.points.earnedThisStream += diff;
         this.points.sessionEarned += diff;
 
-        if (diff >= SessionState.CHEST_THRESHOLD) {
+        if (this._chestJustClaimed) {
+          // Прирост уже учтён как сундук через noteChest
+          this._chestJustClaimed = 0;
+        } else if (diff >= SessionState.CHEST_THRESHOLD) {
           this.points.chestsCollected += 1;
           this.points.chestsPoints += diff;
           console.log('[SessionState] Сундук: +' + diff);

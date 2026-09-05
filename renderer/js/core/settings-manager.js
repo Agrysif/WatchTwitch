@@ -47,6 +47,9 @@ class SettingsManager {
       // аппаратное ускорение ради видео в 160p фоном, а сто мегабайт и
       // свободная видеокарта для игр нужны
       lowGraphics: true,
+      // Фоновый чат Twitch выключен: сундуки собираются запросом, а webview
+      // чата стоил ~190 МБ памяти и процессор
+      backgroundChat: false,
       limitStreamSpeed: true,
       streamSpeedHeadroom: 3,
       autostart: false,
