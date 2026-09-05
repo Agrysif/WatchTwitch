@@ -36,6 +36,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   // Открыть в браузере
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
+  openLogsFolder: () => ipcRenderer.invoke('open-logs-folder'),
+  // Не давать системе уснуть, пока плеер играет (и отпустить, когда стих)
+  keepAwake: (on) => ipcRenderer.send('keep-awake', !!on),
   
   // Follow/Unfollow
   followChannel: (channelLogin) => ipcRenderer.invoke('follow-channel', channelLogin),
@@ -47,7 +50,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getStreamsWithDrops: (categoryName) => ipcRenderer.invoke('get-streams-with-drops', categoryName),
   getCategoryOverview: (categoryName) => ipcRenderer.invoke('get-category-overview', categoryName),
   getStreamStats: (channelLogin) => ipcRenderer.invoke('get-stream-stats', channelLogin),
-  getDropsProgress: (channelLogin) => ipcRenderer.invoke('get-drops-progress', channelLogin),
   fetchTwitchDrops: () => ipcRenderer.invoke('fetch-twitch-drops'),
   // options.force — ручное обновление: main сбрасывает свой кэш инвентаря
   fetchDropsInventory: (options) => ipcRenderer.invoke('fetch-drops-inventory', options),

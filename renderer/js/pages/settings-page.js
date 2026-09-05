@@ -524,6 +524,14 @@ class SettingsPage {
             </button>
             <input type="file" id="backup-file-input" accept="application/json,.json" style="display: none;">
 
+            <button class="btn btn-secondary" id="open-logs-btn" style="margin-left: 8px;" title="Журнал работы приложения — пригодится, если что-то пошло не так ночью">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <path d="M14 2v6h6M8 13h8M8 17h8"/>
+              </svg>
+              Папка логов
+            </button>
+
             <div class="settings-item-description" style="width: 100%; margin-top: 10px;">
               В копию попадают категории с порядком и закреплениями, подписки, статистика и настройки.
               Аккаунты и токены не сохраняются — после переноса нужно войти заново.
@@ -1075,6 +1083,16 @@ class SettingsPage {
         } catch (error) {
           console.error('[Копия] Не удалось сохранить:', error);
           window.utils.showToast('Не удалось сохранить копию', 'error');
+        }
+      });
+    }
+
+    const logsBtn = document.getElementById('open-logs-btn');
+    if (logsBtn) {
+      logsBtn.addEventListener('click', async () => {
+        const result = await window.electronAPI.openLogsFolder?.();
+        if (result && !result.success) {
+          window.utils.showToast('Не удалось открыть папку логов: ' + (result.error || ''), 'error');
         }
       });
     }

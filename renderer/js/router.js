@@ -174,9 +174,18 @@ class Router {
           await this.loadScript(scriptSrc);
         }
 
-        // Execute inline script
+        // Execute inline script.
+        //
+        // Раньше стоял eval: ему нужен 'unsafe-eval' в политике безопасности,
+        // а с ним политика почти ничего не защищает. Обычный скрипт-элемент
+        // выполняет тот же код; обёртка в функцию сохраняет прежнюю область
+        // видимости — иначе повторный заход на страницу объявлял бы те же
+        // const/let второй раз и падал.
         if (inlineScript) {
-          eval(inlineScript);
+          const script = document.createElement('script');
+          script.textContent = '(function () {\n' + inlineScript + '\n})();';
+          document.body.appendChild(script);
+          script.remove();
         }
 
         // Initialize page-specific logic
