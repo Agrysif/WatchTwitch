@@ -3180,7 +3180,16 @@ class FarmingPage {
       }
 
       const result = await window.electronAPI.fetchDropsInventory();
-      if (!result || !result.campaigns) return { hasDrops: false };
+
+      // Пустой ответ без кампаний вообще — это незнание, а не «дропсов нет»:
+      // нет cookie-токена, пауза после 429, обрыв сети, ошибка разбора.
+      // Однажды на таком ответе приложение за две минуты удалило две
+      // категории и выключило третью — при живых кампаниях у всех трёх.
+      if (!result || !result.campaigns || result.error || result.rateLimited || result.needsStream || result.campaigns.length === 0) {
+        console.log('[Дропсы] Инвентарь недоступен — проверку пропускаю:',
+          result?.needsStream ? 'нет cookie-токена' : (result?.rateLimited ? 'пауза Twitch' : (result?.error ? 'ошибка запроса' : 'пустой ответ')));
+        return { hasDrops: true, unknown: true };
+      }
 
       // ВСЕ кампании этой игры, а не только первая найденная
       const matched = this.matchCampaignsForGame(result.campaigns, currentGameName)

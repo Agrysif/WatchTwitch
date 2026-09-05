@@ -3571,14 +3571,14 @@ function fetchDropsInventoryUncached() {
           });
         } catch (e) {
           console.error('Error parsing inventory:', e);
-          resolve({ campaigns: [], currentDrop: null });
+          resolve({ campaigns: [], currentDrop: null, error: true });
         }
       });
     });
 
     req.on('error', (e) => {
       console.error('Request error:', e);
-      resolve({ campaigns: [], currentDrop: null });
+      resolve({ campaigns: [], currentDrop: null, error: true });
     });
 
     req.write(postData);
