@@ -22,6 +22,17 @@
 - Опрос входа в модалке аккаунтов останавливается, если уйти со страницы, не закрыв окно
 - Страница календаря освобождается при уходе (в прошлом выпуске это было заявлено, но не попало в код)
 
+## 🇷🇺 Дропсы: проверка зачёта
+
+- **Список разрешённых каналов кампании учитывается.** Почти половина кампаний (49 из 117 на замере) засчитывается только у конкретных стримеров — просмотр остальных не даёт ничего. Теперь выбор стрима фильтрует выдачу по этому списку, а если никто из разрешённых не попал в выдачу, спрашивает их напрямую. Категория, у которой разрешённые каналы не в эфире, пропускается, а не выключается
+- **Стримы без тега «Drops» больше не повод отвечать «Нет стримов».** Открытая кампания засчитывается на любом канале категории; помеченные тегом идут первыми, остальные — в запас
+- **Индикатор зачёта под шкалой дропсов.** Зелёный — Twitch подтверждает зачёт на этом канале или растут минуты в инвентаре; жёлтый — ждём; красный — канал не засчитывает, и стрим меняется. Приговор выносится только по двум признакам разом: пустая сессия зачёта после четырёх минут прогрева и минуты, не растущие пять проверок подряд — замер показал, что один запрос о сессии у Twitch ненадёжен
+
+## 🇷🇺 Чат больше не нужен
+
+- **Сундуки собираются запросом к Twitch, без webview чата.** Раньше ради одной кнопки раз в четверть часа в фоне жил целый чат Twitch — около 190 МБ памяти и заметный процессор — плюс скрипт, перебиравший его DOM. Теперь опрос баллов заодно получает готовый сундук и забирает его мутацией. Замер: память приложения 1032 → 622 МБ, процессор 53 → 46 % ядра. Client-Integrity, нужный для запросов кампаний, плеер даёт сам
+- Фоновый чат остался как настройка «Фоновый чат Twitch» (выключена по умолчанию) — на случай, если сундуки перестанут собираться
+
 ## 🇬🇧 Network and load
 
 - **40× fewer requests to Twitch.** Measured ~1000 requests per minute with up to 266 concurrent connections: the inventory fetch issued one request per campaign (130 of them) for a number nobody read, and five places asked for the campaign list independently. Twitch responses are now cached in one place — inventory at most once a minute, campaign list every ten minutes. Now 28 requests per minute, at most 12 concurrent. This also removes ping spikes in games
@@ -38,3 +49,15 @@
 - **Content Security Policy** on the main window; the page loader no longer uses eval
 - **Dead code removed**: five unused modules, three dead IPC handlers, a duplicate update overlay with clashing ids, the unused embed.twitch.tv script; playwright and puppeteer (21 MB, zero references) dropped from dependencies
 - The login modal's polling stops when you leave the page; the calendar page is released on leave
+
+## 🇬🇧 Drops: credit check
+
+- **Campaign channel allow-lists are respected.** Nearly half of campaigns (49 of 117 measured) only count on specific streamers. Stream selection now filters by that list and queries the allowed channels directly when none is in the category listing; a category whose allowed channels are offline is skipped, not disabled
+- **Streams without the “Drops” tag are no longer a dead end** — tagged streams first, the rest as fallback
+- **Credit indicator under the drops bar:** green when Twitch confirms credit or inventory minutes grow, yellow while waiting, red when the channel does not count and the stream gets switched. A red verdict needs both signals: an empty drop session after a 4-minute warm-up and minutes flat for five checks
+
+## 🇬🇧 No chat needed
+
+- **Chests are claimed via a Twitch request, without the chat webview.** A whole Twitch chat used to live in the background for one button every fifteen minutes (~190 MB and noticeable CPU). The points poll now returns the ready chest and claims it with a mutation. Measured: 1032 → 622 MB, 53 → 46 % CPU. Client-Integrity comes from the player itself
+- Background chat remains as an opt-in setting
+

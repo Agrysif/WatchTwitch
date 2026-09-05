@@ -76,6 +76,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   // поэтому запускается один раз при старте приложения
   window.favouritesWatch?.start();
 
+  // Сундук забран запросом из main-процесса: показываем и отмечаем
+  window.electronAPI?.onChestClaimed?.((data) => {
+    const points = Number(data?.points) || 0;
+    window.utils?.showToast(points > 0 ? 'Сундук собран: +' + points + ' баллов' : 'Сундук собран', 'success');
+    window.sessionState?.noteChest?.(points);
+  });
+
   // Горячие клавиши работают поверх других окон, поэтому обрабатываются
   // здесь, а не на странице: страница фарминга может быть не открыта
   window.electronAPI?.onShortcut?.((action) => {

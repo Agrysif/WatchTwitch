@@ -123,6 +123,17 @@ class SettingsPage {
 
           <div class="settings-item">
             <div class="settings-item-info">
+              <div class="settings-item-label">Фоновый чат Twitch</div>
+              <div class="settings-item-description">Выключено: сундуки собираются запросом к Twitch без чата — около 190 МБ памяти и заметно меньше процессора. Включите, если сундуки перестали собираться</div>
+            </div>
+            <label class="settings-toggle">
+              <input type="checkbox" id="setting-background-chat" ${settings.get('backgroundChat') === true ? 'checked' : ''}>
+              <span class="settings-slider"></span>
+            </label>
+          </div>
+
+          <div class="settings-item">
+            <div class="settings-item-info">
               <div class="settings-item-label">${i18n.t('settings.limitStreamSpeed')}</div>
               <div class="settings-item-description">${i18n.t('settings.limitStreamSpeedDesc')}</div>
               <div class="quiet-note" id="limit-note" style="margin-top: 8px;"></div>
@@ -654,6 +665,24 @@ class SettingsPage {
 
     // Экономный режим графики. Аппаратное ускорение отключается только до
     // готовности приложения, поэтому меняется оно лишь при следующем запуске
+    const chatToggle = document.getElementById('setting-background-chat');
+    if (chatToggle) {
+      chatToggle.addEventListener('change', (e) => {
+        settings.set('backgroundChat', e.target.checked);
+        if (!e.target.checked) {
+          window.chatManager?.unload();
+          window.utils.showToast('Фоновый чат выключен, сундуки собираются запросом', 'info');
+        } else {
+          const login = window.farmingPage?.currentStream?.login;
+          if (login) {
+            window.farmingPage?.startBonusAutoCollector?.();
+            window.chatManager?.load(login);
+          }
+          window.utils.showToast('Фоновый чат включён', 'info');
+        }
+      });
+    }
+
     const lowGraphicsToggle = document.getElementById('setting-low-graphics');
     if (lowGraphicsToggle) {
       lowGraphicsToggle.addEventListener('change', (e) => {

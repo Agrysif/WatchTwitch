@@ -38,6 +38,24 @@ class ChatManager extends SlottedWebview {
     return window._chatManager;
   }
 
+  /**
+   * Фоновый чат выключен по умолчанию.
+   *
+   * Сундуки теперь забираются запросом к Twitch (см. get-channel-points в
+   * main), а webview чата стоил около 190 МБ памяти и заметного процессора
+   * ради одной кнопки раз в четверть часа. Настройка «Фоновый чат» в
+   * настройках возвращает старый способ, если понадобится.
+   */
+  static get enabled() {
+    return window.settings?.get('backgroundChat') === true;
+  }
+
+  _disabledNotice() {
+    if (this._noticeShown) return;
+    this._noticeShown = true;
+    console.log('[ChatManager] Фоновый чат выключен — сундуки собираются запросом без чата');
+  }
+
   onCreated(webview) {
     // preload раздаёт автосбор сундуков. Раньше его проставлял инлайновый
     // скрипт страницы, обходивший все webview на ней; теперь чат вне страницы,
@@ -67,7 +85,10 @@ class ChatManager extends SlottedWebview {
   /** Грузит чат канала. Тот же канал повторно не перезагружаем. */
   load(channelLogin) {
     if (!channelLogin) return;
-
+    if (!ChatManager.enabled) {
+      this._disabledNotice();
+      return;
+    }
     const login = ChatManager.normalize(channelLogin);
     const webview = this.ensure();
 
@@ -89,6 +110,7 @@ class ChatManager extends SlottedWebview {
    */
   setCollectorScript(script) {
     this.collectorScript = script;
+    if (!ChatManager.enabled) return;
     if (this.webview && this.webview.src) this._injectCollector();
   }
 
@@ -108,6 +130,11 @@ class ChatManager extends SlottedWebview {
           console.error('[ChatManager] Не удалось внедрить сборщик:', err?.message);
         });
     }, 3000);
+  }
+
+  attachTo(slotOrId, options = {}) {
+    if (!ChatManager.enabled) return;
+    return super.attachTo(slotOrId, options);
   }
 
   unload() {
