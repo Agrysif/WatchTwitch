@@ -1,17 +1,18 @@
 {
   "name": "watchtwitch",
-  "version": "1.0.22",
+  "version": "1.0.23",
   "description": "Twitch Drops farming application",
   "main": "main.js",
   "scripts": {
-    "test": "node tests/run.js",
+    "test": "node tests/run.js && node tests/audit-regressions.js",
     "start": "electron .",
     "dev": "electron . --dev",
     "build": "electron-builder",
     "build:win": "electron-builder --win",
     "build:mac": "electron-builder --mac",
     "build:portable": "electron-builder --win portable",
-    "release": "electron-builder --win --publish always"
+    "release": "electron-builder --win --publish always",
+    "test:electron": "node tests/run-electron.cjs tests/audit-notifications.cjs && node tests/run-electron.cjs tests/electron-smoke.cjs"
   },
   "keywords": [
     "twitch",
@@ -48,7 +49,9 @@
       "!create-icon.js",
       "!test-updater.js",
       "!**/*.backup",
-      "!**/*.old.js"
+      "!**/*.old.js",
+      "!tests${/*}",
+      "!_archive${/*}"
     ],
     "releaseInfo": {
       "releaseNotesFile": "RELEASE_NOTES.md"

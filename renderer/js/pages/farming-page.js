@@ -1775,7 +1775,8 @@ class FarmingPage {
       if (subscriptions.length === 0) return fallback[0];
 
       // Избранные вперёд, внутри группы — по заданному пользователем порядку
-      const ordered = SP.orderSubscriptions(subscriptions, options.exclude);
+      const ordered = SP.orderSubscriptions(subscriptions, options.exclude)
+        .filter(sub => !allowed.length || allowed.includes(SP.normalizeLogin(sub.login)));
 
       const direct = await this.findLivePreferredChannel(ordered, categoryName);
       if (direct) return direct;
@@ -1880,7 +1881,9 @@ class FarmingPage {
   }
 
   async startFarmingForCategory(category) {
+    const revision = this.beginStreamOperation();
     const accounts = await Storage.getAccounts();
+    if (!this.isStreamOperationCurrent(revision)) return;
     if (accounts.length === 0) {
       window.utils.showToast('Добавьте хотя бы один аккаунт', 'warning');
       return;
@@ -1898,6 +1901,7 @@ class FarmingPage {
         window.electronAPI.getStreamsWithDrops(category.name),
         new Promise(resolve => setTimeout(() => resolve(null), 15000))
       ]);
+      if (!this.isStreamOperationCurrent(revision)) return;
     } catch (error) {
       console.error('[Фарминг] Не удалось получить стримы:', error);
       window.utils.showToast(`Не удалось запустить ${category.name}: ${error?.message || 'ошибка сети'}`, 'error');
@@ -1916,6 +1920,7 @@ class FarmingPage {
 
     // Выбираем первый стрим
     const stream = await this.pickPreferredStream(streams, category.name);
+    if (!this.isStreamOperationCurrent(revision)) return;
 
     if (!stream || !stream.login) {
       window.utils.showToast(`Не удалось выбрать стрим в ${category.name}`, 'error');
@@ -1934,6 +1939,7 @@ class FarmingPage {
     
     // Открываем стрим
     await window.electronAPI.openStream(streamUrl, accounts[0]);
+    if (!this.isStreamOperationCurrent(revision)) return;
     
     // Обновляем UI
     this.updateCurrentStreamUI(stream, category);
@@ -2000,6 +2006,7 @@ class FarmingPage {
 
     // Сохраняем активную сессию
     await this.saveActiveSession(stream, category);
+    if (!this.isStreamOperationCurrent(revision)) return;
     
     // Загружаем дропсы
     this.loadAndDisplayDrops(stream.login, category.name);
@@ -2144,6 +2151,7 @@ class FarmingPage {
   }
 
   async switchToNextEnabledCategory() {
+    const revision = this.beginStreamOperation();
     // Категорию, запущенную вручную, не меняем ни по какой причине.
     // Раньше защита стояла только в handleCategoryNoDrops, а сюда ведут
     // и другие пути: смена игры у стримера, завершение дропсов, ошибки.
@@ -2159,6 +2167,7 @@ class FarmingPage {
     
     // Сохраняем статистику текущей категории перед переключением
     await this.noteCategoryWatchTime();
+    if (!this.isStreamOperationCurrent(revision)) return;
     
     // Находим следующую включенную категорию (пропускаем завершенные)
     // Приоритет: 1) ручные категории, 2) подписанные каналы с дропсами (если включен приоритет), 3) наличие дропсов, 4) сохранённый порядок/priority
@@ -2167,8 +2176,10 @@ class FarmingPage {
 
     // Проверяем включен ли приоритет подписок
     const subscriptionsPriorityEnabled = await Storage.getItem('subscriptions_priority_enabled');
+    if (!this.isStreamOperationCurrent(revision)) return;
     if (subscriptionsPriorityEnabled) {
       const subscriptions = await Storage.getSubscriptions() || [];
+      if (!this.isStreamOperationCurrent(revision)) return;
       const subscriptionLogins = subscriptions.map(s => s.login.toLowerCase());
       
       enabledCategories.sort((a, b) => {
@@ -2232,6 +2243,7 @@ class FarmingPage {
       // Закрываем текущий стрим
       console.log('Stopping - no enabled categories');
       await window.electronAPI.closeStream();
+      if (!this.isStreamOperationCurrent(revision)) return;
       this.currentCategory = null;
       
       // Скрываем плеер, показываем "нет стрима"
@@ -2253,6 +2265,7 @@ class FarmingPage {
       
       try {
         const accounts = await Storage.getAccounts();
+        if (!this.isStreamOperationCurrent(revision)) return;
         if (!accounts || accounts.length === 0) {
           window.utils.showToast('Нет аккаунтов для запуска стрима', 'error');
           return false;
@@ -2261,12 +2274,14 @@ class FarmingPage {
 
         // Получаем стримы для категории
         const streams = await window.electronAPI.getStreamsWithDrops(nextCategory.name);
+        if (!this.isStreamOperationCurrent(revision)) return;
         
         if (!streams || streams.length === 0) {
           console.warn('No streams found for category:', nextCategory.name, '- disabling instead of removing');
           // Отключаем категорию без стримов вместо удаления
           nextCategory.enabled = false;
           await Storage.saveCategories(this.categories);
+          if (!this.isStreamOperationCurrent(revision)) return;
           this.renderCategories();
           window.utils.showToast(`${nextCategory.name} отключена (нет стримов)`, 'info');
           continue; // Пробуем следующую категорию
@@ -2276,9 +2291,11 @@ class FarmingPage {
         window.utils.showToast(`Переключение на ${nextCategory.name}...`, 'info');
         console.log('Closing current stream before switching');
         await window.electronAPI.closeStream();
+        if (!this.isStreamOperationCurrent(revision)) return;
         
         // Берём первый стрим
         const stream = await this.pickPreferredStream(streams, nextCategory.name);
+        if (!this.isStreamOperationCurrent(revision)) return;
         if (!stream?.login) {
           // Кампания привязана к каналам, и никто из них не в эфире: это не
           // поломка категории, а вопрос времени — выключать её не надо
@@ -2290,6 +2307,7 @@ class FarmingPage {
         
         // Открываем стрим
         await window.electronAPI.openStream(`https://www.twitch.tv/${stream.login}`, account);
+        if (!this.isStreamOperationCurrent(revision)) return;
         
         // КРИТИЧЕСКИ ВАЖНО: обновляем UI и устанавливаем currentCategory
         this.currentCategory = nextCategory;
@@ -2298,15 +2316,18 @@ class FarmingPage {
         this.resetChannelPointsTracking();
         this.updateCurrentStreamUI(stream, nextCategory);
         await this.saveActiveSession(stream, nextCategory);
+        if (!this.isStreamOperationCurrent(revision)) return;
         
         window.utils.showToast(`Переключено на: ${stream.displayName}`, 'success');
         console.log('Stream switched successfully, currentCategory set to:', this.currentCategory);
         return true;
       } catch (error) {
         console.error('Error switching to category:', nextCategory.name, error);
+        if (!this.isStreamOperationCurrent(revision)) return;
         // Отключаем проблемную категорию вместо удаления
         nextCategory.enabled = false;
         await Storage.saveCategories(this.categories);
+        if (!this.isStreamOperationCurrent(revision)) return;
         this.renderCategories();
         window.utils.showToast(`${nextCategory.name} удалена (ошибка переключения)`, 'error');
         continue;
@@ -2316,6 +2337,7 @@ class FarmingPage {
     // Если дошли сюда - не нашли ни одной рабочей категории
     window.utils.showToast('Не удалось найти категорию с доступными стримами', 'error');
     await window.electronAPI.closeStream();
+    if (!this.isStreamOperationCurrent(revision)) return;
     this.currentCategory = null;
     
     const streamInfo = document.getElementById('current-stream-info');
@@ -2503,12 +2525,14 @@ class FarmingPage {
   }
 
   async _startFarming() {
+    const revision = this.beginStreamOperation();
     if (this.categories.length === 0) {
       window.utils.showToast('Добавьте хотя бы одну категорию', 'warning');
       return;
     }
 
     const accounts = await Storage.getAccounts();
+    if (!this.isStreamOperationCurrent(revision)) return;
     if (accounts.length === 0) {
       window.utils.showToast('Добавьте хотя бы один аккаунт', 'warning');
       if (window.router) {
@@ -2629,6 +2653,7 @@ class FarmingPage {
     window.utils.showToast('Ищем стрим с дропсами...', 'info');
 
     await this.refreshCategoryValues();
+    if (!this.isStreamOperationCurrent(revision)) return;
 
     // Находим первую включенную категорию: приоритет ручных, затем по наличию дропсов и priority
     const enabledCategories = this.categories
@@ -2687,6 +2712,7 @@ class FarmingPage {
       }
 
       const found = await withTimeout(window.electronAPI.getStreamsWithDrops(candidate.name), 12000);
+      if (!this.isStreamOperationCurrent(revision)) return;
       if (found === null) console.warn('[Фарминг] Категория не ответила вовремя:', candidate.name);
       if (found && found.length > 0) {
         category = candidate;
@@ -2713,6 +2739,7 @@ class FarmingPage {
     
     // Выбираем первый стрим
     const stream = await this.pickPreferredStream(streams, category.name);
+    if (!this.isStreamOperationCurrent(revision)) return;
     if (!stream?.login) {
       window.utils.showToast('В категории ' + category.name + ' нет подходящего стрима', 'warning');
       return;
@@ -2729,6 +2756,7 @@ class FarmingPage {
     
     // Открываем стрим в фоновом окне с аккаунтом
     await window.electronAPI.openStream(streamUrl, accounts[0]);
+    if (!this.isStreamOperationCurrent(revision)) return;
     
     // Обновляем UI текущего стрима
     this.updateCurrentStreamUI(stream, category);
@@ -2803,6 +2831,7 @@ class FarmingPage {
 
     // Сохраняем активную сессию для восстановления
     await this.saveActiveSession(stream, category);
+    if (!this.isStreamOperationCurrent(revision)) return;
     
     // Загружаем и отображаем дропсы
     this.loadAndDisplayDrops(stream.login, category.name);
@@ -3156,6 +3185,7 @@ class FarmingPage {
   }
 
   async updateDropsHorizontalProgress() {
+    const snapshot = this.streamSnapshot();
     const i18n = this.i18n;
 
     try {
@@ -3180,6 +3210,7 @@ class FarmingPage {
       }
 
       const result = await window.electronAPI.fetchDropsInventory();
+      if (!this.isCurrentStream(snapshot)) return { hasDrops: true, unknown: true };
 
       // Пустой ответ без кампаний вообще — это незнание, а не «дропсов нет»:
       // нет cookie-токена, пауза после 429, обрыв сети, ошибка разбора.
@@ -3225,6 +3256,7 @@ class FarmingPage {
       this.trackSessionDrops(matched);
       this.warnAboutEndingCampaigns(matched);
       await this.autoClaimReadyDrops(matched);
+      if (!this.isCurrentStream(snapshot)) return { hasDrops: true, unknown: true };
 
       // Порядок важен: сначала забираем готовые награды, потом решаем,
       // осталось ли ради чего смотреть дальше
@@ -3236,6 +3268,7 @@ class FarmingPage {
       this.updateCategoryValues(result.campaigns);
       this.renderCategorySuggestion(result.campaigns);
       await this.checkCategoryStillWorthwhile(matched);
+      if (!this.isCurrentStream(snapshot)) return { hasDrops: true, unknown: true };
 
       horizontal.style.display = 'block';
 
@@ -3393,8 +3426,9 @@ class FarmingPage {
           }
 
           // Переключаемся на следующую категорию
+          const completedSnapshot = this.streamSnapshot();
           setTimeout(() => {
-            this.switchToNextEnabledCategory();
+            if (this.isCurrentStream(completedSnapshot)) this.switchToNextEnabledCategory();
           }, 2000);
         }
       }
@@ -3511,21 +3545,25 @@ class FarmingPage {
     
     this.currentCategory = null;
     this.dropsMissingChecks = 0;
+    const snapshot = this.streamSnapshot();
 
     await Storage.saveCategories(this.categories);
+    if (!this.isCurrentStream(snapshot)) return;
     this.renderCategories();
     
     window.utils.showToast(`${categoryName} отключена (дропсы не найдены)`, 'warning');
 
     // Переключаемся на следующую доступную категорию
     const switched = await this.switchToNextEnabledCategory();
-    if (!switched) {
+    if (switched === false) {
       // Если переключаться некуда — останавливаем фарминг и закрываем стрим
       await this.stopFarming();
     }
   }
 
   stopFarming(showToast = true, preserveSession = false) {
+    this.beginStreamOperation();
+    this._playbackRevision = (this._playbackRevision || 0) + 1;
     this.manualPlayLockCategoryId = null;
     this.manualCategoryId = null;
     this.updateAutoFarmButton();
@@ -3710,6 +3748,8 @@ class FarmingPage {
 
     // Здесь фарминг действительно завершается, поэтому плеер выгружаем полностью
     window.playerManager?.unload();
+    this.currentStream = null;
+    this.currentCategory = null;
 
     if (streamInfo && playerContainer) {
       playerContainer.style.display = 'none';
@@ -3998,6 +4038,7 @@ class FarmingPage {
   }
   
   updateCurrentStreamUI(stream, category) {
+    this._playbackRevision = (this._playbackRevision || 0) + 1;
     // Ручной режим мог смениться вместе с категорией
     setTimeout(() => this.updateAutoFarmButton(), 0);
 
@@ -4016,11 +4057,14 @@ class FarmingPage {
       // load() сам проверит, не тот же ли это канал, и не станет
       // перезагружать webview впустую.
       window.playerManager.load(stream.login);
+      window.chatManager?.load(stream.login);
 
       // Размещение доверяем роутеру: он же заводит слежение за прокруткой,
       // чтобы плеер уезжал в сайдбар, когда его прокручивают за край.
       // Прямая привязка это слежение обходила.
-      if (window.router?.placePlayerOnFarming) {
+      if (window.router?.currentPage && window.router.currentPage !== 'farming') {
+        window.router.manageMiniPlayer(window.router.currentPage);
+      } else if (window.router?.placePlayerOnFarming) {
         window.router.placePlayerOnFarming();
       } else {
         window.playerManager.attachTo('farming-player-slot');
@@ -4468,6 +4512,10 @@ class FarmingPage {
 
   
   startStreamStatsUpdate(channelLogin) {
+    const snapshot = this.streamSnapshot();
+    const generation = this._statsGeneration = (this._statsGeneration || 0) + 1;
+    const isCurrent = () => this.isCurrentStream(snapshot) && generation === this._statsGeneration;
+    this._gameMismatchCount = 0;
     // Очищаем старый интервал
     if (this.streamStatsInterval) {
       clearInterval(this.streamStatsInterval);
@@ -4482,7 +4530,7 @@ class FarmingPage {
         // страницу: разметка уже другая, а продолжение обработчика
         // пыталось писать в исчезнувший элемент и падало
         const viewersEl = document.getElementById('stream-viewers');
-        if (this._destroyed || !viewersEl) return;
+        if (!isCurrent() || !viewersEl) return;
 
         if (stats) {
           // Обновляем зрителей
@@ -4513,16 +4561,16 @@ class FarmingPage {
               const MAX_MISMATCHES = 2; // две проверки подряд (~60 сек)
               if (this._gameMismatchCount >= MAX_MISMATCHES) {
                 this._gameMismatchCount = 0;
+                if (window.settings?.get('autoSwitchStreams') === false) return;
                 window.utils?.showToast('Стример сменил игру — переключаюсь', 'info');
                 try {
                   // Пытаемся найти другой стрим в той же категории
                   const streams = await window.electronAPI.getStreamsWithDrops(expectedCategory);
+                  if (!isCurrent()) return;
                   if (streams && streams.length > 0) {
-                    // Если текущий стрим в списке, берем следующий, иначе берем первый
-                    const currentIdx = streams.findIndex(s => s.login === this.currentStream?.login);
-                    const nextIdx = currentIdx >= 0 ? (currentIdx + 1) % streams.length : 0;
-                    const nextStream = streams[nextIdx];
-                    if (nextStream) {
+                    const nextStream = await this.pickPreferredStream(streams, expectedCategory, { exclude: channelLogin });
+                    if (!isCurrent()) return;
+                    if (nextStream && nextStream.login.toLowerCase() !== channelLogin.toLowerCase()) {
                       await this.switchToStream(nextStream);
                       return;
                     }
@@ -4551,14 +4599,16 @@ class FarmingPage {
   }
 
   _gameMatchesCategory(gameName, categoryName) {
-    const a = (gameName || '').toLowerCase();
-    const b = (categoryName || '').toLowerCase();
+    const a = window.StreamPicker.normalizeGameName(gameName);
+    const b = window.StreamPicker.normalizeGameName(categoryName);
     if (!a || !b) return false;
-    // Точное или частичное совпадение (на случай различий в локализации/вариантах)
-    return a === b || a.includes(b) || b.includes(a);
+    // Подстрока может обозначать другую игру, поэтому сравниваем целые названия.
+    return a === b;
   }
   
   startDropsProgressUpdate(channelLogin) {
+    const snapshot = this.streamSnapshot();
+    const generation = this._dropsGeneration = (this._dropsGeneration || 0) + 1;
     // Очищаем старый интервал
     if (this.dropsProgressInterval) {
       clearInterval(this.dropsProgressInterval);
@@ -4574,6 +4624,7 @@ class FarmingPage {
       try {
         hideOldContainer();
         const progressState = await this.updateDropsHorizontalProgress();
+        if (!this.isCurrentStream(snapshot) || generation !== this._dropsGeneration) return;
         const hasDrops = progressState && progressState.hasDrops;
 
         if (hasDrops) {
@@ -4622,9 +4673,10 @@ class FarmingPage {
     if (!window.DropCredit || !window.electronAPI?.getDropSession) return;
 
     const login = window.DropCredit.normalizeLogin(channelLogin);
+    const snapshot = this.streamSnapshot();
 
     const tick = async () => {
-      if (this._destroyed || !this.currentStream) return;
+      if (!this.isCurrentStream(snapshot) || !this.currentStream) return;
       if (window.DropCredit.normalizeLogin(this.currentStream.login) !== login) return;
 
       let response = null;
@@ -4633,7 +4685,7 @@ class FarmingPage {
       } catch (error) {
         return;
       }
-      if (!response || response.ok === false) return;
+      if (!this.isCurrentStream(snapshot) || !response || response.ok === false) return;
 
       this._creditSamples.push({ at: Date.now(), session: response.session || null });
       if (this._creditSamples.length > 10) this._creditSamples.shift();
@@ -4644,6 +4696,7 @@ class FarmingPage {
       let progressStale = true;
       try {
         const inv = await window.electronAPI.fetchDropsInventory();
+        if (!this.isCurrentStream(snapshot)) return;
         const matched = this.matchCampaignsForGame(inv?.campaigns || [], this.currentCategory?.name || '');
         const sum = matched.reduce((acc, c) => acc + (c.drops || []).reduce((a, d) => a + (Number(d.progress) || 0), 0), 0);
         const prev = this._creditProgress;
@@ -4716,6 +4769,8 @@ class FarmingPage {
     const canvas = document.getElementById('viewers-chart');
     
     if (!viewersEl || !canvas) return;
+    if (this._viewersChartCanvas === canvas) return;
+    this._viewersChartCanvas = canvas;
     
     const ctx = canvas.getContext('2d');
     let isShowing = false;
@@ -4759,6 +4814,24 @@ class FarmingPage {
   }
 
   // === Навигация между стримами и категориями ===
+
+  beginStreamOperation() {
+    this._streamRevision = (this._streamRevision || 0) + 1;
+    return this._streamRevision;
+  }
+
+  isStreamOperationCurrent(revision) {
+    return !this._destroyed && revision === (this._streamRevision || 0);
+  }
+
+  streamSnapshot() {
+    return { revision: this._playbackRevision || 0, category: this.currentCategory, login: this.currentStream?.login };
+  }
+
+  isCurrentStream(snapshot) {
+    return !this._destroyed && snapshot.revision === (this._playbackRevision || 0) &&
+      snapshot.category === this.currentCategory && snapshot.login === this.currentStream?.login;
+  }
   
   async switchToNextStream() {
     if (!this.currentCategory || !this.currentStream) {
@@ -4766,11 +4839,14 @@ class FarmingPage {
       return;
     }
 
+    const revision = this.beginStreamOperation();
+    const snapshot = this.streamSnapshot();
     try {
       window.utils.showToast('Ищем следующий стрим...', 'info');
       
       // Получаем стримы текущей категории
       const streams = await window.electronAPI.getStreamsWithDrops(this.currentCategory.name);
+      if (!this.isStreamOperationCurrent(revision) || !this.isCurrentStream(snapshot)) return;
       
       if (!streams || streams.length === 0) {
         window.utils.showToast('Нет доступных стримов', 'warning');
@@ -4784,6 +4860,7 @@ class FarmingPage {
         this.currentCategory.name,
         { exclude: this.currentStream?.login }
       );
+      if (!this.isStreamOperationCurrent(revision) || !this.isCurrentStream(snapshot)) return;
 
       if (nextStream && nextStream.login === this.currentStream?.login) {
         window.utils.showToast('Других стримов в этой категории нет', 'warning');
@@ -4802,6 +4879,7 @@ class FarmingPage {
   }
 
   async switchToPrevCategory() {
+    const revision = this.beginStreamOperation();
     // Фильтруем только активные категории
     const activeCategories = this.categories.filter(c => c.enabled !== false);
     
@@ -4817,6 +4895,7 @@ class FarmingPage {
 
     // Сохраняем статистику текущей категории
     await this.noteCategoryWatchTime();
+    if (!this.isStreamOperationCurrent(revision)) return;
 
     try {
       // Находим текущую категорию в активных
@@ -4830,6 +4909,7 @@ class FarmingPage {
       
       // Получаем стримы для предыдущей категории
       const streams = await window.electronAPI.getStreamsWithDrops(prevCategory.name);
+      if (!this.isStreamOperationCurrent(revision)) return;
       
       if (!streams || streams.length === 0) {
         window.utils.showToast('Нет доступных стримов', 'warning');
@@ -4838,6 +4918,7 @@ class FarmingPage {
       
       // Запускаем первый стрим
       const stream = await this.pickPreferredStream(streams, prevCategory.name);
+      if (!this.isStreamOperationCurrent(revision)) return;
       if (!stream?.login) {
         window.utils.showToast('В категории ' + prevCategory.name + ' нет подходящего стрима', 'warning');
         return;
@@ -4859,6 +4940,7 @@ class FarmingPage {
       // стоило уйти на другую вкладку и вернуться, как приложение
       // восстанавливало старую и откатывало стрим назад
       await this.saveActiveSession(stream, prevCategory);
+      if (!this.isStreamOperationCurrent(revision)) return;
 
       window.utils.showToast(`Переключено на ${prevCategory.name}`, 'success');
     } catch (error) {
@@ -4868,6 +4950,7 @@ class FarmingPage {
   }
 
   async switchToNextCategory() {
+    const revision = this.beginStreamOperation();
     // Фильтруем только активные категории
     const activeCategories = this.categories.filter(c => c.enabled !== false);
     
@@ -4883,6 +4966,7 @@ class FarmingPage {
 
     // Сохраняем статистику текущей категории
     await this.noteCategoryWatchTime();
+    if (!this.isStreamOperationCurrent(revision)) return;
 
     try {
       // Находим текущую категорию в активных
@@ -4896,6 +4980,7 @@ class FarmingPage {
       
       // Получаем стримы для следующей категории
       const streams = await window.electronAPI.getStreamsWithDrops(nextCategory.name);
+      if (!this.isStreamOperationCurrent(revision)) return;
       
       if (!streams || streams.length === 0) {
         window.utils.showToast('Нет доступных стримов', 'warning');
@@ -4904,6 +4989,7 @@ class FarmingPage {
       
       // Запускаем первый стрим
       const stream = await this.pickPreferredStream(streams, nextCategory.name);
+      if (!this.isStreamOperationCurrent(revision)) return;
       if (!stream?.login) {
         window.utils.showToast('В категории ' + nextCategory.name + ' нет подходящего стрима', 'warning');
         return;
@@ -4921,6 +5007,7 @@ class FarmingPage {
       this.updateCurrentStreamUI(stream, nextCategory);
       this.startStreamStatsUpdate(stream.login);
       await this.saveActiveSession(stream, nextCategory);
+      if (!this.isStreamOperationCurrent(revision)) return;
 
       window.utils.showToast(`Переключено на ${nextCategory.name}`, 'success');
     } catch (error) {
@@ -5075,6 +5162,7 @@ class FarmingPage {
   async switchToStream(stream) {
     const player = window.playerManager?.getWebview();
     if (!player) return;
+    this.beginStreamOperation();
 
     // Обновляем текущий стрим
     this.currentStream = stream;
@@ -5735,6 +5823,7 @@ class FarmingPage {
   async onPlayerDead(detail = {}) {
     if (this._destroyed) return;
     if (!this.currentStream || !this.currentCategory) return;
+    if (detail.channel && detail.channel.toLowerCase() !== this.currentStream.login.toLowerCase()) return;
 
     // Настройка «Автопереключение стримов» должна что-то значить
     if (window.settings && window.settings.get('autoSwitchStreams') === false) {
