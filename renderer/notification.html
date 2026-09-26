@@ -201,12 +201,12 @@
           Дроп получен!
         </div>
       </div>
-      <div class="drop-notification-drop-name" id="drop-name">8x 250 Lucky Envelopes</div>
+      <div class="drop-notification-drop-name" id="drop-name"></div>
       <div class="drop-notification-game">
         <svg class="drop-notification-game-icon" viewBox="0 0 24 24" fill="currentColor">
           <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
         </svg>
-        <span id="game-name">Palia</span>
+        <span id="game-name"></span>
       </div>
     </div>
     <div class="drop-notification-progress"></div>
@@ -228,6 +228,8 @@
       // Устанавливаем картинку
       const imgElement = document.getElementById('drop-icon');
       if (dropIcon && dropIcon.length > 0 && dropIcon.startsWith('data:image/')) {
+        document.getElementById('gift-placeholder')?.remove();
+        imgElement.style.display = '';
         console.log('[Notification] Setting img.src to base64 image');
         imgElement.onload = function() {
           console.log('[Notification] Image loaded! Width:', this.width, 'Height:', this.height);
@@ -241,8 +243,9 @@
         console.warn('[Notification] No valid dropIcon, showing placeholder');
         // Заменяем на SVG placeholder
         const iconContainer = imgElement.parentElement;
-        iconContainer.innerHTML = `
-          <svg viewBox="0 0 64 64" style="width: 100%; height: 100%;">
+        imgElement.style.display = 'none';
+        if (!document.getElementById('gift-placeholder')) iconContainer.insertAdjacentHTML('beforeend', `
+          <svg id="gift-placeholder" viewBox="0 0 64 64" style="width: 100%; height: 100%;">
             <defs>
               <linearGradient id="giftGradient" x1="0%" y1="0%" x2="100%" y2="100%">
                 <stop offset="0%" style="stop-color:#a855f7;stop-opacity:1" />
@@ -256,7 +259,7 @@
             <circle cx="24" cy="16" r="4" fill="#fbbf24"/>
             <circle cx="40" cy="16" r="4" fill="#fbbf24"/>
           </svg>
-        `;
+        `);
       }
     });
 

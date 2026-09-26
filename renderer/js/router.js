@@ -40,238 +40,71 @@ class Router {
    */
 
   async navigate(page) {
-    console.log('[Router] Navigating to page:', page);
-    
-    // Гасим уходящую страницу: её таймеры и обработчики иначе продолжают
-    // работать и накапливаются с каждой навигацией.
-    this.destroyCurrentPage(page);
-
-    // Сохраняем всю информацию о стриме если покидаем страницу farming
-    if (this.currentPage === 'farming' && page !== 'farming') {
-
-      // Плеер НЕ трогаем: он живёт вне страницы и продолжает играть.
-      // Сохраняем только текстовую информацию для восстановления карточки стрима.
-      const playerContainer = document.getElementById('twitch-player-container');
-
-      if (window.playerManager?.hasStream() && playerContainer && playerContainer.style.display !== 'none') {
-        window._streamState = {
-          channel: document.getElementById('stream-channel')?.textContent || '',
-          game: document.getElementById('stream-game')?.textContent || '',
-          title: document.getElementById('stream-title')?.textContent || '',
-          gameCover: document.getElementById('stream-game-cover')?.src || '',
-          viewers: document.getElementById('stream-viewers')?.textContent || '-',
-          uptime: document.getElementById('stream-uptime')?.textContent || '-'
-        };
-        console.log('[Router] Saved stream info (плеер продолжает играть)');
-      }
-      
-      // Сохраняем HTML дропсов
-      const dropsHorizontal = document.getElementById('drops-progress-horizontal');
-      if (dropsHorizontal && dropsHorizontal.style.display !== 'none') {
-        window._dropsState = {
-          html: dropsHorizontal.innerHTML,
-          display: dropsHorizontal.style.display
-        };
-        console.log('Saved drops state');
-      }
-      
-      // Сохраняем состояние баллов канала
-      const pointsCard = document.getElementById('channel-points-card');
-      if (pointsCard && pointsCard.style.display !== 'none') {
-        window._channelPointsState = {
-          total: document.getElementById('channel-points-total')?.textContent || '-',
-          earned: document.getElementById('channel-points-earned')?.textContent || '-',
-          chestsPoints: document.getElementById('bonus-chests-points')?.textContent || '-',
-          passiveEarned: document.getElementById('passive-points-earned')?.textContent || '-',
-          visible: true
-        };
-        console.log('Saved channel points state:', window._channelPointsState);
-      }
-    }
-
-    // Update active nav button
-    document.querySelectorAll('.nav-item').forEach(btn => {
-      btn.classList.remove('active');
-    });
-    const navBtn = document.querySelector(`[data-page="${page}"]`);
-    if (navBtn) navBtn.classList.add('active');
-
-    // Load page content
+    if (!this.pages[page]) return;
+    const navigation = this._navigationId = (this._navigationId || 0) + 1;
+    if (this.currentPage === page) return;
     const container = document.getElementById('page-container');
     container.classList.add('fade-out');
-
-    setTimeout(async () => {
-      try {
+    try {
+      const restoringFarming = page === 'farming' && this._farmingContent;
+      let doc;
+      let externalScripts = [];
+      let inlineScript = '';
+      if (!restoringFarming) {
         const relPath = 'renderer/' + this.pages[page].replace(/^\.\//, '');
-        console.log('[Router] Attempting to read page:', relPath);
-        let html = '';
-        
-        try {
-          const fileResult = await window.electronAPI.readFile(relPath);
-          if (fileResult?.success) {
-            html = fileResult.content;
-            console.log('[Router] Read page via IPC, length:', html.length);
-          } else {
-            console.warn('[Router] IPC read failed:', fileResult?.error, '- falling back to fetch');
-            const response = await fetch(this.pages[page]);
-            html = await response.text();
-            console.log('[Router] Read page via fetch, length:', html.length);
-          }
-        } catch (e) {
-          console.error('[Router] Error reading page:', e);
-          window.utils?.showToast('Ошибка загрузки страницы: ' + page, 'error');
-          return;
-        }
-        
-        if (!html || html.length === 0) {
-          console.error('[Router] Page HTML is empty');
-          window.utils?.showToast('Страница пуста', 'error');
-          return;
-        }
-        
-        // Parse HTML and extract script
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(html, 'text/html');
-        const bodyLen = (doc?.body?.innerHTML || '').length;
-        console.log('[Router] Parsed body innerHTML length:', bodyLen);
-        
-        // Get all script tags
-        const scriptTags = doc.querySelectorAll('script');
-        const externalScripts = [];
-        let inlineScript = '';
-        
-        scriptTags.forEach(script => {
-          if (script.src) {
-            // External script - save for later loading
-            externalScripts.push(script.src);
-          } else if (script.textContent) {
-            // Inline script
-            inlineScript += script.textContent + '\n';
-          }
+        const result = await window.electronAPI.readFile(relPath);
+        const html = result?.success ? result.content : await (await fetch(this.pages[page])).text();
+        if (!html) throw new Error('Страница пуста: ' + page);
+        doc = new DOMParser().parseFromString(html, 'text/html');
+        doc.querySelectorAll('script').forEach(script => {
+          if (script.src) externalScripts.push(script.src);
+          else inlineScript += (script.textContent || '') + '\n';
           script.remove();
         });
-        
-        // Set HTML content
-        console.log('[Router] About to inject:', {
-          bodyInnerHtmlLen: doc.body.innerHTML.length,
-          containerExists: !!container,
-          containerId: container?.id,
-          containerClass: container?.className
-        });
-        
+        for (const src of externalScripts) await this.loadScript(src);
+      }
+      if (navigation !== this._navigationId) return;
+      this.destroyCurrentPage(page);
+      if (this.currentPage === 'farming') {
+        // Keep farming automation and its DOM alive while another page is visible.
+        // The persistent player is outside this subtree and is never moved.
+        const parked = document.createElement('div');
+        parked.id = 'farming-background-content';
+        parked.hidden = true;
+        document.body.appendChild(parked);
+        while (container.firstChild) parked.appendChild(container.firstChild);
+        this._farmingContent = parked;
+      }
+      if (restoringFarming) {
+        container.replaceChildren(...this._farmingContent.childNodes);
+        this._farmingContent.remove();
+        this._farmingContent = null;
+      } else {
         container.innerHTML = doc.body.innerHTML;
-        
-        console.log('[Router] After injection. Container child count:', container.children.length, 'innerHTML length:', container.innerHTML.length);
-        if (container.children.length === 0) {
-          console.warn('[Router] WARNING: Container is empty after injection!');
-          console.log('[Router] Container innerHTML sample (first 200 chars):', container.innerHTML.substring(0, 200));
-        }
-        
-        this.currentPage = page;
-
-        // Load external scripts first
-        for (const scriptSrc of externalScripts) {
-          await this.loadScript(scriptSrc);
-        }
-
-        // Execute inline script.
-        //
-        // Раньше стоял eval: ему нужен 'unsafe-eval' в политике безопасности,
-        // а с ним политика почти ничего не защищает. Обычный скрипт-элемент
-        // выполняет тот же код; обёртка в функцию сохраняет прежнюю область
-        // видимости — иначе повторный заход на страницу объявлял бы те же
-        // const/let второй раз и падал.
+      }
+      this.currentPage = page;
+      document.querySelectorAll('.nav-item').forEach(btn => {
+        btn.classList.toggle('active', btn.getAttribute('data-page') === page);
+      });
+      if (!restoringFarming) {
         if (inlineScript) {
           const script = document.createElement('script');
           script.textContent = '(function () {\n' + inlineScript + '\n})();';
           document.body.appendChild(script);
           script.remove();
         }
-
-        // Initialize page-specific logic
         this.initPageScripts(page);
-
-        // Приводим сайдбар в соответствие с реальным состоянием сессии.
-        // Блок «Сессия» и кнопка старт/стоп живут вне страниц, поэтому после
-        // каждой навигации их нужно пересинхронизировать явно.
-        window.sessionState?.syncUI();
-
-        // Управляем положением единственного плеера
-        this.manageMiniPlayer(page);
-
-        // Восстанавливаем карточку стрима при возврате на farming.
-        // Сам плеер не перезагружается — он просто переезжает обратно в свой слот.
-        if (page === 'farming' && window._streamState) {
-          setTimeout(() => {
-            const playerContainer = document.getElementById('twitch-player-container');
-            const streamInfo = document.getElementById('current-stream-info');
-
-            if (playerContainer && streamInfo && window._streamState) {
-              console.log('[Router] Восстанавливаю карточку стрима без перезагрузки плеера');
-
-              playerContainer.style.display = 'block';
-              streamInfo.style.display = 'none';
-
-              // Восстанавливаем информацию
-              const channelEl = document.getElementById('stream-channel');
-              const gameEl = document.getElementById('stream-game');
-              const titleEl = document.getElementById('stream-title');
-              const gameCoverEl = document.getElementById('stream-game-cover');
-              const viewersEl = document.getElementById('stream-viewers');
-              const uptimeEl = document.getElementById('stream-uptime');
-              
-              if (channelEl) channelEl.textContent = window._streamState.channel;
-              if (gameEl) gameEl.textContent = window._streamState.game;
-              if (titleEl) titleEl.textContent = window._streamState.title;
-              if (uptimeEl) uptimeEl.textContent = window._streamState.uptime;
-              if (viewersEl) viewersEl.textContent = window._streamState.viewers;
-              
-              if (gameCoverEl && window._streamState.gameCover) {
-                gameCoverEl.src = window._streamState.gameCover;
-                gameCoverEl.style.display = 'block';
-              }
-            }
-
-            // Восстанавливаем баллы канала
-            if (window._channelPointsState && window._channelPointsState.visible) {
-              console.log('Restoring channel points');
-              const pointsCard = document.getElementById('channel-points-card');
-              if (pointsCard) {
-                pointsCard.style.display = 'block';
-                
-                const totalEl = document.getElementById('channel-points-total');
-                const earnedEl = document.getElementById('channel-points-earned');
-                const chestsEl = document.getElementById('bonus-chests-points');
-                const passiveEl = document.getElementById('passive-points-earned');
-                
-                if (totalEl) totalEl.textContent = window._channelPointsState.total;
-                if (earnedEl) earnedEl.textContent = window._channelPointsState.earned;
-                if (chestsEl) chestsEl.textContent = window._channelPointsState.chestsPoints;
-                if (passiveEl) passiveEl.textContent = window._channelPointsState.passiveEarned;
-              }
-            }
-            
-            // Восстанавливаем дропсы
-            if (window._dropsState) {
-              console.log('Restoring drops');
-              const dropsHorizontal = document.getElementById('drops-progress-horizontal');
-              if (dropsHorizontal) {
-                dropsHorizontal.innerHTML = window._dropsState.html;
-                dropsHorizontal.style.display = window._dropsState.display;
-              }
-            }
-          }, 300);
-        }
-
-        // Update translations
-        i18n.updatePage();
-
-        container.classList.remove('fade-out');
-        container.classList.add('fade-in');
-      } catch (error) {
-        console.error('Error loading page:', error);
       }
-    }, 300);
+      window.sessionState?.syncUI();
+      this.manageMiniPlayer(page);
+      i18n.updatePage();
+      container.classList.add('fade-in');
+    } catch (error) {
+      console.error('Error loading page:', error);
+      window.utils?.showToast('Ошибка загрузки страницы: ' + page, 'error');
+    } finally {
+      if (navigation === this._navigationId) container.classList.remove('fade-out');
+    }
   }
 
   /**
@@ -293,6 +126,8 @@ class Router {
 
   destroyCurrentPage(nextPage) {
     if (!this.currentPage || this.currentPage === nextPage) return;
+    // Farming owns session automation and survives navigation.
+    if (this.currentPage === 'farming') return;
 
     const key = Router.PAGE_INSTANCES[this.currentPage];
     if (!key) return;

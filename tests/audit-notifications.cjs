@@ -1,0 +1,58 @@
+// Run using Electron, from the repository root. Uses an isolated temporary profile.
+const { app, BrowserWindow, ipcMain } = require('electron');
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
+const vm = require('vm');
+app.setPath('userData', fs.mkdtempSync(path.join(os.tmpdir(), 'watchtwitch-audit-')));
+app.setAppPath(path.join(__dirname, '..'));
+app.on('window-all-closed', () => {});
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+app.whenReady().then(async () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8');
+  const section = source.slice(source.indexOf('let dropNotificationWindow = null;'), source.indexOf('// Старые системные уведомления'));
+  const ctx = { require, BrowserWindow, ipcMain, console, Buffer, setTimeout, clearTimeout };
+  vm.createContext(ctx);
+  vm.runInContext(section, ctx);
+  const create = () => vm.runInContext("createDropNotification('Audit test', 'Test game', null)", ctx);
+  const current = () => vm.runInContext('dropNotificationWindow', ctx);
+  create();
+  await sleep(6500);
+  const singleRemaining = BrowserWindow.getAllWindows().length;
+  console.log('AUDIT single notification remaining windows:', singleRemaining);
+  create();
+  await sleep(600);
+  const old = current();
+  const oldContents = old.webContents;
+  create();
+  const newest = BrowserWindow.getAllWindows().find(win => win !== old);
+  await sleep(600);
+  console.log('AUDIT replacement:', JSON.stringify({ oldDestroyed: old.isDestroyed(), newDestroyed: newest.isDestroyed(), currentReferenceLost: current() === null }));
+  ipcMain.emit('close-drop-notification', { sender: oldContents });
+  console.log('AUDIT stale close kept replacement:', !newest.isDestroyed());
+  await sleep(6500);
+  console.log('AUDIT after timeout:', JSON.stringify({ remainingWindows: BrowserWindow.getAllWindows().length, newDestroyed: newest.isDestroyed(), currentReferenceLost: current() === null }));
+  if (!newest.isDestroyed()) {
+    await newest.webContents.executeJavaScript('closeNotification()');
+    await sleep(600);
+    console.log('AUDIT after manual close:', JSON.stringify({ newDestroyed: newest.isDestroyed() }));
+  }
+  let failed = singleRemaining !== 0 || !newest.isDestroyed();
+  create();
+  await sleep(600);
+  const manual = current();
+  await manual.webContents.executeJavaScript('closeNotification()');
+  await sleep(600);
+  failed ||= !manual.isDestroyed();
+  console.log('AUDIT manual close PASS:', manual.isDestroyed());
+  create();
+  await sleep(600);
+  const fallback = current();
+  await fallback.webContents.executeJavaScript('closeNotification = () => {}; true');
+  await sleep(7000);
+  failed ||= !fallback.isDestroyed();
+  console.log('AUDIT main-process fallback PASS:', fallback.isDestroyed());
+  for (const win of BrowserWindow.getAllWindows()) win.destroy();
+  app.exit(failed ? 1 : 0);
+}).catch(e => { console.error(e); app.exit(2); });
+setTimeout(() => app.exit(3), 40000);

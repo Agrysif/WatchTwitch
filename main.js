@@ -2463,7 +2463,7 @@ function createDropNotification(dropName, gameName, dropIcon) {
   const notificationHeight = 100;
   const margin = 20;
 
-  dropNotificationWindow = new BrowserWindow({
+  const notificationWindow = new BrowserWindow({
     width: notificationWidth,
     height: notificationHeight,
     x: width - notificationWidth - margin,
@@ -2477,21 +2477,26 @@ function createDropNotification(dropName, gameName, dropIcon) {
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
+      backgroundThrottling: false,
       webSecurity: false // Разрешаем загрузку внешних изображений
     }
   });
 
   // Формируем URL с параметрами - передаем напрямую через IPC
-  dropNotificationWindow.loadFile('renderer/notification.html');
+  dropNotificationWindow = notificationWindow;
+  notificationWindow.loadFile('renderer/notification.html');
 
   // Ссылку держим свою, а не глобальную: окно живёт несколько секунд и
   // закрывается само, обработчик 'closed' обнуляет dropNotificationWindow.
   // Если это случится до 'ready-to-show' — а так бывает при подряд идущих
   // наградах, — обращение к глобальной ссылке уронит весь главный процесс.
   // Ровно это и произошло: приложение упало ночью, и фарминг встал до утра.
-  const notificationWindow = dropNotificationWindow;
+  // Закрытие не зависит от таймеров/работоспособности renderer.
+  const expiry = setTimeout(() => {
+    if (!notificationWindow.isDestroyed()) notificationWindow.destroy();
+  }, 6500);
 
-  dropNotificationWindow.once('ready-to-show', () => {
+  notificationWindow.once('ready-to-show', () => {
     if (!notificationWindow || notificationWindow.isDestroyed()) {
       console.log('[Main] Окно уведомления закрылось до показа');
       return;
@@ -2507,6 +2512,8 @@ function createDropNotification(dropName, gameName, dropIcon) {
       targetWindow.webContents.send('notification-data', { dropName, gameName, dropIcon: dropIconData });
     };
     
+    // Название показываем сразу, даже если сервер картинки не отвечает.
+    sendToNotification(null);
     // Загружаем картинку через главный процесс и передаем как base64
     if (dropIcon && dropIcon.startsWith('http')) {
       const https = require('https');
@@ -2515,7 +2522,7 @@ function createDropNotification(dropName, gameName, dropIcon) {
       
       console.log('[Main] Downloading image:', dropIcon);
       
-      protocol.get(dropIcon, (response) => {
+      const request = protocol.get(dropIcon, (response) => {
         console.log('[Main] Response status:', response.statusCode);
         console.log('[Main] Response content-type:', response.headers['content-type']);
         
@@ -2523,6 +2530,7 @@ function createDropNotification(dropName, gameName, dropIcon) {
         if (response.statusCode !== 200 || !response.headers['content-type']?.startsWith('image/')) {
           console.error('[Main] Invalid response - not an image or error status');
           sendToNotification(null);
+          response.resume();
           return;
         }
         
@@ -2541,18 +2549,22 @@ function createDropNotification(dropName, gameName, dropIcon) {
           console.log('[Main] Image downloaded successfully, size:', buffer.length, 'bytes');
           sendToNotification(dataUrl);
         });
+        response.on('error', () => sendToNotification(null));
         
       }).on('error', (err) => {
         console.error('[Main] Failed to download image:', err.message);
         sendToNotification(null);
       });
+      request.setTimeout(4000, () => request.destroy());
+      notificationWindow.once('closed', () => request.destroy());
     } else {
       sendToNotification(null);
     }
   });
 
-  dropNotificationWindow.on('closed', () => {
-    dropNotificationWindow = null;
+  notificationWindow.on('closed', () => {
+    clearTimeout(expiry);
+    if (dropNotificationWindow === notificationWindow) dropNotificationWindow = null;
   });
 }
 
@@ -2561,9 +2573,11 @@ ipcMain.on('show-drop-notification', (event, { dropName, gameName, dropIcon }) =
   createDropNotification(dropName, gameName, dropIcon);
 });
 
-ipcMain.on('close-drop-notification', () => {
-  if (dropNotificationWindow && !dropNotificationWindow.isDestroyed()) {
-    dropNotificationWindow.close();
+ipcMain.on('close-drop-notification', (event) => {
+  if (event.sender.isDestroyed()) return;
+  const senderWindow = BrowserWindow.fromWebContents(event.sender);
+  if (senderWindow && senderWindow === dropNotificationWindow && !senderWindow.isDestroyed()) {
+    senderWindow.close();
   }
 });
 
