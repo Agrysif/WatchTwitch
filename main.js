@@ -1072,10 +1072,98 @@ ipcMain.handle('read-file', async (event, relativePath) => {
   }
 });
 
-// Автозапуск настройки
-app.setLoginItemSettings({
-  openAtLogin: store.get('settings.autostart', false)
-});
+/**
+ * Автозапуск с Windows.
+ *
+ * Раньше при каждом старте приложение само выставляло автозапуск по
+ * значению settings.autostart — и выключало его, если там лежал false.
+ * А false туда регулярно записывала синхронизация настроек из окна, где
+ * у автозапуска было значение по умолчанию. Итог: запись в реестре
+ * пропадала сама, и после очередного обновления приложение переставало
+ * запускаться с системой.
+ *
+ * Теперь правда одна — сама Windows. Флаг меняет только переключатель
+ * (set-autostart), синхронизация его не трогает, а при старте автозапуск
+ * лишь подтверждается, если включён, — чтобы путь к exe после
+ * обновления оставался верным. Выключать его при старте нельзя.
+ */
+const AUTOSTART_ARGS = ['--autostart'];
+// Имя записи в реестре задаём явно: без него Electron берёт идентификатор
+// приложения, а тот до и после готовности приложения разный — так
+// появлялись две записи, и выключение убирало только одну
+const AUTOSTART_NAME = 'WatchTwitch';
+const AUTOSTART_LEGACY_NAMES = ['electron.app.WatchTwitch', 'WatchTwitch.App', 'com.watchtwitch.app'];
+
+function loginItemOptions(extra = {}) {
+  return { path: process.execPath, args: AUTOSTART_ARGS, name: AUTOSTART_NAME, ...extra };
+}
+
+/** Есть ли включённая запись под одним из старых имён. */
+function hasLegacyAutostart() {
+  return AUTOSTART_LEGACY_NAMES.some(name =>
+    loginItemEnabled({ path: process.execPath, args: AUTOSTART_ARGS, name }) ||
+    loginItemEnabled({ path: process.execPath, name }));
+}
+
+/** Убирает записи автозапуска под старыми именами. */
+function removeLegacyAutostart() {
+  for (const name of AUTOSTART_LEGACY_NAMES) {
+    try {
+      app.setLoginItemSettings({ openAtLogin: false, path: process.execPath, args: AUTOSTART_ARGS, name });
+      app.setLoginItemSettings({ openAtLogin: false, path: process.execPath, name });
+    } catch (e) { /* записи нет */ }
+  }
+}
+
+/**
+ * Включена ли запись. openAtLogin на Windows при заданном имени всегда
+ * false (проверено замером), правду говорит executableWillLaunchAtLogin.
+ */
+function loginItemEnabled(options) {
+  try {
+    const state = app.getLoginItemSettings(options);
+    return !!(state.executableWillLaunchAtLogin || state.openAtLogin ||
+      (state.launchItems || []).some(item => item.name === options.name && item.enabled));
+  } catch (e) {
+    return false;
+  }
+}
+
+function isAutostartEnabled() {
+  return loginItemEnabled(loginItemOptions());
+}
+
+function setAutostart(enabled) {
+  if (!app.isPackaged) {
+    // Из исходников exe — это electron.exe без приложения: регистрировать нечего
+    console.log('[Автозапуск] В режиме разработки не меняется, хотели:', enabled);
+    store.set('settings.autostart', !!enabled);
+    return !!enabled;
+  }
+  removeLegacyAutostart();
+  app.setLoginItemSettings(loginItemOptions({ openAtLogin: !!enabled }));
+  const actual = isAutostartEnabled();
+  store.set('settings.autostart', actual);
+  console.log('[Автозапуск]', actual ? 'включён' : 'выключен');
+  return actual;
+}
+
+if (app.isPackaged) {
+  // Автозапуск под старым именем — значит, пользователь его включал, даже
+  // если флаг в настройках затёрла прежняя синхронизация. Переносим.
+  if (hasLegacyAutostart()) {
+    console.log('[Автозапуск] Найдена запись под старым именем — переношу');
+    store.set('settings.autostart', true);
+  }
+  removeLegacyAutostart();
+  if (store.get('settings.autostart') === true) {
+    app.setLoginItemSettings(loginItemOptions({ openAtLogin: true }));
+  }
+}
+
+if (process.argv.includes('--autostart')) {
+  console.log('[Запуск] Запущено автозапуском Windows');
+}
 
 function createSplashWindow() {
   splashWindow = new BrowserWindow({
@@ -2366,7 +2454,10 @@ ipcMain.handle('logout-twitch', async () => {
 ipcMain.handle('settings-merge', (event, partial) => {
   if (!partial || typeof partial !== 'object') return false;
   const current = store.get('settings', {});
-  store.set('settings', { ...current, ...partial });
+  // Автозапуск принадлежит main: в окне у него значение по умолчанию false,
+  // и слияние раньше молча затирало им включённый автозапуск
+  const { autostart, ...rest } = partial;
+  store.set('settings', { ...current, ...rest });
   return true;
 });
 
@@ -2891,7 +2982,6 @@ ipcMain.handle('fetch-twitch-categories', async () => {
   const https = require('https');
 
   return new Promise((resolve) => {
-    console.log('Fetching Twitch top categories...');
 
     // Упрощенный GraphQL запрос без tags
     const postData = JSON.stringify({
@@ -2920,7 +3010,6 @@ ipcMain.handle('fetch-twitch-categories', async () => {
       res.on('end', () => {
         try {
           const response = JSON.parse(data);
-          console.log('Response received:', data.substring(0, 200));
 
           // Пробуем разные пути к данным
           const edges = response?.data?.games?.edges ||
@@ -2936,7 +3025,6 @@ ipcMain.handle('fetch-twitch-categories', async () => {
             tags: [] // Пока пустой массив
           }));
 
-          console.log('Fetched', categories.length, 'categories');
           resolve(categories);
         } catch (e) {
           console.log('Error parsing categories:', e.message);
@@ -3309,7 +3397,6 @@ function fetchDropsInventoryUncached() {
   const https = require('https');
 
   return new Promise(async (resolve) => {
-    console.log('Fetching drops inventory...');
 
     // Используем cookie токен из webview (создается при просмотре стримов)
     const { session } = require('electron');
@@ -3335,7 +3422,6 @@ function fetchDropsInventoryUncached() {
       return;
     }
 
-    console.log('Using cookie token for drops');
 
     // GraphQL operation for inventory (campaigns in progress only)
     const postData = JSON.stringify([
@@ -3428,7 +3514,6 @@ function fetchDropsInventoryUncached() {
           const inventory = currentUser.inventory || {};
           const ongoingCampaigns = inventory.dropCampaignsInProgress || [];
 
-          console.log('Ongoing campaigns:', ongoingCampaigns.length);
 
           // Создаем мапу полученных дропсов из инвентаря ПЕРЕД использованием в map
           const claimedDrops = {};
@@ -3459,9 +3544,14 @@ function fetchDropsInventoryUncached() {
             });
           });
 
-          console.log('[Drops] Кампаний всего:', campaignsMap.size,
-            '(в прогрессе:', ongoingCampaigns.length,
-            ', ещё не начатых:', campaignsMap.size - ongoingCampaigns.length, ')');
+          // Пишем только когда число изменилось: раз в минуту одно и то же
+          const summary = campaignsMap.size + '/' + ongoingCampaigns.length;
+          if (summary !== fetchDropsInventoryUncached.lastSummary) {
+            fetchDropsInventoryUncached.lastSummary = summary;
+            console.log('[Drops] Кампаний всего:', campaignsMap.size,
+              '(в прогрессе:', ongoingCampaigns.length,
+              ', ещё не начатых:', campaignsMap.size - ongoingCampaigns.length, ')');
+          }
 
           // Format campaigns with stream count - claimedDrops уже объявлен выше
           const campaigns = await Promise.all(Array.from(campaignsMap.values()).map(async campaign => {
@@ -4198,13 +4288,13 @@ ipcMain.handle('claim-all-drops', async () => {
   });
 });
 
-// Автозапуск
+// Автозапуск: включение и выключение только по переключателю
 ipcMain.on('set-autostart', (event, enabled) => {
-  app.setLoginItemSettings({
-    openAtLogin: enabled
-  });
-  store.set('settings.autostart', enabled);
+  setAutostart(!!enabled);
 });
+
+// Настоящее состояние автозапуска — по Windows, а не по сохранённому флагу
+ipcMain.handle('get-autostart', () => (app.isPackaged ? isAutostartEnabled() : store.get('settings.autostart') === true));
 // Подписки текущего пользователя.
 //
 // Раньше шли через Helix с OAuth-токеном приложения, а тот давно протух:

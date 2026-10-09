@@ -848,13 +848,30 @@ class FarmingPage {
         title: sessionState.streamTitle || ''
       };
 
+      // Сессия, которую давно не видели, — уже прошлое: приложение было
+      // закрыто. Канал и категорию продолжаем, а время считаем заново,
+      // иначе в статистику попадает всё время, пока приложение не работало.
+      // Переход между вкладками и перезапуск после обновления — продолжение.
+      let stale = false;
+      if (!window.sessionState?.isActive?.()) {
+        const stats = await Storage.getStatistics().catch(() => null);
+        const active = (stats?.sessions || []).find(s => s.isActive);
+        stale = SessionState.isStale(active);
+        if (stale) {
+          console.log('[Сессия] Прошлая сессия закончилась вместе с приложением — начинаю новую на том же канале');
+          await Storage.finalizeCurrentSession({}).catch(() => {});
+        }
+      }
+
       // Восстанавливаем время сессии
-      this.sessionStartTime = sessionState.startTime || Date.now();
+      const now = Date.now();
+      this.sessionStartTime = stale ? now : (sessionState.startTime || now);
       // Отсчёт времени категории тоже восстанавливаем: без него следующая
       // смена категории записала бы ей всё время сессии целиком
-      this.categoryStartTime = sessionState.categoryStartTime || this.sessionStartTime;
+      this.categoryStartTime = stale ? now : (sessionState.categoryStartTime || this.sessionStartTime);
       this.currentCategory = category;
       this.currentStream = stream;
+      if (stale) await this.saveActiveSession(stream, category);
 
       // Ручной запуск переживает переход между вкладками
       this.manualCategoryId = sessionState.manualCategoryId || null;
@@ -3818,6 +3835,9 @@ class FarmingPage {
     await Storage.updateCurrentSession({
       timestamp: this.sessionStartTime,
       duration: duration,
+      // Признак жизни: по нему при следующем запуске видно, продолжение это
+      // или приложение было закрыто
+      lastSeenAt: Date.now(),
       category: this.currentCategory?.name || 'Unknown',
       channel: this.currentStream?.displayName || 'Unknown',
       bandwidth: this.estimatedBandwidth,

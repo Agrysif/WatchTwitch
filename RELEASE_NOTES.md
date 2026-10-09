@@ -1,17 +1,11 @@
 ## 🇷🇺 Что нового
 
-- Исправлено зависание уведомления «Дроп получен», когда несколько наград приходят подряд. Закрытие по клику снова работает; резервный таймер закрывает окно даже при сбое интерфейса уведомления.
-- Фарминг продолжает проверять дропы и переключать недоступные стримы, пока открыты настройки, статистика и другие вкладки. Возврат на страницу не создаёт повторные обработчики и таймеры.
-- Запоздавшие ответы Twitch больше не возвращают канал из предыдущей категории и не подменяют статистику текущего стрима. Остановка отменяет незавершённый поиск.
-- Избранные и подписанные каналы выбираются с учётом списка стримеров, разрешённых кампанией. Автопереключение после смены игры использует тот же фильтр и соблюдает настройку отключения автопереключения.
-- Уточнено сравнение категорий: название одной игры внутри названия другой больше не считается совпадением при проверке текущего стрима.
-- Сохранены совместимость настроек и прежний канал автообновлений. Обновление не требует повторной настройки приложения.
+- **Автозапуск с Windows снова держится.** Приложение при каждом старте само переписывало автозапуск по сохранённому флагу, а синхронизация настроек из окна затирала этот флаг значением по умолчанию — запись в реестре пропадала сама. Теперь автозапуск меняет только переключатель в настройках, переключатель показывает то, что реально записано в Windows, а запись под старым именем переносится автоматически. Если автозапуск у вас пропал — включите его один раз в настройках
+- **Сессия больше не переживает закрытие приложения.** Закрыл вечером, открыл утром — таймер продолжал считать от вчерашнего старта, и в статистику попадала вся ночь (в одной из записей набежало 10 суток). Теперь, если приложение не работало дольше 10 минут, прошлая сессия закрывается с настоящей длительностью, а новая начинается на том же канале. Переход между вкладками и перезапуск после обновления по-прежнему продолжают сессию
+- **Лог стал в пять раз тише.** Рутинные строки каждые 30 секунд заполняли 2 МБ за три дня, и полезное в нём терялось
 
 ## 🇬🇧 What's new
 
-- Fixed stuck drop notifications when rewards arrive close together. Click-to-close works reliably; a main-process timer also closes the window if its renderer fails.
-- Farming keeps checking drops and switching unavailable streams while Settings, Statistics, or other tabs are open. Returning to Farming does not duplicate its handlers or timers.
-- Delayed Twitch responses no longer restore a previous category's stream or overwrite current stream statistics. Stopping farming cancels pending stream searches.
-- Favorite and followed channels respect campaign channel restrictions. Game-change switching uses the same channel filter and honors the automatic switching setting.
-- Stream category checks no longer treat a game name contained in another game's name as an exact match.
-- Existing settings and the update feed remain compatible; no application reconfiguration is required.
+- **Windows autostart sticks again.** The app rewrote the login item from a stored flag on every start, and settings sync overwrote that flag with its default, silently removing the registry entry. Only the Settings toggle changes autostart now, the toggle reflects the real Windows state, and entries under the old name are migrated. If autostart disappeared for you, turn it on once in Settings
+- **A session no longer survives closing the app.** If the app was not running for more than 10 minutes, the previous session is closed with its real duration and a new one starts on the same channel, so overnight downtime no longer inflates statistics
+- **The log is five times quieter**

@@ -46,6 +46,38 @@ class SessionState {
     return 45;
   }
 
+/**
+   * Сколько можно не видеть сессию, чтобы ещё считать её продолжением.
+   * Перезапуск после обновления или падения укладывается в минуту.
+   */
+  static get RESUME_GAP_MS() {
+    return 10 * 60 * 1000;
+  }
+
+  /**
+   * Сессия из хранилища — продолжение или уже прошлое.
+   *
+   * Раньше сохранённая сессия восстанавливалась всегда: закрыл приложение
+   * вечером, открыл утром — и таймер сессии продолжал считать от вчерашнего
+   * старта, засчитывая ночь, когда ничего не работало. В статистике так
+   * появилась сессия на десять суток. Последний признак жизни — отметка
+   * lastSeenAt, которую статистика пишет каждые полминуты; у старых записей
+   * её нет, тогда берём начало плюс записанную длительность.
+   */
+  static lastSeenOf(statsSession) {
+    if (!statsSession) return 0;
+    if (Number(statsSession.lastSeenAt) > 0) return Number(statsSession.lastSeenAt);
+    const start = Number(statsSession.timestamp) || 0;
+    const minutes = Number(statsSession.duration) || 0;
+    return start ? start + minutes * 60000 : 0;
+  }
+
+  static isStale(statsSession, now = Date.now()) {
+    const lastSeen = SessionState.lastSeenOf(statsSession);
+    if (!lastSeen) return true;
+    return now - lastSeen > SessionState.RESUME_GAP_MS;
+  }
+
   static emptyPoints() {
     return {
       initialized: false,

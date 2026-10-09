@@ -998,6 +998,20 @@ function loadClass(relativePath, className, globals = {}) {
   check('значок пропадает при входе', LG.shouldBadge({ accounts: acc, loggedIn: true }), false);
 }
 
+// ─── Сессия после закрытия приложения ────────────────────────────────
+{
+  const SS = loadClass('renderer/js/core/session-state.js', 'SessionState');
+  const t0 = new Date('2026-10-07T18:02:00Z').getTime();
+  const мин = 60000;
+  check('свежая отметка — продолжение', SS.isStale({ lastSeenAt: t0 - 2 * мин }, t0), false);
+  check('давняя отметка — новая сессия', SS.isStale({ lastSeenAt: t0 - 11 * мин }, t0), true);
+  check('без отметки: начало плюс длительность',
+    SS.lastSeenOf({ timestamp: t0, duration: 30 }), t0 + 30 * мин);
+  check('старая запись без отметки — утром уже прошлое',
+    SS.isStale({ timestamp: t0, duration: 1719 }, t0 + 1719 * мин + 14 * 3600000), true);
+  check('нет записи — новая сессия', SS.isStale(null, t0), true);
+}
+
 // ─── Итог ────────────────────────────────────────────────────────────
 console.log('');
 if (failures.length) {
