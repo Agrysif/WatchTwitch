@@ -28,6 +28,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   // Автозапуск
   setAutostart: (enabled) => ipcRenderer.send('set-autostart', enabled),
+  // Включён ли автозапуск на самом деле (по Windows)
+  getAutostart: () => ipcRenderer.invoke('get-autostart'),
   
   // OAuth
   startTwitchAuth: () => ipcRenderer.invoke('start-twitch-auth'),

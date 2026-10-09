@@ -853,10 +853,20 @@ class SettingsPage {
     // Автозапуск вместе с системой
     const autostartToggle = document.getElementById('setting-autostart');
     if (autostartToggle) {
+      // Переключатель показывает, что на самом деле записано в Windows, а не
+      // сохранённый флаг: раньше они расходились, и автозапуск пропадал
+      window.electronAPI?.getAutostart?.().then(enabled => {
+        autostartToggle.checked = !!enabled;
+        settings.settings.autostart = !!enabled;
+      }).catch(() => {});
+
       autostartToggle.addEventListener('change', (e) => {
         settings.set('autostart', e.target.checked);
         // Реальный автозапуск включает main-процесс через системный API
         window.electronAPI?.setAutostart?.(e.target.checked);
+        window.utils?.showToast(e.target.checked
+          ? 'Приложение будет запускаться вместе с Windows'
+          : 'Автозапуск выключен', 'info');
       }, { signal: this._abort.signal });
     }
 
