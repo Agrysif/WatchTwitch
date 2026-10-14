@@ -6,11 +6,24 @@
  * 160 строк работы с координатами только мешали читать логику фарминга.
  */
 window.drawViewersChart = function (ctx, history) {
-  if (history.length < 2) return;
-  
   const canvas = ctx.canvas;
   const width = canvas.width;
   const height = canvas.height;
+
+  // Двух замеров ещё нет (стрим только сменился). Раньше функция просто
+  // выходила, и на канвасе оставался график прошлого стрима — подсказка
+  // показывала чужие цифры. Стираем и честно пишем, что данных мало.
+  if (!Array.isArray(history) || history.length < 2) {
+    ctx.clearRect(0, 0, width, height);
+    ctx.font = '600 14px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#8f9099';
+    ctx.fillText('Мало данных', width / 2, height / 2);
+    ctx.textBaseline = 'alphabetic';
+    return;
+  }
+
   const outerPadding = 16;
   const topArea = 34;
   const bottomArea = 46;

@@ -1,6 +1,6 @@
 {
   "name": "watchtwitch",
-  "version": "1.0.24",
+  "version": "1.0.25",
   "description": "Twitch Drops farming application",
   "main": "main.js",
   "scripts": {
@@ -51,7 +51,8 @@
       "!**/*.backup",
       "!**/*.old.js",
       "!tests${/*}",
-      "!_archive${/*}"
+      "!_archive${/*}",
+      "!.claude${/*}"
     ],
     "releaseInfo": {
       "releaseNotesFile": "RELEASE_NOTES.md"

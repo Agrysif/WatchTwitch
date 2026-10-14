@@ -122,15 +122,34 @@ class WhatsNew {
       this.releases = result.releases;
     }
 
-    // Показываем всё, что вышло после версии, с которой обновились
-    const relevant = options.since
-      ? this.releases.filter(r => WhatsNew.compare(r.version, options.since) > 0)
+    // Версии новее установленной не показываем. Иначе окно описывало то,
+    // чего у пользователя нет: релиз, при откате помеченный как
+    // pre-release, или обновление, которое ещё не поставлено
+    const current = await this.installedVersion() || options.highlight || null;
+    const installed = current
+      ? this.releases.filter(r => WhatsNew.compare(r.version, current) <= 0)
       : this.releases;
 
-    const list = relevant.length > 0 ? relevant : this.releases.slice(0, 1);
+    if (installed.length === 0) {
+      body.innerHTML = '<div class="whats-new-empty">Описание установленной версии не найдено.</div>';
+      return;
+    }
+
+    // Показываем всё, что вышло после версии, с которой обновились
+    const relevant = options.since
+      ? installed.filter(r => WhatsNew.compare(r.version, options.since) > 0)
+      : installed;
+
+    const highlight = options.highlight || current;
+    const own = installed.find(r => r.version === highlight);
+    const list = relevant.length > 0 ? relevant : [own || installed[0]];
+
+    // Раскрываем установленную версию, а не первую в списке: первым идёт
+    // самый новый релиз, и он не обязательно тот, что стоит
+    const openIndex = list.findIndex(r => r.version === highlight);
 
     body.innerHTML = list
-      .map((release, index) => this.renderRelease(release, index === 0))
+      .map((release, index) => this.renderRelease(release, openIndex === -1 ? index === 0 : index === openIndex))
       .join('');
 
     body.querySelectorAll('.whats-new-release-head').forEach(head => {
@@ -195,12 +214,23 @@ class WhatsNew {
 
     return chosen.map(part => {
       const lines = part.split('\n').map(l => l.trim()).filter(Boolean);
-      const title = lines.shift() || '';
+      // Флаг нужен только для выбора языка выше. Windows флаги не рисует
+      // и выводит вместо них буквы «RU» перед каждым заголовком
+      const title = (lines.shift() || '').replace(/^(?:[\u{1F1E6}-\u{1F1FF}]{2})\s*/u, '');
       const items = lines
         .filter(l => l.startsWith('-') || l.startsWith('*'))
         .map(l => l.replace(/^[-*]\s*/, ''));
       return { title, items };
     }).filter(section => section.items.length > 0);
+  }
+
+  /** Установленная версия или null, если узнать её не удалось. */
+  async installedVersion() {
+    try {
+      return (await window.electronAPI?.getAppVersion?.()) || null;
+    } catch (e) {
+      return null;
+    }
   }
 
   /** Сравнение версий вида 1.0.15. Возвращает 1, -1 или 0. */

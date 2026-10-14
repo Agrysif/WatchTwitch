@@ -65,7 +65,16 @@ class Router {
       }
       if (navigation !== this._navigationId) return;
       this.destroyCurrentPage(page);
+      // Прокручивается не сама страница, а общий контейнер .content, и смена
+      // содержимого его позицию не сбрасывает. Без этого каждая страница
+      // открывалась «с середины» — там, где была прокручена предыдущая.
+      const scroller = container.closest('.content');
       if (this.currentPage === 'farming') {
+        // Фарминг возвращается с тем же DOM, поэтому возвращаем и позицию:
+        // иначе список категорий после «Настроек» приходилось искать заново.
+        // Читать до выноса узлов: опустевший контейнер браузер сразу
+        // прокручивает к нулю.
+        this._farmingScrollTop = scroller ? scroller.scrollTop : 0;
         // Keep farming automation and its DOM alive while another page is visible.
         // The persistent player is outside this subtree and is never moved.
         const parked = document.createElement('div');
@@ -82,10 +91,17 @@ class Router {
       } else {
         container.innerHTML = doc.body.innerHTML;
       }
+      // До manageMiniPlayer: наблюдатель за видимостью плеера должен сразу
+      // увидеть итоговую позицию, а не промежуточную.
+      if (scroller) scroller.scrollTop = restoringFarming ? (this._farmingScrollTop || 0) : 0;
       this.currentPage = page;
       document.querySelectorAll('.nav-item').forEach(btn => {
         btn.classList.toggle('active', btn.getAttribute('data-page') === page);
       });
+      // На невысоком окне меню в сайдбаре прокручивается, и текущая вкладка
+      // (переход из кода, например «Аккаунты» с экрана входа) могла
+      // остаться за краем. 'nearest' не двигает меню, если пункт уже виден
+      document.querySelector('.sidebar-top .nav-item.active')?.scrollIntoView({ block: 'nearest' });
       if (!restoringFarming) {
         if (inlineScript) {
           const script = document.createElement('script');
@@ -230,13 +246,7 @@ class Router {
       return;
     }
 
-    if (miniPlayerContainer) {
-      miniPlayerContainer.style.display = 'block';
-      requestAnimationFrame(() => {
-        miniPlayerContainer.style.opacity = '1';
-        miniPlayerContainer.style.transform = 'translateY(0)';
-      });
-    }
+    this.showSidebarMiniPlayer(miniPlayerContainer);
 
     const sidebarSlot = document.getElementById('sidebar-player-slot');
     if (sidebarSlot) {
@@ -298,13 +308,7 @@ class Router {
       const sidebarSlot = document.getElementById('sidebar-player-slot');
       if (!sidebarSlot) return;
 
-      if (container) {
-        container.style.display = 'block';
-        requestAnimationFrame(() => {
-          container.style.opacity = '1';
-          container.style.transform = 'translateY(0)';
-        });
-      }
+      this.showSidebarMiniPlayer(container);
       player.attachTo(sidebarSlot, { interactive: false, animate: true });
     };
 
@@ -343,19 +347,63 @@ class Router {
     this.hideSidebarMiniPlayer(document.getElementById('sidebar-mini-player-container'));
   }
 
+  /**
+   * Показывает мини-плеер в сайдбаре.
+   *
+   * Отменяет незавершённое скрытие. Раньше таймер скрытия не запоминался:
+   * при быстром переходе «Настройки → Фарминг → Настройки» (быстрее 300 мс)
+   * или при прокрутке фарминга вверх-вниз он срабатывал уже после показа и
+   * прятал контейнер — фарминг шёл, а мини-плеера не было до следующей
+   * навигации.
+   */
+  showSidebarMiniPlayer(container) {
+    const miniPlayerContainer = container || document.getElementById('sidebar-mini-player-container');
+    if (!miniPlayerContainer) return;
+
+    clearTimeout(this._miniPlayerHideTimer);
+    this._miniPlayerHideTimer = null;
+
+    miniPlayerContainer.style.display = 'block';
+    cancelAnimationFrame(this._miniPlayerShowFrame);
+    this._miniPlayerShowFrame = requestAnimationFrame(() => {
+      this._miniPlayerShowFrame = null;
+      miniPlayerContainer.style.opacity = '1';
+      miniPlayerContainer.style.transform = 'translateY(0)';
+    });
+  }
+
   hideSidebarMiniPlayer(container) {
     const miniPlayerContainer = container || document.getElementById('sidebar-mini-player-container');
     if (!miniPlayerContainer || miniPlayerContainer.style.display === 'none') return;
 
+    // Отменяем показ, запланированный на следующий кадр: иначе он вернул бы
+    // непрозрачность уже скрываемому контейнеру.
+    cancelAnimationFrame(this._miniPlayerShowFrame);
+    this._miniPlayerShowFrame = null;
+
     miniPlayerContainer.style.opacity = '0';
     miniPlayerContainer.style.transform = 'translateY(-10px)';
-    setTimeout(() => {
+    clearTimeout(this._miniPlayerHideTimer);
+    this._miniPlayerHideTimer = setTimeout(() => {
+      this._miniPlayerHideTimer = null;
       miniPlayerContainer.style.display = 'none';
     }, 300);
   }
 
+  /**
+   * Подключает внешний скрипт страницы один раз за жизнь окна.
+   *
+   * Раньше каждый заход на «Дропсы» добавлял в <head> два новых <script>:
+   * файлы заново читались и разбирались, хотя сразу выходили по проверке
+   * «класс уже объявлен», а DOM рос без конца. Храним обещание, а не флаг,
+   * чтобы две быстрые навигации подряд ждали одну и ту же загрузку.
+   */
   loadScript(src) {
-    return new Promise((resolve, reject) => {
+    if (!this._scriptLoads) this._scriptLoads = new Map();
+    const known = this._scriptLoads.get(src);
+    if (known) return known;
+
+    const loading = new Promise((resolve, reject) => {
       console.log('Loading script:', src);
       const script = document.createElement('script');
       script.src = src;
@@ -365,10 +413,15 @@ class Router {
       };
       script.onerror = (error) => {
         console.error('Failed to load script:', src, error);
+        // Неудачную загрузку не запоминаем: следующий заход попробует снова.
+        this._scriptLoads.delete(src);
+        script.remove();
         reject(error);
       };
       document.head.appendChild(script);
     });
+    this._scriptLoads.set(src, loading);
+    return loading;
   }
   
 }

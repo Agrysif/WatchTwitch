@@ -7,6 +7,29 @@
     return;
   }
 
+  // Названия кампаний, игр и наград задаёт разработчик игры, а не
+  // приложение. Вставленные в innerHTML как есть, они становились
+  // разметкой и могли выполнить код с доступом к electronAPI.
+  const esc = (text) => (typeof window.escapeHtml === 'function'
+    ? window.escapeHtml(text)
+    : String(text ?? '').replace(/[&<>"']/g, ch => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[ch])));
+
+  // Адрес картинки попадает внутрь url('…') в атрибуте style. Кавычка или
+  // скобка в нём закрывала url() и дописывала свой CSS, поэтому пропускаем
+  // только http(s) и data:image, а опасные символы кодируем.
+  const safeImageUrl = (url) => {
+    const value = String(url || '');
+    if (!/^(https?:|data:image\/)/i.test(value)) return '';
+    return value.replace(/["'()\\\s<>]/g,
+      ch => '%' + ch.charCodeAt(0).toString(16).toUpperCase().padStart(2, '0'));
+  };
+
+  // Галочка из набора иконок тостов: символ «✓» выглядел чужим рядом
+  // с остальными SVG-иконками интерфейса.
+  const CHECK_ICON = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -1px;"><polyline points="20 6 9 17 4 12"/></svg>';
+
   class DropsPage {
     constructor() {
       console.log('DropsPage constructor');
@@ -25,14 +48,16 @@
       this.showAllGames = false; // Новое свойство для управления показом всех игр
       this.initialized = false;
       
-      // Определение редкостей дропов
+      // Определение редкостей дропов.
+      // Цвета из общей палитры интерфейса: прежние кислотные #00ff00,
+      // #9d00ff, #ff0088 резали глаз и не совпадали с остальными экранами.
       this.rarityTiers = [
-        { name: 'common', label: 'Обычный', minMinutes: 0, maxMinutes: 60, minViewers: 50000, color: '#888888', glow: 'rgba(136, 136, 136, 0.4)' },
-        { name: 'uncommon', label: 'Необычный', minMinutes: 61, maxMinutes: 120, minViewers: 30000, color: '#00ff00', glow: 'rgba(0, 255, 0, 0.4)' },
-        { name: 'rare', label: 'Редкий', minMinutes: 121, maxMinutes: 240, minViewers: 15000, color: '#0099ff', glow: 'rgba(0, 153, 255, 0.4)' },
-        { name: 'epic', label: 'Эпический', minMinutes: 241, maxMinutes: 480, minViewers: 8000, color: '#9d00ff', glow: 'rgba(157, 0, 255, 0.4)' },
-        { name: 'legendary', label: 'Легендарный', minMinutes: 481, maxMinutes: 720, minViewers: 3000, color: '#ff8800', glow: 'rgba(255, 136, 0, 0.4)' },
-        { name: 'mythic', label: 'Мифический', minMinutes: 721, maxMinutes: 99999, minViewers: 0, color: '#ff0088', glow: 'rgba(255, 0, 136, 0.4)' }
+        { name: 'common', label: 'Обычный', minMinutes: 0, maxMinutes: 60, minViewers: 50000, color: '#8a93a3', glow: 'rgba(138, 147, 163, 0.4)' },
+        { name: 'uncommon', label: 'Необычный', minMinutes: 61, maxMinutes: 120, minViewers: 30000, color: '#35d08a', glow: 'rgba(53, 208, 138, 0.4)' },
+        { name: 'rare', label: 'Редкий', minMinutes: 121, maxMinutes: 240, minViewers: 15000, color: '#4aa3ff', glow: 'rgba(74, 163, 255, 0.4)' },
+        { name: 'epic', label: 'Эпический', minMinutes: 241, maxMinutes: 480, minViewers: 8000, color: '#7c5cff', glow: 'rgba(124, 92, 255, 0.4)' },
+        { name: 'legendary', label: 'Легендарный', minMinutes: 481, maxMinutes: 720, minViewers: 3000, color: '#f0a83c', glow: 'rgba(240, 168, 60, 0.4)' },
+        { name: 'mythic', label: 'Мифический', minMinutes: 721, maxMinutes: 99999, minViewers: 0, color: '#f0555f', glow: 'rgba(240, 85, 95, 0.4)' }
       ];
       
       this.init();
@@ -53,6 +78,8 @@
         const oauthData = await window.electronAPI.getOAuthUser().catch(() => null);
         const accounts = (await Storage.getAccounts().catch(() => [])) || [];
         const account = accounts[0] || null;
+        // Пока шёл запрос, пользователь мог уйти на другую страницу
+        if (this._destroyed) return;
 
         const user = (oauthData?.user) || (account && account.accessToken ? {
           displayName: account.displayName || account.username,
@@ -90,12 +117,33 @@
           const authButton = document.getElementById('authButton');
           if (authButton) {
             authButton.onclick = async () => {
+              // Блокируем только от двойного щелчка. Если закрыть вкладку
+              // входа в браузере, ответа не будет вовсе, и навсегда
+              // выключенная кнопка не дала бы попробовать ещё раз.
+              authButton.disabled = true;
+              const unlock = setTimeout(() => { authButton.disabled = false; }, 5000);
               try {
-                await window.electronAPI.startTwitchAuth();
-                // После авторизации перезагружаем страницу
-                window.location.reload();
+                const result = await window.electronAPI.startTwitchAuth();
+                // Перерисовываем только эту страницу. Раньше здесь была
+                // перезагрузка всего окна — даже при неудачном входе, — и она
+                // обрывала фарминг и плеер.
+                if (result?.success) {
+                  if (!this._destroyed) await this.init();
+                } else {
+                  // Ошибка из main бывает служебной и английской
+                  // («listen EADDRINUSE…»): переводим её тем же правилом,
+                  // что и страница аккаунтов
+                  const text = typeof window.friendlyLoginError === 'function'
+                    ? window.friendlyLoginError(result?.error)
+                    : 'Не удалось войти в Twitch — попробуйте ещё раз';
+                  window.utils?.showToast(text, 'error');
+                }
               } catch (error) {
                 console.error('Auth error:', error);
+                window.utils?.showToast('Не удалось войти через Twitch', 'error');
+              } finally {
+                clearTimeout(unlock);
+                authButton.disabled = false;
               }
             };
           }
@@ -114,14 +162,15 @@
           if (userNameEl) userNameEl.textContent = user.displayName || user.login || 'User';
           if (userEmailEl) userEmailEl.textContent = user.email || '';
           if (logoutBtn) {
-            logoutBtn.onclick = async () => {
-              try {
-                await window.electronAPI.logoutTwitch();
-                window.location.reload();
-              } catch (e) {
-                console.error('Logout error:', e);
-              }
-            };
+            // Здесь была кнопка «Выйти». Она стирала только служебный
+            // OAuth-ключ — аккаунт с токеном оставался, и после перезагрузки
+            // окна страница снова показывала того же пользователя. Итог:
+            // выхода нет, а фарминг и плеер обрывались. Настоящее удаление
+            // аккаунта с подтверждением живёт на странице аккаунтов — туда
+            // кнопка теперь и ведёт.
+            logoutBtn.setAttribute('data-i18n', 'nav.accounts');
+            logoutBtn.textContent = this.i18n?.t('nav.accounts') || 'Аккаунты';
+            logoutBtn.onclick = () => window.router?.navigate('accounts');
           }
         }
         if (tabsContainer) {
@@ -187,12 +236,24 @@
           
           try {
             const result = await window.electronAPI.claimAllDrops();
-            if (result.success) {
-              window.utils?.showToast(`Получено наград: ${result.claimed}`, 'success');
-              setTimeout(() => this.loadDrops(), 2000);
+            const claimed = Number(result?.claimed) || 0;
+            const total = Number(result?.total) || 0;
+            // Раньше любой успешный ответ давал зелёное «Получено наград: 0» —
+            // и когда забирать было нечего, и когда ни одна награда не
+            // далась. Пользователь думал, что всё в порядке, а награды
+            // оставались незабранными и могли сгореть с концом кампании.
+            if (!result?.success) {
+              window.utils?.showToast(result?.error || 'Не удалось получить награды', 'error');
+            } else if (claimed === 0 && total > 0) {
+              window.utils?.showToast('Не удалось получить награды — заберите их вручную', 'error');
+            } else if (claimed === 0) {
+              window.utils?.showToast(result.message || 'Забирать пока нечего', 'info');
+            } else if (total > claimed) {
+              window.utils?.showToast(`Получено ${claimed} из ${total}, остальные заберите вручную`, 'warning');
             } else {
-              window.utils?.showToast(result.error || 'Ошибка', 'error');
+              window.utils?.showToast(`Получено наград: ${claimed}`, 'success');
             }
+            if (claimed > 0) setTimeout(() => this.loadDrops(), 2000);
           } catch (error) {
             console.error('Error claiming all drops:', error);
             window.utils?.showToast('Ошибка получения наград', 'error');
@@ -207,7 +268,19 @@
     setupDropCardClickHandlers() {
       // Используем делегирование событий на document
       document.addEventListener('click', (e) => {
-        const dropCard = e.target.closest('.drop-card-clickable');
+        // Кнопка «Забрать» лежит внутри карточки дропа. Раньше клик по ней
+        // ещё и открывал окно награды поверх, поэтому кнопку разбираем
+        // первой и окно в этом случае не открываем.
+        const claimBtn = e.target.closest('[data-claim-drop]');
+        if (claimBtn) {
+          window.claimDropNow(claimBtn.dataset.claimDrop, claimBtn, e);
+          return;
+        }
+
+        // Свой класс, а не общий .drop-card-clickable: на тот же класс
+        // подписан и делегат страницы фарминга на document, и каждый клик
+        // здесь строил окно награды дважды.
+        const dropCard = e.target.closest('.drops-page-drop-card');
         if (dropCard && dropCard.dataset.drop) {
           try {
             const drop = JSON.parse(decodeURIComponent(dropCard.dataset.drop));
@@ -220,33 +293,87 @@
       }, { signal: this._abort.signal });
     }
 
+    /**
+     * Почему инвентарь не пришёл, или null, если ответ настоящий.
+     *
+     * Без cookie-токена, на паузе Twitch и при сбое main отдаёт пустой список
+     * кампаний с флагом. Раньше страница принимала его за «дропсов нет» —
+     * пользователь думал, что кампаний нет, хотя данные просто не получены.
+     */
+    describeUnavailable(data) {
+      if (!data || !Array.isArray(data.campaigns)) return 'Ошибка запроса к Twitch, обновлю позже';
+      if (data.needsStream) return 'Запустите стрим — Twitch отдаёт инвентарь только после этого';
+      if (data.rateLimited) return 'Twitch просит паузу, обновлю позже';
+      if (data.error) return 'Ошибка запроса к Twitch, обновлю позже';
+      return null;
+    }
+
+    showEmptyState(el, text) {
+      if (!el) return;
+      el.textContent = text;
+      el.style.display = 'block';
+    }
+
     async loadDrops(options = {}) {
+      // Таймер или поздний ответ уже ушедшей страницы не должен рисовать
+      // в разметке чужой
+      if (this._destroyed) return;
+
       const loadingEl = document.getElementById('loadingState');
       const containerEl = document.getElementById('campaignsContainer');
       const emptyEl = document.getElementById('emptyState');
-      
-      if (loadingEl) loadingEl.style.display = 'block';
-      if (containerEl) containerEl.innerHTML = '';
+
+      // Фоновое обновление не стирает список заранее: иначе раз в пять
+      // минут он пропадал до ответа Twitch и прокрутка прыгала наверх.
+      const hadCampaigns = this.campaigns.length > 0;
+      const quiet = hadCampaigns && !options.force;
+
+      if (!quiet) {
+        if (loadingEl) loadingEl.style.display = 'block';
+        if (containerEl) containerEl.innerHTML = '';
+      }
       if (emptyEl) emptyEl.style.display = 'none';
 
       try {
         console.log('Fetching drops inventory...');
         const data = await window.electronAPI.fetchDropsInventory(options.force ? { force: true } : undefined);
         console.log('Drops data received:', data);
-        
-        if (data && data.campaigns && data.campaigns.length > 0) {
-          this.campaigns = data.campaigns;
-          this.claimedDrops = data.claimedDrops || [];
-          this.updateStats();
+        if (this._destroyed) return;
+
+        const unavailable = this.describeUnavailable(data);
+        if (unavailable) {
+          // Незнание — не повод стирать то, что уже показано, и обнулять
+          // счётчики: оставляем прежний список, а без него объясняем причину.
+          console.log('[Дропсы] Инвентарь недоступен:', unavailable);
+          if (hadCampaigns) {
+            if (!quiet) this.renderCampaigns();
+            if (options.force) window.utils?.showToast(unavailable, 'warning');
+          } else {
+            this.showEmptyState(emptyEl, unavailable);
+          }
+          return;
+        }
+
+        this.campaigns = data.campaigns;
+        this.claimedDrops = data.claimedDrops || [];
+        this.updateStats();
+        if (data.campaigns.length > 0) {
           this.renderCampaigns();
         } else {
-          if (emptyEl) emptyEl.style.display = 'block';
+          if (containerEl) containerEl.innerHTML = '';
+          document.getElementById('completedDropsBlock')?.remove();
+          this.showEmptyState(emptyEl, this.i18n.t('drops.noCampaigns'));
         }
       } catch (error) {
         console.error('Error loading drops:', error);
-        if (emptyEl) {
-          emptyEl.style.display = 'block';
-          emptyEl.textContent = 'Ошибка загрузки дропсов';
+        if (this._destroyed) return;
+        if (hadCampaigns) {
+          if (!quiet) this.renderCampaigns();
+          // Ручное обновление без ответа: прежний список вернулся молча,
+          // и казалось, что данные свежие
+          if (options.force) window.utils?.showToast('Ошибка загрузки дропсов', 'warning');
+        } else {
+          this.showEmptyState(emptyEl, 'Ошибка загрузки дропсов');
         }
       } finally {
         if (loadingEl) loadingEl.style.display = 'none';
@@ -317,6 +444,36 @@
       if (activeCampaignsEl) activeCampaignsEl.textContent = activeCampaigns;
     }
 
+    // Заработан ли дроп — та же логика, что в farming-page.js
+    isDropEarned(drop) {
+      return !!(
+        drop.claimed ||
+        drop.canClaim ||
+        drop.isClaimable ||
+        drop.claimable ||
+        drop.isUnlocked ||
+        (drop.required > 0 && drop.progress >= drop.required)
+      );
+    }
+
+    /**
+     * Общий прогресс кампании: среднее по процентам всех её дропов.
+     *
+     * Карточка раньше считала только целиком заработанные дропы и при
+     * первом дропе на 95% показывала 0% — будто прогресса нет, хотя
+     * сайдбар и сортировка видели почти готовую награду.
+     */
+    getCampaignProgress(campaign) {
+      if (!campaign.drops || campaign.drops.length === 0) return 0;
+      let totalProgress = 0;
+      campaign.drops.forEach(drop => {
+        const earned = this.isDropEarned(drop);
+        const dropPercent = earned ? 100 : (drop.required > 0 ? Math.min(100, Math.floor((drop.progress / drop.required) * 100)) : 0);
+        totalProgress += dropPercent;
+      });
+      return Math.floor(totalProgress / campaign.drops.length);
+    }
+
     renderCampaigns() {
       const container = document.getElementById('campaignsContainer');
       if (!container) return;
@@ -368,20 +525,8 @@
         }
       });
       
-      // Функция для расчета прогресса кампании
-      const getCampaignProgress = (campaign) => {
-        if (!campaign.drops || campaign.drops.length === 0) return 0;
-        let totalProgress = 0;
-        campaign.drops.forEach(drop => {
-          const earned = isDropEarned(drop);
-          const dropPercent = earned ? 100 : (drop.required > 0 ? Math.min(100, Math.floor((drop.progress / drop.required) * 100)) : 0);
-          totalProgress += dropPercent;
-        });
-        return Math.floor(totalProgress / campaign.drops.length);
-      };
-      
       // Сортируем активные кампании по прогрессу (от большего к меньшему)
-      activeCampaigns.sort((a, b) => getCampaignProgress(b) - getCampaignProgress(a));
+      activeCampaigns.sort((a, b) => this.getCampaignProgress(b) - this.getCampaignProgress(a));
       
       // Активные кампании (в процессе)
       if (activeCampaigns.length > 0) {
@@ -485,21 +630,12 @@
         }
       }
       
-      // Прогресс - используем ту же логику что и в farming-page.js
-      const isDropEarned = (drop) => {
-        return !!(
-          drop.claimed ||
-          drop.canClaim ||
-          drop.isClaimable ||
-          drop.claimable ||
-          drop.isUnlocked ||
-          (drop.required > 0 && drop.progress >= drop.required)
-        );
-      };
-      
+      // Прогресс - используем ту же логику что и в farming-page.js.
+      // Подпись «N из M» считает целые дропы, а полоса и процент —
+      // взвешенный общий прогресс, как в сайдбаре.
       const totalDrops = campaign.drops ? campaign.drops.length : 0;
-      const completedDrops = campaign.drops ? campaign.drops.filter(isDropEarned).length : 0;
-      const progressPercent = totalDrops > 0 ? Math.floor((completedDrops / totalDrops) * 100) : 0;
+      const completedDrops = campaign.drops ? campaign.drops.filter(d => this.isDropEarned(d)).length : 0;
+      const progressPercent = this.getCampaignProgress(campaign);
       
       // Превью игры
       // Обложку берём из любого доступного поля: у кампаний из разных
@@ -511,20 +647,23 @@
         || campaign.boxArtURL
         || '';
       const gameImage = rawCover
-        ? rawCover.replace('{width}', '300').replace('{height}', '400')
+        ? safeImageUrl(rawCover.replace('{width}', '300').replace('{height}', '400'))
         : '';
-      
-      // Дополнительная информация
-      const startDate = campaign.startAt ? new Date(campaign.startAt).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) : '';
+
+      // Дополнительная информация.
+      // main отдаёт начало как startsAt; читали только startAt, и срок
+      // кампании на карточке не выводился вовсе.
+      const startRaw = campaign.startsAt || campaign.startAt;
+      const startDate = startRaw ? new Date(startRaw).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) : '';
       const endDate = campaign.endsAt ? new Date(campaign.endsAt).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) : '';
       
       card.innerHTML = `
-        <div style="position: relative; height: 180px; background-color: rgba(0, 0, 0, 0.3); ${gameImage ? `background-image: linear-gradient(rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0.45)), url('${gameImage}');` : ''} background-size: cover; background-position: center; display: flex; flex-direction: column; justify-content: flex-end; padding: 20px;">
-          <div style="color: #fff; font-size: 20px; font-weight: 700; margin-bottom: 6px; text-shadow: 0 2px 8px rgba(0,0,0,0.8);">${campaign.name || 'Campaign'}</div>
-          <div style="color: rgba(255,255,255,0.9); font-size: 14px; text-shadow: 0 1px 4px rgba(0,0,0,0.8);">${campaign.game?.name || 'Unknown Game'}</div>
+        <div style="position: relative; height: 180px; background-color: rgba(0, 0, 0, 0.3); ${gameImage ? `background-image: linear-gradient(rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0.45)), url('${esc(gameImage)}');` : ''} background-size: cover; background-position: center; display: flex; flex-direction: column; justify-content: flex-end; padding: 20px;">
+          <div style="color: #fff; font-size: 20px; font-weight: 700; margin-bottom: 6px; text-shadow: 0 2px 8px rgba(0,0,0,0.8);">${esc(campaign.name || 'Кампания')}</div>
+          <div style="color: rgba(255,255,255,0.9); font-size: 14px; text-shadow: 0 1px 4px rgba(0,0,0,0.8);">${esc(campaign.game?.name || 'Неизвестная игра')}</div>
           ${startDate && endDate ? `<div style="color: rgba(255,255,255,0.7); font-size: 12px; margin-top: 4px; text-shadow: 0 1px 4px rgba(0,0,0,0.8);">${startDate} — ${endDate}</div>` : ''}
           ${timeText ? `<div style="color: rgba(255,255,255,0.85); font-size: 13px; margin-top: 6px; font-weight: 600; text-shadow: 0 1px 4px rgba(0,0,0,0.8);">${timeText}</div>` : ''}
-          ${isExpired ? '<div style="position: absolute; top: 15px; right: 15px; background: rgba(255,255,255,0.15); color: #fff; padding: 6px 14px; border-radius: var(--radius-md); font-size: 12px; font-weight: 700; backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.2);">Завершено</div>' : (isCompleted ? '<div style="position: absolute; top: 15px; right: 15px; background: rgba(53, 208, 138,0.2); color: #35d08a; padding: 6px 14px; border-radius: var(--radius-md); font-size: 12px; font-weight: 700; backdrop-filter: blur(8px); border: 1px solid rgba(53, 208, 138,0.4);">✓ 100%</div>' : '')}
+          ${isExpired ? '<div style="position: absolute; top: 15px; right: 15px; background: rgba(255,255,255,0.15); color: #fff; padding: 6px 14px; border-radius: var(--radius-md); font-size: 12px; font-weight: 700; backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.2);">Завершено</div>' : (isCompleted ? '<div style="position: absolute; top: 15px; right: 15px; background: rgba(53, 208, 138,0.2); color: #35d08a; padding: 6px 14px; border-radius: var(--radius-md); font-size: 12px; font-weight: 700; backdrop-filter: blur(8px); border: 1px solid rgba(53, 208, 138,0.4); display: inline-flex; align-items: center; gap: 4px;">' + CHECK_ICON + ' 100%</div>' : '')}
         </div>
         
         <div style="padding: 20px; overflow: visible;">
@@ -599,8 +738,9 @@
     }
 
     createDropElement(drop) {
-      const imageUrl = drop.imageURL || window.DROP_PLACEHOLDER;
-      const percentage = drop.percentage || 0;
+      const imageUrl = safeImageUrl(drop.imageURL) || window.DROP_PLACEHOLDER;
+      const percentage = Number(drop.percentage) || 0;
+      const benefitName = esc(drop.benefitName || 'Награда');
       const isClaimed = drop.claimed || false;
       const canClaim = !isClaimed && percentage >= 100 && drop.dropInstanceID;
       const progress = drop.progress || 0;
@@ -626,23 +766,25 @@
         // Получено - бадж внизу над картинкой
         bottomSection = `
           <div style="background: rgba(0,0,0,0.85); padding: 8px;">
-            <div style="background: rgba(53, 208, 138,0.95); padding: 4px; text-align: center; font-size: 9px; font-weight: 600; color: #000; text-transform: uppercase; letter-spacing: 0.5px; border-radius: var(--radius-sm); margin-bottom: 6px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">✓ Получено</div>
-            <div style="color: rgba(255,255,255,0.7); font-size: 10px; font-weight: 600; text-align: center;">${drop.benefitName || 'Reward'}</div>
+            <div style="background: rgba(53, 208, 138,0.95); padding: 4px; text-align: center; font-size: 9px; font-weight: 600; color: #000; text-transform: uppercase; letter-spacing: 0.5px; border-radius: var(--radius-sm); margin-bottom: 6px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">${CHECK_ICON} Получено</div>
+            <div style="color: rgba(255,255,255,0.7); font-size: 10px; font-weight: 600; text-align: center;">${benefitName}</div>
           </div>
         `;
       } else if (canClaim) {
-        // Готово к получению
+        // Готово к получению.
+        // Без инлайн-onclick: id дропа от Twitch подставлялся прямо в код
+        // обработчика. Клик разбирает делегат в setupDropCardClickHandlers.
         bottomSection = `
           <div style="background: rgba(0,0,0,0.85); padding: 8px;">
-            <div style="color: rgba(255,255,255,0.9); font-size: 10px; font-weight: 600; margin-bottom: 6px; text-align: center;">${drop.benefitName || 'Reward'}</div>
-            <button onclick="window.claimDropNow('${drop.dropInstanceID}', this)" style="width: 100%; background: #7c5cff; color: white; border: none; padding: 6px; border-radius: var(--radius-sm); font-size: 10px; font-weight: 700; cursor: pointer; text-transform: uppercase; letter-spacing: 0.5px;">${this.i18n.t('farming.claim')}</button>
+            <div style="color: rgba(255,255,255,0.9); font-size: 10px; font-weight: 600; margin-bottom: 6px; text-align: center;">${benefitName}</div>
+            <button type="button" data-claim-drop="${esc(drop.dropInstanceID)}" style="width: 100%; background: #7c5cff; color: white; border: none; padding: 6px; border-radius: var(--radius-sm); font-size: 10px; font-weight: 700; cursor: pointer; text-transform: uppercase; letter-spacing: 0.5px;">${this.i18n.t('farming.claim')}</button>
           </div>
         `;
       } else {
         // В процессе
         bottomSection = `
           <div style="background: rgba(0,0,0,0.9); padding: 8px;">
-            <div style="color: rgba(255,255,255,0.9); font-size: 10px; font-weight: 600; margin-bottom: 6px; text-align: center;">${drop.benefitName || 'Reward'}</div>
+            <div style="color: rgba(255,255,255,0.9); font-size: 10px; font-weight: 600; margin-bottom: 6px; text-align: center;">${benefitName}</div>
             <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
               <span style="color: rgba(255,255,255,0.7); font-size: 9px;">${percentage}%</span>
               <span style="color: rgba(255,255,255,0.5); font-size: 9px;">${remaining} мин</span>
@@ -655,7 +797,7 @@
       }
       
       return `
-        <div class="drop-card-clickable" data-drop="${dropDataStr}" data-campaign="${campaignDataStr}" style="
+        <div class="drops-page-drop-card" data-drop="${dropDataStr}" data-campaign="${campaignDataStr}" style="
           position: relative; 
           background: rgba(0,0,0,0.3); 
           border-radius: var(--radius-md); 
@@ -682,7 +824,7 @@
                 width: 100%;
                 height: 100%;
                 backface-visibility: hidden;
-                background: url('${imageUrl}');
+                background: url('${esc(imageUrl)}');
                 background-size: cover;
                 background-position: center;
               "></div>
@@ -694,7 +836,7 @@
                 height: 100%;
                 backface-visibility: hidden;
                 transform: rotateY(180deg);
-                background: url('${imageUrl}');
+                background: url('${esc(imageUrl)}');
                 background-size: cover;
                 background-position: center;
               "></div>
@@ -721,23 +863,28 @@
         
         if (!claimedDrops || claimedDrops.length === 0) {
           const data = await window.electronAPI.fetchDropsInventory();
+          if (this._destroyed) return;
+          // Недоступный инвентарь — не «инвентарь пуст»: говорим, почему
+          // данных нет, и не затираем то, что уже было известно
+          const unavailable = this.describeUnavailable(data);
+          if (unavailable) {
+            this.showEmptyState(emptyEl, unavailable);
+            return;
+          }
           claimedDrops = data.claimedDrops || [];
           this.claimedDrops = claimedDrops;
         }
-        
+
         console.log('Inventory items:', claimedDrops.length);
-        
+
         if (claimedDrops.length > 0) {
           this.renderInventory(claimedDrops);
         } else {
-          if (emptyEl) emptyEl.style.display = 'block';
+          this.showEmptyState(emptyEl, 'Инвентарь пуст');
         }
       } catch (error) {
         console.error('Error loading inventory:', error);
-        if (emptyEl) {
-          emptyEl.style.display = 'block';
-          emptyEl.textContent = 'Ошибка загрузки инвентаря';
-        }
+        this.showEmptyState(emptyEl, 'Ошибка загрузки инвентаря');
       } finally {
         if (loadingEl) loadingEl.style.display = 'none';
       }
@@ -755,7 +902,15 @@
       
       // Собираем все полученные дропсы И готовые к получению
       const allDrops = [];
-      
+
+      // Настоящая дата получения лежит в инвентаре Twitch (lastAwardedAt)
+      // по id награды. Раньше всем наградам текущих кампаний ставилось
+      // «сейчас», и сортировка по дате выходила неверной.
+      const awardedAt = new Map();
+      (Array.isArray(claimedDrops) ? claimedDrops : []).forEach(c => {
+        if (c?.id) awardedAt.set(c.id, c.lastAwardedAt || null);
+      });
+
       // Дропсы из активных кампаний
       this.campaigns.forEach(campaign => {
         campaign.drops?.forEach(drop => {
@@ -767,12 +922,13 @@
               name: drop.benefitName || drop.name || 'Награда',
               image: drop.imageURL,
               game: campaign.game?.name || 'Неизвестно',
-              claimedAt: new Date().toISOString(),
+              claimedAt: awardedAt.get(drop.benefitId) || null,
               claimed: true,
               canClaim: false
             });
           }
-          // Добавляем дропсы готовые к получению (100% но не claimed)
+          // Добавляем дропсы готовые к получению (100% но не claimed).
+          // Даты у них нет: они ещё не получены, «недавно» было бы неправдой.
           else if (drop.percentage >= 100 && !drop.claimed) {
             allDrops.push({
               id: drop.benefitId || drop.id,
@@ -780,34 +936,46 @@
               name: drop.benefitName || drop.name || 'Награда',
               image: drop.imageURL,
               game: campaign.game?.name || 'Неизвестно',
-              claimedAt: new Date().toISOString(),
+              claimedAt: null,
               claimed: false,
               canClaim: true
             });
           }
         });
       });
-      
+
       // ВАЖНО: Добавляем ВСЕ полученные дропсы из claimedDrops (включая старые)
       // Эти дропсы могут быть из завершенных кампаний
       if (claimedDrops && Array.isArray(claimedDrops)) {
         claimedDrops.forEach(claimed => {
           // Проверяем не добавили ли мы уже этот дроп из активных кампаний
           if (!allDrops.find(d => d.id === claimed.id)) {
+            // Название, игру и картинку берём из инвентаря, если main их
+            // прислал; заглушки — только когда о награде не известно ничего
             allDrops.push({
               id: claimed.id,
-              name: 'Полученная награда',
-              image: null,
-              game: 'Различные игры',
-              claimedAt: claimed.lastAwardedAt || new Date().toISOString(),
+              name: claimed.name || claimed.benefitName || 'Полученная награда',
+              image: claimed.imageURL || claimed.imageAssetURL || null,
+              game: claimed.game?.displayName || claimed.game?.name || 'Различные игры',
+              claimedAt: claimed.lastAwardedAt || null,
               claimed: true
             });
           }
         });
       }
-      
-      // Сортируем по дате (новые сверху)
-      allDrops.sort((a, b) => new Date(b.claimedAt) - new Date(a.claimedAt));
+
+      // Сначала то, что ждёт действия (готово к получению), затем
+      // полученные — новые сверху, награды без даты в конце
+      const timeOf = (d) => {
+        const t = d.claimedAt ? new Date(d.claimedAt).getTime() : NaN;
+        return Number.isFinite(t) ? t : -Infinity;
+      };
+      allDrops.sort((a, b) => {
+        if (!!a.canClaim !== !!b.canClaim) return a.canClaim ? -1 : 1;
+        const ta = timeOf(a);
+        const tb = timeOf(b);
+        return ta === tb ? 0 : (tb > ta ? 1 : -1);
+      });
       
       // Получаем уникальные игры для фильтра
       const uniqueGames = [...new Set(allDrops.map(d => d.game))].sort();
@@ -976,7 +1144,7 @@
     }
 
     createInventoryDropCard(drop) {
-      const imageUrl = drop.image || window.DROP_PLACEHOLDER;
+      const imageUrl = safeImageUrl(drop.image) || window.DROP_PLACEHOLDER;
       const timeAgo = drop.claimedAt ? this.getTimeAgo(drop.claimedAt) : '';
       
       // Находим кампанию для этого дропа
@@ -988,7 +1156,8 @@
       );
       
       const card = document.createElement('div');
-      card.className = 'drop-card-clickable';
+      // Свой класс: на .drop-card-clickable слушает и страница фарминга
+      card.className = 'drops-page-drop-card';
       card.dataset.drop = encodeURIComponent(JSON.stringify(drop));
       card.dataset.campaign = dropCampaign ? encodeURIComponent(JSON.stringify(dropCampaign)) : '';
       card.style.cssText = 'position: relative; background: rgba(0,0,0,0.3); border-radius: var(--radius-md); overflow: hidden; cursor: pointer; border: 2px solid transparent; transition: border 0.3s;';
@@ -1011,22 +1180,22 @@
         <div style="perspective: 1000px; aspect-ratio: 1;">
           <div class="flip-container" style="position: relative; width: 100%; height: 100%; transition: transform 0.6s; transform-style: preserve-3d;">
             <!-- Front -->
-            <div style="position: absolute; width: 100%; height: 100%; backface-visibility: hidden; background: url('${imageUrl}'); background-size: cover; background-position: center;"></div>
+            <div style="position: absolute; width: 100%; height: 100%; backface-visibility: hidden; background: url('${esc(imageUrl)}'); background-size: cover; background-position: center;"></div>
             
             <!-- Back -->
-            <div style="position: absolute; width: 100%; height: 100%; backface-visibility: hidden; transform: rotateY(180deg); background: url('${imageUrl}'); background-size: cover; background-position: center;"></div>
+            <div style="position: absolute; width: 100%; height: 100%; backface-visibility: hidden; transform: rotateY(180deg); background: url('${esc(imageUrl)}'); background-size: cover; background-position: center;"></div>
           </div>
         </div>
         
         <div style="background: rgba(0,0,0,0.9); padding: 10px;">
           ${drop.claimed ? 
-            `<div style="display: inline-flex; align-items: center; gap: 3px; background: rgba(0,200,83,0.15); color: #00c853; padding: 2px 6px; border-radius: var(--radius-sm); font-size: 9px; font-weight: 600; margin-bottom: 6px;"><span style="font-size: 10px;">✓</span> ${this.i18n.t('drops.claimed')}</div>` : 
-            drop.canClaim ? 
-              `<button onclick="window.claimDropNow('${drop.dropInstanceID}', this)" style="width: 100%; background: #7c5cff; color: white; border: none; padding: 6px; border-radius: var(--radius-sm); font-size: 10px; font-weight: 700; cursor: pointer; text-transform: uppercase; margin-bottom: 6px;">${this.i18n.t('farming.claim')}</button>` :
+            `<div style="display: inline-flex; align-items: center; gap: 3px; background: rgba(0,200,83,0.15); color: #00c853; padding: 2px 6px; border-radius: var(--radius-sm); font-size: 9px; font-weight: 600; margin-bottom: 6px;">${CHECK_ICON} ${this.i18n.t('drops.claimed')}</div>` :
+            (drop.canClaim && drop.dropInstanceID) ?
+              `<button type="button" data-claim-drop="${esc(drop.dropInstanceID)}" style="width: 100%; background: #7c5cff; color: white; border: none; padding: 6px; border-radius: var(--radius-sm); font-size: 10px; font-weight: 700; cursor: pointer; text-transform: uppercase; margin-bottom: 6px;">${this.i18n.t('farming.claim')}</button>` :
               ''
           }
-          <div style="color: #fff; font-size: 12px; font-weight: 600; margin-bottom: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${drop.name}">${drop.name}</div>
-          <div style="color: rgba(255,255,255,0.6); font-size: 10px; margin-bottom: 4px;">${drop.game}</div>
+          <div style="color: #fff; font-size: 12px; font-weight: 600; margin-bottom: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${esc(drop.name)}">${esc(drop.name)}</div>
+          <div style="color: rgba(255,255,255,0.6); font-size: 10px; margin-bottom: 4px;">${esc(drop.game)}</div>
           ${timeAgo ? `<div style="color: rgba(255,255,255,0.4); font-size: 9px;">${timeAgo}</div>` : ''}
         </div>
       `;
@@ -1101,17 +1270,15 @@
         }
       }
       
-      const baseOwners = Math.max(viewersCount * 0.3, 10000);
-      const rarityMultiplier = Math.pow(this.rarityTiers.indexOf(rarity) + 1, 2);
-      const estimatedOwners = Math.floor(baseOwners / rarityMultiplier);
-      
+      // Число «владельцев» отсюда убрано: его выдумывала формула
+      // max(зрители × 0,3; 10000) / k², а окно награды показывало его
+      // как факт. Настоящих данных о владельцах Twitch не отдаёт.
       const difficulty = Math.min(10, Math.max(1, Math.ceil(requiredMinutes / 90)));
-      
+
       return {
         ...rarity,
         requiredMinutes,
         viewersCount,
-        estimatedOwners: estimatedOwners > 1000 ? `${Math.floor(estimatedOwners / 1000)}K+` : `${estimatedOwners}+`,
         difficulty
       };
     }
@@ -1160,32 +1327,35 @@
     }
   }
 
-  // Глобальная функция для получения дропа
-  window.claimDropNow = async function(dropInstanceID, button) {
-    if (!dropInstanceID || !button) return;
-    
+  // Глобальная функция для получения дропа.
+  // Клик по кнопке не должен доходить до карточки и открывать окно награды.
+  window.claimDropNow = async function(dropInstanceID, button, event) {
+    event?.stopPropagation?.();
+    if (!dropInstanceID || !button || button.disabled) return;
+
     const originalHTML = button.innerHTML;
     button.disabled = true;
     button.innerHTML = '...';
-    
+
     try {
       const result = await window.electronAPI.claimDrop(dropInstanceID);
-      
-      if (result.success) {
-        button.innerHTML = '✓ Получено';
+
+      if (result?.success) {
+        button.innerHTML = CHECK_ICON + ' Получено';
         button.style.background = '#35d08a';
         button.style.color = '#000';
         window.utils?.showToast('Награда получена!', 'success');
-        
+
+        // Обновляем текущий экземпляр страницы, который создаёт роутер.
+        // Раньше здесь был собственный экземпляр, созданный самим файлом:
+        // его никто не уничтожал, и он жил вечно со своим таймером.
         setTimeout(() => {
-          if (window.dropsPageInstance) {
-            window.dropsPageInstance.loadDrops();
-          }
+          window.dropsPage?.loadDrops?.();
         }, 2000);
       } else {
         button.innerHTML = originalHTML;
         button.disabled = false;
-        window.utils?.showToast(result.error || 'Ошибка', 'error');
+        window.utils?.showToast(result?.error || 'Не удалось получить награду', 'error');
       }
     } catch (error) {
       console.error('Error claiming drop:', error);
@@ -1195,13 +1365,13 @@
     }
   };
 
-  // Экспорт
+  // Экспорт.
+  // Экземпляр создаёт только роутер (window.dropsPage) и он же его
+  // уничтожает. Раньше файл при загрузке создавал ещё и свой
+  // window.dropsPageInstance: тот никогда не уничтожался, раз в пять минут
+  // перерисовывал список, дважды ловил клики по карточкам и по
+  // «Получить все награды» — награды запрашивались дважды.
   window.DropsPage = DropsPage;
-  
-  // Инициализация для роутера
-  if (!window.dropsPageInstance) {
-    window.dropsPageInstance = new DropsPage();
-  }
 
   console.log('drops-page.js loaded successfully');
 })();

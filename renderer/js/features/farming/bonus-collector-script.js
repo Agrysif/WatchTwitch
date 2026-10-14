@@ -7,6 +7,12 @@
  */
 window.BONUS_COLLECTOR_SCRIPT = `
         (function() {
+          // Второе внедрение в тот же документ ничего не запускает: иначе
+          // работали бы два наблюдателя и два таймера, и кнопку сундука
+          // нажимали бы дважды. Флаг живёт до перезагрузки документа чата.
+          if (window.__wtCollector) return;
+          window.__wtCollector = true;
+
           // Инициализируем счетчик если его нет
           if (typeof window.__chestsCollectedCount === 'undefined') {
             window.__chestsCollectedCount = 0;

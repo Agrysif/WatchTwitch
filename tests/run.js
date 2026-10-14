@@ -347,7 +347,12 @@ function loadClass(relativePath, className, globals = {}) {
   check('кампания без срока', CampaignValue.evaluate({ drops: [дропс(600, 0)] }, now).feasible, true);
 
   check('пояснение о нехватке времени',
-    CampaignValue.describe(оценка), 'Не успеть: нужно 40 мин, осталось 31');
+    CampaignValue.describe(оценка), 'Не успеть: нужно 40 мин, осталось 31 мин');
+  // Сутки в минутах на глаз не прикинуть: от часа и дальше — часы
+  check('нехватка времени в часах',
+    CampaignValue.describe({ reason: 'tooLate', minNeeded: 1440, minutesLeft: 30.7 }), 'Не успеть: нужно 24 ч, осталось 30 мин');
+  check('часы с минутами', CampaignValue.formatMinutes(90), '1 ч 30 мин');
+  check('отрицательное время — ноль', CampaignValue.formatMinutes(-5), '0 мин');
 
   // Когда уходить из категории. Автопереключение висело на условии
   // «получены все награды» — при недостижимой награде оно не наступает
@@ -1010,6 +1015,119 @@ function loadClass(relativePath, className, globals = {}) {
   check('старая запись без отметки — утром уже прошлое',
     SS.isStale({ timestamp: t0, duration: 1719 }, t0 + 1719 * мин + 14 * 3600000), true);
   check('нет записи — новая сессия', SS.isStale(null, t0), true);
+}
+
+// ─── Исправления аудита: чистая логика ───────────────────────────────
+{
+  // Решения фарминга сравнивают игры строго. Если id игры Twitch есть с
+  // обеих сторон, решает он: переименованная игра остаётся той же, а
+  // продолжение серии с похожим названием — другая игра
+  const SP = loadClass('renderer/js/features/farming/stream-picker.js', 'StreamPicker');
+  check('продолжение серии — другая игра', SP.isExactGame('Destiny', 'Destiny 2'), false);
+  check('то же название без id — та же игра', SP.isExactGame('Destiny 2', 'destiny 2'), true);
+  check('один id при разных названиях — та же игра',
+    SP.isExactGame('Старое имя', 'Новое имя', '12345', 12345), true);
+  check('разные id при одном названии — разные игры',
+    SP.isExactGame('Overwatch', 'Overwatch', '1', '2'), false);
+  check('нечисловой id не мешает сравнить названия',
+    SP.isExactGame('Overwatch', 'Overwatch', 'sug-1', '488552'), true);
+  check('id из Date.now — не id игры', SP.gameId('1712345678901'), '');
+  check('числовой id игры', SP.gameId(488552), '488552');
+}
+
+{
+  // Прежнее экранирование не трогало кавычки: строка от Twitch в title="…"
+  // могла закрыть атрибут и дописать свой
+  const esc = loadClass('renderer/js/utils/dom-helpers.js', 'escapeHtml');
+  check('экранируются и кавычки',
+    esc(`<img alt="x" title='y'>&`), '&lt;img alt=&quot;x&quot; title=&#39;y&#39;&gt;&amp;');
+  check('пустое значение — пустая строка', esc(null), '');
+
+  // Общий plural вместо самодельных «n < 5»: было «21 категорий»
+  const DH = loadClass('renderer/js/utils/dom-helpers.js', 'DOMHelpers');
+  const кат = (n) => n + ' ' + DH.plural(n, 'категория', 'категории', 'категорий');
+  check('1 категория', кат(1), '1 категория');
+  check('3 категории', кат(3), '3 категории');
+  check('11 категорий', кат(11), '11 категорий');
+  check('21 категория', кат(21), '21 категория');
+  check('25 категорий', кат(25), '25 категорий');
+  check('дробное число — вторая форма', DH.plural(1.5, 'час', 'часа', 'часов'), 'часа');
+
+  const MD = loadClass('renderer/js/features/calendar/missed-drops.js', 'MissedDrops');
+  check('21 упущенная — «награда»', MD.describe({ total: 21, close: 0 }), 'Упущено 21 награда');
+  check('11 упущенных — «наград»', MD.describe({ total: 11, close: 0 }), 'Упущено 11 наград');
+}
+
+{
+  // Строки календаря складываются по 75 байт, а не символов: русская буква
+  // занимает два байта, и строгие календари отвергали файл
+  const ICS = loadClass('renderer/js/core/ics-export.js', 'IcsExport');
+  const русская = 'DESCRIPTION:' + 'Награда за просмотр 🎁 '.repeat(12);
+  const сложенная = ICS.fold(русская);
+  checkTrue('кириллица: каждый кусок не длиннее 75 байт',
+    сложенная.split('\r\n').every(l => Buffer.byteLength(l, 'utf8') <= 75));
+  check('кириллица: разворот возвращает исходную строку',
+    сложенная.replace(/\r\n /g, ''), русская);
+}
+
+{
+  // Копия приходит из файла и может быть битой: мусор отбрасывается, а
+  // раздел без единой годной записи не затирает рабочий список
+  const B = loadClass('renderer/js/core/backup.js', 'Backup');
+  check('чужой файл не принимается', B.validate({ app: 'Other', version: 1, categories: [] }).ok, false);
+  check('копия новее приложения не принимается',
+    B.validate({ app: 'WatchTwitch', version: 99, categories: [] }).ok, false);
+
+  const чистая = B.sanitize({
+    categories: [{ id: '1', name: 'Overwatch' }, null, { id: '2', name: '<img onerror=x>' }],
+    subscriptions: [{ id: 's', login: 'плохой логин' }],
+    statistics: { totalWatchTime: -5, sessions: [{ timestamp: 1, duration: 2, isActive: true }, { timestamp: 'x' }] },
+    settings: { theme: 'dark', lastSeenVersion: '1.0.1', qualityRepaired: true, autostart: true }
+  });
+  check('битые категории отброшены', чистая.categories.map(c => c.name), ['Overwatch']);
+  check('раздел без годных записей не затирает текущий', чистая.subscriptions, null);
+  check('сессия из копии не остаётся активной', чистая.statistics.sessions[0].isActive, false);
+  check('отрицательное время обнулено', чистая.statistics.totalWatchTime, 0);
+  check('служебные настройки не переносятся', чистая.settings, { theme: 'dark' });
+  check('сводка отброшенного', B.describeDropped(чистая.dropped),
+    'категорий: 2, подписок: 1, сессий статистики: 1');
+}
+
+{
+  // Автопереключение стримов по умолчанию включено. Старые настройки
+  // хранят прежнее false явно, поэтому его меняет разовая миграция, а
+  // после неё выбор пользователя снова уважается
+  const загрузить = (saved) => {
+    const data = { app_settings: saved == null ? null : JSON.stringify(saved) };
+    const localStorage = {
+      getItem: (k) => (k in data ? data[k] : null),
+      setItem: (k, v) => { data[k] = String(v); },
+      removeItem: (k) => { delete data[k]; }
+    };
+    const sm = loadClass('renderer/js/core/settings-manager.js', 'settings',
+      { window: { addEventListener() {} }, localStorage });
+    return { sm, stored: JSON.parse(data.app_settings || 'null') };
+  };
+
+  const старые = загрузить({ autoSwitchStreams: false, theme: 'dark' });
+  check('миграция включает автопереключение', старые.sm.settings.autoSwitchStreams, true);
+  check('отметка версии записана сразу', старые.stored.settingsVersion, старые.sm.constructor.VERSION);
+  check('прочие настройки не тронуты', старые.sm.settings.theme, 'dark');
+  check('после миграции выбор пользователя уважается',
+    загрузить({ autoSwitchStreams: false, settingsVersion: 2 }).sm.settings.autoSwitchStreams, false);
+  check('новая установка — автопереключение включено', загрузить(null).sm.settings.autoSwitchStreams, true);
+}
+
+{
+  // Флаг входа возвращается, только если его снимала сама проверка, а не
+  // кнопка «Выйти из Twitch»
+  const LG = loadClass('renderer/js/core/login-guard.js', 'LoginGuard');
+  check('вход вернулся — флаг восстанавливается',
+    LG.shouldRestore({ account: { twitchLoggedIn: false, twitchSessionLost: true }, loggedIn: true }), true);
+  check('ручной выход не отменяется',
+    LG.shouldRestore({ account: { twitchLoggedIn: false }, loggedIn: true }), false);
+  check('без входа флаг не возвращается',
+    LG.shouldRestore({ account: { twitchSessionLost: true }, loggedIn: false }), false);
 }
 
 // ─── Итог ────────────────────────────────────────────────────────────

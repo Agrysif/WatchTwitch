@@ -46,17 +46,34 @@ class IcsExport {
   /**
    * Складывание длинных строк: по стандарту строка не длиннее 75 октетов,
    * продолжение начинается с пробела.
+   *
+   * Считаем байты UTF-8, а не символы: русская буква занимает два байта,
+   * и «75 символов» выходили под 150 октетов — строгие календари такие
+   * строки отвергают. Режем только между целыми символами (for…of идёт по
+   * кодовым точкам), чтобы не разорвать букву или суррогатную пару эмодзи.
    */
   static fold(line) {
-    if (line.length <= 75) return line;
+    const LIMIT = 75;
+    const octets = (ch) => {
+      const cp = ch.codePointAt(0);
+      return cp < 0x80 ? 1 : cp < 0x800 ? 2 : cp < 0x10000 ? 3 : 4;
+    };
 
-    const parts = [line.slice(0, 75)];
-    let rest = line.slice(75);
-    while (rest.length > 74) {
-      parts.push(' ' + rest.slice(0, 74));
-      rest = rest.slice(74);
+    const parts = [];
+    let current = '';
+    let size = 0;
+    for (const ch of String(line)) {
+      const n = octets(ch);
+      if (size + n > LIMIT) {
+        parts.push(current);
+        // Пробел в начале продолжения тоже занимает октет
+        current = ' ';
+        size = 1;
+      }
+      current += ch;
+      size += n;
     }
-    if (rest.length) parts.push(' ' + rest);
+    parts.push(current);
 
     return parts.join('\r\n');
   }
@@ -98,6 +115,10 @@ class IcsExport {
    *
    * Закончившиеся кампании пропускаем: класть в календарь напоминание о
    * том, что уже прошло, незачем.
+   *
+   * Какие кампании класть, решает вызывающий. Страница настроек отдаёт
+   * только игры из списка категорий: напоминание за час о каждой кампании
+   * Twitch превращало календарь в спам.
    */
   static build(campaigns, now = Date.now()) {
     const stampNow = IcsExport.stamp(now);

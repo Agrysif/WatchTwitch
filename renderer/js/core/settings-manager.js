@@ -1,5 +1,13 @@
 // Settings Manager - управление настройками приложения
 class SettingsManager {
+  /**
+   * Версия схемы настроек. Растёт, когда новое значение по умолчанию нужно
+   * донести и до существующих установок (см. migrate).
+   */
+  static get VERSION() {
+    return 2;
+  }
+
   constructor() {
     this.settings = this.loadSettings();
     this.listeners = new Map();
@@ -20,8 +28,21 @@ class SettingsManager {
       // лежал desktopNotifications, который не совпадал с ним ни именем,
       // ни значением по умолчанию.
       notifications: true,
+      // Выключатель «Уведомления Windows». Его читает фарминг; main-процесс
+      // и notifyFarmingEvent читают notifications — переключатель в
+      // настройках меняет оба ключа сразу
+      systemNotifications: true,
       toastNotifications: true,
       notifyOnDropClaimed: true,
+      // Окно и фон. Значения совпадают с тем, как их читают main-процесс и
+      // страницы, когда ключа нет. Без них в объекте сброс настроек не
+      // доходил до main: слияние в electron-store передаёт только те
+      // ключи, что есть здесь, и там оставались старые значения
+      minimizeToTray: false,
+      globalShortcuts: true,
+      notifyFavouriteLive: true,
+      suggestCategories: true,
+      smartCategorySwitch: true,
 
       // Тихие часы: включены по умолчанию намеренно — про эту настройку
       // узнаёшь ровно тогда, когда она уже разбудила
@@ -37,8 +58,10 @@ class SettingsManager {
       showExpiredCampaigns: false,
       animationsEnabled: true,
       
-      // Фарминг
-      autoSwitchStreams: false,
+      // Фарминг. Автопереключение включено: приложение фармит ночью, и
+      // остановиться на первом же конце эфира — худшее поведение по
+      // умолчанию. Существующим установкам его включает migrate()
+      autoSwitchStreams: true,
       preferredStreamQuality: '160p30',
 
       // Потолок скорости загрузки стрима. Включён по умолчанию: видео
@@ -73,19 +96,51 @@ class SettingsManager {
       shutdownTimerHours: 3,
 
       // Разработчик
-      developerMode: false
+      developerMode: false,
+
+      settingsVersion: SettingsManager.VERSION
     };
 
     try {
       const saved = localStorage.getItem('app_settings');
       if (saved) {
-        return { ...defaultSettings, ...JSON.parse(saved) };
+        const parsed = JSON.parse(saved);
+        const merged = this.migrate({ ...defaultSettings, ...parsed }, parsed);
+
+        // Отметку версии записываем сразу, иначе миграция повторялась бы
+        // при каждом запуске, пока пользователь не тронет любую настройку
+        if (parsed?.settingsVersion !== merged.settingsVersion) {
+          localStorage.setItem('app_settings', JSON.stringify(merged));
+        }
+        return merged;
       }
     } catch (error) {
       console.error('Failed to load settings:', error);
     }
 
     return defaultSettings;
+  }
+
+  /**
+   * Доводит сохранённые настройки до текущей версии схемы.
+   *
+   * saveSettings() пишет объект целиком, поэтому старые значения по
+   * умолчанию лежат в localStorage явно и неотличимы от выбора
+   * пользователя. Новое значение по умолчанию вступает в силу только через
+   * разовую миграцию; после неё выбор пользователя снова уважается.
+   */
+  migrate(merged, saved) {
+    const from = Number(saved?.settingsVersion) || 1;
+
+    // v2: автопереключение стримов включено. Раньше по умолчанию было
+    // выключено, и у нового пользователя фарминг останавливался на первом
+    // же конце эфира
+    if (from < 2) {
+      merged.autoSwitchStreams = true;
+    }
+
+    merged.settingsVersion = SettingsManager.VERSION;
+    return merged;
   }
 
   /**
@@ -169,8 +224,29 @@ class SettingsManager {
    * Сбросить настройки к значениям по умолчанию
    */
   reset() {
-    this.settings = this.loadSettings();
-    localStorage.removeItem('app_settings');
+    // Служебные значения — не выбор пользователя: автозапуск отражает то,
+    // что на самом деле записано в Windows, lastSeenVersion не даёт показать
+    // ложное «что нового», а отметка о починке качества — чинить его снова
+    const keep = {
+      autostart: this.settings.autostart,
+      lastSeenVersion: this.settings.lastSeenVersion,
+      qualityRepaired: this.settings.qualityRepaired
+    };
+
+    // Сначала стираем сохранённое, потом читаем. Раньше loadSettings
+    // вызывался до removeItem и возвращал те же старые значения — кнопка
+    // рапортовала об успехе и ничего не сбрасывала
+    try {
+      localStorage.removeItem('app_settings');
+    } catch (error) {
+      console.error('Failed to reset settings:', error);
+    }
+    this.settings = { ...this.loadSettings(), ...keep };
+
+    // Запись заодно передаёт значения по умолчанию в main-процесс, иначе
+    // после перезапуска окно и main расходились бы
+    this.saveSettings();
+    this.applyAll();
     this.notifyListeners('*', this.settings, {});
   }
 
@@ -267,9 +343,11 @@ class SettingsManager {
     this.applySoundSettings();
     this.applyAutoClaimSettings();
     
-    // Тема
-    document.body.className = `theme-${this.get('theme')}`;
-    
+    // Тема. Меняем только класс темы: присваивание className целиком
+    // стирало компактный и экономный режимы и любые будущие классы body
+    document.body.classList.remove('theme-dark', 'theme-light');
+    document.body.classList.add(`theme-${this.get('theme')}`);
+
     // Анимации
     if (!this.get('animationsEnabled')) {
       document.body.classList.add('no-animations');
@@ -277,10 +355,9 @@ class SettingsManager {
       document.body.classList.remove('no-animations');
     }
 
-    // Компактный режим. Класс вешается ПОСЛЕ строки с темой: присваивание
-    // className выше затирает всё остальное. Переключатель в настройках
-    // вешал этот класс сам, но при следующем запуске он не возвращался —
-    // режим включался и молча пропадал.
+    // Компактный режим. Переключатель в настройках вешал этот класс сам,
+    // но при следующем запуске он не возвращался — режим включался и
+    // молча пропадал.
     document.body.classList.toggle('compact-mode', this.get('compactMode') === true);
 
     // Экономный режим графики: отключение ускорения требует перезапуска,
@@ -302,7 +379,11 @@ class SettingsManager {
   import(jsonString) {
     try {
       const imported = JSON.parse(jsonString);
-      this.settings = { ...this.settings, ...imported };
+      if (!imported || typeof imported !== 'object' || Array.isArray(imported)) {
+        throw new Error('настройки должны быть объектом');
+      }
+      // Копия могла быть сделана до миграции — доводим её до текущей схемы
+      this.settings = this.migrate({ ...this.settings, ...imported }, imported);
       this.saveSettings();
       this.applyAll();
       return true;

@@ -25,7 +25,11 @@ class SessionState {
     this.points = SessionState.emptyPoints();
     this.pointsPollInterval = null;
     this.dropsCollected = 0;
-    this.idleTicks = 0;
+    // С какого момента у сессии нет стрима (null — стрим есть)
+    this.idleSince = null;
+    // Последний ответ о трафике: { at, stats }. Страница фарминга берёт
+    // отсюда данные для статистики, а не спрашивает main второй раз
+    this.lastTraffic = null;
 
     // Тикаем всегда: если сессии нет, _tick просто ничего не рисует.
     this._startTicking();
@@ -61,7 +65,7 @@ class SessionState {
    * вечером, открыл утром — и таймер сессии продолжал считать от вчерашнего
    * старта, засчитывая ночь, когда ничего не работало. В статистике так
    * появилась сессия на десять суток. Последний признак жизни — отметка
-   * lastSeenAt, которую статистика пишет каждые полминуты; у старых записей
+   * lastSeenAt, которую статистика пишет раз в минуту; у старых записей
    * её нет, тогда берём начало плюс записанную длительность.
    */
   static lastSeenOf(statsSession) {
@@ -109,7 +113,9 @@ class SessionState {
     this.streamLogin = meta.streamLogin || null;
 
     window.electronAPI?.resetTrafficSession?.();
-    this.idleTicks = 0;
+    this.idleSince = null;
+    // Замер прошлой сессии в новую не переносим
+    this.lastTraffic = null;
     this.resetPoints();
     window.shutdownManager?.startSessionTimer();
     window.playerManager?.resetQualityForNewSession();
@@ -124,7 +130,12 @@ class SessionState {
     this.startTime = startTime || Date.now();
     this.categoryName = meta.categoryName || null;
     this.streamLogin = meta.streamLogin || null;
-    this.idleTicks = 0;
+    this.idleSince = null;
+
+    // Таймер автовыключения живёт в памяти и при перезапуске пропадает.
+    // Заводим его заново — на остаток от исходного начала сессии, иначе
+    // после обновления приложения компьютер не выключился бы вовсе.
+    window.shutdownManager?.startSessionTimer(this.startTime);
 
     this.showFarmingUI();
     this._tick();
@@ -136,6 +147,8 @@ class SessionState {
     this.startTime = null;
     this.categoryName = null;
     this.streamLogin = null;
+    this.idleSince = null;
+    this.lastTraffic = null;
     this.stopPointsPolling();
     window.shutdownManager?.cancelSessionTimer();
     this.hideFarmingUI();
@@ -308,19 +321,25 @@ class SessionState {
     // в сайдбаре шёл таймер и капал трафик, хотя плеер ничего не играл.
     // Даём запас на перезагрузку плеера и смену канала, а если стрима нет
     // дольше — останавливаем сессию честно.
+    //
+    // Простой считается по часам, а не по числу вызовов: _tick зовут ещё
+    // роутер (syncUI) и старт сессии, и счётчик вызовов набегал вдвое
+    // быстрее — сессия гасла через 23 секунды вместо 45.
     if (!window.playerManager?.hasStream()) {
-      this.idleTicks = (this.idleTicks || 0) + 1;
+      const now = Date.now();
+      if (this.idleSince === null) this.idleSince = now;
+      const idleSeconds = Math.round((now - this.idleSince) / 1000);
 
-      if (this.idleTicks > SessionState.IDLE_LIMIT_SECONDS) {
-        console.warn('[SessionState] Стрима нет', this.idleTicks, 'секунд — останавливаю сессию');
-        this.idleTicks = 0;
-        this.stop();
+      if (now - this.idleSince > SessionState.IDLE_LIMIT_SECONDS * 1000) {
+        console.warn('[SessionState] Стрима нет', idleSeconds, 'секунд — останавливаю сессию');
+        this.idleSince = null;
+        this._stopIdleSession();
         window.utils?.showToast('Сессия остановлена: стрим не запущен', 'warning');
         window.notifyFarmingEvent?.('Фарминг остановлен', 'Стрим не запустился, сессия завершена');
         return;
       }
     } else {
-      this.idleTicks = 0;
+      this.idleSince = null;
     }
 
     const text = this._formatDuration(this.getDurationMs());
@@ -340,12 +359,37 @@ class SessionState {
     await this._updateTraffic();
   }
 
+  /**
+   * Остановка сессии, у которой нет стрима.
+   *
+   * Раньше здесь был только stop(): блок сессии прятался, а страница
+   * фарминга об этом не знала — её проверки дропсов, зачёта и смены игры
+   * продолжали ходить в Twitch и могли сами включить плеер уже без сессии.
+   * Видео шло, трафик тратился, статистика не писалась. Остановка
+   * страницы сама завершит статистику, погасит её таймеры, выгрузит плеер
+   * и через sessionStartTime = null вызовет stop(). Свой stop() — запасной
+   * путь, когда страницы нет или она не справилась.
+   */
+  _stopIdleSession() {
+    const page = window.farmingPage;
+    if (page && !page._destroyed && typeof page.stopFarming === 'function') {
+      try {
+        page.stopFarming(false);
+      } catch (error) {
+        console.error('[SessionState] Страница не остановилась:', error);
+      }
+    }
+    if (this.isActive()) this.stop();
+  }
+
   async _updateTraffic() {
     if (!window.electronAPI?.getTrafficStats) return;
 
     try {
       const stats = await window.electronAPI.getTrafficStats();
       if (!stats) return;
+      // Ответ мог прийти уже после остановки сессии
+      if (this.isActive()) this.lastTraffic = { at: Date.now(), stats };
 
       const valueEl = document.getElementById('session-traffic-value');
       if (valueEl) valueEl.textContent = this._formatBytes(stats.sessionBytes || 0);

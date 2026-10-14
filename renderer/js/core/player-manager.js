@@ -17,11 +17,14 @@ class PlayerManager extends SlottedWebview {
       hostId: 'persistent-player-host',
       webviewId: 'twitch-player',
       zIndex: 5,
+      // Только сессия Twitch. Раньше здесь же стояли disablewebsecurity,
+      // contextIsolation=false и allowpopups='false': первые два снимали
+      // защиту браузера со страницы, где крутится чужой код (реклама,
+      // расширения), а allowpopups — булев атрибут, и строка 'false'
+      // как раз разрешала всплывающие окна. Плееру ничего из этого не
+      // нужно: видео идёт и без них, preload работает в своём мире.
       attributes: {
-        partition: 'persist:twitch',
-        allowpopups: 'false',
-        disablewebsecurity: '',
-        webpreferences: 'contextIsolation=false'
+        partition: 'persist:twitch'
       }
     });
 
@@ -47,6 +50,12 @@ class PlayerManager extends SlottedWebview {
     ];
   }
 
+  /** Подпись качества для людей: «480p» вместо 480p30, «Источник» вместо chunked. */
+  static labelOf(value) {
+    const known = PlayerManager.QUALITIES.find(q => q.value === value);
+    return known ? known.label : String(value || '');
+  }
+
   static get() {
     if (!window._playerManager) {
       window._playerManager = new PlayerManager();
@@ -70,6 +79,16 @@ class PlayerManager extends SlottedWebview {
         .then(path => { if (path) webview.setAttribute('preload', path); })
         .catch(e => console.warn('[PlayerManager] Не удалось получить preload:', e?.message));
     }
+
+    // Страница плеера не загрузилась вовсе — это сеть, а не качество.
+    // Лестнице качеств нужен этот признак, чтобы не подниматься до
+    // «Источника» из-за минутного обрыва интернета. Отменённые загрузки
+    // (смена адреса) сюда не попадают: Electron их не сообщает.
+    webview.addEventListener('did-fail-load', (event) => {
+      if (event.isMainFrame) this._loadFailed = true;
+    });
+    // did-navigate приходит только при удачной загрузке страницы
+    webview.addEventListener('did-navigate', () => { this._loadFailed = false; });
 
     const bar = document.createElement('div');
     bar.className = 'player-bar';
@@ -170,6 +189,7 @@ class PlayerManager extends SlottedWebview {
     this.sessionQuality = null;
     this.fallbackQuality = null;
     this._fallbackFor = null;
+    this._fallbackStarted = false;
 
     console.log('[PlayerManager] Новая сессия: качество', this.resolveQuality());
     this.syncBar();
@@ -266,26 +286,83 @@ class PlayerManager extends SlottedWebview {
    * Поэтому после загрузки ждём реальных кадров и, если их нет, идём вверх
    * по лестнице качеств. Последняя ступень — снять закрепление вовсе и
    * отдать выбор плееру.
+   *
+   * Но сначала исключаем сеть. Раньше минутный обрыв интернета выглядел
+   * так же, как отсутствие дорожки: каждые 14 секунд лестница поднималась
+   * на ступень, и канал потом часами шёл в «Источнике» вопреки настройке.
+   * При сетевой причине качество не трогаем: без сети ждём её, с сетью
+   * перезагружаем ту же ступень.
+   *
+   * @param {string} requestedQuality какое качество проверяем
+   * @param {boolean} afterOffline предыдущая проверка застала сеть
+   *   выключенной: видео могло не пойти из-за неё, а не из-за качества
    */
-  ensurePlaybackStarted(requestedQuality) {
+  ensurePlaybackStarted(requestedQuality, afterOffline = false) {
     clearTimeout(this.playbackProbe);
 
     const ladder = PlayerManager.QUALITIES.map(q => q.value);
     const startIndex = ladder.indexOf(requestedQuality);
 
-    this.playbackProbe = setTimeout(async () => {
+    const probe = setTimeout(async () => {
       if (!this.webview || !this.channel) return;
 
-      let started = false;
+      let state = null;
       try {
-        started = await this.webview.executeJavaScript(
-          '(function(){var v=document.querySelector("video");return !!v && v.currentTime > 0.3;})()'
-        );
+        state = await this.webview.executeJavaScript(`
+          (function () {
+            var v = document.querySelector('video');
+            var text = document.body ? document.body.innerText || '' : '';
+            return {
+              started: !!v && v.currentTime > 0.3,
+              netError: /ошибка сети|network error|(?:ошибка|error)\\s*#?\\s*2000/i.test(text)
+            };
+          })();
+        `);
       } catch (e) {
         return;
       }
 
-      if (started) return;
+      // Пока ждали ответа, плеер успели перезагрузить или остановить.
+      // Решение по старой загрузке перебило бы проверку новой: ожидание
+      // сети вернуло бы прежнее качество поверх только что выбранного.
+      if (probe !== this.playbackProbe || !this.channel) return;
+
+      if (state && state.started) {
+        this._netRetries = 0;
+        // Вынужденная ступень заработала. Запоминаем это, чтобы следующая
+        // загрузка того же канала снова попробовала желаемое качество:
+        // подъём мог случиться из-за сбоя сети, который не удалось распознать
+        if (this.fallbackQuality === requestedQuality && this._fallbackFor === this.channel) {
+          this._fallbackStarted = true;
+        }
+        return;
+      }
+
+      const offline = navigator.onLine === false;
+      const netError = !!(state && state.netError);
+      if (offline || afterOffline || this._loadFailed || netError) {
+        if (offline) {
+          // Перезагружать без сети бесполезно — ждём её и проверяем снова
+          console.warn('[PlayerManager] Нет сети, качество', requestedQuality, 'не меняю');
+          this.ensurePlaybackStarted(requestedQuality, true);
+          return;
+        }
+
+        // Сеть есть, но плеер ещё стоит после сбоя. Перезагружаем ту же
+        // ступень, но не бесконечно: если ошибка держится, дальше работает
+        // сторож. Иначе каждая наша перезагрузка обнуляла бы его счётчик,
+        // и мёртвый канал никогда не сменился бы.
+        this._netRetries = (this._netRetries || 0) + 1;
+        if (this._netRetries > 3) {
+          console.warn('[PlayerManager] Сетевая ошибка держится, оставляю плеер сторожу');
+          return;
+        }
+        console.warn('[PlayerManager] Сбой сети, перезагружаю то же качество', requestedQuality);
+        const channel = this.channel;
+        this.channel = null;
+        this.load(channel, { quality: requestedQuality, keepSound: this.muted === false });
+        return;
+      }
 
       const next = startIndex >= 0 ? ladder[startIndex + 1] : null;
 
@@ -295,12 +372,14 @@ class PlayerManager extends SlottedWebview {
         // В настройку не пишем: это вынужденный подъём, а не выбор
         this.fallbackQuality = next;
         this._fallbackFor = this.channel;
+        this._fallbackStarted = false;
         this.syncBar();
 
         const channel = this.channel;
         this.channel = null;
         this.load(channel, { quality: next, keepSound: this.muted === false });
-        window.utils?.showToast('Качество ' + requestedQuality + ' недоступно, включено ' + next, 'warning');
+        window.utils?.showToast('Качество ' + PlayerManager.labelOf(requestedQuality) +
+          ' недоступно, теперь ' + PlayerManager.labelOf(next), 'warning');
         return;
       }
 
@@ -313,6 +392,7 @@ class PlayerManager extends SlottedWebview {
       }
       try { this.webview.reload(); } catch (e) { /* ignore */ }
     }, 14000);
+    this.playbackProbe = probe;
   }
 
   /**
@@ -434,7 +514,26 @@ class PlayerManager extends SlottedWebview {
     if (this._fallbackFor && this._fallbackFor !== login) {
       this.fallbackQuality = null;
       this._fallbackFor = null;
+      this._fallbackStarted = false;
+    } else if (this._fallbackFor === login && this._fallbackStarted && !options.quality) {
+      // Тот же канал, и вынужденная ступень уже отыграла: пробуем желаемое
+      // качество заново. Если дорожки у канала и правда нет, лестница
+      // поднимется снова через 14 секунд; если подъём был из-за сбоя,
+      // канал вернётся к настройке, а не останется в верхней ступени.
+      this.fallbackQuality = null;
+      this._fallbackFor = null;
+      this._fallbackStarted = false;
     }
+
+    // Счётчик сетевых перезагрузок относится к одному каналу. Обнулять его
+    // при каждой загрузке нельзя: перезагрузка от сторожа тогда давала бы
+    // лестнице новые попытки, и сторож никогда не дошёл бы до смены канала.
+    if (this._netRetryFor !== login) {
+      this._netRetryFor = login;
+      this._netRetries = 0;
+    }
+    // Признак сбоя относится к прошлой загрузке
+    this._loadFailed = false;
 
     // Качество берём из настроек: это прямой рычаг расхода трафика.
     // Раньше значение было прибито в коде, а настройка в интерфейсе
@@ -658,6 +757,8 @@ class PlayerManager extends SlottedWebview {
     clearTimeout(this.playbackProbe);
     this.stopWatchdog();
     this.channel = null;
+    // Следующий запуск фарминга начинает сетевые попытки с нуля
+    this._netRetryFor = null;
     window.electronAPI?.keepAwake?.(false);
     try {
       this.webview.src = '';

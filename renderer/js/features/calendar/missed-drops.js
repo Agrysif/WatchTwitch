@@ -75,12 +75,32 @@ class MissedDrops {
     };
   }
 
+  /**
+   * Форма слова по числу: 1 награда, 3 награды, 21 награда, 11 наград.
+   *
+   * Раньше форма выбиралась сравнением «меньше пяти», и 21 упущенная
+   * превращалась в «21 наград». Общий хелпер из DOMHelpers берётся, когда
+   * он есть; запасной вариант нужен проверкам, где окна приложения нет.
+   */
+  static plural(n, one, few, many) {
+    const shared = typeof window !== 'undefined' ? window.DOMHelpers : null;
+    if (shared && typeof shared.plural === 'function') return shared.plural(n, one, few, many);
+
+    const abs = Math.abs(Math.trunc(Number(n) || 0));
+    const mod100 = abs % 100;
+    const mod10 = abs % 10;
+    if (mod100 >= 11 && mod100 <= 14) return many;
+    if (mod10 === 1) return one;
+    if (mod10 >= 2 && mod10 <= 4) return few;
+    return many;
+  }
+
   /** Короткий вывод для интерфейса. */
   static describe(result) {
     if (!result || result.total === 0) return 'Ничего не упущено';
 
     const наград = result.total;
-    const хвост = наград === 1 ? 'награда' : (наград < 5 ? 'награды' : 'наград');
+    const хвост = MissedDrops.plural(наград, 'награда', 'награды', 'наград');
 
     if (result.close === 0) return `Упущено ${наград} ${хвост}`;
 

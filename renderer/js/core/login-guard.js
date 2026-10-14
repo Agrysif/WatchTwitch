@@ -42,6 +42,14 @@ class LoginGuard {
     return Array.isArray(accounts) && accounts.length > 0 && !loggedIn;
   }
 
+  /**
+   * Вернуть ли флаг входа аккаунту: вход есть, флага нет, а снимала его
+   * сама проверка (метка twitchSessionLost), а не кнопка «Выйти из Twitch».
+   */
+  static shouldRestore({ account, loggedIn }) {
+    return !!(loggedIn && account && !account.twitchLoggedIn && account.twitchSessionLost);
+  }
+
   constructor() {
     this.lastPromptAt = 0;
     this.timer = null;
@@ -59,10 +67,14 @@ class LoginGuard {
 
     let accounts = [];
     let loggedIn = true;
+    let revoked = false;
     try {
       accounts = (await Storage.getAccounts()) || [];
       const state = await window.electronAPI.hasTwitchSession();
       loggedIn = !!state?.loggedIn;
+      // cookie на месте, но Twitch сам завершил этот вход: «истёк» тут
+      // неправда, и пользователь искал бы, что сломалось у него
+      revoked = !!state?.revoked;
     } catch (error) {
       console.warn('[Вход] Проверка не удалась:', error?.message);
       return;
@@ -72,21 +84,39 @@ class LoginGuard {
 
     if (loggedIn) {
       if (this.overlay) this.close();
+
+      // Вход вернулся. Флаг, который эта же проверка сняла, когда cookie
+      // пропал, возвращаем первому аккаунту — под ним идёт фарминг, а
+      // берёт он только аккаунты с флагом. Иначе вход в обход карточки
+      // (значок в сайдбаре, cookie вернулся сам) оставлял фарминг
+      // заблокированным. Флаг, снятый кнопкой «Выйти из Twitch», не
+      // трогаем: метки twitchSessionLost у такого аккаунта нет
+      const first = accounts[0];
+      if (LoginGuard.shouldRestore({ account: first, loggedIn })) {
+        first.twitchLoggedIn = true;
+        delete first.twitchSessionLost;
+        try {
+          await Storage.saveAccount(first);
+          if (typeof window.loadAndRenderAccounts === 'function') window.loadAndRenderAccounts();
+        } catch (e) { /* не критично: вернём при следующей проверке */ }
+      }
       return;
     }
 
     // Сохранённый флаг «в Twitch вошли» больше не соответствует правде:
-    // снимаем его, чтобы на вкладке аккаунтов появилась кнопка входа
+    // снимаем его, чтобы на вкладке аккаунтов появилась кнопка входа.
+    // Метка нужна, чтобы при возврате входа отличить это от ручного выхода
     for (const account of accounts) {
       if (account.twitchLoggedIn) {
         account.twitchLoggedIn = false;
+        account.twitchSessionLost = true;
         try { await Storage.saveAccount(account); } catch (e) { /* не критично */ }
       }
     }
 
     if (LoginGuard.shouldPrompt({ accounts, loggedIn, lastPromptAt: this.lastPromptAt })) {
       this.lastPromptAt = Date.now();
-      this.show(accounts[0]);
+      this.show(accounts[0], { revoked });
     }
   }
 
@@ -96,17 +126,27 @@ class LoginGuard {
     badge.hidden = !visible;
   }
 
-  show(account) {
+  show(account, { revoked = false } = {}) {
     if (this.overlay) return;
+
+    const user = account?.username ? ' <b>' + window.escapeHtml(account.username) + '</b>' : '';
+    const reason = revoked
+      ? 'Twitch завершил сеанс' + (user ? ' аккаунта' + user : '') + ' — войдите заново.'
+      : (user
+          ? 'Twitch не узнаёт вход аккаунта' + user + ': сохранённый вход истёк.'
+          : 'Сохранённый вход в Twitch истёк.');
 
     const overlay = document.createElement('div');
     overlay.id = 'login-guard-overlay';
     overlay.className = 'whats-new-overlay';
+    // Раньше надзаголовок обещал остановку фарминга, а текст — что стрим
+    // продолжит играть. Верно второе: плеер никто не останавливает, но без
+    // входа Twitch не засчитывает ни минуты, ни награды
     overlay.innerHTML = `
       <div class="whats-new" role="dialog" aria-label="Нужен вход в Twitch" style="max-width: 460px;">
         <div class="whats-new-head">
           <div>
-            <div class="whats-new-eyebrow">Фарминг остановится без входа</div>
+            <div class="whats-new-eyebrow">Награды не засчитываются</div>
             <h2 class="whats-new-title">Войдите в Twitch заново</h2>
           </div>
           <button class="whats-new-close" id="login-guard-close" aria-label="Позже">
@@ -117,9 +157,9 @@ class LoginGuard {
         </div>
         <div class="whats-new-body">
           <p style="margin: 0 0 12px; color: var(--text-secondary); line-height: 1.5;">
-            Twitch не узнаёт сохранённый вход${account?.username ? ' аккаунта <b>' + String(account.username).replace(/[<>&]/g, '') + '</b>' : ''}:
-            токен протух или хранилище браузера обновилось. Стрим будет играть,
-            но минуты просмотра и награды без входа не засчитываются.
+            ${reason}
+            Стрим продолжит играть, но минуты и награды не засчитываются,
+            пока вы не войдёте снова.
           </p>
           <div style="display: flex; gap: 10px; margin-top: 16px;">
             <button class="btn btn-primary" id="login-guard-login" style="flex: 1; justify-content: center;">Войти в Twitch</button>
@@ -150,8 +190,18 @@ class LoginGuard {
   }
 
   /** Ведёт на вкладку аккаунтов и открывает окно входа Twitch. */
-  openLogin(account) {
+  async openLogin(account) {
     this.close();
+
+    // Без аккаунта окну входа некого отметить вошедшим, и оно не
+    // закрывалось даже после успешного входа. Берём первый — под ним
+    // идёт фарминг
+    if (!account?.username) {
+      try {
+        account = (await Storage.getAccounts())?.[0] || account;
+      } catch (e) { /* окно само возьмёт первый аккаунт */ }
+    }
+
     window.router?.navigate('accounts');
     // Страница аккаунтов рисуется с задержкой роутера; окно входа живёт в
     // body и от страницы не зависит, но пусть она успеет появиться

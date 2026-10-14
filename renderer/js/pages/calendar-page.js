@@ -105,15 +105,23 @@ class CalendarPage {
     // него календарь оказывался пустым — «кампании не загрузились», хотя
     // приложение прекрасно знало о сотне с лишним из прошлых запусков.
     // Живые данные главнее: память лишь добавляет то, чего в них нет.
+    //
+    // Из памяти берём только незавершённые: завершённые приходят отдельно
+    // через loadEnded и подмешиваются по настройке. Раньше память
+    // подмешивалась целиком, и при включённой настройке каждая завершённая
+    // кампания стояла в списке дважды, а счётчик «из памяти» считал их
+    // всегда — предупреждение висело даже при свежих данных.
+    const сейчас = Date.now();
     const память = await window.CampaignHistory.loadKnown();
     for (const campaign of память) {
+      if (this.isEnded(campaign, сейчас)) continue;
       const key = campaign?.id || this.gameName(campaign);
       if (key && !byId.has(key)) byId.set(key, campaign);
     }
 
     this.campaigns = [...byId.values()];
     this.liveCount = живые.length;
-    this.ended = await window.CampaignHistory.loadEnded();
+    this.ended = await window.CampaignHistory.loadEnded(сейчас);
 
     this.loading = false;
 
@@ -135,13 +143,60 @@ class CalendarPage {
     return campaign.game?.displayName || campaign.game?.name || campaign.name || '';
   }
 
+  /**
+   * Название самой кампании, если оно отличается от игры.
+   *
+   * У одной игры бывает несколько кампаний сразу, и строки с одним только
+   * названием игры выглядели как дубли.
+   */
+  campaignTitle(campaign) {
+    const title = String(campaign?.name || '').trim();
+    const game = this.gameName(campaign);
+    if (!title || title.toLowerCase() === String(game).trim().toLowerCase()) return '';
+    return title;
+  }
+
+  /** Срок кампании уже прошёл — то же правило, что у CampaignHistory.ended. */
+  isEnded(campaign, now) {
+    const ends = new Date(campaign?.endsAt).getTime();
+    return Number.isFinite(ends) && ends <= now;
+  }
+
+  /**
+   * Форма слова по числу: 1 кампания, 3 кампании, 5 кампаний.
+   * Общий хелпер из DOMHelpers берётся, когда он есть.
+   */
+  plural(n, one, few, many) {
+    if (typeof window.DOMHelpers?.plural === 'function') {
+      return window.DOMHelpers.plural(n, one, few, many);
+    }
+    const abs = Math.abs(Math.trunc(Number(n) || 0));
+    const mod100 = abs % 100;
+    const mod10 = abs % 10;
+    if (mod100 >= 11 && mod100 <= 14) return many;
+    if (mod10 === 1) return one;
+    if (mod10 >= 2 && mod10 <= 4) return few;
+    return many;
+  }
+
   /** Есть ли эта игра в списке категорий пользователя. */
   isMine(campaign) {
     const game = this.gameName(campaign);
     if (!game) return false;
 
+    return this.categories.some(cat => this.isSameCategoryGame(cat, game, campaign.game?.id));
+  }
+
+  /**
+   * Та ли это игра — по тому же правилу, что у фарминга: id Twitch или
+   * точное название. Сравнение по началу названия путало «World of Tanks»
+   * и «World of Tanks Console»: чужая кампания стояла «В списке», а
+   * добавить нужную игру было нельзя.
+   */
+  isSameCategoryGame(cat, game, gameId) {
     const SP = window.StreamPicker;
-    return this.categories.some(cat => SP.isSameGame(cat.name, game));
+    if (typeof SP?.isExactGame === 'function') return SP.isExactGame(cat?.name, game, cat?.id, gameId);
+    return SP.isSameGame(cat?.name, game);
   }
 
   /** Показывать ли кампании, которые уже закончились. */
@@ -156,7 +211,16 @@ class CalendarPage {
       ? [...this.campaigns, ...(this.ended || [])]
       : this.campaigns;
 
-    const list = источник.filter(c => Array.isArray(c.drops) && c.drops.length > 0);
+    // Twitch ещё какое-то время отдаёт только что закончившуюся кампанию,
+    // и она же лежит в памяти завершённых — показываем один раз, живую
+    const seen = new Set();
+    const list = источник.filter(c => {
+      if (!Array.isArray(c?.drops) || c.drops.length === 0) return false;
+      if (!c.id) return true;
+      if (seen.has(c.id)) return false;
+      seen.add(c.id);
+      return true;
+    });
 
     if (this.filter === 'mine') return list.filter(c => this.isMine(c));
     if (this.filter === 'new') return list.filter(c => !this.isMine(c));
@@ -177,6 +241,8 @@ class CalendarPage {
 
     if (summary) {
       const мои = this.campaigns.filter(c => this.isMine(c)).length;
+      // В this.campaigns память добавляет только идущие и будущие кампании,
+      // так что разница — ровно то, чего Twitch сейчас не подтвердил
       const изПамяти = Math.max(0, this.campaigns.length - (this.liveCount || 0));
 
       summary.innerHTML = this.campaigns.length === 0
@@ -219,7 +285,7 @@ class CalendarPage {
       .join('');
 
     body.querySelectorAll('[data-add-game]').forEach(btn => {
-      btn.addEventListener('click', () => this.addCategory(btn.dataset.addGame, btn));
+      btn.addEventListener('click', () => this.addCategory(btn.dataset.addGame, btn, btn.dataset.addGameId || ''));
     });
   }
 
@@ -252,9 +318,15 @@ class CalendarPage {
     // они наезжают друг на друга
     const step = this.days <= 7 ? 1 : (this.days <= 14 ? 2 : 5);
 
+    // Подпись стоит по центру деления, и у правого края ленты половина её
+    // уходила под обрезку #calendar-timeline: вместо «21 окт.» читалось
+    // «21 (». Крайнюю правую подпись прижимаем к делению слева. Левой
+    // обрезка не грозит: перед лентой есть колонка названий.
+    const labelShift = (at) => at > 92 ? ' transform: translateX(-100%);' : '';
+
     const ticks = layout.ticks.map((tick, i) => `
       <div class="tl-tick ${tick.weekend ? 'weekend' : ''}" style="left: ${tick.at}%"></div>
-      ${i % step === 0 ? `<div class="tl-label" style="left: ${tick.at}%">${escape(tick.label)}</div>` : ''}
+      ${i % step === 0 ? `<div class="tl-label" style="left: ${tick.at}%;${labelShift(tick.at)}">${escape(tick.label)}</div>` : ''}
     `).join('');
 
     const МАКСИМУМ = 40;
@@ -273,16 +345,21 @@ class CalendarPage {
         bar.clippedEnd ? 'clipped-end' : ''
       ].filter(Boolean).join(' ');
 
+      // Слева — игра, на самой полосе — название кампании: несколько
+      // кампаний одной игры иначе выглядели одинаковыми строками
+      const title = this.campaignTitle(bar.campaign);
+      const fullName = title ? `${game} — ${title}` : game;
+
       const hint = bar.upcoming
-        ? `${game} · начнётся ${new Date(bar.campaign.startsAt || bar.campaign.startAt).toLocaleString('ru-RU')}`
-        : `${game} · осталось ${CC.formatLeft(value.minutesLeft)}${bar.clippedEnd ? ' (уходит за край ленты)' : ''}`;
+        ? `${fullName} · начнётся ${new Date(bar.campaign.startsAt || bar.campaign.startAt).toLocaleString('ru-RU')}`
+        : `${fullName} · осталось ${CC.formatLeft(value.minutesLeft)}${bar.clippedEnd ? ' (уходит за край ленты)' : ''}`;
 
       return `
         <div class="tl-row">
-          <div class="tl-name" title="${escape(game)}">${escape(game)}</div>
+          <div class="tl-name" title="${escape(fullName)}">${escape(game)}</div>
           <div class="tl-track">
             <div class="${classes}" style="left: ${bar.left}%; width: ${bar.width}%" title="${escape(hint)}">
-              <span class="tl-bar-text">${escape(game)}</span>
+              <span class="tl-bar-text">${escape(title || game)}</span>
             </div>
           </div>
         </div>
@@ -291,6 +368,10 @@ class CalendarPage {
 
     // Молча обрезать список нельзя: иначе кажется, что кампаний меньше
     const hidden = layout.bars.length - видимые.length;
+    // Одна кампания — «она есть», а не «они есть»
+    const hiddenText = `Ещё ${hidden} ${this.plural(hidden, 'кампания', 'кампании', 'кампаний')} ` +
+      `${this.plural(hidden, 'не поместилась', 'не поместились', 'не поместились')} — ` +
+      `${hidden === 1 ? 'она есть' : 'они есть'} в списках ниже`;
 
     host.innerHTML = `
       <div class="tl-scale">
@@ -301,7 +382,7 @@ class CalendarPage {
         ${rows}
         <div class="tl-now" style="left: calc(var(--tl-name-width) + (100% - var(--tl-name-width)) * ${layout.nowAt / 100})"></div>
       </div>
-      ${hidden > 0 ? `<div class="tl-hidden">Ещё ${hidden} ${hidden === 1 ? 'кампания' : 'кампаний'} не поместилось — они есть в списках ниже</div>` : ''}
+      ${hidden > 0 ? `<div class="tl-hidden">${hiddenText}</div>` : ''}
     `;
   }
 
@@ -336,43 +417,94 @@ class CalendarPage {
     const drops = (campaign.drops || []).length;
     const left = CV.unclaimedDrops(campaign).length;
 
+    // После «из» число стоит в родительном падеже: из 1 награды, из 5 наград
+    const dropsWord = this.plural(drops, 'награды', 'наград', 'наград');
+    const perHourText = value.perHour > 0
+      ? `${value.perHour} ${this.plural(value.perHour, 'награда', 'награды', 'наград')} за час`
+      : '';
+
+    // Название кампании рядом с игрой: у одной игры их бывает несколько
+    const title = this.campaignTitle(campaign);
+    const fullName = title ? `${game} — ${title}` : game;
+
     return `
       <div class="calendar-item ${value.reason === 'tooLate' || ended ? 'hopeless' : ''}">
         ${art ? `<img class="calendar-art" src="${escape(art)}" alt="" onerror="this.style.visibility='hidden'">` : ''}
         <div class="calendar-info">
-          <div class="calendar-name">${escape(game)}</div>
+          <div class="calendar-name" title="${escape(fullName)}">${escape(game)}${title
+            ? `<span style="font-weight: 400; color: var(--text-secondary);"> · ${escape(title)}</span>`
+            : ''}</div>
           <div class="calendar-meta">
             <span class="calendar-when ${upcoming ? 'upcoming' : ''}">${escape(when)}</span>
-            <span>${left} из ${drops} наград осталось</span>
+            <span>${this.plural(left, 'осталась', 'осталось', 'осталось')} ${left} из ${drops} ${dropsWord}</span>
             ${ended
               ? ''
               : (!upcoming && value.reason === 'tooLate'
                   ? '<span class="calendar-tag late">Не успеть</span>'
-                  : (!upcoming && value.perHour > 0
-                      ? `<span class="calendar-tag">${value.perHour} за час</span>`
+                  : (!upcoming && perHourText
+                      ? `<span class="calendar-tag">${perHourText}</span>`
                       : ''))}
           </div>
         </div>
         ${mine
           ? '<span class="calendar-owned">В списке</span>'
-          : `<button class="btn btn-secondary calendar-add" data-add-game="${escape(game)}">Добавить</button>`}
+          : `<button class="btn btn-secondary calendar-add" data-add-game="${escape(game)}" data-add-game-id="${escape(campaign.game?.id || '')}">Добавить</button>`}
       </div>
     `;
   }
 
+  /**
+   * Страница фарминга, которая держит список категорий в памяти.
+   *
+   * Она переживает переходы между вкладками и при сохранении пишет свой
+   * список целиком. Если календарь писал в хранилище в обход неё, то
+   * первое же сохранение на фарминге затирало добавленную игру: она молча
+   * пропадала и не фармилась.
+   */
+  farmingOwner() {
+    const page = window.farmingPage;
+    if (!page || page._destroyed) return null;
+    if (typeof page.addCategory !== 'function' || !Array.isArray(page.categories)) return null;
+    return page;
+  }
+
+  /**
+   * Запасной id для игры, которой не нашлось в ответе Twitch.
+   *
+   * Только буквы и цифры: id подставляется в разметку и обработчики окна
+   * категории, и кавычка из названия (например, «Assassin's Creed»)
+   * ломала их. Буквы любого алфавита оставляем, чтобы разные русские
+   * названия не схлопнулись в один и тот же id.
+   */
+  fallbackCategoryId(game) {
+    const slug = String(game).toLowerCase()
+      .replace(/[^\p{L}\p{N}]+/gu, '-')
+      .replace(/^-+|-+$/g, '');
+    return 'cal-' + (slug || Date.now().toString(36));
+  }
+
   /** Добавляет игру в список категорий и сразу отмечает, что дропсы есть. */
-  async addCategory(game, button) {
+  async addCategory(game, button, gameId = '') {
     if (!game) return;
 
     button.disabled = true;
     button.textContent = 'Добавляю…';
 
     try {
-      const categories = (await Storage.getCategories()) || [];
-      const SP = window.StreamPicker;
+      const farming = this.farmingOwner();
 
-      if (categories.some(c => SP.isSameGame(c.name, game))) {
+      // Дубль проверяем по тому списку, который потом будет сохранён:
+      // у живой страницы фарминга он свежее хранилища
+      const categories = farming
+        ? farming.categories
+        : ((await Storage.getCategories()) || []);
+
+      if (categories.some(c => this.isSameCategoryGame(c, game, gameId))) {
         window.utils?.showToast('Категория уже в списке', 'info');
+        // Кнопка не должна залипать в «Добавляю…»: перерисовка покажет
+        // «В списке» на месте кнопки
+        this.categories = [...categories];
+        this.render();
         return;
       }
 
@@ -381,13 +513,13 @@ class CalendarPage {
       let fresh = null;
       try {
         const all = await window.electronAPI.fetchTwitchCategories();
-        fresh = (all || []).find(c => SP.isSameGame(c.name, game)) || null;
+        fresh = (all || []).find(c => this.isSameCategoryGame(c, game, gameId)) || null;
       } catch (e) {
         // не критично
       }
 
-      categories.push({
-        id: fresh?.id || `cal-${game.toLowerCase().replace(/\s+/g, '-')}`,
+      const entry = {
+        id: fresh?.id || this.fallbackCategoryId(game),
         name: fresh?.name || game,
         boxArtURL: fresh?.boxArtURL || '',
         viewersCount: fresh?.viewersCount || 0,
@@ -396,12 +528,27 @@ class CalendarPage {
         enabled: true,
         priority: categories.length + 1,
         dropsCompleted: false
-      });
+      };
 
-      await Storage.saveCategories(categories);
-      this.categories = categories;
+      // За время запроса к Twitch страница фарминга могла появиться
+      // или пропасть — решаем по текущему состоянию
+      const owner = this.farmingOwner();
 
-      window.utils?.showToast(`«${game}» добавлена в категории`, 'success');
+      if (owner) {
+        // Добавляет сама страница фарминга: её список в памяти, хранилище
+        // и экран остаются согласованными. Об успехе она сообщает сама.
+        await owner.addCategory(entry);
+        this.categories = [...owner.categories];
+      } else {
+        // Фарминг ещё не открывали — он прочитает хранилище при запуске.
+        // Событие — для тех, кто уже держит список и должен его перечитать.
+        const next = [...categories, entry];
+        await Storage.saveCategories(next);
+        this.categories = next;
+        window.dispatchEvent(new CustomEvent('wt:categories-changed'));
+        window.utils?.showToast(`«${game}» добавлена в категории`, 'success');
+      }
+
       this.render();
     } catch (error) {
       console.error('[Календарь] Не удалось добавить категорию:', error);

@@ -1,9 +1,15 @@
 // Title Manager - управление заголовком окна
+//
+// Раньше здесь же жил таймер, который каждые 30 секунд «показывал прогресс
+// дропсов и фарминга» в заголовке. Он опирался на window.DropsManager и
+// streamingManager.currentChannel, а их в приложении нет (первый нигде не
+// объявлен, второй никогда не заполняется), поэтому таймер всю жизнь окна
+// ставил один и тот же заголовок «WatchTwitch». Таймер и зависящие от
+// несуществующих источников методы удалены: заголовок задаёт index.html,
+// а явная смена остаётся через update().
 class TitleManager {
   constructor() {
     this.baseTitle = 'WatchTwitch';
-    this.updateInterval = null;
-    this.startAutoUpdate();
   }
 
   /**
@@ -14,49 +20,6 @@ class TitleManager {
       document.title = title;
     } else {
       document.title = this.baseTitle;
-    }
-  }
-
-  /**
-   * Показать прогресс дропов в заголовке
-   */
-  updateWithDropsProgress() {
-    if (!window.DropsManager) {
-      this.update();
-      return;
-    }
-
-    const progress = window.DropsManager.getOverallProgress();
-    
-    if (progress.total === 0) {
-      this.update();
-      return;
-    }
-
-    const readyDrops = progress.ready;
-    const completedDrops = progress.completed;
-    const totalDrops = progress.total;
-
-    if (readyDrops > 0) {
-      // Есть готовые дропы к получению
-      this.update(`🎁 ${readyDrops} готов${readyDrops === 1 ? '' : 'о'} | ${this.baseTitle}`);
-    } else if (completedDrops > 0) {
-      // Есть прогресс
-      this.update(`⏳ ${completedDrops}/${totalDrops} | ${this.baseTitle}`);
-    } else {
-      // Нет прогресса
-      this.update(`${totalDrops} дроп${totalDrops === 1 ? '' : totalDrops < 5 ? 'а' : 'ов'} | ${this.baseTitle}`);
-    }
-  }
-
-  /**
-   * Показать статистику фарминга
-   */
-  updateWithFarmingStats(channelName, duration) {
-    if (channelName && duration) {
-      this.update(`▶️ ${channelName} • ${duration} | ${this.baseTitle}`);
-    } else {
-      this.updateWithDropsProgress();
     }
   }
 
@@ -76,63 +39,6 @@ class TitleManager {
    */
   reset() {
     this.update();
-  }
-
-  /**
-   * Запустить автоматическое обновление заголовка
-   */
-  startAutoUpdate() {
-    if (this.updateInterval) {
-      clearInterval(this.updateInterval);
-    }
-
-    // Обновляем каждые 30 секунд
-    this.updateInterval = setInterval(() => {
-      if (window.streamingManager?.isFarmingActive?.()) {
-        // Если идёт фарминг, показываем статистику
-        const channelName = window.streamingManager.currentChannel;
-        const duration = this.formatFarmingDuration();
-        this.updateWithFarmingStats(channelName, duration);
-      } else {
-        // Иначе показываем прогресс дропов
-        this.updateWithDropsProgress();
-      }
-    }, 30000);
-
-    // Первое обновление сразу
-    setTimeout(() => {
-      this.updateWithDropsProgress();
-    }, 1000);
-  }
-
-  /**
-   * Остановить автоматическое обновление
-   */
-  stopAutoUpdate() {
-    if (this.updateInterval) {
-      clearInterval(this.updateInterval);
-      this.updateInterval = null;
-    }
-  }
-
-  /**
-   * Форматировать длительность фарминга
-   */
-  formatFarmingDuration() {
-    if (!window.farmingPage?.sessionStartTime) {
-      return '';
-    }
-
-    const now = Date.now();
-    const elapsed = now - window.farmingPage.sessionStartTime;
-    const minutes = Math.floor(elapsed / 60000);
-    const hours = Math.floor(minutes / 60);
-    const mins = minutes % 60;
-
-    if (hours > 0) {
-      return `${hours}ч ${mins}м`;
-    }
-    return `${mins}м`;
   }
 }
 

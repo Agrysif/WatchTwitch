@@ -9,7 +9,7 @@
     <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
       <span class="input-label" data-i18n="statistics.period">Период:</span>
       <button class="btn btn-secondary period-btn active" data-period="all">
-        <span data-i18n="statistics.allTime">Все время</span>
+        <span data-i18n="statistics.allTime">Всё время</span>
       </button>
       <button class="btn btn-secondary period-btn" data-period="month">
         <span data-i18n="statistics.thisMonth">Этот месяц</span>
@@ -64,6 +64,10 @@
     </div>
   </div>
 
+  <!-- Сессии, не попавшие в итоги: больше суток без отметок о просмотре.
+       Без этой строки итоги молча расходились бы со списком сессий. -->
+  <div class="card stats-excluded" id="stats-excluded" style="display: none;"></div>
+
   <!-- Аналитика: выводы из накопленных цифр, а не сами цифры -->
   <div class="card missed-card" id="missed-card" style="display: none;"></div>
 
@@ -90,15 +94,17 @@
       </div>
       <div class="stat-content">
         <div class="stat-label" data-i18n="statistics.totalWatchTime">Всего просмотрено</div>
-        <div class="stat-value" id="total-watch-time">0h</div>
+        <div class="stat-value" id="total-watch-time">0 мин</div>
       </div>
     </div>
 
     <div class="stat-card">
       <div class="stat-icon" style="background: rgba(53, 208, 138, 0.15);">
-        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--success-color)">
-          <circle cx="12" cy="12" r="10" stroke-width="2"/>
-          <text x="12" y="16" font-size="12" fill="var(--success-color)" text-anchor="middle" font-weight="bold">$</text>
+        <!-- Значок баллов канала (круг с дугой, как на Twitch). Раньше здесь
+             стоял «$», хотя баллы — не деньги -->
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--success-color)" stroke-width="2" stroke-linecap="round">
+          <circle cx="12" cy="12" r="10"/>
+          <path d="M12 7a5 5 0 0 1 5 5"/>
         </svg>
       </div>
       <div class="stat-content">
@@ -439,8 +445,40 @@
     .session-bandwidth {
       color: var(--warning-color);
     }
-    
-    @keyframes fadeIn {
+
+    .session-suspect {
+      color: var(--warning-color);
+      cursor: help;
+    }
+
+    /* Строка об исключённых сессиях: текст слева, кнопка справа */
+    .stats-excluded {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      border-color: rgba(255, 179, 26, 0.35);
+    }
+
+    .stats-excluded-text {
+      flex: 1;
+      min-width: 0;
+      font-size: 13px;
+      line-height: 1.5;
+      color: var(--text-secondary);
+    }
+
+    .stats-excluded-text b {
+      color: var(--text-primary);
+    }
+
+    .stats-excluded .btn {
+      flex-shrink: 0;
+    }
+
+    /* Своё имя: стили страницы лежат в общем документе, и одноимённый
+       fadeIn подменял общую анимацию появления (animations.css) для окон
+       и смены страниц во всём приложении */
+    @keyframes statsFadeIn {
       from {
         opacity: 0;
         transform: translateY(-10px);
@@ -470,11 +508,20 @@
 </div>
 
 <style>
+  /* Карточек ровно четыре. auto-fit при обычной ширине окна давал три в
+     ряд и одну сиротой во втором ряду. Четыре в ряд — только когда им
+     хватает места, иначе ровная сетка 2×2. */
   .stats-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 16px;
     margin-bottom: 24px;
+  }
+
+  @media (max-width: 1500px) {
+    .stats-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
   }
 
   .stat-card {
@@ -505,6 +552,8 @@
 
   .stat-content {
     flex: 1;
+    /* Без этого длинное «1 068 ч 41 мин» распирало карточку за край */
+    min-width: 0;
   }
 
   .stat-label {

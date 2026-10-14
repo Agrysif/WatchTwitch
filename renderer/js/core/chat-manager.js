@@ -19,10 +19,11 @@ class ChatManager extends SlottedWebview {
       hostId: 'persistent-chat-host',
       webviewId: 'twitch-chat',
       zIndex: 5,
+      // Как и у плеера, только сессия Twitch: contextIsolation=false пускал
+      // скрипты чата в мир preload, а allowpopups='false' — булев атрибут,
+      // и строка 'false' на деле разрешала всплывающие окна.
       attributes: {
-        partition: 'persist:twitch',
-        allowpopups: 'false',
-        webpreferences: 'contextIsolation=false'
+        partition: 'persist:twitch'
       }
     });
 
@@ -111,15 +112,25 @@ class ChatManager extends SlottedWebview {
   setCollectorScript(script) {
     this.collectorScript = script;
     if (!ChatManager.enabled) return;
-    if (this.webview && this.webview.src) this._injectCollector();
+    // Признак загруженного чата — канал, а не src: пустой src после
+    // выгрузки браузер превращает в адрес самой страницы
+    if (this.webview && this.channel) this._injectCollector();
   }
 
   _injectCollector() {
     if (!this.collectorScript || !this.webview) return;
 
+    // Канал запоминаем на момент вызова. Страница фарминга задаёт скрипт
+    // прямо перед сменой канала: без этой проверки через 3 с скрипт попадал
+    // в уже новый чат, а dom-ready нового чата внедрял его второй раз —
+    // два наблюдателя и двойные клики по кнопке сундука.
+    const channel = this.channel;
+
     // Даём чату прогрузить разметку: сразу после dom-ready кнопок ещё нет
     setTimeout(() => {
       if (!this.webview || !this.collectorScript) return;
+      // Чат выгружен или грузится на другой канал — внедрит dom-ready нового
+      if (!channel || this.channel !== channel) return;
 
       this.webview.executeJavaScript(this.collectorScript)
         .then(() => {

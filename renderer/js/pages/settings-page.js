@@ -35,8 +35,11 @@ class SettingsPage {
     const i18n = window.i18n;
     const currentLang = i18n?.currentLang || 'ru';
 
+    // Свой класс заголовку: .settings-container ограничен 800px и стоит по
+    // центру, а общий .page-header растянут на всю ширину и висел отдельно
+    // от колонки с карточками. Ширину и отступы задаёт .settings-header в CSS
     container.innerHTML = `
-      <div class="page-header">
+      <div class="page-header settings-header">
         <h1 class="page-title">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" style="margin-right: 10px; vertical-align: -5px; color: var(--accent-color);">
             <path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
@@ -80,11 +83,11 @@ class SettingsPage {
 
           <div class="settings-item">
             <div class="settings-item-info">
-              <div class="settings-item-label">${i18n.t('settings.minimizeToTray')}</div>
-              <div class="settings-item-description">${i18n.t('settings.minimizeToTrayDesc')}</div>
+              <div class="settings-item-label">${i18n.t('settings.systemNotifications')}</div>
+              <div class="settings-item-description">${i18n.t('settings.systemNotificationsDesc')}</div>
             </div>
             <label class="settings-toggle">
-              <input type="checkbox" id="setting-minimize-tray" ${settings.get('minimizeToTray') ? 'checked' : ''}>
+              <input type="checkbox" id="setting-system-notifications" ${settings.get('systemNotifications') !== false && settings.get('notifications') !== false ? 'checked' : ''}>
               <span class="settings-slider"></span>
             </label>
           </div>
@@ -148,9 +151,10 @@ class SettingsPage {
             <div class="settings-item-info">
               <div class="settings-item-label">Игровой режим</div>
               <div class="settings-item-description">Пока запущена игра, стрим переходит на 160p с потолком скорости впритык к битрейту — куски видео не подбрасывают пинг. Игра закрыта — всё возвращается. Известны Overwatch, Apex, CS2, VALORANT, Dota 2, Fortnite и десятки других; свои процессы добавьте ниже</div>
-              <input type="text" id="setting-game-processes" class="settings-input" placeholder="Свои игры: например, mygame.exe, other.exe"
-                     value="${String(settings.get('gameModeProcesses') || '').replace(/"/g, '&quot;')}"
+              <input type="text" id="setting-game-processes" class="settings-input" placeholder="Имена процессов (.exe) через запятую, например mygame.exe"
+                     value="${window.escapeHtml(String(settings.get('gameModeProcesses') || ''))}"
                      style="margin-top: 8px; width: 100%;">
+              <div class="quiet-note" id="game-processes-note" style="margin-top: 6px;"></div>
             </div>
             <label class="settings-toggle">
               <input type="checkbox" id="setting-game-mode" ${settings.get('gameMode') !== false ? 'checked' : ''}>
@@ -190,6 +194,7 @@ class SettingsPage {
             <div class="settings-item-info">
               <div class="settings-item-label">${i18n.t('settings.globalShortcuts')}</div>
               <div class="settings-item-description">${i18n.t('settings.globalShortcutsDesc')}</div>
+              <div class="quiet-note" id="shortcuts-note" style="margin-top: 8px;"></div>
             </div>
             <label class="settings-toggle">
               <input type="checkbox" id="setting-shortcuts" ${settings.get('globalShortcuts') !== false ? 'checked' : ''}>
@@ -248,6 +253,17 @@ class SettingsPage {
             </div>
             <label class="settings-toggle">
               <input type="checkbox" id="setting-autostart" ${settings.get('autostart') ? 'checked' : ''}>
+              <span class="settings-slider"></span>
+            </label>
+          </div>
+
+          <div class="settings-item">
+            <div class="settings-item-info">
+              <div class="settings-item-label">${i18n.t('settings.minimizeToTray')}</div>
+              <div class="settings-item-description">${i18n.t('settings.minimizeToTrayDesc')}</div>
+            </div>
+            <label class="settings-toggle">
+              <input type="checkbox" id="setting-minimize-tray" ${settings.get('minimizeToTray') ? 'checked' : ''}>
               <span class="settings-slider"></span>
             </label>
           </div>
@@ -532,7 +548,7 @@ class SettingsPage {
               ${i18n.t('settings.exportSettings')}
             </button>
 
-            <button class="btn btn-secondary" id="backup-export-btn" style="margin-left: 8px;">
+            <button class="btn btn-secondary" id="backup-export-btn">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                 <path d="M7 10l5 5 5-5M12 15V3"/>
@@ -540,7 +556,15 @@ class SettingsPage {
               Сохранить копию всего
             </button>
 
-            <button class="btn btn-secondary" id="backup-import-btn" style="margin-left: 8px;">
+            <button class="btn btn-secondary" id="ics-export-btn" title="Файл .ics для календаря на телефоне или в почте: когда заканчиваются кампании игр из ваших категорий, с напоминанием за час">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <rect x="3" y="5" width="18" height="16" rx="2"/>
+                <path d="M3 10h18M8 3v4M16 3v4"/>
+              </svg>
+              Сроки кампаний в календарь
+            </button>
+
+            <button class="btn btn-secondary" id="backup-import-btn">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                 <path d="M7 9l5-5 5 5M12 4v12"/>
@@ -549,7 +573,7 @@ class SettingsPage {
             </button>
             <input type="file" id="backup-file-input" accept="application/json,.json" style="display: none;">
 
-            <button class="btn btn-secondary" id="open-logs-btn" style="margin-left: 8px;" title="Журнал работы приложения — пригодится, если что-то пошло не так ночью">
+            <button class="btn btn-secondary" id="open-logs-btn" title="Журнал работы приложения — пригодится, если что-то пошло не так ночью">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
                 <path d="M14 2v6h6M8 13h8M8 17h8"/>
@@ -630,6 +654,15 @@ class SettingsPage {
     const settings = window.settings;
     const i18n = window.i18n;
 
+    // По тосту должно быть видно, что стало с настройкой. Раньше на
+    // включение и выключение показывался один и тот же текст (название
+    // настройки или голое «Включено»), и при быстром повторном клике было
+    // не понять, в каком она теперь положении
+    const сообщитьСостояние = (название, включено) => {
+      const состояние = (включено ? i18n.t('settings.enabled') : i18n.t('settings.disabled')).toLowerCase();
+      window.utils.showToast(`${название}: ${состояние}`, 'info');
+    };
+
     // Звук
     const soundToggle = document.getElementById('setting-sound');
     if (soundToggle) {
@@ -638,28 +671,43 @@ class SettingsPage {
         // Сразу проигрываем тот самый сигнал: понять, что включаешь,
         // проще на слух, чем по названию
         if (e.target.checked) window.chime?.dropClaimed();
-        window.utils.showToast(
-          e.target.checked ? i18n.t('settings.enabled') : i18n.t('settings.disabled'),
-          'info'
-        );
+        сообщитьСостояние(i18n.t('settings.soundNotifications'), e.target.checked);
       });
     }
 
-    // Toast уведомления
+    // Всплывающие сообщения в окне. Выключение тоже подтверждаем: настройка
+    // глушит только фоновые сообщения, а это ответ на клик. Если showToast
+    // всё же его подавит, положение видно по самому переключателю
     const toastToggle = document.getElementById('setting-toast');
     if (toastToggle) {
       toastToggle.addEventListener('change', (e) => {
         settings.set('toastNotifications', e.target.checked);
+        сообщитьСостояние(i18n.t('settings.toastNotifications'), e.target.checked);
       });
     }
 
-    // Сворачивать в трей
+    // Уведомления Windows. Ключей два: main-процесс и notifyFarmingEvent
+    // читают notifications, окно о награде в фарминге — systemNotifications.
+    // Меняем оба, чтобы выключатель глушил всё сразу
+    const systemNotificationsToggle = document.getElementById('setting-system-notifications');
+    if (systemNotificationsToggle) {
+      systemNotificationsToggle.addEventListener('change', (e) => {
+        settings.update({
+          systemNotifications: e.target.checked,
+          notifications: e.target.checked
+        });
+        сообщитьСостояние(i18n.t('settings.systemNotifications'), e.target.checked);
+      }, { signal: this._abort.signal });
+    }
+
+    // Сворачивать в трей. Говорим прямо, что теперь сделает крестик:
+    // «Сворачивать в трей» на оба положения ничего не объясняло
     const minimizeTrayToggle = document.getElementById('setting-minimize-tray');
     if (minimizeTrayToggle) {
       minimizeTrayToggle.addEventListener('change', async (e) => {
         settings.set('minimizeToTray', e.target.checked);
         window.utils.showToast(
-          e.target.checked ? i18n.t('settings.minimizeToTray') : i18n.t('settings.minimizeToTray'),
+          e.target.checked ? i18n.t('settings.minimizeToTrayOn') : i18n.t('settings.minimizeToTrayOff'),
           'info'
         );
       });
@@ -670,15 +718,10 @@ class SettingsPage {
     if (autoClaimToggle) {
       autoClaimToggle.addEventListener('change', (e) => {
         settings.set('autoClaimDrops', e.target.checked);
-        window.utils.showToast(
-          e.target.checked ? i18n.t('settings.autoClaimDrops') : i18n.t('settings.autoClaimDrops'),
-          'info'
-        );
+        сообщитьСостояние(i18n.t('settings.autoClaimDrops'), e.target.checked);
       });
     }
 
-    // Экономный режим графики. Аппаратное ускорение отключается только до
-    // готовности приложения, поэтому меняется оно лишь при следующем запуске
     const chatToggle = document.getElementById('setting-background-chat');
     if (chatToggle) {
       chatToggle.addEventListener('change', (e) => {
@@ -697,11 +740,17 @@ class SettingsPage {
       });
     }
 
+    // Экономный режим графики. Аппаратное ускорение отключается только до
+    // готовности приложения, поэтому меняется оно лишь при следующем запуске.
+    // В тосте и положение, и срок: одно «Вступит в силу…» на оба
+    // положения не говорило, что именно вступит
     const lowGraphicsToggle = document.getElementById('setting-low-graphics');
     if (lowGraphicsToggle) {
       lowGraphicsToggle.addEventListener('change', (e) => {
         settings.set('lowGraphics', e.target.checked);
-        window.utils.showToast('Вступит в силу после перезапуска приложения', 'info');
+        const состояние = (e.target.checked ? i18n.t('settings.enabled') : i18n.t('settings.disabled')).toLowerCase();
+        window.utils.showToast(
+          `${i18n.t('settings.lowGraphics')}: ${состояние}. Вступит в силу после перезапуска приложения`, 'info');
       });
     }
 
@@ -716,10 +765,50 @@ class SettingsPage {
       });
     }
     const gameProcesses = document.getElementById('setting-game-processes');
+    const gameProcessesNote = document.getElementById('game-processes-note');
+
+    // Показываем, как строка разобрана на самом деле. В поле вписывали
+    // название игры («Warhammer 40,000 Space Marine 2») — оно режется по
+    // запятой на «warhammer 40.exe» и «000 space marine 2.exe», игровой
+    // режим не включается, а пользователь уверен, что всё настроил
+    const разобратьИгры = (text) => {
+      const names = window.GameMode?.parseExtra ? window.GameMode.parseExtra(text) : [];
+      // Пробел в имени без .exe — почти всегда признак того, что вписано
+      // название игры, а не имя файла. У части игр пробел в имени .exe
+      // есть, поэтому это предупреждение, а не отказ
+      const подозрительные = String(text || '')
+        .split(/[,;\n]+/)
+        .map(part => part.trim())
+        .filter(part => part && /\s/.test(part) && !/\.exe$/i.test(part));
+      return { names, подозрительные };
+    };
+
+    const обновитьИгры = () => {
+      if (!gameProcessesNote) return;
+      const { names } = разобратьИгры(settings.get('gameModeProcesses'));
+      gameProcessesNote.textContent = names.length
+        ? 'Отслеживаются: ' + names.join(', ')
+        : '';
+    };
+    обновитьИгры();
+
     if (gameProcesses) {
       gameProcesses.addEventListener('change', (e) => {
-        settings.set('gameModeProcesses', e.target.value.trim());
-        window.utils.showToast('Список игр сохранён', 'success');
+        const text = e.target.value.trim();
+        settings.set('gameModeProcesses', text);
+        обновитьИгры();
+
+        const { names, подозрительные } = разобратьИгры(text);
+        if (names.length === 0) {
+          window.utils.showToast('Список своих игр очищен', 'info');
+        } else if (подозрительные.length > 0) {
+          window.utils.showToast(
+            'Похоже на название игры, а не на имя процесса: ' + подозрительные.join(', ') +
+            '. Нужно имя файла .exe — его видно в Диспетчере задач, вкладка «Подробности»',
+            'warning');
+        } else {
+          window.utils.showToast('Будут отслеживаться: ' + names.join(', '), 'success');
+        }
       });
     }
 
@@ -742,8 +831,7 @@ class SettingsPage {
         // Настройка зеркалится в главный процесс не мгновенно, поэтому
         // просим переприменить потолок явно
         setTimeout(() => window.electronAPI?.refreshStreamLimit?.(), 300);
-        window.utils.showToast(
-          e.target.checked ? i18n.t('settings.enabled') : i18n.t('settings.disabled'), 'info');
+        сообщитьСостояние(i18n.t('settings.limitStreamSpeed'), e.target.checked);
       });
     }
 
@@ -766,8 +854,7 @@ class SettingsPage {
       quietToggle.addEventListener('change', (e) => {
         settings.set('quietHours', e.target.checked);
         обновитьПодпись();
-        window.utils.showToast(
-          e.target.checked ? i18n.t('settings.enabled') : i18n.t('settings.disabled'), 'info');
+        сообщитьСостояние(i18n.t('settings.quietHours'), e.target.checked);
       });
     }
 
@@ -793,20 +880,46 @@ class SettingsPage {
     if (suggestToggle) {
       suggestToggle.addEventListener('change', (e) => {
         settings.set('suggestCategories', e.target.checked);
-        window.utils.showToast(
-          e.target.checked ? i18n.t('settings.enabled') : i18n.t('settings.disabled'), 'info');
+        сообщитьСостояние(i18n.t('settings.suggestCategories'), e.target.checked);
       });
     }
 
     // Горячие клавиши перехватываются у всей системы, поэтому их
     // включение и выключение выполняет главный процесс
     const shortcutsToggle = document.getElementById('setting-shortcuts');
+    const shortcutsNote = document.getElementById('shortcuts-note');
+
+    // Сочетание, занятое другой программой, Electron молча не регистрирует:
+    // переключатель стоял включённым, нажатие ничего не делало, и причину
+    // было не узнать. Список неудач отдаёт главный процесс; пока он этого
+    // не умеет, подпись просто остаётся пустой
+    const обновитьКлавиши = async () => {
+      if (!shortcutsNote) return;
+      let failed = [];
+      try {
+        const status = await window.electronAPI?.getShortcutStatus?.();
+        failed = Array.isArray(status?.failed) ? status.failed : [];
+      } catch (error) {
+        console.warn('[Настройки] Не удалось узнать состояние горячих клавиш:', error?.message);
+      }
+      if (settings.get('globalShortcuts') === false) failed = [];
+
+      shortcutsNote.textContent = failed
+        .map(item => String(item?.accelerator ?? item)
+          .replace(/^(CommandOrControl|CmdOrCtrl|Control)\+/i, 'Ctrl+'))
+        .map(key => `${key} ${i18n.t('settings.shortcutBusy')}`)
+        .join('; ');
+    };
+    обновитьКлавиши();
+
     if (shortcutsToggle) {
       shortcutsToggle.addEventListener('change', (e) => {
         settings.set('globalShortcuts', e.target.checked);
         window.electronAPI?.setGlobalShortcuts?.(e.target.checked);
-        window.utils.showToast(
-          e.target.checked ? i18n.t('settings.enabled') : i18n.t('settings.disabled'), 'info');
+        // Команда в главный процесс уходит без ответа — даём ему время
+        // перерегистрировать сочетания и только потом спрашиваем итог
+        setTimeout(обновитьКлавиши, 300);
+        сообщитьСостояние(i18n.t('settings.globalShortcuts'), e.target.checked);
       });
     }
 
@@ -817,10 +930,7 @@ class SettingsPage {
         settings.set('notifyFavouriteLive', e.target.checked);
         if (e.target.checked) window.favouritesWatch?.start();
         else window.favouritesWatch?.stop();
-        window.utils.showToast(
-          e.target.checked ? i18n.t('settings.enabled') : i18n.t('settings.disabled'),
-          'info'
-        );
+        сообщитьСостояние(i18n.t('settings.notifyFavouriteLive'), e.target.checked);
       });
     }
 
@@ -838,15 +948,12 @@ class SettingsPage {
       });
     }
 
-    // Уведомления о получении дропов
+    // Уведомления о получении дропсов
     const notifyDropToggle = document.getElementById('setting-notify-drop');
     if (notifyDropToggle) {
       notifyDropToggle.addEventListener('change', (e) => {
         settings.set('notifyOnDropClaimed', e.target.checked);
-        window.utils.showToast(
-          e.target.checked ? i18n.t('settings.enabled') : i18n.t('settings.disabled'),
-          'info'
-        );
+        сообщитьСостояние(i18n.t('settings.notifyOnDropClaimed'), e.target.checked);
       });
     }
 
@@ -927,10 +1034,7 @@ class SettingsPage {
     if (autoSwitchToggle) {
       autoSwitchToggle.addEventListener('change', (e) => {
         settings.set('autoSwitchStreams', e.target.checked);
-        window.utils.showToast(
-          e.target.checked ? i18n.t('settings.autoSwitchStreams') : i18n.t('settings.autoSwitchStreams'),
-          'info'
-        );
+        сообщитьСостояние(i18n.t('settings.autoSwitchStreams'), e.target.checked);
       });
     }
 
@@ -940,10 +1044,7 @@ class SettingsPage {
       compactToggle.addEventListener('change', (e) => {
         settings.set('compactMode', e.target.checked);
         document.body.classList.toggle('compact-mode', e.target.checked);
-        window.utils.showToast(
-          e.target.checked ? i18n.t('settings.compactMode') : i18n.t('settings.compactMode'),
-          'info'
-        );
+        сообщитьСостояние(i18n.t('settings.compactMode'), e.target.checked);
       });
     }
 
@@ -954,10 +1055,7 @@ class SettingsPage {
         settings.set('showExpiredCampaigns', e.target.checked);
         // Календарь может быть уже открыт — показываем изменение сразу
         window.calendarPage?.render?.();
-        window.utils.showToast(
-          e.target.checked ? i18n.t('settings.showExpiredCampaigns') : i18n.t('settings.showExpiredCampaigns'),
-          'info'
-        );
+        сообщитьСостояние(i18n.t('settings.showExpiredCampaigns'), e.target.checked);
       });
     }
 
@@ -967,10 +1065,7 @@ class SettingsPage {
       animationsToggle.addEventListener('change', (e) => {
         settings.set('animationsEnabled', e.target.checked);
         document.body.classList.toggle('no-animations', !e.target.checked);
-        window.utils.showToast(
-          e.target.checked ? i18n.t('settings.animations') : i18n.t('settings.animations'),
-          'info'
-        );
+        сообщитьСостояние(i18n.t('settings.animations'), e.target.checked);
       });
     }
 
@@ -979,10 +1074,7 @@ class SettingsPage {
     if (developerModeToggle) {
       developerModeToggle.addEventListener('change', (e) => {
         settings.set('developerMode', e.target.checked);
-        window.utils.showToast(
-          e.target.checked ? i18n.t('settings.enabled') : i18n.t('settings.disabled'),
-          'info'
-        );
+        сообщитьСостояние(i18n.t('settings.developerMode'), e.target.checked);
       });
     }
 
@@ -1059,9 +1151,10 @@ class SettingsPage {
           // Обновляем отображаемое значение
           trigger.querySelector('.custom-select-value').textContent = label;
           
-          // Сохраняем и применяем тему
+          // Сохраняем и применяем тему. set() сам меняет класс темы через
+          // applyAll; присваивание className здесь стирало компактный и
+          // экономный режимы до перезапуска
           settings.set('theme', value);
-          document.body.className = `theme-${value}`;
           window.utils.showToast(`${i18n.t('settings.theme')}: ${label}`, 'info');
           
           // Закрываем dropdown
@@ -1086,7 +1179,11 @@ class SettingsPage {
     const clearStatsBtn = document.getElementById('clear-statistics-btn');
     if (clearStatsBtn) {
       clearStatsBtn.addEventListener('click', async () => {
-        if (!confirm(i18n.t('settings.clearStatisticsConfirm'))) return;
+        const ok = await this.confirmDanger(
+          i18n.t('settings.clearStatisticsConfirm'),
+          window.escapeHtml(i18n.t('settings.clearStatisticsConfirmDesc')),
+          i18n.t('settings.confirmClear'));
+        if (!ok) return;
 
         try {
           await Storage.clearStatistics();
@@ -1102,15 +1199,53 @@ class SettingsPage {
 
     const resetBtn = document.getElementById('reset-settings-btn');
     if (resetBtn) {
-      resetBtn.addEventListener('click', () => {
-        if (confirm(i18n.t('settings.resetSettings') + '?')) {
-          settings.reset();
+      resetBtn.addEventListener('click', async () => {
+        const ok = await this.confirmDanger(
+          i18n.t('settings.resetSettingsConfirm'),
+          window.escapeHtml(i18n.t('settings.resetSettingsConfirmDesc')),
+          i18n.t('settings.confirmReset'));
+        if (!ok) return;
+
+        settings.reset();
+
+        // Часть настроек живёт и в main-процессе: просим его применить
+        // значения по умолчанию сразу, как это делают сами переключатели
+        window.electronAPI?.setGlobalShortcuts?.(settings.get('globalShortcuts') !== false);
+        setTimeout(() => window.electronAPI?.refreshStreamLimit?.(), 300);
+        if (settings.get('backgroundChat') !== true) window.chatManager?.unload?.();
+        // Слежка за избранными включается по умолчанию, но сама не стартует:
+        // без этого после сброса переключатель стоял бы включённым, а
+        // уведомления не приходили бы до перезапуска
+        if (settings.get('notifyFavouriteLive') !== false) window.favouritesWatch?.start?.();
+
+        if (!this._abort.signal.aborted) {
           this.render();
           this.setupEventListeners();
-          window.utils.showToast(i18n.t('settings.resetSettings'), 'success');
+          this.loadAppVersion();
         }
-      });
+        window.utils.showToast(i18n.t('settings.resetSettingsDone'), 'success');
+      }, { signal: this._abort.signal });
     }
+
+    // Имя файла по местной дате: toISOString даёт дату по UTC, и файл,
+    // сохранённый ночью до трёх часов по Москве, получал вчерашнее число
+    const местнаяДата = () => {
+      const d = new Date();
+      const p = (n) => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+    };
+
+    const сохранитьФайл = (содержимое, тип, имя) => {
+      const blob = new Blob([содержимое], { type: тип });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = имя;
+      a.click();
+      // Загрузка стартует уже после click(), а окно «Сохранить как» может
+      // висеть долго — ссылку освобождаем с запасом, а не сразу
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    };
 
     // Экспорт
     // Полная копия: категории, подписки, статистика, настройки
@@ -1119,40 +1254,66 @@ class SettingsPage {
       backupExportBtn.addEventListener('click', async () => {
         try {
           const data = await window.Backup.collect(new Date().toISOString());
-          const день = new Date().toISOString().slice(0, 10);
 
-          const сохранить = (содержимое, тип, имя) => {
-            const blob = new Blob([содержимое], { type: тип });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = имя;
-            a.click();
-            URL.revokeObjectURL(url);
-          };
+          сохранитьФайл(JSON.stringify(data, null, 2), 'application/json',
+            `watchtwitch-backup-${местнаяДата()}.json`);
 
-          сохранить(JSON.stringify(data, null, 2), 'application/json',
-            `watchtwitch-backup-${день}.json`);
-
-          // Заодно сроки кампаний для обычного календаря: приложение знает,
-          // когда что заканчивается, но это знание жило только внутри него
-          const известные = await window.CampaignHistory.loadKnown();
-          const календарь = window.IcsExport.build(известные);
-
-          if (календарь.events > 0) {
-            сохранить(календарь.text, 'text/calendar',
-              `watchtwitch-drops-${день}.ics`);
-          }
-
-          const итог = window.Backup.describe(data) +
-            (календарь.events > 0
-              ? `; сроков в календарь: ${календарь.events}`
-              : '; сроков календаря пока нет');
-
-          window.utils.showToast('Копия сохранена: ' + итог, 'success');
+          // Узнать, сохранил ли человек файл или закрыл окно, отсюда нельзя:
+          // «Копия сохранена» в момент клика была бы неправдой
+          window.utils.showToast(
+            'Выберите, куда сохранить копию. В ней ' + window.Backup.describe(data), 'info');
         } catch (error) {
           console.error('[Копия] Не удалось сохранить:', error);
           window.utils.showToast('Не удалось сохранить копию', 'error');
+        }
+      });
+    }
+
+    // Сроки кампаний для обычного календаря — отдельной кнопкой и только
+    // по играм из списка категорий. Раньше файл уходил вместе с копией и
+    // ставил напоминание о каждой кампании Twitch, которую видело
+    // приложение: календарь засыпало десятками чужих игр, а сохранять
+    // приходилось два файла подряд
+    const icsExportBtn = document.getElementById('ics-export-btn');
+    if (icsExportBtn) {
+      icsExportBtn.addEventListener('click', async () => {
+        try {
+          const категории = (await Storage.getCategories().catch(() => [])) || [];
+          if (категории.length === 0) {
+            window.utils.showToast('Сначала добавьте категории: в календарь попадают только их кампании', 'warning');
+            return;
+          }
+
+          // Игра та же, что решает фарминг: по id Twitch или точному
+          // названию. Мягкое сравнение по началу названия тянуло бы сюда
+          // «World of Tanks Console» при категории «World of Tanks» — снова
+          // напоминания о чужих кампаниях
+          const SP = window.StreamPicker;
+          const своя = (campaign) => {
+            const game = campaign?.game?.displayName || campaign?.game?.name || '';
+            if (!game) return false;
+            return категории.some(cat => {
+              if (SP?.isExactGame) return SP.isExactGame(cat?.name, game, cat?.id, campaign?.game?.id);
+              if (SP?.isSameGame) return SP.isSameGame(cat?.name, game);
+              return String(cat?.name || '').trim().toLowerCase() === game.trim().toLowerCase();
+            });
+          };
+
+          const известные = await window.CampaignHistory.loadKnown();
+          const календарь = window.IcsExport.build(известные.filter(своя));
+
+          if (календарь.events === 0) {
+            window.utils.showToast(
+              'По играм из ваших категорий идущих кампаний пока нет. Откройте «Календарь», чтобы обновить сроки', 'info');
+            return;
+          }
+
+          сохранитьФайл(календарь.text, 'text/calendar', `watchtwitch-drops-${местнаяДата()}.ics`);
+          window.utils.showToast(
+            `Выберите, куда сохранить файл календаря. Кампаний в нём: ${календарь.events}`, 'info');
+        } catch (error) {
+          console.error('[Календарь] Не удалось сохранить сроки:', error);
+          window.utils.showToast('Не удалось сохранить сроки кампаний', 'error');
         }
       });
     }
@@ -1176,9 +1337,18 @@ class SettingsPage {
         const file = backupInput.files?.[0];
         if (!file) return;
 
+        const битыйФайл = 'Файл повреждён или это не копия WatchTwitch';
+
         try {
-          const text = await file.text();
-          const data = JSON.parse(text);
+          let data;
+          try {
+            data = JSON.parse(await file.text());
+          } catch (error) {
+            // Технический текст разбора JSON пользователю ничего не скажет
+            console.warn('[Копия] Файл не разобран:', error?.message);
+            window.utils.showToast(битыйФайл, 'error');
+            return;
+          }
 
           const check = window.Backup.validate(data);
           if (!check.ok) {
@@ -1186,22 +1356,50 @@ class SettingsPage {
             return;
           }
 
-          // Восстановление затирает текущий список, поэтому спрашиваем
-          const ok = confirm(
-            `Восстановить копию от ${new Date(data.createdAt).toLocaleString('ru-RU')}?
+          // Показываем то, что реально встанет на место, а не сырой файл
+          const clean = window.Backup.sanitize(data);
+          const заменится = window.Backup.describe(clean);
+          if (заменится === 'пусто') {
+            window.utils.showToast(битыйФайл, 'error');
+            return;
+          }
 
-` +
-            `Будет заменено: ${window.Backup.describe(data)}.
-` +
-            'Текущие данные перезапишутся.'
-          );
+          // Без проверки битая дата превращалась в «Invalid Date»
+          const создана = new Date(data.createdAt);
+          const когда = data.createdAt && Number.isFinite(создана.getTime())
+            ? ` от ${создана.toLocaleString('ru-RU')}`
+            : '';
+          const отброшено = window.Backup.describeDropped(clean.dropped);
+
+          // Восстановление затирает текущий список, поэтому спрашиваем.
+          // Строки экранируем по одной, а переносы ставим сами
+          const сообщение = [
+            `Будет заменено: ${заменится}.`,
+            отброшено ? `Повреждённые записи пропущены — ${отброшено}.` : '',
+            'Текущие данные перезапишутся, прежние сохранятся отдельно.'
+          ].filter(Boolean).map(строка => window.escapeHtml(строка)).join('<br>');
+          const ok = await this.confirmDanger(
+            `Восстановить копию${когда}?`, сообщение, i18n.t('settings.confirmRestore'));
           if (!ok) return;
 
           const applied = await window.Backup.restore(data);
+
+          // Настройки из копии уже применены — перерисовываем страницу,
+          // иначе переключатели показывали бы прежние значения. Если за
+          // время восстановления ушли на другую страницу, её не трогаем
+          if (!this._abort.signal.aborted) {
+            this.render();
+            this.setupEventListeners();
+            this.loadAppVersion();
+          }
+
           window.utils.showToast('Восстановлено: ' + applied.join(', ') + '. Перезапустите приложение', 'success');
         } catch (error) {
           console.error('[Копия] Не удалось восстановить:', error);
-          window.utils.showToast('Не удалось прочитать копию: ' + error.message, 'error');
+          // Свои ошибки Backup пишет по-русски для пользователя, а
+          // технический текст (сбой записи в хранилище) остаётся в журнале
+          const msg = String(error?.message || '');
+          window.utils.showToast(/[а-яё]/i.test(msg) ? msg : 'Не удалось восстановить копию', 'error');
         } finally {
           backupInput.value = '';
         }
@@ -1210,34 +1408,40 @@ class SettingsPage {
 
     const exportBtn = document.getElementById('export-settings-btn');
     if (exportBtn) {
-      exportBtn.addEventListener('click', () => {
-        const data = settings.export();
-        navigator.clipboard.writeText(data);
-        window.utils.showToast(i18n.t('settings.exportSettings'), 'success');
+      // Настройки уходят в буфер обмена. Тост раньше повторял название
+      // кнопки и показывался, даже если запись в буфер не удалась
+      exportBtn.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(settings.export());
+          window.utils.showToast(i18n.t('settings.exportSettingsDone'), 'success');
+        } catch (error) {
+          console.warn('[Настройки] Не удалось записать в буфер обмена:', error?.message);
+          window.utils.showToast(i18n.t('settings.exportSettingsFailed'), 'error');
+        }
       });
     }
 
     // Проверка обновлений
     const checkUpdatesBtn = document.getElementById('check-updates-btn');
     if (checkUpdatesBtn) {
-      checkUpdatesBtn.addEventListener('click', (event) => {
-        if (event?.shiftKey) {
-          if (window.UpdateManager?.simulateUpdate) {
-            window.UpdateManager.simulateUpdate('test');
-            window.utils.showToast('Test mode activated', 'info');
-          } else {
-            window.utils.showToast('UpdateManager not loaded', 'warning');
-          }
+      checkUpdatesBtn.addEventListener('click', () => {
+        if (!window.electronAPI?.checkForUpdates) {
+          window.utils.showToast('В режиме разработки обновления недоступны', 'warning');
           return;
         }
 
-        if (window.electronAPI?.checkForUpdates) {
-          window.electronAPI.checkForUpdates();
-          window.utils.showToast(i18n.t('settings.checkUpdates') + '...', 'info');
-        } else {
-          window.utils.showToast('Updates unavailable in dev mode', 'warning');
+        // Ручная проверка идёт через UpdateManager: у него защита от
+        // повторных нажатий, тост «Проверяю обновления…» и сообщение, если
+        // нет связи. Он объявлен в updater.js глобальной const, а не
+        // свойством window, поэтому проверяем через typeof
+        if (typeof updateManager !== 'undefined' && updateManager?.checkForUpdates) {
+          updateManager.checkForUpdates({ manual: true });
+          return;
         }
-      });
+
+        window.electronAPI.checkForUpdates();
+        window.utils.showToast('Проверяю обновления…', 'info');
+      }, { signal: this._abort.signal });
     }
 
     // GitHub link
@@ -1277,6 +1481,29 @@ class SettingsPage {
     }
 
     this.setupDiagnostics();
+  }
+
+  /**
+   * Подтверждение опасного действия своим окном. Нативный confirm()
+   * показывал английские OK/Cancel и чужой стиль как раз там, где
+   * ошибиться дороже всего: очистка статистики, сброс, восстановление.
+   *
+   * title — обычная строка, textHtml — уже экранированная разметка.
+   */
+  confirmDanger(title, textHtml, confirmText) {
+    const i18n = window.i18n;
+    const esc = window.escapeHtml;
+    const html = `
+      <div style="text-align: center;">
+        <h3 style="font-size: 20px; font-weight: 600; color: var(--text-primary); margin-bottom: 12px;">${esc(title)}</h3>
+        ${textHtml ? `<p style="font-size: 14px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 0;">${textHtml}</p>` : ''}
+      </div>
+    `;
+    return window.utils.showCustomConfirmation(html, {
+      confirmText: esc(confirmText),
+      cancelText: esc(i18n.t('common.cancel')),
+      confirmClass: 'btn-danger'
+    });
   }
 
   setupDiagnostics() {
