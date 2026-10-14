@@ -3,8 +3,15 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Notification</title>
+  <title>Награда получена</title>
   <style>
+    /* Радиус тот же, что в renderer/styles/themes.css. Окно уведомления эту
+       таблицу не подключает, и без своего объявления var(--radius-md) ничего
+       не значил: плашка и картинка награды выходили с острыми углами */
+    :root {
+      --radius-md: 8px;
+    }
+
     * {
       margin: 0;
       padding: 0;
@@ -188,7 +195,7 @@
 <body>
   <div class="drop-notification" onclick="closeNotification()">
     <div class="drop-notification-icon">
-      <img id="drop-icon" src="" alt="Drop icon" crossorigin="anonymous">
+      <img id="drop-icon" src="" alt="Награда" crossorigin="anonymous">
     </div>
     <div class="drop-notification-content">
       <div class="drop-notification-header">
@@ -198,7 +205,7 @@
             <circle cx="12" cy="11" r="2" fill="white"/>
             <path d="M8 18v4M16 18v4" stroke="white" stroke-width="2"/>
           </svg>
-          Дроп получен!
+          Награда получена!
         </div>
       </div>
       <div class="drop-notification-drop-name" id="drop-name"></div>
@@ -213,13 +220,10 @@
   </div>
 
   <script>
-    const { ipcRenderer } = require('electron');
-
-    // Получаем данные через IPC вместо URL параметров
-    ipcRenderer.on('notification-data', (event, data) => {
-      console.log('[Notification] Received data via IPC:', data);
-      
-      const { dropName, gameName, dropIcon } = data;
+    // Node в этом окне нет: данные и закрытие идут через мост window.notif
+    // (preload-notification.js)
+    window.notif.onData((data) => {
+      const { dropName, gameName, dropIcon } = data || {};
       
       // Заполняем данные
       document.getElementById('drop-name').textContent = dropName || '';
@@ -271,7 +275,7 @@
     function closeNotification() {
       document.body.classList.add('closing');
       setTimeout(() => {
-        ipcRenderer.send('close-drop-notification');
+        window.notif.close();
       }, 300);
     }
   </script>

@@ -27,6 +27,10 @@ class StreamPicker {
    * Сравнивать по подстроке нельзя: в «albion online» содержится «line»,
    * и приложение считало игры совпадающими. Совпадением считается только
    * то, что одно название — начало другого по целым словам.
+   *
+   * Это мягкое сравнение для поиска «похожей» игры. Решения фарминга
+   * принимаются по isExactGame: по началу названия «World of Tanks»
+   * совпадает с «World of Tanks Console», а это разные кампании.
    */
   static isSameGame(a, b) {
     const tokens = (value) => StreamPicker.normalizeGameName(value).split(' ').filter(Boolean);
@@ -39,6 +43,44 @@ class StreamPicker {
       short.length <= long.length && short.every((t, i) => t === long[i]);
 
     return isPrefix(left, right) || isPrefix(right, left);
+  }
+
+  /**
+   * Строгое сравнение: одна ли это игра. Им пользуются все решения
+   * фарминга — чья кампания, та ли игра у стримера, есть ли игра в списке.
+   *
+   * Сравнение по началу названия (isSameGame) здесь не годится: «World of
+   * Tanks» — начало «World of Tanks Console», «Destiny» — «Destiny 2».
+   * Категория без своей кампании выглядела «с дропсами» по кампании
+   * соседней игры и фармилась впустую, а избранный стример из соседней
+   * игры выбирался, через минуту отбрасывался как «сменил игру», и так
+   * по кругу.
+   *
+   * Если у обеих сторон известен id игры Twitch, решает он. Иначе —
+   * точное название после нормализации. id считается игровым, только если
+   * он числовой: у части категорий id свой («sug-…», время с дробью).
+   */
+  static isExactGame(a, b, idA, idB) {
+    const left = StreamPicker.gameId(idA);
+    const right = StreamPicker.gameId(idB);
+    if (left && right) return left === right;
+
+    const nameA = StreamPicker.normalizeGameName(a);
+    const nameB = StreamPicker.normalizeGameName(b);
+    return !!nameA && nameA === nameB;
+  }
+
+  /**
+   * Числовой id игры Twitch или пустая строка, если id не игровой.
+   *
+   * Не длиннее 12 цифр: старые версии давали категории id вида
+   * Date.now() — 13 цифр без дроби. Принятый за id игры, он не совпадал
+   * ни с одной кампанией и ни с одним стримом, и такую категорию
+   * выключало как «дропсов нет». У игр Twitch id пока до 10 цифр.
+   */
+  static gameId(value) {
+    const text = String(value ?? '').trim();
+    return /^\d{1,12}$/.test(text) ? text : '';
   }
 
   /** Логин без «собачки» и регистра. */

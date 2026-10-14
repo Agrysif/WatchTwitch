@@ -2,26 +2,59 @@
 (function() {
   'use strict';
 
+  // Названия наград и игр приходят от Twitch (их задаёт разработчик игры).
+  // Вставленные в innerHTML как есть, они становились разметкой и могли
+  // выполнить код с доступом к electronAPI.
+  const esc = (text) => (typeof window.escapeHtml === 'function'
+    ? window.escapeHtml(text)
+    : String(text ?? '').replace(/[&<>"']/g, ch => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[ch])));
+
+  // Адрес картинки стоит и в src, и внутри url('…') в style: кавычка или
+  // скобка в нём дописывала бы свой CSS. Пропускаем только http(s) и
+  // data:image, опасные символы кодируем.
+  const safeImageUrl = (url) => {
+    const value = String(url || '');
+    if (!/^(https?:|data:image\/)/i.test(value)) return '';
+    return value.replace(/["'()\\\s<>]/g,
+      ch => '%' + ch.charCodeAt(0).toString(16).toUpperCase().padStart(2, '0'));
+  };
+
   window.showDropDetailModal = function(drop, campaign, dropsPageInstance) {
-    // Удаляем существующее модальное окно если есть
+    // Удаляем существующее модальное окно если есть.
+    // Вместе с его обработчиками на document: просто remove() оставлял
+    // слушатель mouseup прежнего окна, и с каждым открытием их копилось
+    // больше.
     const existingModal = document.getElementById('drop-detail-modal');
-    if (existingModal) existingModal.remove();
-    
+    if (existingModal) {
+      existingModal._abort?.abort();
+      existingModal.remove();
+    }
+
     // Редкость считает вызывающая страница. Если её не передали — окно
     // не должно падать: раньше обращение к отсутствующему объекту роняло
     // отрисовку целиком, и вместо карточки не появлялось ничего.
     const rarity = (typeof dropsPageInstance?.calculateDropRarity === 'function')
       ? dropsPageInstance.calculateDropRarity(drop, campaign)
       : { color: 'var(--text-secondary)', label: 'Награда' };
-    const imageUrl = drop.imageURL || drop.image || drop.imageUrl || window.DROP_PLACEHOLDER;
-    
-    // Форматируем даты
-    const claimedDateRaw = drop.claimedAt || drop.lastAwardedAt || drop.claimedDate;
-    const claimedDate = claimedDateRaw 
-      ? new Date(claimedDateRaw).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })
+    const imageUrl = safeImageUrl(drop.imageURL || drop.image || drop.imageUrl) || window.DROP_PLACEHOLDER;
+
+    // Форматируем даты.
+    // У дропа из карточки кампании даты получения нет — она лежит в
+    // инвентаре Twitch (lastAwardedAt) по id награды.
+    const awarded = Array.isArray(dropsPageInstance?.claimedDrops) && drop.benefitId
+      ? dropsPageInstance.claimedDrops.find(c => c?.id === drop.benefitId)
       : null;
-    
-    const campaignStartRaw = campaign?.startAt || campaign?.startDate;
+    const claimedDateRaw = drop.claimedAt || drop.lastAwardedAt || drop.claimedDate || awarded?.lastAwardedAt;
+    const claimedDateParsed = claimedDateRaw ? new Date(claimedDateRaw) : null;
+    const claimedDate = claimedDateParsed && Number.isFinite(claimedDateParsed.getTime())
+      ? claimedDateParsed.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })
+      : null;
+
+    // main отдаёт начало кампании как startsAt; читали только startAt,
+    // и в окне вместо периода стояли тире
+    const campaignStartRaw = campaign?.startsAt || campaign?.startAt || campaign?.startDate;
     const campaignEndRaw = campaign?.endsAt || campaign?.endDate;
     const campaignStart = campaignStartRaw 
       ? new Date(campaignStartRaw).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })
@@ -108,7 +141,7 @@
     
     modalContent.innerHTML = `
       <!-- Размытый фон цвета изображения -->
-      <div style="position: absolute; top: 0; left: 0; right: 0; height: 250px; background-image: url('${imageUrl}'); background-size: cover; background-position: center; filter: blur(40px); opacity: 0.3; border-radius: 16px 16px 0 0;"></div>
+      <div style="position: absolute; top: 0; left: 0; right: 0; height: 250px; background-image: url('${esc(imageUrl)}'); background-size: cover; background-position: center; filter: blur(40px); opacity: 0.3; border-radius: 16px 16px 0 0;"></div>
       
       <div style="padding: 32px; position: relative;">
         <!-- Кнопка закрытия -->
@@ -156,7 +189,7 @@
                   transform: translateZ(0px);
                   box-shadow: 0 8px 32px rgba(0,0,0,0.4);
                 ">
-                  <img src="${imageUrl}" style="width: 100%; height: 100%; object-fit: cover;">
+                  <img src="${esc(imageUrl)}" style="width: 100%; height: 100%; object-fit: cover;">
                 </div>
                 
                 <!-- Бадж редкости (слой 2, самый верхний, глубина +60px) -->
@@ -177,19 +210,17 @@
                   border: 2px solid rgba(255,255,255,0.3);
                   backdrop-filter: blur(4px);
                   z-index: 100;
-                ">${rarity.label}</div>
+                ">${esc(rarity.label)}</div>
               </div>
             </div>
             
-            <!-- Статистика под картинкой -->
+            <!-- Статистика под картинкой.
+                 Блок «Владельцы» убран: число выдумывала формула от
+                 зрителей категории, а показывалось оно как факт. -->
             <div style="margin-top: 16px; display: flex; gap: 8px;">
               <div style="flex: 1; background: rgba(0,0,0,0.3); padding: 12px; border-radius: var(--radius-md); text-align: center; border: 1px solid rgba(255,255,255,0.1);">
                 <div style="font-size: 11px; color: var(--text-tertiary); text-transform: uppercase; margin-bottom: 4px;">Сложность</div>
-                <div style="font-size: 18px; font-weight: 700; color: ${rarity.color};">${'★'.repeat(rarity.difficulty)}</div>
-              </div>
-              <div style="flex: 1; background: rgba(0,0,0,0.3); padding: 12px; border-radius: var(--radius-md); text-align: center; border: 1px solid rgba(255,255,255,0.1);">
-                <div style="font-size: 11px; color: var(--text-tertiary); text-transform: uppercase; margin-bottom: 4px;">Владельцы</div>
-                <div style="font-size: 18px; font-weight: 700; color: var(--text-primary);">${rarity.estimatedOwners}</div>
+                <div style="font-size: 18px; font-weight: 700; color: ${rarity.color};">${'★'.repeat(Math.max(0, Math.min(10, Number(rarity.difficulty) || 0)))}</div>
               </div>
             </div>
             
@@ -211,8 +242,8 @@
           
           <!-- Правая колонка: Детальная информация -->
           <div style="flex: 1; min-width: 250px;">
-            <h2 style="color: var(--text-primary); font-size: 24px; font-weight: 700; margin: 0 0 8px; line-height: 1.2;">${drop.benefitName || drop.name || 'Награда'}</h2>
-            <div style="color: ${rarity.color}; font-size: 14px; font-weight: 600; margin-bottom: 20px; text-transform: uppercase; letter-spacing: 0.5px;">${rarity.label}</div>
+            <h2 style="color: var(--text-primary); font-size: 24px; font-weight: 700; margin: 0 0 8px; line-height: 1.2;">${esc(drop.benefitName || drop.name || 'Награда')}</h2>
+            <div style="color: ${rarity.color}; font-size: 14px; font-weight: 600; margin-bottom: 20px; text-transform: uppercase; letter-spacing: 0.5px;">${esc(rarity.label)}</div>
             
             <!-- Информационные блоки -->
             <div style="display: flex; flex-direction: column; gap: 12px;">
@@ -225,7 +256,7 @@
                   </svg>
                   <div style="flex: 1;">
                     <div style="font-size: 11px; color: var(--text-tertiary); text-transform: uppercase; margin-bottom: 2px;">Игра</div>
-                    <div style="font-size: 15px; font-weight: 600; color: var(--text-primary);">${campaign?.game?.name || drop.game || 'Неизвестно'}</div>
+                    <div style="font-size: 15px; font-weight: 600; color: var(--text-primary);">${esc(campaign?.game?.name || drop.game || 'Неизвестно')}</div>
                   </div>
                 </div>
               </div>
@@ -264,19 +295,22 @@
                 </div>
               </div>
               
-              <!-- Дата получения -->
-              <div style="background: rgba(53, 208, 138,0.1); padding: 14px; border-radius: var(--radius-md); border: 1px solid rgba(53, 208, 138,0.2);">
+              ${isClaimed && claimedDate ? `
+              <!-- Дата получения: только у полученных и только с известной
+                   датой. Раньше зелёное «Получено —» стояло и у наград,
+                   которые ещё в процессе. -->
+              <div style="background: rgba(0,0,0,0.3); padding: 14px; border-radius: var(--radius-md); border: 1px solid rgba(255,255,255,0.1);">
                 <div style="display: flex; align-items: center; gap: 10px;">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style="color: #35d08a; flex-shrink: 0;">
                     <path d="M9 11H7V13H9V11M13 11H11V13H13V11M17 11H15V13H17V11M19 4H18V2H16V4H8V2H6V4H5C3.89 4 3 4.9 3 6V20C3 21.1 3.89 22 5 22H19C20.1 22 21 21.1 21 20V6C21 4.9 20.1 4 19 4M19 20H5V9H19V20Z"/>
                   </svg>
                   <div style="flex: 1;">
                     <div style="font-size: 11px; color: var(--text-tertiary); text-transform: uppercase; margin-bottom: 2px;">Получено</div>
-                    <div style="font-size: 15px; font-weight: 600; color: #35d08a;">${claimedDate || '—'}</div>
+                    <div style="font-size: 15px; font-weight: 600; color: var(--text-primary);">${claimedDate}</div>
                   </div>
                 </div>
-              </div>
-              
+              </div>` : ''}
+
               ${campaignStart || campaignEnd ? `
               <!-- Период проведения -->
               <div style="background: rgba(0,0,0,0.3); padding: 14px; border-radius: var(--radius-md); border: 1px solid rgba(255,255,255,0.1);">
@@ -336,6 +370,9 @@
     // дропса оставляло на документе обработчик со ссылкой на удалённый
     // элемент, а дропсы открывают часто.
     const modalAbort = new AbortController();
+    // Храним на самом окне: следующее открытие снимет обработчики этого,
+    // даже если оно закроется не через closeModal, а заменой
+    modal._abort = modalAbort;
     document.addEventListener('mouseup', () => {
       isMouseDown = false;
       drop3DCard.style.cursor = 'grab';
@@ -395,14 +432,30 @@
     closeBtn.addEventListener('mouseleave', function() {
       this.style.background = 'rgba(255, 255, 255, 0.1)';
       });
+    // Повторный вызов (двойной клик по крестику, Esc после клика) не
+    // должен ничего ломать
     const closeModal = () => {
       modalAbort.abort();
-      modal.remove();
+      if (modal.isConnected) modal.remove();
     };
 
+    // Esc закрывает окно, как остальные окна приложения. Слушатель снимается
+    // вместе с окном через тот же AbortController.
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeModal();
+    }, { signal: modalAbort.signal });
+
     closeBtn.addEventListener('click', closeModal);
+    // Закрываем по щелчку на фоне, только если и нажали на фоне. Карточку
+    // награды предлагают крутить мышью, а когда кнопку отпускают за её
+    // пределами, браузер шлёт click общему предку — самому фону, и окно
+    // закрывалось посреди вращения.
+    let pressedOnBackdrop = false;
+    modal.addEventListener('mousedown', (e) => {
+      pressedOnBackdrop = e.target === modal;
+    });
     modal.addEventListener('click', (e) => {
-      if (e.target === modal) closeModal();
+      if (e.target === modal && pressedOnBackdrop) closeModal();
     });
   };
 

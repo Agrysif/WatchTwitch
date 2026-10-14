@@ -98,15 +98,17 @@
       </div>
 
       <!-- Farming Controls -->
+      <!-- Отступы блоков фарминга заданы в main.css, а не здесь: на низком
+           окне их уплотняет медиазапрос -->
       <div class="sidebar-farming">
         <!-- Mini Twitch Player (16:9) - показывается когда активна сессия и не на странице фарминга -->
-        <div id="sidebar-mini-player-container" style="display: none; margin-bottom: 8px; border-radius: var(--radius-md); overflow: hidden; border: 1px solid var(--border-color); opacity: 0; transform: translateY(-10px); transition: opacity 0.3s ease, transform 0.3s ease;">
+        <div id="sidebar-mini-player-container" style="display: none; border-radius: var(--radius-md); overflow: hidden; border: 1px solid var(--border-color); opacity: 0; transform: translateY(-10px); transition: opacity 0.3s ease, transform 0.3s ease;">
           <!-- Слот для того же самого постоянного плеера, что и на странице фарминга -->
           <div id="sidebar-player-slot" style="position: relative; width: 100%; padding-bottom: 56.25%; background: #000;"></div>
         </div>
         
         <!-- Mini Drops Progress -->
-        <div id="sidebar-drops-progress" style="display: none; position: relative; padding: 12px 14px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius-md); margin-bottom: 6px; opacity: 0; transform: translateY(-10px); transition: all 0.3s ease;">
+        <div id="sidebar-drops-progress" style="display: none; position: relative; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius-md); opacity: 0; transform: translateY(-10px); transition: all 0.3s ease;">
           <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
             <div style="display: flex; align-items: center; gap: 8px;">
               <svg width="14" height="14" viewBox="0 0 16 16" fill="#7c5cff">
@@ -141,8 +143,8 @@
           </svg>
           <span id="game-mode-text"></span>
         </div>
-        <div id="farming-session-info" style="display: none; padding: 16px; background: var(--bg-secondary); border-radius: var(--radius-md); margin-bottom: 8px; border: 1px solid var(--border-color); opacity: 0; transform: translateY(-10px); transition: opacity 0.3s ease, transform 0.3s ease;">
-          <div style="font-size: 11px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 8px; letter-spacing: 0.5px;" data-i18n="sidebar.session">Сессия</div>
+        <div id="farming-session-info" style="display: none; background: var(--bg-secondary); border-radius: var(--radius-md); border: 1px solid var(--border-color); opacity: 0; transform: translateY(-10px); transition: opacity 0.3s ease, transform 0.3s ease;">
+          <div class="session-title" style="font-size: 11px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 8px; letter-spacing: 0.5px;" data-i18n="sidebar.session">Сессия</div>
           <div style="display: flex; flex-direction: column; gap: 6px;">
             <div style="display: flex; align-items: center; gap: 8px;">
               <div style="width: 6px; height: 6px; background: #35d08a; border-radius: var(--radius-circle); animation: pulse 2s infinite;"></div>
@@ -160,13 +162,15 @@
           </div>
         </div>
 
-        <button class="btn btn-primary" id="sidebar-start-farming-btn" style="width: 100%; justify-content: center; padding: 14px 20px; opacity: 1; transform: scale(1); transition: opacity 0.2s ease, transform 0.2s ease;">
+        <button class="btn btn-primary" id="sidebar-start-farming-btn" style="width: 100%; justify-content: center; opacity: 1; transform: scale(1); transition: opacity 0.2s ease, transform 0.2s ease;">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
             <path d="M3 2l10 6-10 6V2z"/>
           </svg>
           <span data-i18n="farming.startFarming">Начать фарминг</span>
         </button>
-        <button class="btn btn-secondary" id="sidebar-to-autofarm-btn" style="width: 100%; justify-content: center; padding: 11px 20px; display: none; margin-bottom: 8px;" title="Категория запущена вручную и не переключается сама. Нажмите, чтобы приложение продолжило автоматически">
+        <!-- Видимость кнопки — в style="display: …": по нему main.css решает,
+             хватает ли места мини-плееру. Не переносить в класс -->
+        <button class="btn btn-secondary" id="sidebar-to-autofarm-btn" style="width: 100%; justify-content: center; display: none;" title="Категория запущена вручную и не переключается сама. Нажмите, чтобы приложение продолжило автоматически">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
             <path d="M4 12a8 8 0 0 1 13.7-5.7L20 8"/>
             <path d="M20 4v4h-4"/>
@@ -175,7 +179,7 @@
           </svg>
           <span>Переключить на автофарм</span>
         </button>
-        <button class="btn btn-danger" id="sidebar-stop-farming-btn" style="width: 100%; justify-content: center; padding: 14px 20px; display: none; opacity: 0; transform: scale(0.95); transition: opacity 0.2s ease, transform 0.2s ease;">
+        <button class="btn btn-danger" id="sidebar-stop-farming-btn" style="width: 100%; justify-content: center; display: none; opacity: 0; transform: scale(0.95); transition: opacity 0.2s ease, transform 0.2s ease;">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
             <rect x="3" y="3" width="10" height="10"/>
           </svg>

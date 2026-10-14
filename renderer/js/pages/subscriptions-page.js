@@ -1,6 +1,24 @@
 class SubscriptionsPage {
+  // Подробности канала (фолловеры, дата эфира, «в эфире») считаем свежими
+  // полчаса. Раньше они запрашивались заново при каждом открытии страницы,
+  // по запросу на каждый канал разом, и Twitch в ответ начинал ограничивать
+  // и сам фарминг.
+  static DETAILS_TTL_MS = 30 * 60 * 1000;
+  // Не больше стольких запросов подробностей одновременно
+  static DETAILS_PARALLEL = 5;
+  // Канал, не стримивший дольше этого, считается неактивным
+  static INACTIVE_DAYS = 30;
+  // Для массовой отписки дата эфира должна быть проверена не раньше, чем
+  // столько назад: по давно сохранённой дате отписывать нельзя — канал мог
+  // с тех пор стримить
+  static CLEANUP_CHECK_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
   constructor() {
     this.i18n = window.i18n;
+    this._destroyed = false;
+    // Номер текущей загрузки: ответ от прежней (страницу обновили или
+    // открыли заново) не должен перезаписать свежие данные
+    this._loadRun = 0;
     this.subscriptions = [];
     this.filteredSubscriptions = [];
     this.currentFilter = 'all';
@@ -17,7 +35,46 @@ class SubscriptionsPage {
 
   async init() {
     this.setupEventListeners();
+    // Переключатель приоритета читаем сразу, а не после ответа Twitch:
+    // раньше при неудачной загрузке он так и оставался выключенным, хотя
+    // настройка включена и фарминг её учитывает
+    this.loadPrioritySetting();
     this.loadSubscriptions();
+  }
+
+  /**
+   * Роутер вызывает при уходе со страницы.
+   *
+   * Раньше метода не было: загрузка, начатая до перехода, доходила до
+   * обращения к уже удалённым элементам и показывала на чужой странице
+   * красное «Ошибка загрузки подписок».
+   */
+  destroy() {
+    this._destroyed = true;
+  }
+
+  // Ответ пришёл, когда страница уже закрыта или запущена новая загрузка
+  isStale(run) {
+    return this._destroyed || run !== this._loadRun;
+  }
+
+  // Строки от Twitch (имена, логин, описание) идут в разметку только
+  // экранированными: описание канала задаёт сам стример, и вставка как есть
+  // позволяла чужому каналу выполнить код в окне приложения
+  esc(text) {
+    if (window.escapeHtml) return window.escapeHtml(text);
+    return String(text ?? '').replace(/[&<>"']/g, ch => `&#${ch.charCodeAt(0)};`);
+  }
+
+  // Адрес картинки из ответа Twitch: только https и без символов, которыми
+  // можно выйти из атрибута или из url('…') в стиле
+  safeImageUrl(url) {
+    return typeof url === 'string' && /^https:\/\/[^\s"'()<>\\]+$/i.test(url) ? url : '';
+  }
+
+  // Селектор карточки канала. id приходит от Twitch, поэтому экранируем
+  cardSelector(id) {
+    return `[data-channel-id="${CSS.escape(String(id))}"]`;
   }
 
   setupEventListeners() {
@@ -56,8 +113,10 @@ class SubscriptionsPage {
     });
 
     // Авторизация
+    // У роутера нет switchPage — вызов бросал TypeError, и кнопка ничего
+    // не делала
     document.getElementById('subscriptions-auth-btn')?.addEventListener('click', () => {
-      window.router?.switchPage('accounts');
+      window.router?.navigate('accounts');
     });
 
     // Модальное окно
@@ -67,12 +126,22 @@ class SubscriptionsPage {
     });
   }
 
-  async loadSubscriptions() {
+  /**
+   * Загружает список подписок.
+   *
+   * Возвращает true, только если Twitch отдал полный свежий список: по
+   * этому результату «Обновить» решает, показывать ли «Подписки обновлены».
+   * Раньше тост успеха появлялся всегда, даже следом за «Не удалось
+   * обновить список».
+   */
+  async loadSubscriptions({ force = false } = {}) {
+    const run = ++this._loadRun;
     try {
       const accounts = await Storage.getAccounts();
+      if (this.isStale(run)) return false;
       if (!accounts || accounts.length === 0) {
         this.showAuthSection();
-        return;
+        return false;
       }
 
       const account = accounts[0];
@@ -82,6 +151,7 @@ class SubscriptionsPage {
       } catch (e) {
         console.warn('Failed to get OAuth data:', e);
       }
+      if (this.isStale(run)) return false;
 
       if (oauthData?.accessToken) {
         const tokenChanged = oauthData.accessToken !== account.accessToken;
@@ -93,16 +163,14 @@ class SubscriptionsPage {
             account.refreshToken = oauthData.refreshToken;
           }
           await Storage.saveAccount(account);
+          if (this.isStale(run)) return false;
         }
       }
-      console.log('[Subscriptions] Account found:', account?.username);
-      console.log('[Subscriptions] Account has accessToken:', !!account?.accessToken);
-      console.log('[Subscriptions] Token value:', account?.accessToken ? account.accessToken.substring(0, 20) + '...' : 'NONE');
 
       if (!account.accessToken) {
-        console.log('[Subscriptions] No token found, showing auth section');
+        console.log('[Subscriptions] Нет токена — показываю вход');
         this.showAuthSection();
-        return;
+        return false;
       }
 
       this.showContentSection();
@@ -114,7 +182,12 @@ class SubscriptionsPage {
       // собирается заново — вместе с аватарками, хотя они и так лежат в
       // кеше браузера. Спиннер теперь появляется, только когда показать
       // действительно нечего.
-      const savedSubs = (await Storage.getSubscriptions()) || [];
+      const stored = (await Storage.getSubscriptions()) || [];
+      if (this.isStale(run)) return false;
+      const savedSubs = (Array.isArray(stored) ? stored : [])
+        .filter(s => s && typeof s === 'object')
+        .map(s => this.prepareSaved(s));
+
       if (savedSubs.length > 0) {
         this.subscriptions = savedSubs;
         this.applyFilter();
@@ -123,119 +196,252 @@ class SubscriptionsPage {
         this.showLoadingState();
       }
 
-      // Загружаем подписки
       console.log('[Subscriptions] Обновляю список…');
 
-      const fetchPromise = window.electronAPI.getUserSubscriptions(account.accessToken);
+      let timer = null;
       const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('API timeout after 10 seconds')), 10000);
+        timer = setTimeout(() => reject(new Error('Twitch не ответил за 10 секунд')), 10000);
       });
 
-      let fetched = null;
+      let response = null;
       try {
-        fetched = await Promise.race([fetchPromise, timeoutPromise]);
+        response = await Promise.race([
+          window.electronAPI.getUserSubscriptions(account.accessToken),
+          timeoutPromise
+        ]);
       } catch (e) {
         console.warn('[Subscriptions] Запрос не удался:', e?.message);
+      } finally {
+        clearTimeout(timer);
       }
+      if (this.isStale(run)) return false;
+
+      const fetched = this.normalizeFetched(response);
+      const items = (fetched?.items || []).filter(f => f && f.id && f.login);
 
       // Пустой ответ НЕ считаем правдой. Раньше он записывался поверх
       // сохранённого списка, стирая избранное и заданные приоритеты —
       // достаточно было один раз открыть страницу с протухшим токеном.
-      if (!Array.isArray(fetched) || fetched.length === 0) {
+      if (items.length === 0) {
         console.warn('[Subscriptions] Twitch вернул пусто — оставляем сохранённый список');
         this.hideLoadingState();
 
         if (savedSubs.length === 0) {
           this.showEmptyState();
+          // Полный пустой ответ — правда: подписок действительно нет
+          if (fetched?.complete) return true;
+          if (force) window.utils.showToast('Не удалось загрузить подписки с Twitch', 'warning');
         } else {
           window.utils.showToast('Не удалось обновить список, показаны сохранённые подписки', 'warning');
           this.applyFilter();
+          // Сам список не пришёл, но подробности каналов от него не
+          // зависят — обновляем их, иначе статусы остались бы старыми
+          this.loadChannelDetails(run, account, { force });
         }
-        return;
+        return false;
       }
 
-      this.subscriptions = fetched;
-      console.log('[Subscriptions] Loaded:', this.subscriptions.length, 'subscriptions');
+      console.log('[Subscriptions] Loaded:', items.length, 'subscriptions');
 
-      // Мержим данные
-      this.subscriptions = this.subscriptions.map(sub => {
-        const saved = savedSubs?.find(s => s.id === sub.id) || {};
-        return {
-          ...sub,
-          ...saved,
-          lastSeen: saved.lastSeen || new Date().toISOString(),
-          rating: this.calculateRating({ ...sub, ...saved }),
-          recommended: this.shouldRecommendUnsubscribe(sub, saved)
+      // Слияние. Основа — то, что уже есть (метрики, избранное, приоритет),
+      // а из ответа берём только поля самого списка: id, логин, имя.
+      //
+      // Раньше сохранённое целиком накладывалось поверх свежего, и
+      // устаревшие данные перекрывали новые. Обратный порядок тоже не
+      // годится: в ответе лежат заглушки followers: 0 и isLive: false,
+      // и они затёрли бы настоящие значения.
+      const current = new Map(this.subscriptions.map(s => [s.id, s]));
+      const merged = items.map(fresh => {
+        const saved = current.get(fresh.id);
+        const sub = {
+          ...(saved || {}),
+          id: fresh.id,
+          login: fresh.login,
+          displayName: fresh.displayName || fresh.login
         };
+        // Аватарка из подробностей канала крупнее той, что в списке
+        // (300 против 70 точек), поэтому сохранённую не заменяем
+        if (!sub.profileImageUrl) {
+          const avatar = this.safeImageUrl(fresh.profileImageUrl);
+          if (avatar) sub.profileImageUrl = avatar;
+        }
+        sub.lastSeen = saved?.lastSeen || new Date().toISOString();
+        sub.rating = this.calculateRating(sub);
+        sub.recommended = this.shouldRecommendUnsubscribe(sub);
+        return sub;
       });
 
-      // Сохраняем
-      await Storage.saveSubscriptions(this.subscriptions);
-
-      // Загружаем доп данные (картинки, фолловеры, стримы) в фоне для каждого канала
-      console.log('[Subscriptions] Loading channel details in background...');
-      console.log('[Subscriptions] electronAPI available?', !!window.electronAPI);
-      console.log('[Subscriptions] getChannelDetails available?', !!window.electronAPI?.getChannelDetails);
-
-      try {
-        const account = accounts[0];
-        if (!account) {
-          console.error('[Subscriptions] No account found!');
-          return;
+      // Twitch отдал не весь список: одна из страниц не пришла. Каналы,
+      // которых нет в ответе, не выбрасываем — раньше вместе с ними
+      // пропадали избранное и заданные приоритеты
+      if (!fetched.complete) {
+        const got = new Set(merged.map(s => s.id));
+        const fromTwitch = merged.length;
+        for (const sub of this.subscriptions) {
+          if (!got.has(sub.id)) merged.push(sub);
         }
-
-        console.log(`[Subscriptions] Account: ${account.login}, Token: ${account.accessToken?.substring(0, 20)}...`);
-
-        this.subscriptions.forEach((sub, idx) => {
-          console.log(`[Subscriptions] ${idx + 1}/${this.subscriptions.length} Calling getChannelDetails for ${sub.login}`);
-
-          if (!window.electronAPI?.getChannelDetails) {
-            console.error('[Subscriptions] getChannelDetails is not available!');
-            return;
-          }
-
-          window.electronAPI.getChannelDetails(account.accessToken, sub.login)
-            .then(details => {
-              console.log(`[Subscriptions] Received details for ${sub.login}:`, details);
-              if (!details) {
-                console.log(`[Subscriptions] Details is null for ${sub.login}`);
-                return;
-              }
-
-              // Обновляем данные
-              if (details.profileImageUrl) sub.profileImageUrl = details.profileImageUrl;
-              if (details.description) sub.description = details.description;
-              if (details.followers >= 0) sub.followers = details.followers;
-              if (details.lastStreamDate) sub.lastStreamDate = details.lastStreamDate;
-              if (details.isLive !== undefined) sub.isLive = details.isLive;
-
-              // Пересчитываем рейтинг
-              sub.rating = this.calculateRating(sub);
-
-              console.log(`[Subscriptions] Updated ${sub.login}: followers=${details.followers}, date=${details.lastStreamDate}, isLive=${details.isLive}`);
-
-              // Обновляем в DOM
-              this.updateChannelCard(sub);
-            })
-            .catch(e => {
-              console.error(`[Subscriptions] ERROR loading ${sub.login}:`, e);
-              console.error('Stack:', e.stack);
-            });
-        });
-      } catch (e) {
-        console.error('[Subscriptions] Error in background loading:', e);
-        console.error('Stack:', e.stack);
+        // Про сохранённые говорим, только если они действительно добавлены:
+        // при пустом сохранённом списке добавлять нечего
+        window.utils.showToast(
+          merged.length > fromTwitch
+            ? 'Twitch отдал не весь список — остальные каналы показаны из сохранённых'
+            : 'Twitch отдал не весь список подписок',
+          'warning'
+        );
       }
 
-      this.updateStats();
+      this.subscriptions = merged;
+      await Storage.saveSubscriptions(this.subscriptions);
+      if (this.isStale(run)) return false;
+
+      this.hideLoadingState();
       this.applyFilter();
-      this.loadPrioritySetting();
+
+      // Подробности грузятся в фоне: список уже на экране
+      this.loadChannelDetails(run, account, { force });
+      return fetched.complete;
     } catch (error) {
+      if (this.isStale(run)) return false;
       console.error('Error loading subscriptions:', error);
       window.utils.showToast('Ошибка загрузки подписок', 'error');
       this.hideLoadingState();
-      this.showEmptyState();
+      if (this.subscriptions.length > 0) this.applyFilter();
+      else this.showEmptyState();
+      return false;
     }
+  }
+
+  /**
+   * Ответ get-user-subscriptions в одном виде: { items, complete }.
+   *
+   * Прежний main отдавал просто массив и не сообщал, что список урезан.
+   * Пустой массив от него означал и «подписок нет», и «нет токена», поэтому
+   * полным его не считаем.
+   */
+  normalizeFetched(response) {
+    if (Array.isArray(response)) return { items: response, complete: response.length > 0 };
+    if (response && Array.isArray(response.items)) {
+      return { items: response.items, complete: response.complete === true };
+    }
+    return null;
+  }
+
+  /**
+   * Сохранённый канал перед показом.
+   *
+   * «В эфире» — состояние на момент проверки. Раньше сохранённое значение
+   * показывалось как есть, и канал, стримивший вчера, при открытии страницы
+   * висел «в эфире». Держим его, только если проверка была недавно.
+   */
+  prepareSaved(saved) {
+    const sub = { ...saved };
+    if (!this.isDetailsFresh(sub)) delete sub.isLive;
+    sub.rating = this.calculateRating(sub);
+    return sub;
+  }
+
+  // Проверялись ли подробности канала не раньше maxAge назад
+  isDetailsFresh(sub, maxAge = SubscriptionsPage.DETAILS_TTL_MS) {
+    const at = Date.parse(sub?.detailsCheckedAt);
+    if (!Number.isFinite(at)) return false;
+    const age = Date.now() - at;
+    return age >= 0 && age < maxAge;
+  }
+
+  /**
+   * Подробности каналов: аватарка, описание, фолловеры, дата эфира.
+   *
+   * Раньше запрос уходил по каждому каналу сразу — на 62 подписки сотни
+   * обращений к Twitch за секунду, и Twitch начинал ограничивать и сам
+   * фарминг. Теперь одновременно не больше DETAILS_PARALLEL запросов, а
+   * каналы, проверенные за последние полчаса, не запрашиваются вовсе
+   * (кроме ручного «Обновить»).
+   *
+   * Сохранение и сортировка — один раз, когда пришло всё. Раньше список
+   * сортировался по рейтингу до прихода данных, а полученное не
+   * сохранялось, и каждый заход начинался со старого.
+   */
+  async loadChannelDetails(run, account, { force = false } = {}) {
+    if (!window.electronAPI?.getChannelDetails) return;
+
+    const queue = this.subscriptions.filter(s => s?.login && (force || !this.isDetailsFresh(s)));
+    if (queue.length === 0) return;
+
+    // Номер загрузки, чьи подробности сейчас идут. Простой флаг залипал:
+    // прерванная загрузка его не снимала, а новая могла не начать своих
+    this._detailsRun = run;
+    let changed = false;
+
+    const worker = async () => {
+      while (queue.length > 0 && !this.isStale(run)) {
+        const sub = queue.shift();
+        let details = null;
+        try {
+          // Токен main больше не использует, но сигнатура вызова прежняя
+          details = await window.electronAPI.getChannelDetails(account?.accessToken, sub.login);
+        } catch (e) {
+          console.warn(`[Subscriptions] Подробности ${sub.login} не получены:`, e?.message);
+        }
+        if (this.isStale(run)) return;
+        if (this.applyChannelDetails(sub, details)) {
+          changed = true;
+          this.updateChannelCard(sub);
+        }
+      }
+    };
+
+    try {
+      const workers = Math.min(SubscriptionsPage.DETAILS_PARALLEL, queue.length);
+      await Promise.allSettled(Array.from({ length: workers }, () => worker()));
+      if (this.isStale(run) || !changed) return;
+
+      await Storage.saveSubscriptions(this.subscriptions);
+      if (this.isStale(run)) return;
+      this.applyFilter();
+    } catch (e) {
+      console.error('[Subscriptions] Ошибка загрузки подробностей:', e);
+    } finally {
+      if (this._detailsRun === run) this._detailsRun = null;
+    }
+  }
+
+  isDetailsLoading() {
+    return this._detailsRun != null && this._detailsRun === this._loadRun && !this._destroyed;
+  }
+
+  /**
+   * Переносит подробности канала в подписку. Возвращает true, если данные
+   * действительно пришли.
+   *
+   * Поле берём, только если оно получено и похоже на правду. Раньше при
+   * сбое main отдавал заглушку с нулями, а страница принимала её за ответ
+   * (0 >= 0): у всех каналов становилось 0 фолловеров и «не в эфире»,
+   * очистка считала их неактивными, и нули уходили на диск.
+   */
+  applyChannelDetails(sub, details) {
+    if (!details || typeof details !== 'object') return false;
+
+    // Заглушка прежнего обработчика при неудаче: ни аватарки, ни даты,
+    // одни нули. У настоящего канала аватарка есть всегда
+    const isFailureStub = !details.profileImageUrl && !details.description &&
+      !details.lastStreamDate && details.followers === 0 && details.isLive === false;
+    if (isFailureStub) return false;
+
+    const avatar = this.safeImageUrl(details.profileImageUrl);
+    if (avatar) sub.profileImageUrl = avatar;
+    if (typeof details.description === 'string') sub.description = details.description;
+    if (typeof details.followers === 'number' && Number.isFinite(details.followers) && details.followers >= 0) {
+      sub.followers = details.followers;
+    }
+    if (typeof details.isLive === 'boolean') sub.isLive = details.isLive;
+    if (details.lastStreamDate) {
+      const ts = new Date(details.lastStreamDate).getTime();
+      if (Number.isFinite(ts)) sub.lastStreamDate = new Date(ts).toISOString();
+    }
+
+    sub.detailsCheckedAt = new Date().toISOString();
+    sub.rating = this.calculateRating(sub);
+    return true;
   }
 
   /**
@@ -314,7 +520,7 @@ class SubscriptionsPage {
       total: this.subscriptions.length,
       withDrops: this.subscriptions.filter(s => s.hasDrops).length,
       active: this.subscriptions.filter(s => this.isChannelActive(s)).length,
-      inactive: this.subscriptions.filter(s => !this.isChannelActive(s)).length
+      inactive: this.subscriptions.filter(s => this.isChannelInactive(s)).length
     };
 
     // Подпись тоже склоняется: было «62 подписок» вместо «62 подписки»
@@ -323,7 +529,8 @@ class SubscriptionsPage {
       ? this.plural(n, 'подписка', 'подписки', 'подписок')
       : this.i18n.t('subscriptions.subsCount');
 
-    document.getElementById('subs-count').textContent = `${n} ${слово}`;
+    const counter = document.getElementById('subs-count');
+    if (counter) counter.textContent = `${n} ${слово}`;
   }
 
   /**
@@ -341,9 +548,24 @@ class SubscriptionsPage {
     return много;
   }
 
+  // «Активный» для фильтра «В эфире» — идёт эфир прямо сейчас
   isChannelActive(subscription) {
-    if (subscription.isLive !== undefined) return subscription.isLive === true;
-    return false;
+    return subscription?.isLive === true;
+  }
+
+  /**
+   * Неактивный — не в эфире, и последний эфир был больше 30 дней назад.
+   *
+   * Раньше «неактивным» считался любой канал не в эфире прямо сейчас, а
+   * если подробности не загрузились — вообще все. Очистка поэтому
+   * отписывала почти от всех подписок, включая стримивших вчера. Канал с
+   * неизвестной датой эфира неактивным не считается.
+   */
+  isChannelInactive(subscription) {
+    if (subscription?.isLive === true) return false;
+    const ts = Date.parse(subscription?.lastStreamDate);
+    if (!Number.isFinite(ts)) return false;
+    return Date.now() - ts > SubscriptionsPage.INACTIVE_DAYS * 86400000;
   }
 
   applyFilter() {
@@ -363,18 +585,19 @@ class SubscriptionsPage {
         filtered = this.subscriptions.filter(s => s.hasDrops);
         break;
       case 'inactive':
-        filtered = this.subscriptions.filter(s => !this.isChannelActive(s));
+        filtered = this.subscriptions.filter(s => this.isChannelInactive(s));
         break;
       case 'favorites':
         filtered = this.subscriptions.filter(s => s.isFavorite);
         break;
     }
 
-    // Применяем поиск
+    // Применяем поиск. По логину тоже: поля loginName, по которому искали
+    // раньше, не существует, и канал с нелатинским именем было не найти
     if (this.searchQuery) {
       filtered = filtered.filter(s =>
         s.displayName?.toLowerCase().includes(this.searchQuery) ||
-        s.loginName?.toLowerCase().includes(this.searchQuery)
+        s.login?.toLowerCase().includes(this.searchQuery)
       );
     }
 
@@ -415,12 +638,12 @@ class SubscriptionsPage {
 
     if (this.filteredSubscriptions.length === 0) {
       list.style.display = 'none';
-      empty.style.display = 'block';
+      if (empty) empty.style.display = 'block';
       return;
     }
 
     list.style.display = 'grid';
-    empty.style.display = 'none';
+    if (empty) empty.style.display = 'none';
 
     // Разделяем на избранные и обычные
     const favorites = this.filteredSubscriptions.filter(s => s.isFavorite);
@@ -451,15 +674,19 @@ class SubscriptionsPage {
 
     // Добавляем event listeners
     this.filteredSubscriptions.forEach(sub => {
-      const item = list.querySelector(`[data-channel-id="${sub.id}"]`);
+      const item = list.querySelector(this.cardSelector(sub.id));
       if (item) {
-        // Drag and drop
-        item.draggable = true;
-        item.addEventListener('dragstart', (e) => this.handleDragStart(e, sub));
-        item.addEventListener('dragend', (e) => this.handleDragEnd(e));
-        item.addEventListener('dragover', (e) => this.handleDragOver(e));
-        item.addEventListener('drop', (e) => this.handleDrop(e, sub));
-        item.addEventListener('dragleave', (e) => this.handleDragLeave(e));
+        // Перетаскивание задаёт порядок только избранных. Остальные каналы
+        // всегда сортируются по рейтингу: их перестановка откатывалась,
+        // а приложение при этом писало «Порядок обновлен»
+        if (sub.isFavorite) {
+          item.draggable = true;
+          item.addEventListener('dragstart', (e) => this.handleDragStart(e, sub));
+          item.addEventListener('dragend', (e) => this.handleDragEnd(e));
+          item.addEventListener('dragover', (e) => this.handleDragOver(e));
+          item.addEventListener('drop', (e) => this.handleDrop(e, sub));
+          item.addEventListener('dragleave', (e) => this.handleDragLeave(e));
+        }
 
         item.addEventListener('click', (e) => {
           if (!e.target.closest('.subscription-action-btn')) {
@@ -520,16 +747,18 @@ class SubscriptionsPage {
       : sub.rating >= 40 ? this.i18n.t('subscriptions.averageRating')
       : this.i18n.t('subscriptions.lowRating');
     const isFavorite = sub.isFavorite || false;
-    const gameName = sub.gameName || '';
-    const gameImageUrl = sub.gameImageUrl || '';
+    // Всё, что пришло от Twitch, — только экранированным
+    const gameName = this.esc(sub.gameName || '');
+    const displayName = this.esc(sub.displayName || sub.login || '');
+    const avatarUrl = this.esc(this.safeImageUrl(sub.profileImageUrl));
 
     return `
-      <div class="subscription-card ${isFavorite ? 'favorite' : ''}" data-channel-id="${sub.id}">
+      <div class="subscription-card ${isFavorite ? 'favorite' : ''}" data-channel-id="${this.esc(sub.id)}">
         <div class="subscription-card-main">
           <div class="subscription-card-left">
-            <div class="subscription-card-avatar-wrapper" style="background-image: url('${sub.profileImageUrl || ''}');">
-              <img src="${sub.profileImageUrl || 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 48 48%22%3E%3Crect fill=%22%234a3f9f%22 width=%2248%22 height=%2248%22/%3E%3Ctext x=%2224%22 y=%2235%22 font-size=%2230%22 fill=%22white%22 text-anchor=%22middle%22%3E?%3C/text%3E%3C/svg%3E'}" 
-                   alt="${sub.displayName}" 
+            <div class="subscription-card-avatar-wrapper" style="background-image: url('${avatarUrl}');">
+              <img src="${avatarUrl || 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 48 48%22%3E%3Crect fill=%22%234a3f9f%22 width=%2248%22 height=%2248%22/%3E%3Ctext x=%2224%22 y=%2235%22 font-size=%2230%22 fill=%22white%22 text-anchor=%22middle%22%3E?%3C/text%3E%3C/svg%3E'}"
+                   alt="${displayName}"
                    class="subscription-card-avatar">
               ${isLive ? '<div class="subscription-card-live-indicator"></div>' : ''}
               
@@ -555,7 +784,7 @@ class SubscriptionsPage {
                     <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
                     <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
                   </svg>
-                  <span>${this.formatFollowers(sub.followers || 0)}</span>
+                  <span>${this.formatFollowers(sub.followers)}</span>
                 </div>
                 <div class="subscription-stat">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -569,7 +798,7 @@ class SubscriptionsPage {
             
             <div class="subscription-card-info">
               <div class="subscription-card-name-line">
-                <span class="subscription-card-name">${sub.displayName}</span>
+                <span class="subscription-card-name">${displayName}</span>
                 <div class="subscription-card-rating-inline ${ratingColor}" title="${ratingText}${hasRating ? ': ' + ratingValue + '/100' : ''}">
                   <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
                     ${sub.rating >= 70 ? '<path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>' :
@@ -592,7 +821,7 @@ class SubscriptionsPage {
                     <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
                     <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
                   </svg>
-                  <span>${this.formatFollowers(sub.followers || 0)}</span>
+                  <span>${this.formatFollowers(sub.followers)}</span>
                 </div>
                 <span class="mini-stat-separator">•</span>
                 <div class="mini-stat">
@@ -615,7 +844,7 @@ class SubscriptionsPage {
                   <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
                   <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
                 </svg>
-                <span>${this.formatFollowers(sub.followers || 0)}</span>
+                <span>${this.formatFollowers(sub.followers)}</span>
               </div>
               
               <div class="subscription-stat">
@@ -656,19 +885,23 @@ class SubscriptionsPage {
   }
 
   formatFollowers(count) {
+    // Неизвестное число — прочерк, а не ноль: раньше до загрузки
+    // подробностей (и при их сбое) у всех каналов стояло «0»
+    if (typeof count !== 'number' || !Number.isFinite(count)) return '—';
     if (count >= 1000000) return (count / 1000000).toFixed(1) + 'M';
     if (count >= 1000) return (count / 1000).toFixed(1) + 'K';
     return count.toString();
   }
 
   updateChannelCard(sub) {
-    const cardElement = document.querySelector(`[data-channel-id="${sub.id}"]`);
+    const cardElement = document.querySelector(this.cardSelector(sub.id));
     if (!cardElement) return;
 
     // Обновляем аватарку
     const img = cardElement.querySelector('.subscription-card-avatar');
-    if (img && sub.profileImageUrl) {
-      img.src = sub.profileImageUrl;
+    const avatar = this.safeImageUrl(sub.profileImageUrl);
+    if (img && avatar) {
+      img.src = avatar;
     }
 
     // Обновляем статус
@@ -702,7 +935,7 @@ class SubscriptionsPage {
             <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
             <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
           </svg>
-          <span>${this.formatFollowers(sub.followers || 0)}</span>
+          <span>${this.formatFollowers(sub.followers)}</span>
         </div>
         
         <div class="subscription-stat">
@@ -739,14 +972,18 @@ class SubscriptionsPage {
   getLastStreamText(lastStreamDate) {
     if (!lastStreamDate) return this.i18n.t('subscriptions.never');
 
-    const date = new Date(lastStreamDate);
-    const days = Math.floor((Date.now() - date.getTime()) / (1000 * 60 * 60 * 24));
+    const ts = new Date(lastStreamDate).getTime();
+    if (!Number.isFinite(ts)) return this.i18n.t('subscriptions.never');
+    // У идущего эфира дата — его начало. Часы компьютера могут чуть
+    // отставать от Twitch, и только что начатый эфир оказывался «в будущем»:
+    // выходило «-1 день назад»
+    const days = Math.max(0, Math.floor((Date.now() - ts) / (1000 * 60 * 60 * 24)));
 
     if (days === 0) return this.i18n.t('subscriptions.today');
     if (days === 1) return this.i18n.t('subscriptions.yesterday');
-    if (days < 7) return `${days} ${this.i18n.t('subscriptions.daysAgo')}`;
-
-    // Падежи по числу: раньше выходило «1 недель назад» и «1 месяцев назад»
+    // Падежи по числу: раньше выходило «2 дней назад», «1 недель назад»
+    // и «1 месяцев назад»
+    if (days < 7) return `${days} ${this.plural(days, 'день', 'дня', 'дней')} назад`;
     if (days < 30) return `${Math.floor(days / 7)} ${this.plural(Math.floor(days / 7), 'неделю', 'недели', 'недель')} назад`;
     if (days < 365) return `${Math.floor(days / 30)} ${this.plural(Math.floor(days / 30), 'месяц', 'месяца', 'месяцев')} назад`;
     return `${Math.floor(days / 365)} ${this.plural(Math.floor(days / 365), 'год', 'года', 'лет')} назад`;
@@ -755,34 +992,43 @@ class SubscriptionsPage {
   showChannelDetails(sub) {
     const modal = document.getElementById('channel-detail-modal');
     const content = document.getElementById('modal-content');
+    if (!modal || !content) return;
 
-    const lastStreamDate = new Date(sub.lastStreamDate || 0);
-    const daysSinceStream = (Date.now() - lastStreamDate.getTime()) / (1000 * 60 * 60 * 24);
     const isLive = sub.isLive === true;
+    // Дата эфира неизвестна — так и пишем. Раньше она подменялась 1970 годом,
+    // и любой канал без загруженных данных выглядел «неактивным»
+    const lastStreamTs = Date.parse(sub.lastStreamDate);
+    const activityKnown = isLive || Number.isFinite(lastStreamTs);
+    const daysSinceStream = isLive ? 0 : (Date.now() - lastStreamTs) / (1000 * 60 * 60 * 24);
     const ratingColor = sub.rating >= 70 ? '#35d08a' : sub.rating >= 40 ? '#7c5cff' : '#f0555f';
-    const activityStatus = daysSinceStream > 30 ? this.i18n.t('subscriptions.inactive') : daysSinceStream > 7 ? this.i18n.t('subscriptions.rarely') : this.i18n.t('subscriptions.activeStatus');
-    const activityIcon = daysSinceStream > 30 ? '🔴' : daysSinceStream > 7 ? '🟡' : '🟢';
-    const activityColor = daysSinceStream > 30 ? '#f0555f' : daysSinceStream > 7 ? '#ffaa00' : '#35d08a';
+    const activityStatus = !activityKnown ? 'Нет данных' : daysSinceStream > 30 ? this.i18n.t('subscriptions.inactive') : daysSinceStream > 7 ? this.i18n.t('subscriptions.rarely') : this.i18n.t('subscriptions.activeStatus');
+    const activityIcon = !activityKnown ? '⚪' : daysSinceStream > 30 ? '🔴' : daysSinceStream > 7 ? '🟡' : '🟢';
+    const activityColor = !activityKnown ? 'var(--text-secondary)' : daysSinceStream > 30 ? '#f0555f' : daysSinceStream > 7 ? '#ffaa00' : '#35d08a';
+
+    // Всё, что пришло от Twitch, — только экранированным: описание канала
+    // пишет сам стример, и раньше оно вставлялось в окно как разметка
+    const avatarUrl = this.esc(this.safeImageUrl(sub.profileImageUrl));
+    const displayName = this.esc(sub.displayName || sub.login || '');
 
     content.innerHTML = `
       <div style="position: relative; margin-bottom: 20px;">
-        <div style="position: absolute; top: 0; left: 0; right: 0; height: 120px; background-image: url('${sub.profileImageUrl || ''}'); background-size: cover; background-position: center; filter: blur(40px); opacity: 0.3; border-radius: var(--radius-md);"></div>
+        <div style="position: absolute; top: 0; left: 0; right: 0; height: 120px; background-image: url('${avatarUrl}'); background-size: cover; background-position: center; filter: blur(40px); opacity: 0.3; border-radius: var(--radius-md);"></div>
         <div style="position: relative; text-align: center; padding: 20px 0;">
           <div style="position: relative; display: inline-block;">
-            <img src="${sub.profileImageUrl || ''}" alt="${sub.displayName}" style="width: 100px; height: 100px; border-radius: var(--radius-circle); border: 4px solid var(--bg-primary); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);">
+            <img src="${avatarUrl}" alt="${displayName}" style="width: 100px; height: 100px; border-radius: var(--radius-circle); border: 4px solid var(--bg-primary); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);">
             ${isLive ? '<div style="position: absolute; bottom: 5px; right: 5px; width: 20px; height: 20px; background: #ff0000; border: 3px solid var(--bg-primary); border-radius: var(--radius-circle); box-shadow: 0 0 10px rgba(255, 0, 0, 0.8);"></div>' : ''}
           </div>
-          <h2 style="color: var(--text-primary); font-size: 24px; font-weight: 700; margin: 12px 0 4px;">${sub.displayName}</h2>
-          <p style="color: var(--text-secondary); font-size: 14px; margin: 0 0 8px;">@${sub.login}</p>
+          <h2 style="color: var(--text-primary); font-size: 24px; font-weight: 700; margin: 12px 0 4px;">${displayName}</h2>
+          <p style="color: var(--text-secondary); font-size: 14px; margin: 0 0 8px;">@${this.esc(sub.login)}</p>
           ${sub.description ? `
           <div style="max-width: 400px; margin: 0 auto 12px;">
-            <p id="channel-description" style="color: var(--text-secondary); font-size: 13px; line-height: 1.4; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${sub.description}</p>
+            <p id="channel-description" style="color: var(--text-secondary); font-size: 13px; line-height: 1.4; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${this.esc(sub.description)}</p>
             <button id="show-more-desc" style="display: none; background: none; border: none; color: var(--accent-color); font-size: 12px; cursor: pointer; margin: 4px auto 0; padding: 0;"></button>
           </div>` : ''}
           ${isLive ? `<div style="display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; padding: 4px 12px; background: rgba(255, 0, 0, 0.15); border: 1px solid rgba(255, 0, 0, 0.3); border-radius: var(--radius-md); font-size: 12px; font-weight: 600; color: #ff4444;">
             <span style="width: 8px; height: 8px; background: #ff0000; border-radius: var(--radius-circle); animation: pulse-live 2s ease-in-out infinite;"></span>
             <span>В эфире</span>
-            ${sub.gameName ? `<span style="opacity: 0.7;">• ${sub.gameName}</span>` : ''}
+            ${sub.gameName ? `<span style="opacity: 0.7;">• ${this.esc(sub.gameName)}</span>` : ''}
           </div>` : ''}
         </div>
       </div>
@@ -798,8 +1044,8 @@ class SubscriptionsPage {
         
         <div style="padding: 16px; background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: var(--radius-md); text-align: center;">
           <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">${this.i18n.t('subscriptions.followers')}</div>
-          <div style="font-size: 24px; font-weight: 700; color: var(--accent-color);">${this.formatFollowers(sub.followers || 0)}</div>
-          <div style="font-size: 10px; color: var(--text-secondary); margin-top: 4px;">${(sub.followers || 0).toLocaleString()}</div>
+          <div style="font-size: 24px; font-weight: 700; color: var(--accent-color);">${this.formatFollowers(sub.followers)}</div>
+          <div style="font-size: 10px; color: var(--text-secondary); margin-top: 4px;">${Number.isFinite(sub.followers) ? sub.followers.toLocaleString() : ''}</div>
         </div>
         
         <div style="padding: 16px; background: rgba(168, 85, 247, 0.1); border: 1px solid rgba(168, 85, 247, 0.2); border-radius: var(--radius-md); text-align: center;">
@@ -914,17 +1160,25 @@ class SubscriptionsPage {
   }
 
   closeModal() {
-    document.getElementById('channel-detail-modal').style.display = 'none';
+    const modal = document.getElementById('channel-detail-modal');
+    if (modal) modal.style.display = 'none';
+  }
+
+  // Элементы страницы к этому моменту могут быть уже удалены (со страницы
+  // ушли, пока шла загрузка), поэтому стиль ставим только существующим
+  setDisplay(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.style.display = value;
   }
 
   showAuthSection() {
-    document.getElementById('subscriptions-auth-section').style.display = 'block';
-    document.getElementById('subscriptions-content').style.display = 'none';
+    this.setDisplay('subscriptions-auth-section', 'block');
+    this.setDisplay('subscriptions-content', 'none');
   }
 
   showContentSection() {
-    document.getElementById('subscriptions-auth-section').style.display = 'none';
-    document.getElementById('subscriptions-content').style.display = 'block';
+    this.setDisplay('subscriptions-auth-section', 'none');
+    this.setDisplay('subscriptions-content', 'block');
   }
 
   /**
@@ -945,73 +1199,217 @@ class SubscriptionsPage {
   }
 
   showLoadingState() {
-    document.getElementById('subscriptions-loading').style.display = 'block';
-    document.getElementById('subscriptions-list').style.display = 'none';
-    document.getElementById('subscriptions-empty').style.display = 'none';
+    this.setDisplay('subscriptions-loading', 'block');
+    this.setDisplay('subscriptions-list', 'none');
+    this.setDisplay('subscriptions-empty', 'none');
   }
 
   hideLoadingState() {
-    document.getElementById('subscriptions-loading').style.display = 'none';
+    this.setDisplay('subscriptions-loading', 'none');
     this.hideRefreshingHint();
   }
 
   showEmptyState() {
-    document.getElementById('subscriptions-loading').style.display = 'none';
-    document.getElementById('subscriptions-list').style.display = 'none';
-    document.getElementById('subscriptions-empty').style.display = 'block';
+    this.setDisplay('subscriptions-loading', 'none');
+    this.setDisplay('subscriptions-list', 'none');
+    this.setDisplay('subscriptions-empty', 'block');
   }
 
   async refreshSubscriptions() {
+    if (this._refreshing) return;
+    this._refreshing = true;
+
+    // Кнопка — одна иконка без текста. Раньше на время загрузки в неё
+    // ставился текст «Загрузка...», а после — другая разметка с подписью
+    // «Обновить»: панель прыгала, и кнопка навсегда меняла вид. Теперь
+    // исходная разметка запоминается и возвращается, а пока идёт загрузка,
+    // иконка просто крутится.
     const btn = document.getElementById('refresh-subs-btn');
-    btn.disabled = true;
-    btn.textContent = 'Загрузка...';
+    const originalHtml = btn?.innerHTML;
+    if (btn) {
+      btn.disabled = true;
+      btn.querySelector('svg')?.style.setProperty('animation', 'spin 1s linear infinite');
+    }
 
     try {
-      await this.loadSubscriptions();
-      window.utils.showToast('Подписки обновлены', 'success');
+      // Тост успеха — только если Twitch действительно отдал список.
+      // О неудаче loadSubscriptions сообщает сама
+      const ok = await this.loadSubscriptions({ force: true });
+      if (ok && !this._destroyed) window.utils.showToast('Подписки обновлены', 'success');
     } catch (error) {
       window.utils.showToast('Ошибка обновления подписок', 'error');
     } finally {
-      btn.disabled = false;
-      btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36M20.49 15a9 9 0 01-14.85 3.36"/></svg>Обновить';
+      this._refreshing = false;
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+      }
     }
   }
 
+  /**
+   * «Очистить неактивные»: массовая отписка на Twitch.
+   *
+   * Раньше неактивным считался любой канал не в эфире прямо сейчас, а при
+   * несработавших подробностях — вообще все. Одно нажатие отписывало почти
+   * от всех подписок, ошибки отписки не проверялись, а из списка каналы
+   * убирались в любом случае.
+   *
+   * Теперь под очистку попадают только каналы, у которых дата последнего
+   * эфира проверена недавно и старше 30 дней. Избранные и идущие в эфире
+   * не трогаются. Перед отпиской — список с галочками, отписка по одному
+   * с прогрессом на кнопке, из списка убираются только успешно отписанные.
+   */
   async cleanupInactive() {
-    const inactiveCount = this.subscriptions.filter(s => !this.isChannelActive(s)).length;
+    if (this._cleanupRunning) return;
 
-    if (inactiveCount === 0) {
-      window.utils.showToast('Нет неактивных подписок для удаления', 'info');
+    const candidates = this.subscriptions.filter(s =>
+      !s.isFavorite &&
+      this.isChannelInactive(s) &&
+      this.isDetailsFresh(s, SubscriptionsPage.CLEANUP_CHECK_MAX_AGE_MS)
+    );
+
+    if (candidates.length === 0) {
+      // Дата есть только в старых сохранённых данных — по ней не отписываем
+      const unchecked = this.subscriptions.some(s => !s.isFavorite && this.isChannelInactive(s));
+      window.utils.showToast(
+        this.isDetailsLoading()
+          ? 'Данные каналов ещё загружаются — попробуйте чуть позже'
+          : unchecked
+            ? 'Активность каналов давно не проверялась — нажмите «Обновить»'
+            : 'Нет каналов, которые не стримили больше 30 дней',
+        'info'
+      );
       return;
     }
 
-    const confirmed = await window.utils.showConfirmation(
-      `Отписаться от ${inactiveCount} неактивных каналов?`,
-      'Это удалит подписки на каналы, которые не стримили более 30 дней'
-    );
+    const rows = candidates.map(s => `
+      <label style="display: flex; align-items: center; gap: 10px; padding: 6px 4px; cursor: pointer;">
+        <input type="checkbox" data-sub-id="${this.esc(s.id)}" checked>
+        <span style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); font-size: 14px;">${this.esc(s.displayName || s.login)}</span>
+        <span style="color: var(--text-secondary); font-size: 12px; white-space: nowrap;">${this.esc(this.getLastStreamText(s.lastStreamDate))}</span>
+      </label>
+    `).join('');
 
-    if (!confirmed) return;
+    const modalHtml = `
+      <div id="subs-cleanup-confirm">
+        <h3 style="font-size: 20px; font-weight: 600; color: var(--text-primary); margin: 0 0 8px; text-align: center;">Отписаться от неактивных каналов?</h3>
+        <p style="font-size: 14px; color: var(--text-secondary); line-height: 1.5; margin: 0 0 16px; text-align: center;">Эти каналы не стримили больше 30 дней. Снимите галочки с тех, кого хотите оставить. Отписка выполнится на Twitch.</p>
+        <div style="max-height: 260px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 4px 8px;">${rows}</div>
+      </div>
+    `;
+
+    const confirmLabel = (n) => `Отписаться от ${n}`;
+    const selected = new Set(candidates.map(s => String(s.id)));
+
+    const pending = window.utils.showCustomConfirmation(modalHtml, {
+      confirmText: confirmLabel(candidates.length),
+      cancelText: 'Отмена',
+      confirmClass: 'btn-danger'
+    });
+
+    // Окно уже в документе: следим за галочками и держим число на кнопке
+    // в соответствии с выбором
+    const root = document.getElementById('subs-cleanup-confirm');
+    const okBtn = root?.closest('#confirmation-modal')?.querySelector('#confirm-ok');
+    if (okBtn) {
+      // «Отписаться от 12» не помещается в стандартную ширину кнопки
+      okBtn.style.maxWidth = '220px';
+      okBtn.style.whiteSpace = 'nowrap';
+    }
+    root?.addEventListener('change', (e) => {
+      const box = e.target.closest?.('input[data-sub-id]');
+      if (!box) return;
+      if (box.checked) selected.add(box.dataset.subId);
+      else selected.delete(box.dataset.subId);
+      if (okBtn) {
+        okBtn.textContent = confirmLabel(selected.size);
+        okBtn.disabled = selected.size === 0;
+      }
+    });
+
+    if (!(await pending)) return;
+
+    const targets = candidates.filter(s => selected.has(String(s.id)));
+    if (targets.length === 0) return;
+
+    this._cleanupRunning = true;
+    const btn = document.getElementById('cleanup-subs-btn');
+    const originalHtml = btn?.innerHTML;
+    if (btn) btn.disabled = true;
+
+    const done = [];
+    let failed = 0;
+    let crashed = false;
 
     try {
-      const accounts = await Storage.getAccounts();
-      const account = accounts[0];
+      for (let i = 0; i < targets.length; i++) {
+        const sub = targets[i];
+        // Отписка занимает секунды на канал: без прогресса казалось, что
+        // ничего не происходит, и кнопку нажимали ещё раз
+        if (btn) btn.textContent = `Отписываюсь… ${i + 1} из ${targets.length}`;
 
-      for (const sub of this.subscriptions) {
-        if (!this.isChannelActive(sub)) {
-          await window.electronAPI.unsubscribeChannel(null, sub.login);
+        let result = null;
+        try {
+          result = await window.electronAPI.unsubscribeChannel(null, sub.login);
+        } catch (e) {
+          result = { success: false, error: e?.message };
+        }
+
+        if (result?.success) {
+          done.push(sub.id);
+        } else {
+          failed++;
+          console.warn('[Subscriptions] Не удалось отписаться от', sub.login, result?.error);
         }
       }
 
-      this.subscriptions = this.subscriptions.filter(s => this.isChannelActive(s));
-      await Storage.saveSubscriptions(this.subscriptions);
-
-      this.updateStats();
-      this.applyFilter();
-      window.utils.showToast(`Отписались от ${inactiveCount} каналов`, 'success');
+      await this.forgetChannels(done);
     } catch (error) {
+      crashed = true;
       console.error('Error cleaning up subscriptions:', error);
-      window.utils.showToast('Ошибка при удалении подписок', 'error');
+    } finally {
+      this._cleanupRunning = false;
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+      }
     }
+
+    const ok = done.length;
+    const total = targets.length;
+    if (crashed) {
+      window.utils.showToast('Ошибка при удалении подписок', 'error');
+    } else if (failed === 0) {
+      window.utils.showToast(`Отписались от ${ok} ${this.plural(ok, 'канала', 'каналов', 'каналов')}`, 'success');
+    } else if (ok === 0) {
+      window.utils.showToast('Не удалось отписаться ни от одного канала — они остались в списке', 'error');
+    } else {
+      window.utils.showToast(`Отписались от ${ok} из ${total}, не удалось: ${failed} — они остались в списке`, 'warning');
+    }
+  }
+
+  /**
+   * Убирает отписанные каналы из списка и с диска.
+   *
+   * Если со страницы уже ушли, правим то, что лежит на диске: список этого
+   * экземпляра мог устареть, и его запись затёрла бы изменения, сделанные
+   * на заново открытой странице.
+   */
+  async forgetChannels(ids) {
+    const gone = new Set(ids);
+    if (gone.size === 0) return;
+
+    this.subscriptions = this.subscriptions.filter(s => !gone.has(s.id));
+
+    if (this._destroyed) {
+      const stored = (await Storage.getSubscriptions()) || [];
+      await Storage.saveSubscriptions(stored.filter(s => !gone.has(s?.id)));
+      return;
+    }
+
+    await Storage.saveSubscriptions(this.subscriptions);
+    this.applyFilter();
   }
 
   async unsubscribeChannel(sub) {
@@ -1025,13 +1423,13 @@ class SubscriptionsPage {
             <line x1="14" y1="11" x2="14" y2="17"></line>
           </svg>
         </div>
-        <h3 style="font-size: 20px; font-weight: 600; color: var(--text-primary); margin-bottom: 12px;">Удалить ${sub.displayName}?</h3>
+        <h3 style="font-size: 20px; font-weight: 600; color: var(--text-primary); margin-bottom: 12px;">Отписаться от ${this.esc(sub.displayName || sub.login)}?</h3>
         <p style="font-size: 14px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 24px;">Отписка выполнится прямо здесь, переходить на Twitch не нужно.</p>
       </div>
     `;
 
     const confirmed = await window.utils.showCustomConfirmation(modalHtml, {
-      confirmText: 'Удалить',
+      confirmText: 'Отписаться',
       cancelText: 'Отмена',
       confirmClass: 'btn-danger'
     });
@@ -1058,16 +1456,13 @@ class SubscriptionsPage {
 
       // Из списка убираем только после подтверждённой отписки, иначе канал
       // исчезал бы из приложения, оставаясь в подписках на Twitch
-      this.subscriptions = this.subscriptions.filter(s => s.id !== sub.id);
-      await Storage.saveSubscriptions(this.subscriptions);
+      await this.forgetChannels([sub.id]);
 
-      this.updateStats();
-      this.applyFilter();
-
+      const name = sub.displayName || sub.login;
       window.utils.showToast(
         result.already
-          ? `Вы уже не подписаны на ${sub.displayName}`
-          : `Отписка от ${sub.displayName} выполнена`,
+          ? `Вы уже не подписаны на ${name}`
+          : `Отписка от ${name} выполнена`,
         'success'
       );
     } catch (error) {
@@ -1076,17 +1471,66 @@ class SubscriptionsPage {
     }
   }
 
+  /**
+   * «Начать фарминг» с карточки канала.
+   *
+   * Раньше вызывался несуществующий router.switchPage — переход падал с
+   * ошибкой, а тост «Начинаем фарминг» появлялся до того, как стало
+   * известно, получилось ли. Теперь тост — по результату.
+   */
   async startFarmingChannel(sub) {
+    if (this._startingFarm) return;
+    this._startingFarm = true;
+    // После восстановления из копии displayName может быть пустым
+    const name = sub.displayName || sub.login;
+
     try {
-      // Добавляем канал в фарминг или переключаемся на него
-      if (window.farmingPage) {
-        window.farmingPage.addChannelToFarming(sub.login);
-        window.router?.switchPage('farming');
-        window.utils.showToast(`Начинаем фарминг ${sub.displayName}...`, 'success');
+      // Страница фарминга создаётся при запуске приложения и живёт всё
+      // время, но если её почему-то нет — сначала открываем её, иначе
+      // добавлять канал некуда
+      if (!window.farmingPage?.addChannelToFarming) {
+        await window.router?.navigate('farming');
+      }
+
+      const farming = window.farmingPage;
+      if (!farming?.addChannelToFarming) {
+        window.utils.showToast('Страница фарминга ещё не готова — попробуйте ещё раз', 'warning');
+        return;
+      }
+
+      window.utils.showToast(`Запускаю ${name}…`, 'info');
+      // Имя и аватарка нужны фармингу для тостов и карточки стрима: без них
+      // там стоял логин («ow_esports_kr сейчас не в эфире») и пустая аватарка
+      const result = await farming.addChannelToFarming(sub.login, {
+        displayName: name,
+        profileImageUrl: this.safeImageUrl(sub.profileImageUrl) || null
+      });
+
+      // { ok: false, reason } — канал запустить нельзя (офлайн, у игры нет
+      // дропсов). Остаёмся на подписках и объясняем почему
+      if (result?.ok === false) {
+        const reason = typeof result.reason === 'string' && /[а-яё]/i.test(result.reason)
+          ? result.reason
+          : `Не удалось запустить ${name}`;
+        window.utils.showToast(reason, 'warning');
+        return;
+      }
+
+      // Прежняя версия ничего не возвращала и сама сообщала о неудаче,
+      // поэтому без явного отказа просто переходим на фарминг. Запуск
+      // занимает несколько секунд: если за это время пользователь ушёл на
+      // другую страницу, не выдёргиваем его оттуда — хватит тоста
+      if (!this._destroyed && window.router && window.router.currentPage !== 'farming') {
+        await window.router.navigate('farming');
+      }
+      if (result?.ok === true) {
+        window.utils.showToast(`Фарминг ${name} запущен`, 'success');
       }
     } catch (error) {
       console.error('Error starting farming:', error);
       window.utils.showToast('Ошибка при запуске фарминга', 'error');
+    } finally {
+      this._startingFarm = false;
     }
   }
 
@@ -1106,8 +1550,11 @@ class SubscriptionsPage {
       // Перерисовываем
       this.applyFilter();
 
+      // После восстановления из копии displayName бывает пустым — как и в
+      // остальных тостах страницы, тогда показываем логин, а не «null»
+      const name = sub.displayName || sub.login;
       window.utils.showToast(
-        sub.isFavorite ? `${sub.displayName} добавлен в избранное` : `${sub.displayName} убран из избранного`,
+        sub.isFavorite ? `${name} добавлен в избранное` : `${name} убран из избранного`,
         'success'
       );
     } catch (error) {
@@ -1157,6 +1604,7 @@ class SubscriptionsPage {
 
   handleDragEnd(e) {
     e.target.classList.remove('dragging');
+    this.draggedSub = null;
     document.querySelectorAll('.subscription-card').forEach(card => {
       card.classList.remove('drag-over');
     });
@@ -1197,6 +1645,11 @@ class SubscriptionsPage {
       return false;
     }
 
+    // Порядок задаётся только между избранными
+    if (!this.draggedSub.isFavorite || !targetSub.isFavorite) {
+      return false;
+    }
+
     // Получаем индексы
     const draggedIndex = this.filteredSubscriptions.findIndex(s => s.id === this.draggedSub.id);
     const targetIndex = this.filteredSubscriptions.findIndex(s => s.id === targetSub.id);
@@ -1218,11 +1671,20 @@ class SubscriptionsPage {
       }
     });
 
+    let changed = false;
     this.subscriptions.forEach(sub => {
-      if (newPriorities.has(sub.id)) {
+      if (newPriorities.has(sub.id) && sub.priority !== newPriorities.get(sub.id)) {
         sub.priority = newPriorities.get(sub.id);
+        changed = true;
       }
     });
+
+    // «Порядок обновлен» — только если он действительно изменился.
+    // Иначе возвращаем список к сохранённому порядку
+    if (!changed) {
+      this.applyFilter();
+      return false;
+    }
 
     // Сохраняем
     await Storage.saveSubscriptions(this.subscriptions);

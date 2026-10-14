@@ -3,8 +3,17 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Loading...</title>
+  <title>WatchTwitch</title>
   <style>
+    /* Радиусы те же, что в renderer/styles/themes.css. Заставка эту таблицу
+       не подключает, и без своих объявлений var(--radius-*) не значили
+       ничего: логотип, свечение вокруг него и частицы выходили квадратными */
+    :root {
+      --radius-sm: 4px;
+      --radius-md: 8px;
+      --radius-circle: 50%;
+    }
+
     * {
       margin: 0;
       padding: 0;

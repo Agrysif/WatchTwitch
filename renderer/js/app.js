@@ -44,13 +44,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.electronAPI.closeWindow();
   });
 
-  // Обработчик закрытия приложения - останавливаем сессию
-  window.electronAPI.onAppClosing(() => {
-    console.log('[App] Application closing, stopping farming session...');
-    if (window.farmingPage) {
-      window.farmingPage.stopFarming(false, true); // preserve active session for auto-start
-    }
-  });
+  // Закрытие приложения обрабатывает только страница фарминга (её
+  // подписка на app-closing — одна на всё приложение). Здесь раньше был
+  // второй обработчик: он срабатывал первым и останавливал фарминг сам,
+  // поэтому сохранение на странице фарминга и её ответ главному процессу
+  // не выполнялись
 
   // Обработчик навигации из трея
   if (window.electronAPI.onNavigateToPage) {
@@ -79,13 +77,37 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Экран повторного входа: cookie Twitch может пропасть, и без него
   // минуты не идут. Значок в сайдбаре ведёт на вкладку аккаунтов
   window.loginGuard?.start();
-  document.getElementById('login-badge')?.addEventListener('click', () => {
-    window.loginGuard?.openLogin();
+  document.getElementById('login-badge')?.addEventListener('click', async () => {
+    // Окну входа нужен аккаунт, к которому привязать вход. Без него окно
+    // не находило, кого отметить вошедшим, и не закрывалось даже после
+    // успешного входа. Фарминг работает под первым аккаунтом — его и берём
+    let account;
+    try {
+      account = (await Storage.getAccounts())?.[0];
+    } catch (e) {
+      console.warn('[Вход] Не удалось прочитать аккаунты:', e?.message);
+    }
+    window.loginGuard?.openLogin(account);
+  });
+
+  // Необработанная ошибка в главном процессе раньше видна была только в
+  // логе, и фарминг мог тихо встать. Сообщаем коротко и не чаще раза в
+  // минуту, чтобы серия одинаковых сбоев не завалила экран тостами
+  let lastMainErrorToastAt = 0;
+  window.electronAPI?.onMainProcessError?.((message) => {
+    console.warn('[Главный процесс] Ошибка:', message);
+    const now = Date.now();
+    if (now - lastMainErrorToastAt < 60 * 1000) return;
+    lastMainErrorToastAt = now;
+    window.utils?.showToast('Внутренняя ошибка, подробности в логе', 'error');
   });
 
   // Игровой режим: main следит за процессами, здесь — плеер и значок
   const applyGameMode = (state, announce) => {
     if (!state) return;
+    // Стрим проверяем до переключения: плеер на время перезагрузки
+    // канала на миг остаётся без него
+    const streaming = !!window.playerManager?.hasStream?.();
     window.playerManager?.setGameMode?.(state.active);
 
     const badge = document.getElementById('game-mode-badge');
@@ -95,7 +117,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       text.textContent = state.active ? 'Игровой режим: ' + (state.game?.title || 'игра запущена') : '';
     }
 
-    if (announce) {
+    // Тост говорит о качестве стрима, поэтому без стрима он лишний: игру
+    // запускали и закрывали, пока ничего не фармилось, а тост всё равно
+    // всплывал. Значок выше обновляется всегда
+    if (announce && streaming) {
       window.utils?.showToast(state.active
         ? 'Запущена ' + (state.game?.title || 'игра') + ': стрим на минимуме, чтобы не мешать'
         : 'Игра закрыта: качество и скорость стрима возвращены', 'info');
@@ -115,6 +140,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   // здесь, а не на странице: страница фарминга может быть не открыта
   window.electronAPI?.onShortcut?.((action) => {
     console.log('[Клавиши] Действие:', action);
+    // Горячая клавиша — тоже действие пользователя: ответы на неё
+    // показываются и при выключенных всплывающих сообщениях
+    window.utils?.noteUserAction?.();
 
     if (!window.farmingPage && window.FarmingPage) {
       window.farmingPage = new FarmingPage();
@@ -143,18 +171,25 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   // Load saved accounts
-  const savedAccounts = await window.auth.loadSavedAccounts();
-  
-  // Check if user is logged in
-  if (savedAccounts.length === 0) {
-    // Show login prompt after a delay
+  // Сбой чтения аккаунтов не должен оборвать запуск: ниже привязаны
+  // кнопки «Старт/Стоп» в сайдбаре, и других обработчиков у них нет.
+  // Список не прочитан — это не «аккаунтов нет», на вкладку не ведём
+  let savedAccounts = null;
+  try {
+    savedAccounts = await window.auth.loadSavedAccounts();
+  } catch (error) {
+    console.error('[App] Не удалось прочитать аккаунты:', error);
+  }
+
+  // Без аккаунта сразу ведём на вкладку аккаунтов. Тост не нужен: там
+  // написано «Нет добавленных аккаунтов», а фарминг при автозапуске сам
+  // говорит «Добавьте хотя бы один аккаунт». Прежний английский тост
+  // дублировал это. Приветствие при каждом запуске (в том числе при
+  // автозапуске Windows) тоже убрано: оно ничего не сообщало
+  if (Array.isArray(savedAccounts) && savedAccounts.length === 0) {
     setTimeout(() => {
       router.navigate('accounts');
-      window.utils.showToast('Please add an account to start farming', 'info');
     }, 1000);
-  } else {
-    // Show welcome message
-    window.utils.showToast(`Welcome back, ${savedAccounts[0].username}!`, 'success');
   }
 
   // Safety: bind sidebar farming controls even if page init failed
@@ -188,10 +223,21 @@ window.utils = {
     if (days > 0) {
       return `${days}${i18n.t('statistics.days')} ${remainingHours}${i18n.t('statistics.hours')}`;
     }
+    // Единица минут из словаря: раньше тут было английское «min»
     if (hours > 0) {
-      return `${hours}${i18n.t('statistics.hours')} ${mins}min`;
+      return `${hours}${i18n.t('statistics.hours')} ${mins} ${i18n.t('common.min')}`;
     }
-    return `${mins}min`;
+    return `${mins} ${i18n.t('common.min')}`;
+  },
+
+  // Короткие ссылки на общие хелперы из dom-helpers.js, чтобы страницы
+  // могли звать их так же, как остальные утилиты
+  escapeHtml(text) {
+    return window.escapeHtml(text);
+  },
+
+  plural(n, one, few, many) {
+    return window.DOMHelpers.plural(n, one, few, many);
   },
 
   formatDate(timestamp) {
@@ -215,11 +261,39 @@ window.utils = {
     };
   },
 
-  showToast(message, type = 'info') {
-    // Настройка «Toast уведомления» до этого момента ни на что не влияла:
-    // её сохраняли, но никто не читал.
+  // Отметка последнего действия пользователя (клик, клавиша, горячая
+  // клавиша). По ней showToast отличает ответ на действие от фоновой
+  // новости
+  noteUserAction() {
+    window._lastUserActionAt = Date.now();
+  },
+
+  /**
+   * Тост — ответ на действие пользователя? Явный флаг в вызове или клик/
+   * клавиша за последние 5 секунд (столько же Chromium считает жест
+   * пользователя активным; за это время успевают ответить и запросы к
+   * Twitch, которые идут после нажатия «Начать фарминг»).
+   */
+  isUserActionToast(options) {
+    if (options && options.userAction === true) return true;
+    const at = window._lastUserActionAt || 0;
+    return Date.now() - at < 5000;
+  },
+
+  // Сколько держать тост: меньше трёх секунд не читается, а длинный текст
+  // за три секунды не успеть прочесть. 60 мс на символ — обычная скорость
+  // чтения; потолок, чтобы случайная простыня не висела минутами
+  toastDuration(text) {
+    return Math.min(15000, Math.max(3000, 60 * String(text ?? '').length));
+  },
+
+  showToast(message, type = 'info', options = {}) {
+    // Выключенная настройка всплывающих сообщений глушит только фоновые
+    // новости. Ответ на клик гасить нельзя: с выключенной настройкой
+    // «Начать фарминг» без категорий не давал никакой реакции.
     // Ошибки показываем всегда — молча терять их нельзя.
-    if (type !== 'error' && window.settings && window.settings.get('toastNotifications') === false) {
+    if (type !== 'error' && window.settings && window.settings.get('toastNotifications') === false &&
+        !window.utils.isUserActionToast(options)) {
       return;
     }
 
@@ -238,32 +312,74 @@ window.utils = {
     // а не только от тех, что уже найдены и исправлены по месту.
     if (!window._toastRegistry) window._toastRegistry = new Map();
     const registry = window._toastRegistry;
-    const key = type + '|' + message;
+    const text = String(message ?? '');
+    const key = type + '|' + text;
+
+    // Больше трёх тостов разом никто не читает: при переборе категорий их
+    // высыпалось по дюжине за пару секунд, и они закрывали экран
+    const MAX_VISIBLE = 3;
+
+    // Убрать тост с экрана. Вытесненный лимитом сразу выходит из реестра:
+    // то же сообщение позже должно появиться заново, а не оживить
+    // уходящую плашку
+    const dismiss = (entry, evicted = false) => {
+      clearTimeout(entry.hideTimer);
+      clearTimeout(entry.removeTimer);
+      entry.leaving = true;
+      if (evicted && registry.get(entry.key) === entry) registry.delete(entry.key);
+      entry.el.classList.remove('toast-show');
+      entry.el.classList.add('toast-leaving');
+      entry.removeTimer = setTimeout(() => {
+        if (entry.el.parentNode) entry.el.parentNode.removeChild(entry.el);
+        if (registry.get(entry.key) === entry) registry.delete(entry.key);
+        const container = document.getElementById('toast-container');
+        if (container && container.children.length === 0 && container.parentNode) {
+          container.parentNode.removeChild(container);
+        }
+      }, 300);
+    };
 
     const scheduleRemoval = (entry) => {
       clearTimeout(entry.hideTimer);
       clearTimeout(entry.removeTimer);
 
+      // Ошибка висит до клика: за три секунды её не успевали прочесть, а
+      // повторить её нельзя
+      if (entry.sticky) return;
+
       // Перезапуск анимации полосы: иначе продлённое уведомление
-      // исчезло бы при полосе, досчитавшей до конца ещё в прошлый раз
+      // исчезло бы при полосе, досчитавшей до конца ещё в прошлый раз.
+      // Длительность полосы совпадает со временем жизни тоста
       const progress = entry.el.querySelector('.toast-progress');
       if (progress) {
         progress.style.animation = 'none';
         void progress.offsetWidth;
-        progress.style.animation = '';
+        progress.style.animation = `toastProgress ${entry.duration}ms linear forwards`;
       }
 
-      entry.hideTimer = setTimeout(() => {
-        entry.el.classList.remove('toast-show');
-        entry.removeTimer = setTimeout(() => {
-          if (entry.el.parentNode) entry.el.parentNode.removeChild(entry.el);
-          registry.delete(key);
-          const container = document.getElementById('toast-container');
-          if (container && container.children.length === 0 && container.parentNode) {
-            container.parentNode.removeChild(container);
-          }
-        }, 300);
-      }, 3000);
+      entry.hideTimer = setTimeout(() => dismiss(entry), entry.duration);
+    };
+
+    // Лишние сверх лимита уходят, начиная с самых старых. Ошибки держим
+    // дольше остальных: их терять хуже, чем очередное «Переключение…».
+    // Зовётся и для нового тоста, и для ожившего повтора: ожившая плашка
+    // снова занимает место, и без проверки их становилось четыре
+    const enforceLimit = (keep) => {
+      const nodes = [...toastContainer.children];
+      const visible = [...registry.values()]
+        .filter(e => !e.leaving && e.el.parentNode === toastContainer)
+        .sort((a, b) => nodes.indexOf(a.el) - nodes.indexOf(b.el));
+      let extra = visible.length - MAX_VISIBLE;
+      if (extra <= 0) return;
+      const order = [
+        ...visible.filter(e => e !== keep && !e.el.classList.contains('toast-error')),
+        ...visible.filter(e => e !== keep && e.el.classList.contains('toast-error'))
+      ];
+      for (const old of order) {
+        if (extra <= 0) break;
+        dismiss(old, true);
+        extra--;
+      }
     };
 
     const existing = registry.get(key);
@@ -274,7 +390,13 @@ window.utils = {
         counter.textContent = '×' + existing.count;
         counter.style.display = 'inline-block';
       }
+      // Повтор мог прийти, когда плашка уже начала гаснуть, — возвращаем
+      // её, иначе она висела бы невидимой ещё три секунды
+      existing.leaving = false;
+      existing.el.classList.remove('toast-leaving');
+      existing.el.classList.add('toast-show');
       scheduleRemoval(existing);
+      enforceLimit(existing);
       return;
     }
 
@@ -286,24 +408,43 @@ window.utils = {
       warning: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>'
     };
 
+    const sticky = type === 'error';
     const toast = document.createElement('div');
     toast.className = `toast toast-${type}`;
+    toast.title = 'Нажмите, чтобы закрыть';
     toast.innerHTML = `
       <div class="toast-icon">${icons[type] || icons.info}</div>
-      <div class="toast-message">${message}</div>
+      <div class="toast-message"></div>
       <span class="toast-count" style="display: none;"></span>
-      <div class="toast-progress"></div>
+      ${sticky
+        ? `<button type="button" class="toast-close" aria-label="Закрыть"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button>`
+        : '<div class="toast-progress"></div>'}
     `;
+    // Текст — только как текст. В сообщения попадают названия категорий,
+    // имена каналов и ответы Twitch; через innerHTML строка вида
+    // <img onerror=…> исполнилась бы в окне с доступом к electronAPI
+    toast.querySelector('.toast-message').textContent = text;
 
     toastContainer.appendChild(toast);
 
+    const entry = {
+      el: toast, key, count: 1, hideTimer: null, removeTimer: null, leaving: false,
+      sticky, duration: window.utils.toastDuration(text)
+    };
+
+    // Любой тост закрывается щелчком; для ошибки это единственный способ
+    toast.addEventListener('click', () => {
+      if (!entry.leaving) dismiss(entry, true);
+    });
+
     setTimeout(() => {
-      toast.classList.add('toast-show');
+      // Тост мог быть вытеснен раньше, чем успел появиться
+      if (!entry.leaving) toast.classList.add('toast-show');
     }, 10);
 
-    const entry = { el: toast, count: 1, hideTimer: null, removeTimer: null };
     registry.set(key, entry);
     scheduleRemoval(entry);
+    enforceLimit(entry);
   },
 
   showConfirmation(title, message = '') {
@@ -323,10 +464,12 @@ window.utils = {
         z-index: 10001;
       `;
 
+      // Заголовок и текст — обычные строки, не разметка: экранируем, чтобы
+      // имя канала в вопросе не могло стать HTML
       modal.innerHTML = `
         <div style="background: var(--bg-primary); border-radius: var(--radius-md); padding: 24px; max-width: 400px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5); border: 1px solid var(--border-color);">
-          <h2 style="color: var(--text-primary); margin: 0 0 8px 0; font-size: 18px; font-weight: 600;">${title}</h2>
-          ${message ? `<p style="color: var(--text-secondary); margin: 0 0 20px 0; font-size: 14px;">${message}</p>` : ''}
+          <h2 style="color: var(--text-primary); margin: 0 0 8px 0; font-size: 18px; font-weight: 600;">${window.escapeHtml(title)}</h2>
+          ${message ? `<p style="color: var(--text-secondary); margin: 0 0 20px 0; font-size: 14px;">${window.escapeHtml(message)}</p>` : ''}
           <div style="display: flex; gap: 12px; justify-content: flex-end;">
             <button class="btn btn-secondary" id="confirm-cancel" style="min-width: 100px;">Отмена</button>
             <button class="btn btn-primary" id="confirm-ok" style="min-width: 100px;">Подтвердить</button>
@@ -411,6 +554,12 @@ window.utils = {
   }
 };
 
+// Клики и клавиши в окне отмечаются заранее, в фазе перехвата: так
+// отметка стоит раньше, чем обработчик кнопки успеет показать тост.
+// Программный element.click() сюда не попадает — он не шлёт pointerdown
+window.addEventListener('pointerdown', () => window.utils.noteUserAction(), true);
+window.addEventListener('keydown', () => window.utils.noteUserAction(), true);
+
 // Add toast styles
 const style = document.createElement('style');
 style.textContent = `
@@ -445,6 +594,7 @@ style.textContent = `
     transform: translateX(400px) scale(0.95);
     transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
     pointer-events: auto;
+    cursor: pointer;
     max-width: 380px;
     min-width: 280px;
     word-wrap: break-word;
@@ -515,7 +665,29 @@ style.textContent = `
     border-radius: var(--radius-sm);
     background: rgba(255, 255, 255, 0.22);
   }
-  
+
+  /* Крестик у ошибки: она не гаснет сама и ждёт щелчка */
+  .toast-close {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: inherit;
+    opacity: 0.8;
+    cursor: pointer;
+  }
+
+  .toast-close:hover {
+    opacity: 1;
+    background: rgba(255, 255, 255, 0.18);
+  }
+
   .toast-info {
     background: rgba(124, 92, 255, 0.95);
     border-color: rgba(124, 92, 255, 0.4);
@@ -525,13 +697,16 @@ style.textContent = `
     background: rgba(255, 255, 255, 0.2);
   }
   
+  /* На светлом зелёном и оранжевом белый текст давал контраст около
+     2,2:1 и плохо читался. Тёмный текст на тех же цветах — около 9:1 */
   .toast-success {
     background: rgba(53, 208, 138, 0.95);
     border-color: rgba(53, 208, 138, 0.4);
+    color: #0a0b0d;
   }
 
   .toast-success .toast-icon {
-    background: rgba(255, 255, 255, 0.2);
+    background: rgba(10, 11, 13, 0.12);
   }
   
   .toast-error {
@@ -546,10 +721,22 @@ style.textContent = `
   .toast-warning {
     background: rgba(240, 168, 60, 0.95);
     border-color: rgba(240, 168, 60, 0.4);
+    color: #0a0b0d;
   }
 
   .toast-warning .toast-icon {
-    background: rgba(255, 255, 255, 0.2);
+    background: rgba(10, 11, 13, 0.12);
+  }
+
+  /* Полоса и счётчик на светлом фоне — тёмные, белые там не видны */
+  .toast-success .toast-progress,
+  .toast-warning .toast-progress {
+    background: rgba(10, 11, 13, 0.25);
+  }
+
+  .toast-success .toast-count,
+  .toast-warning .toast-count {
+    background: rgba(10, 11, 13, 0.14);
   }
 
   .auth-modal {

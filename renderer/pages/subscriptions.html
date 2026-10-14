@@ -87,7 +87,7 @@
             <circle cx="12" cy="12" r="10" />
             <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
           </svg>
-          <span data-i18n="subscriptions.inactive">Неактивные</span>
+          <span data-i18n="subscriptions.filterInactive">Неактивные</span>
         </button>
         <button class="filter-btn" data-filter="favorites">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
@@ -106,7 +106,7 @@
             <circle cx="11" cy="11" r="8" />
             <path d="m21 21-4.35-4.35" />
           </svg>
-          <input type="text" id="search-input" class="search-input" data-i18n-placeholder="subscriptions.searchPlaceholder" placeholder="Поиск по каналам...">
+          <input type="text" id="search-input" class="search-input" data-i18n-placeholder="subscriptions.searchPlaceholder" placeholder="Поиск по каналам…">
         </div>
         <div class="view-toggle">
           <button class="view-toggle-btn active" data-view="list" data-i18n-title="subscriptions.list" title="Список">
@@ -152,7 +152,7 @@
         <div
           style="display: inline-block; width: 40px; height: 40px; border: 3px solid rgba(124, 92, 255, 0.2); border-top-color: #7c5cff; border-radius: var(--radius-circle); animation: spin 0.8s linear infinite;">
         </div>
-        <p style="color: var(--text-secondary); margin-top: 16px;" data-i18n="subscriptions.loadingSubscriptions">Загрузка подписок...</p>
+        <p style="color: var(--text-secondary); margin-top: 16px;" data-i18n="subscriptions.loadingSubscriptions">Загрузка подписок…</p>
       </div>
     </div>
   </div>
@@ -1009,10 +1009,14 @@
       }
     }
 
-    /* Drag and Drop */
+    /* Drag and Drop. Перетаскивать можно только избранные: им страница
+       ставит draggable. «Рука» на остальных обещала бы то, чего нет */
     .subscription-card {
-      cursor: grab;
       transition: all 0.2s ease;
+    }
+
+    .subscription-card[draggable="true"] {
+      cursor: grab;
     }
 
     .subscription-card.dragging {

@@ -285,6 +285,20 @@ class CampaignValue {
     return CampaignValue.dropsBefore(campaigns, Infinity, now);
   }
 
+  /**
+   * Длительность с единицами: «40 мин», «24 ч», «1 ч 30 мин».
+   *
+   * Голое «осталось 31» читалось как угодно, а сутки в минутах («нужно
+   * 1440 мин») в полосе фарминга не прикинешь на глаз.
+   */
+  static formatMinutes(minutes) {
+    const total = Math.max(0, Math.round(Number(minutes) || 0));
+    if (total < 60) return `${total} мин`;
+    const hours = Math.floor(total / 60);
+    const rest = total % 60;
+    return rest ? `${hours} ч ${rest} мин` : `${hours} ч`;
+  }
+
   /** Короткое пояснение для интерфейса. */
   static describe(evaluation) {
     switch (evaluation.reason) {
@@ -295,7 +309,7 @@ class CampaignValue {
       case 'tooLate': {
         const need = Math.ceil(evaluation.minNeeded);
         const left = Math.max(0, Math.floor(evaluation.minutesLeft));
-        return `Не успеть: нужно ${need} мин, осталось ${left}`;
+        return `Не успеть: нужно ${CampaignValue.formatMinutes(need)}, осталось ${CampaignValue.formatMinutes(left)}`;
       }
       default:
         return evaluation.perHour > 0

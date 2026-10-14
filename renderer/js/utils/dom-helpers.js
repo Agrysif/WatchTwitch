@@ -134,7 +134,7 @@ const DOMHelpers = {
       },
       innerHTML: `
         <div style="font-size: 32px; margin-bottom: 10px;">⚠️</div>
-        <div style="font-size: 14px; font-weight: 600;">${message}</div>
+        <div style="font-size: 14px; font-weight: 600;">${window.escapeHtml(message)}</div>
       `
     });
     
@@ -157,7 +157,7 @@ const DOMHelpers = {
       },
       innerHTML: `
         <div style="font-size: 48px; margin-bottom: 15px;">${icon}</div>
-        <div style="font-size: 16px;">${message}</div>
+        <div style="font-size: 16px;">${window.escapeHtml(message)}</div>
       `
     });
     
@@ -197,9 +197,27 @@ const DOMHelpers = {
    * Escape HTML для безопасного вывода
    */
   escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+    return window.escapeHtml(text);
+  },
+
+  /**
+   * Форма слова по числу: plural(21, 'категория', 'категории', 'категорий')
+   * → 'категория'. Возвращает только слово, число подставляет вызывающий.
+   *
+   * Раньше по коду стояли самодельные варианты вроде «n < 5 ? … : …»,
+   * и выходило «21 категорий» и «Упущено 21 наград». Русскому нужны три
+   * формы, и решают последние две цифры: 11–14 всегда «много».
+   */
+  plural(n, one, few, many) {
+    const число = Number(n) || 0;
+    // Дробное число всегда во второй форме: «1,5 часа», «2,5 категории»
+    if (!Number.isInteger(число)) return few;
+    const десятки = Math.abs(число) % 100;
+    const единицы = десятки % 10;
+    if (десятки > 10 && десятки < 20) return many;
+    if (единицы === 1) return one;
+    if (единицы >= 2 && единицы <= 4) return few;
+    return many;
   },
 
   /**
@@ -254,3 +272,21 @@ const DOMHelpers = {
 };
 
 window.DOMHelpers = DOMHelpers;
+
+/**
+ * Экранирование для вставки в HTML — и в текст, и в значения атрибутов.
+ *
+ * Прежний вариант через textContent/innerHTML не трогал кавычки, поэтому
+ * в атрибутах (title="…", alt="…") строка от Twitch могла закрыть
+ * кавычку и дописать свой атрибут. Одна функция на всё приложение.
+ *
+ * Объявлена через присваивание, а не «function escapeHtml»: объявление
+ * функции в общем пространстве скриптов запретило бы любому другому
+ * файлу написать у себя «const escapeHtml = …» — браузер счёл бы это
+ * повторным объявлением, и весь тот файл не загрузился бы.
+ */
+window.escapeHtml = function escapeHtml(text) {
+  return String(text ?? '').replace(/[&<>"']/g, ch => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[ch]));
+};

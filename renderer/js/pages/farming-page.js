@@ -1,5 +1,20 @@
 // Farming page logic
 class FarmingPage {
+  /** Срок защёлки запуска и блокировки кнопки «Начать фарминг» — один на обоих. */
+  static get START_LATCH_MS() {
+    return 90000;
+  }
+
+  /**
+   * Как часто записывать живую сессию в статистику. Каждая запись
+   * переписывает файл настроек целиком; раз в полминуты — лишнее:
+   * длительность считается в минутах, а признака жизни lastSeenAt хватает
+   * с запасом (сессия считается брошенной через 10 минут тишины).
+   */
+  static get LIVE_STATS_MS() {
+    return 60000;
+  }
+
   constructor() {
     this.i18n = window.i18n;
     this.categories = [];
@@ -29,14 +44,24 @@ class FarmingPage {
     this.manualCategoryId = null;
     this.lastAutoDropsSyncAt = 0;
     this.autoDropsModeEnabled = false;
+    // id категорий, которые страница уже видела. Нужны при сохранении:
+    // категорию, добавленную в хранилище в обход страницы (календарь,
+    // копия), надо подхватить, а удалённую здесь — не воскрешать.
+    this._knownCategoryIds = new Set();
+    // Категории, где только что никто не стримил: id → до какого времени
+    // их пропускать. Выключать такие категории насовсем нельзя — ночью
+    // стримы кончаются, а утром появляются снова.
+    this._noStreamsUntil = new Map();
 
+    // Те же цвета, что на странице «Дропсы»: окно награды одно на обе
+    // страницы, и со старой кислотной палитрой отсюда оно выглядело иначе
     this.rarityTiers = [
-      { name: 'common', label: 'Обычный', minMinutes: 0, maxMinutes: 60, minViewers: 50000, color: '#888888', glow: 'rgba(136, 136, 136, 0.4)' },
-      { name: 'uncommon', label: 'Необычный', minMinutes: 61, maxMinutes: 120, minViewers: 30000, color: '#00ff00', glow: 'rgba(0, 255, 0, 0.4)' },
-      { name: 'rare', label: 'Редкий', minMinutes: 121, maxMinutes: 240, minViewers: 15000, color: '#0099ff', glow: 'rgba(0, 153, 255, 0.4)' },
-      { name: 'epic', label: 'Эпический', minMinutes: 241, maxMinutes: 480, minViewers: 8000, color: '#9d00ff', glow: 'rgba(157, 0, 255, 0.4)' },
-      { name: 'legendary', label: 'Легендарный', minMinutes: 481, maxMinutes: 720, minViewers: 3000, color: '#ff8800', glow: 'rgba(255, 136, 0, 0.4)' },
-      { name: 'mythic', label: 'Мифический', minMinutes: 721, maxMinutes: 99999, minViewers: 0, color: '#ff0088', glow: 'rgba(255, 0, 136, 0.4)' }
+      { name: 'common', label: 'Обычный', minMinutes: 0, maxMinutes: 60, minViewers: 50000, color: '#8a93a3', glow: 'rgba(138, 147, 163, 0.4)' },
+      { name: 'uncommon', label: 'Необычный', minMinutes: 61, maxMinutes: 120, minViewers: 30000, color: '#35d08a', glow: 'rgba(53, 208, 138, 0.4)' },
+      { name: 'rare', label: 'Редкий', minMinutes: 121, maxMinutes: 240, minViewers: 15000, color: '#4aa3ff', glow: 'rgba(74, 163, 255, 0.4)' },
+      { name: 'epic', label: 'Эпический', minMinutes: 241, maxMinutes: 480, minViewers: 8000, color: '#7c5cff', glow: 'rgba(124, 92, 255, 0.4)' },
+      { name: 'legendary', label: 'Легендарный', minMinutes: 481, maxMinutes: 720, minViewers: 3000, color: '#f0a83c', glow: 'rgba(240, 168, 60, 0.4)' },
+      { name: 'mythic', label: 'Мифический', minMinutes: 721, maxMinutes: 99999, minViewers: 0, color: '#f0555f', glow: 'rgba(240, 85, 95, 0.4)' }
     ];
     
     // Учёт баллов канала.
@@ -53,6 +78,8 @@ class FarmingPage {
 
   async init() {
     this.categories = await Storage.getCategories();
+    this.stripServiceFields(this.categories);
+    this.rememberCategoryIds(this.categories);
     this.autoDropsModeEnabled = await Storage.get('autoDropsModeEnabled', this.categories.some(cat => cat.autoDrops === true));
     this.renderCategories();
     this.setupEventListeners();
@@ -61,16 +88,32 @@ class FarmingPage {
     // Подписка одна на всё приложение: страница пересоздаётся при каждой
     // навигации, а ipcRenderer.on не имеет автоснятия — иначе обработчики
     // копились бы бесконечно.
+    //
+    // Main ждёт ответа farming-saved не дольше 3 секунд, а потом закрывает
+    // окно. Раньше здесь сначала шёл запрос трафика (updateSessionInfo), а
+    // записи stopFarming никто не ждал: окно закрывалось раньше, время по
+    // играм терялось, а сессия в статистике оставалась «активной». Теперь
+    // останавливаемся сразу, дожидаемся всех записей и только тогда
+    // отвечаем. Без сессии отвечаем сразу, чтобы выход не ждал впустую.
     if (!window._appClosingHooked &&
         window.electronAPI && typeof window.electronAPI.onAppClosing === 'function') {
       window._appClosingHooked = true;
       window.electronAPI.onAppClosing(() => {
+        const reply = () => {
+          try { window.electronAPI?.notifyFarmingSaved?.(); } catch (e) { /* main сам закроет по сроку */ }
+        };
         const page = window.farmingPage;
-        if (page && page.sessionStartTime) {
-          page.updateSessionInfo()
-            .catch(() => {})
-            .finally(() => page.stopFarming(false, true));
+        if (!page || !page.sessionStartTime) {
+          reply();
+          return;
         }
+        let saving = null;
+        try {
+          saving = page.stopFarming(false, true);
+        } catch (error) {
+          console.error('[Выход] Не удалось сохранить сессию:', error);
+        }
+        Promise.resolve(saving).catch(() => {}).finally(reply);
       });
     }
 
@@ -88,10 +131,11 @@ class FarmingPage {
     // восстановленная категория
     this.startAutoUpdate();
 
-    // Подписанные каналы подгружаются в фоне: это десятки запросов, и
-    // ждать их, блокируя остальное, незачем
-    this.loadAndAddSubscribedChannels()
-      .catch(e => console.warn('[Фарминг] Подписанные каналы не загрузились:', e?.message));
+    // Подписки в категории больше не превращаются. При каждом запуске по
+    // каждой подписке уходил запрос в Twitch (десятки на старте, ближе к
+    // 429), а канал с именем игры («warframe») добавлялся как категория и
+    // возвращался после удаления. Подписки и так учитывает выбор стрима
+    // (pickPreferredStream) при включённом приоритете подписок.
 
     // Если есть авто-категории, автоматически запускаем фарминг (если не восстановили активную)
     if (!this.activeSessionResumed && this.categories.some(cat => cat.enabled) && (!window.streamingManager || !window.streamingManager.isFarmingActive || !window.streamingManager.isFarmingActive())) {
@@ -105,54 +149,177 @@ class FarmingPage {
     }
   }
 
-  async loadAndAddSubscribedChannels() {
+  /**
+   * Экранирует строку перед вставкой в разметку.
+   *
+   * Названия стримов, описания каналов и имена категорий приходят от
+   * Twitch и из файлов копий. Вставленные как есть, они давали любому
+   * стримеру выполнить код внутри приложения: заголовок вида
+   * <img onerror=…> срабатывал при открытии окна стрима. Общая функция
+   * живёт в dom-helpers.js; запасной вариант — на случай, если файл
+   * подключили без неё.
+   */
+  esc(text) {
+    if (typeof window.escapeHtml === 'function') return window.escapeHtml(text);
+    return String(text ?? '').replace(/[&<>"']/g, ch => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[ch]));
+  }
+
+  /**
+   * Адрес картинки, который безопасно подставить в src и в CSS url().
+   * Экранирование здесь не спасает: в атрибуте style &#39; снова
+   * превращается в кавычку и закрывает url('…').
+   */
+  safeImageUrl(url, fallback = '') {
+    const value = String(url || '').trim();
+    return /^https:\/\/[^\s'"()<>\\]+$/i.test(value) ? value : fallback;
+  }
+
+  /**
+   * Убирает из категорий служебные поля с «_» в начале.
+   *
+   * Старые версии сохраняли в категорию отметку _switchScheduled, и она
+   * переживала перезапуск. Код её больше не читает, а из хранилища она
+   * уйдёт при ближайшей записи списка.
+   */
+  stripServiceFields(list) {
+    (Array.isArray(list) ? list : []).forEach(cat => {
+      if (!cat || typeof cat !== 'object') return;
+      Object.keys(cat).forEach(key => {
+        if (key.startsWith('_')) delete cat[key];
+      });
+    });
+  }
+
+  rememberCategoryIds(list) {
+    if (!this._knownCategoryIds) this._knownCategoryIds = new Set();
+    (list || []).forEach(cat => {
+      if (cat && cat.id != null) this._knownCategoryIds.add(cat.id);
+    });
+  }
+
+  /**
+   * Сохраняет список категорий, не теряя добавленные в обход страницы.
+   *
+   * Страница держит список в памяти и пишет его целиком. Календарь и
+   * восстановление копии пишут в хранилище сами, и первое же сохранение
+   * здесь молча затирало их категорию. Поэтому перед записью подхватываем
+   * из хранилища то, чего страница ещё не видела. То, что она видела и
+   * убрала сама, обратно не возвращаем.
+   */
+  async saveCategories() {
     try {
-      const subscriptions = await Storage.getSubscriptions();
-      if (!subscriptions || subscriptions.length === 0) {
-        console.log('No subscriptions found');
-        return;
-      }
-
-      let addedCount = 0;
-      for (const sub of subscriptions) {
-        // Проверяем есть ли уже эта категория (по login)
-        const existingCategory = this.categories.find(
-          c => c.name.toLowerCase() === sub.login.toLowerCase()
-        );
-
-        if (!existingCategory) {
-          // Проверяем если у этого канала есть дропсы
-          const hasDrops = await window.electronAPI.checkCategoryDrops(sub.login);
-          
-          // Добавляем категорию только если есть дропсы
-          if (hasDrops) {
-            const newCategory = {
-              id: Date.now().toString() + Math.random(),
-              name: sub.login,
-              enabled: true,
-              autoDrops: false,
-              hasDrops: true,
-              priority: 0,
-              tags: [],
-              viewersCount: 0,
-              dropsCompleted: false
-            };
-
-            this.categories.push(newCategory);
-            addedCount++;
-            console.log('Added subscription channel to farming:', sub.login);
-          }
+      const stored = await Storage.getCategories();
+      if (Array.isArray(stored)) {
+        const known = this._knownCategoryIds || new Set();
+        for (const cat of stored) {
+          if (!cat || cat.id == null || known.has(cat.id)) continue;
+          if (this.categories.some(c => c.id === cat.id ||
+              this.normalizeGameKey(c.name) === this.normalizeGameKey(cat.name))) continue;
+          this.categories.push(cat);
+          console.log('[Категории] Подхватил добавленную вне фарминга:', cat.name);
         }
       }
-
-      if (addedCount > 0) {
-        await Storage.saveCategories(this.categories);
-        this.renderCategories();
-        console.log('Added', addedCount, 'subscription channels to farming');
-      }
     } catch (error) {
-      console.error('Error loading subscriptions:', error);
+      // Без чтения хранилища сохраняем как есть — как и раньше
     }
+    this.rememberCategoryIds(this.categories);
+    await Storage.saveCategories(this.categories);
+  }
+
+  /**
+   * Перечитывает категории из хранилища.
+   *
+   * Вызывается по событию wt:categories-changed: его шлют календарь
+   * и восстановление копии, записав список напрямую.
+   */
+  async reloadCategoriesFromStorage() {
+    try {
+      const fresh = await Storage.getCategories();
+      if (this._destroyed || !Array.isArray(fresh)) return;
+
+      const currentId = this.currentCategory?.id;
+      this.stripServiceFields(fresh);
+      this.categories = fresh;
+      this.rememberCategoryIds(fresh);
+
+      // Текущая категория должна остаться тем же объектом, что в списке,
+      // иначе её отметки (прогресс, «отработана») не попадут в сохранение
+      if (currentId) {
+        const same = fresh.find(cat => cat.id === currentId);
+        if (same) this.currentCategory = same;
+      }
+
+      this.renderCategories();
+      this.updateAutoDropsButtonState();
+      console.log('[Категории] Список перечитан из хранилища:', fresh.length);
+    } catch (error) {
+      console.warn('[Категории] Не удалось перечитать список:', error?.message);
+    }
+  }
+
+  /** Тост, который по одному поводу не повторяется чаще раза в 10 минут. */
+  toastOnce(key, text, type = 'info', intervalMs = 10 * 60 * 1000) {
+    if (!this._toastShownAt) this._toastShownAt = new Map();
+    const now = Date.now();
+    if (now - (this._toastShownAt.get(key) || 0) < intervalMs) return;
+    this._toastShownAt.set(key, now);
+    window.utils?.showToast(text, type);
+  }
+
+  /**
+   * Категории, удалённые пользователем крестиком (нормализованные названия).
+   *
+   * Синхронизация автокатегорий и подписки возвращали их через пару
+   * минут, и пользователь удалял одно и то же по кругу. Теперь удалённое
+   * запоминается и пропускается. Добавление той же игры вручную или
+   * «Вернуть» сразу после удаления снимают запрет.
+   */
+  async getDeletedCategoryKeys() {
+    if (!this._deletedCategoryKeys) {
+      let list = [];
+      try {
+        list = await Storage.get('deletedCategories', []);
+      } catch (error) {
+        // без списка просто ничего не пропускаем
+      }
+      // Пока шло чтение, набор мог завести параллельный вызов
+      if (!this._deletedCategoryKeys) {
+        this._deletedCategoryKeys = new Set(
+          (Array.isArray(list) ? list : []).filter(key => typeof key === 'string' && key)
+        );
+      }
+    }
+    return this._deletedCategoryKeys;
+  }
+
+  async setCategoryDeleted(name, deleted) {
+    const key = this.normalizeGameKey(name);
+    if (!key) return;
+
+    const keys = await this.getDeletedCategoryKeys();
+    if (keys.has(key) === !!deleted) return;
+    if (deleted) keys.add(key);
+    else keys.delete(key);
+
+    try {
+      await Storage.set('deletedCategories', [...keys]);
+    } catch (error) {
+      console.warn('[Категории] Не удалось запомнить удалённые:', error?.message);
+    }
+  }
+
+  /**
+   * Можно ли приложению самому включить категорию.
+   *
+   * Выключенную пользователем — нельзя: синхронизация автокатегорий раньше
+   * включала всё подряд, и выключенная игра через пару минут снова была в
+   * ротации. Включаем только то, что выключило само приложение.
+   */
+  mayEnableCategory(category) {
+    if (!category || category.userDisabled) return false;
+    return category.enabled !== false || !!category.disabledByCompletion || !!category.disabledByApp;
   }
 
   isSingleManualPlayLocked(category = this.currentCategory) {
@@ -290,8 +457,14 @@ class FarmingPage {
       .trim();
   }
 
+  /**
+   * Приводит адрес обложки Twitch к нужному размеру. Нет адреса или он не
+   * с CDN обложек — пустая строка. Раньше вместо неё возвращалась обложка
+   * Just Chatting: она сохранялась в категорию, и игра в списке, календаре
+   * и статистике выглядела чужой. Для показа — boxArtSrc с заглушкой.
+   */
   normalizeBoxArtURL(url, size = '52x72') {
-    const fallback = `https://static-cdn.jtvnw.net/ttv-boxart/509658-${size}.jpg`;
+    const fallback = '';
     if (!url || typeof url !== 'string') return fallback;
 
     let normalized = url.trim();
@@ -311,6 +484,18 @@ class FarmingPage {
     }
 
     return normalized;
+  }
+
+  /**
+   * Адрес обложки для <img>. Нет обложки — нейтральная заглушка вместо
+   * чужой картинки. categoryId нужен для старых записей: в них обложка
+   * Just Chatting (игра 509658) лежит как запасная у любой игры.
+   */
+  boxArtSrc(url, size = '52x72', categoryId = null) {
+    const normalized = this.normalizeBoxArtURL(url, size);
+    const legacyFallback = categoryId != null && String(categoryId) !== '509658' &&
+      normalized.includes('/ttv-boxart/509658-');
+    return (normalized && !legacyFallback) ? normalized : (window.DROP_PLACEHOLDER || '');
   }
 
   async syncAutoDropsCategoriesFromInventory(allCategories, activeCampaignsMap = null) {
@@ -334,6 +519,7 @@ class FarmingPage {
     const categoriesByName = new Map(
       (allCategories || []).map(cat => [this.normalizeGameKey(cat.name), cat])
     );
+    const deleted = await this.getDeletedCategoryKeys();
 
     let addedCount = 0;
     let changedExisting = false;
@@ -345,8 +531,19 @@ class FarmingPage {
       if (existing) {
         if (existing.autoDrops) {
           existing.hasDrops = true;
-          existing.dropsCompleted = false;
-          existing.enabled = true;
+          // Кампания, признанная безнадёжной, остаётся отработанной, пока
+          // у игры не начнётся другая: иначе синхронизация через пару
+          // минут возвращала приложение туда, откуда оно только что ушло
+          const campaignId = campaignInfo.campaign?.id || '';
+          const skipped = !!campaignId && !!existing.skipCampaignIds &&
+            existing.skipCampaignIds.split(',').includes(campaignId);
+          if (!skipped) existing.dropsCompleted = false;
+          // Выключенную пользователем не включаем — только то, что
+          // выключило само приложение
+          if (this.mayEnableCategory(existing)) {
+            existing.enabled = true;
+            existing.disabledByApp = false;
+          }
           existing.dropsProgressPercent = campaignInfo.progress;
           existing.dropsEndsAt = campaignInfo.campaign?.endAt || campaignInfo.campaign?.endsAt;
           if (freshCategory?.viewersCount !== undefined) {
@@ -359,6 +556,9 @@ class FarmingPage {
         }
         continue;
       }
+
+      // Удалённую пользователем игру обратно не добавляем
+      if (deleted.has(gameNameKey)) continue;
 
       const newCategory = {
         id: freshCategory?.id || `${Date.now()}-${Math.random()}`,
@@ -380,7 +580,7 @@ class FarmingPage {
     }
 
     if (addedCount > 0 || changedExisting) {
-      await Storage.saveCategories(this.categories);
+      await this.saveCategories();
       this.renderCategories();
       this.updateAutoDropsButtonState();
     }
@@ -411,18 +611,41 @@ class FarmingPage {
 
   async updateCategoriesData() {
     if (this.categories.length === 0 && !this.autoDropsModeEnabled) return;
-    
+
+    // Прогон при медленном Twitch идёт дольше 30 секунд. Раньше следующий
+    // начинался поверх: два прохода одновременно слали запросы и
+    // наперегонки сохраняли список категорий
+    if (this._updatingCategories) {
+      console.log('[Категории] Прошлое обновление ещё идёт — пропускаю');
+      return;
+    }
+    this._updatingCategories = true;
+    try {
+      await this._updateCategoriesData();
+    } finally {
+      this._updatingCategories = false;
+    }
+  }
+
+  async _updateCategoriesData() {
     try {
       console.log('Updating categories data...');
-      
-      // Получаем свежие данные о категориях
-      const allCategories = await window.electronAPI.fetchTwitchCategories();
+
+      // Получаем свежие данные о категориях. Не ответил — зрителей не
+      // обновляем, а дропсы проверяем как обычно
+      const fetched = await window.electronAPI.fetchTwitchCategories();
+      const allCategories = Array.isArray(fetched) ? fetched : [];
       const { map: activeCampaignsMap, complete: campaignsComplete } = await this.loadActiveCampaigns();
       const hasInventoryCampaigns = activeCampaignsMap.size > 0;
       
+      // updated — изменилось то, что надо сохранить (дропсы, прогресс,
+      // кампания, включение). Зрители и теги — только для показа: число
+      // зрителей меняется при каждом опросе, и раньше из-за него файл
+      // настроек (сотни КБ) переписывался целиком дважды в минуту
       let updated = false;
+      let displayChanged = false;
       let manualGainedDrops = false;
-      
+
       // Обновляем данные наших сохраненных категорий
       for (let category of this.categories) {
         const freshData = allCategories.find(cat => cat.id === category.id);
@@ -430,9 +653,9 @@ class FarmingPage {
           const oldViewers = category.viewersCount;
           category.viewersCount = freshData.viewersCount;
           category.tags = freshData.tags || [];
-          
+
           if (oldViewers !== freshData.viewersCount) {
-            updated = true;
+            displayChanged = true;
           }
         }
         
@@ -461,9 +684,18 @@ class FarmingPage {
             && !!category.dropsCampaignIds
             && !category.dropsCampaignIds.split(',').includes(campaignId);
 
+          // Кампания, признанная безнадёжной («не успеть»), остаётся
+          // отработанной, пока у игры не начнётся другая. Раньше отметка
+          // снималась через полминуты: незавершённая кампания всё ещё в
+          // списке, и приложение возвращалось туда, откуда только что ушло.
+          const skippedCampaign = !!campaignId && !!category.skipCampaignIds
+            && category.skipCampaignIds.split(',').includes(campaignId);
+
           if (isNewCampaign) {
             category.dropsCompleted = false;
             category.dropsCampaignIds = campaignId;
+            delete category.skipCampaignIds;
+            delete category.skipReason;
             updated = true;
 
             // Возвращаем в работу только то, что выключило само приложение
@@ -473,15 +705,33 @@ class FarmingPage {
               console.log('[Дропсы] Новая кампания, категория снова в работе:', category.name);
               window.utils?.showToast(`${category.name}: новая кампания дропсов`, 'success');
             }
-          } else {
+          } else if (!skippedCampaign) {
             category.dropsCompleted = false;
+            if (category.skipCampaignIds) {
+              delete category.skipCampaignIds;
+              delete category.skipReason;
+              updated = true;
+            }
           }
 
           if (prevProgress !== category.dropsProgressPercent || prevEndsAt !== category.dropsEndsAt) {
             updated = true;
           }
         } else if (!hasInventoryCampaigns) {
-          hasDrops = await window.electronAPI.checkCategoryDrops(category.name);
+          // Пустой список кампаний — это незнание (нет входа в Twitch,
+          // dashboard ещё не получен), а не «дропсов нет». Раньше здесь по
+          // каждой категории уходил отдельный запрос в Twitch: под сотню
+          // раз в полминуты, с риском 429, который тормозит и сам фарминг.
+          // Прежнее значение оставляем и ждём полного списка; удалять по
+          // неполному списку и так запрещено ниже.
+          hasDrops = prevHasDrops;
+        }
+
+        // Неполный список кампаний (инвентарь без dashboard) знает только
+        // начатые кампании. Отсутствие игры в нём ничего не доказывает,
+        // поэтому по такому списку дропсы можно найти, но не потерять.
+        if (!campaignsComplete && !hasDrops && prevHasDrops) {
+          hasDrops = true;
         }
 
         if (category.hasDrops !== hasDrops) {
@@ -544,7 +794,7 @@ class FarmingPage {
         const kept = this.categories.filter(cat => !isRemovable(cat));
         toRemoveIds.forEach(id => this._noDropsStreak.delete(id));
         this.categories = kept;
-        await Storage.saveCategories(this.categories);
+        await this.saveCategories();
         this.renderCategories();
         window.utils?.showToast(`Удалено авто‑категорий без дропсов: ${beforeCount - kept.length}`, 'info');
       }
@@ -552,19 +802,27 @@ class FarmingPage {
       // Автоскан: добавляем новые категории с дропсами, пока включён автофарм
       await this.syncAutoDropsCategoriesFromInventory(allCategories, activeCampaignsMap);
 
+      if (!updated && displayChanged) {
+        // Сменились только зрители — перерисовываем без записи на диск.
+        // В файл они попадут со следующим настоящим сохранением
+        this.renderCategories();
+      }
+
       if (updated) {
         // Сохраняем обновленные данные
-        await Storage.saveCategories(this.categories);
-        
+        await this.saveCategories();
+
         // Перерисовываем список
         this.renderCategories();
-        
+
         console.log('Categories data updated:', this.categories.map(c => `${c.name}: ${(c.viewersCount/1000).toFixed(1)}K`));
 
         // Приоритет пользователю: если сейчас активна авто‑категория, а у ручной появились дропсы — переключаемся
         if (this.currentCategory && this.currentCategory.autoDrops && manualGainedDrops) {
           console.log('Manual category gained drops; prioritizing manual category');
-          await this.switchToNextEnabledCategory();
+          // Текущая авто-категория рабочая: если у ручной сейчас никто не
+          // стримит, остаёмся где были, а не останавливаем фарминг
+          await this.switchToNextEnabledCategory({ keepCurrent: true });
         }
       }
     } catch (error) {
@@ -613,13 +871,15 @@ class FarmingPage {
     // «канал не оживить» — и страница решает, куда переключиться
     on(window, 'wt:player-dead', (event) => this.onPlayerDead(event.detail || {}));
 
+    // Календарь и восстановление копии пишут категории в хранилище сами.
+    // Без перечитывания первое же сохранение здесь затирало их запись.
+    on(window, 'wt:categories-changed', () => this.reloadCategoriesFromStorage());
+
     // Используем setTimeout для гарантии, что DOM загружен
     setTimeout(() => {
       const addBtn = document.getElementById('add-category-btn');
       const addAllDropsBtn = document.getElementById('add-all-drops-btn');
       const dropsFilterBtn = document.getElementById('drops-filter-btn');
-      const startBtn = document.getElementById('sidebar-start-farming-btn');
-      const stopBtn = document.getElementById('sidebar-stop-farming-btn');
       const nextStreamBtn = document.getElementById('next-stream-btn');
       const prevCategoryBtn = document.getElementById('prev-category-btn');
       const nextCategoryBtn = document.getElementById('next-category-btn');
@@ -662,22 +922,23 @@ class FarmingPage {
         console.warn('add-category-btn not found');
       }
 
-      if (startBtn) {
-        on(startBtn, 'click', () => {
-          this.startFarming();
-        });
-      }
-
-      if (stopBtn) {
-        on(stopBtn, 'click', () => {
-          this.stopFarming();
-        });
-      }
+      // «Начать/Остановить» в сайдбаре здесь не привязываем: их держит
+      // app.js и всегда зовёт актуальный window.farmingPage. Вторая
+      // привязка здесь выполняла остановку дважды и давала тост «×2»
 
       // Навигация: следующий стрим
       if (nextStreamBtn) {
-        on(nextStreamBtn, 'click', () => {
-          this.switchToNextStream();
+        on(nextStreamBtn, 'click', async () => {
+          // Пока идёт поиск, повторные нажатия пропускаем: каждое заново
+          // спрашивало Twitch и повторяло тост «Ищем следующий стрим...».
+          // Срок у флага — на случай зависшего запроса
+          if (Date.now() - (this._nextStreamClickAt || 0) < 30000) return;
+          this._nextStreamClickAt = Date.now();
+          try {
+            await this.switchToNextStream();
+          } finally {
+            this._nextStreamClickAt = 0;
+          }
         });
       }
 
@@ -703,14 +964,23 @@ class FarmingPage {
         });
       }
 
-      // Подписаться на канал
-      const followBtn = document.getElementById('follow-channel-btn');
-      if (followBtn) {
-        on(followBtn, 'click', () => {
-          this.followCurrentChannel();
-        });
-      }
-      
+      // Заглушка «Фарминг не запущен» запускает фарминг. Слушаем
+      // контейнер: сама заглушка пересоздаётся при каждой остановке.
+      // Кнопки «Подписаться на канал» здесь больше нет — её не было и в
+      // разметке, а проверка подписки слала заведомо неудачные запросы
+      const streamInfoBox = document.getElementById('current-stream-info');
+      const startFromPlaceholder = (e) => {
+        if (!e.target.closest || !e.target.closest('.waiting-state')) return;
+        if (e.type === 'keydown') {
+          if (e.key !== 'Enter' && e.key !== ' ') return;
+          e.preventDefault();
+        }
+        if (this.sessionStartTime) return;
+        this.startFarming();
+      };
+      on(streamInfoBox, 'click', startFromPlaceholder);
+      on(streamInfoBox, 'keydown', startFromPlaceholder);
+
       // Уведомления
       const notificationsBtn = document.getElementById('notifications-btn');
       if (notificationsBtn) {
@@ -721,6 +991,10 @@ class FarmingPage {
 
       // Обработчик кликов по карточкам дропов
       on(document, 'click', (e) => {
+        // Страница фарминга живёт и на других вкладках, а карточки с этим
+        // классом есть только в её разметке. Раньше обработчик ловил клики
+        // по наградам на любой странице, и окно награды строилось дважды
+        if (window.router?.currentPage && window.router.currentPage !== 'farming') return;
         const dropCard = e.target.closest('.drop-card-clickable');
         if (dropCard) {
           const dropData = dropCard.getAttribute('data-drop');
@@ -768,17 +1042,14 @@ class FarmingPage {
       }
     }
 
-    const baseOwners = Math.max(viewersCount * 0.3, 10000);
-    const rarityMultiplier = Math.pow(this.rarityTiers.indexOf(rarity) + 1, 2);
-    const estimatedOwners = Math.floor(baseOwners / rarityMultiplier);
-
+    // Выдуманное число «владельцев» убрано, как и на странице «Дропсы»:
+    // окно награды его больше не показывает, а настоящих данных нет
     const difficulty = Math.min(10, Math.max(1, Math.ceil(requiredMinutes / 90)));
 
     return {
       ...rarity,
       requiredMinutes,
       viewersCount,
-      estimatedOwners: estimatedOwners > 1000 ? `${Math.floor(estimatedOwners / 1000)}K+` : `${estimatedOwners}+`,
       difficulty
     };
   }
@@ -800,41 +1071,95 @@ class FarmingPage {
    *
    * Один неудачный ответ ничего не решает — Twitch отвечает неровно, а
    * бросать рабочую сессию из-за сетевой заминки хуже, чем подождать.
+   *
+   * «Не в эфире» и «не ответил» — разные ответы. null от getStreamStats
+   * означает подтверждённый офлайн, а сбой сети отклоняет вызов. Раньше
+   * оба читались как офлайн: после автозапуска Windows, пока сеть ещё не
+   * поднялась, ночная сессия сбрасывалась через десяток секунд. Теперь
+   * при сбое ждём сеть до десяти минут и сессию не трогаем.
+   *
+   * Проверка идёт фоном, и пользователь за это время может сам выбрать
+   * другой стрим. Поздний ответ про старый канал не должен отменять его
+   * выбор — поэтому после каждого ожидания сверяемся со снимком.
    */
   async verifyResumedStream(stream) {
     if (!stream?.login || !window.electronAPI?.getStreamStats) return;
 
-    let stats = null;
-    for (let попытка = 1; попытка <= 2; попытка++) {
+    const snapshot = this.streamSnapshot();
+    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+    const NETWORK_RETRY_MS = 45 * 1000;
+    const NETWORK_WAIT_LIMIT_MS = 10 * 60 * 1000;
+    const startedAt = Date.now();
+    let offlineAnswers = 0;
+
+    for (;;) {
+      let stats;
+      let failed = false;
       try {
         stats = await window.electronAPI.getStreamStats(stream.login);
       } catch (e) {
-        stats = null;
+        failed = true;
       }
-      if (stats) break;
-      if (попытка === 1) await new Promise(r => setTimeout(r, 4000));
-    }
+      if (!this.isCurrentStream(snapshot)) return;
 
-    if (stats) {
-      if (stats.title) this.currentStream = { ...this.currentStream, title: stats.title };
-      return;
+      if (failed) {
+        if (Date.now() - startedAt > NETWORK_WAIT_LIMIT_MS) {
+          console.warn('[Сессия] Twitch так и не ответил про канал — оставляю сессию как есть:', stream.login);
+          return;
+        }
+        console.log('[Сессия] Twitch не ответил про восстановленный канал, повторю позже:', stream.login);
+        await sleep(NETWORK_RETRY_MS);
+        if (!this.isCurrentStream(snapshot)) return;
+        continue;
+      }
+
+      if (stats) {
+        if (stats.title) this.currentStream = { ...this.currentStream, title: stats.title };
+        return;
+      }
+
+      // Офлайн подтверждаем вторым ответом: канал мог моргнуть
+      offlineAnswers += 1;
+      if (offlineAnswers >= 2) break;
+      await sleep(4000);
+      if (!this.isCurrentStream(snapshot)) return;
     }
 
     console.log('[Сессия] Восстановленный канал не в эфире:', stream.login);
-    await Storage.delete('activeSession').catch(() => {});
+
+    // Сохранённую сессию удаляем, только если в ней всё ещё этот канал:
+    // за время проверки там могла появиться уже новая
+    const saved = await Storage.get('activeSession', null).catch(() => null);
+    if (!this.isCurrentStream(snapshot)) return;
+    if (saved && saved.streamLogin === stream.login) {
+      await Storage.delete('activeSession').catch(() => {});
+      if (!this.isCurrentStream(snapshot)) return;
+    }
 
     // Категорию менять только если пользователь не запускал её сам
     if (this.isManualCategoryActive()) {
-      this.showSwitchOffer();
+      this.showSwitchOffer('offline');
       return;
     }
-    await this.switchToNextEnabledCategory();
+    await this.switchToNextEnabledCategory({ reason: 'offline' });
   }
 
   async resumeActiveSession() {
     try {
       const sessionState = await Storage.get('activeSession', null);
       if (!sessionState) return;
+
+      // Без аккаунта сессию не продолжаем: стрим играл и тратил трафик,
+      // а дропсы не копились. Сохранённую сессию не стираем — её можно
+      // продолжить, когда аккаунт добавят. Сбой чтения (null) — незнание,
+      // тогда восстанавливаем как раньше
+      const accounts = await Promise.resolve()
+        .then(() => Storage.getAccounts())
+        .catch(() => null);
+      if (Array.isArray(accounts) && accounts.length === 0) {
+        console.log('[Сессия] Аккаунтов нет — сохранённую сессию не продолжаю');
+        return;
+      }
 
       // Подтягиваем категорию
       const category = this.categories.find(c => c.id === sessionState.categoryId) ||
@@ -871,15 +1196,18 @@ class FarmingPage {
       this.categoryStartTime = stale ? now : (sessionState.categoryStartTime || this.sessionStartTime);
       this.currentCategory = category;
       this.currentStream = stream;
-      if (stale) await this.saveActiveSession(stream, category);
 
-      // Ручной запуск переживает переход между вкладками
+      // Ручной запуск переживает переход между вкладками. Отметки
+      // восстанавливаем до записи сессии: saveActiveSession берёт их со
+      // страницы, и устаревшая сессия раньше перезаписывалась с пустыми —
+      // после второго перезапуска ручной режим терялся
       this.manualCategoryId = sessionState.manualCategoryId || null;
       this.manualPlayLockCategoryId = sessionState.manualPlayLockCategoryId || null;
       if (this.manualCategoryId) {
         console.log('[Сессия] Категория запущена вручную — переключать её не будем:', category.name);
       }
-      this.dropsMissingChecks = 0;
+      if (stale) await this.saveActiveSession(stream, category);
+      this.resetCategoryCounters(category);
       this.activeSessionResumed = true;
 
       // Обновляем UI и перезапускаем интервалы
@@ -912,13 +1240,13 @@ class FarmingPage {
         this.updateSessionInfo();
       }, 1000);
 
-      // Запускаем периодическое обновление статистики (каждые 30 секунд)
+      // Запускаем периодическое обновление статистики (раз в минуту, см. LIVE_STATS_MS)
       if (this.statsUpdateInterval) {
         clearInterval(this.statsUpdateInterval);
       }
       this.statsUpdateInterval = setInterval(() => {
         this.updateLiveStatistics();
-      }, 30000); // 30 секунд
+      }, FarmingPage.LIVE_STATS_MS);
 
       // Запускаем сборщик бонусов и проверку здоровья стрима
       this.resetChannelPointsTracking();
@@ -950,7 +1278,31 @@ class FarmingPage {
     this.categoryStartTime = Date.now();
   }
 
-  async saveActiveSession(stream, category) {
+  /**
+   * Обнуляет счётчики, которые копятся по текущей категории.
+   *
+   * Их сбрасывал только запуск через Play, а «Пред./След. категория» и
+   * автопереключение уносили промахи прошлой категории в новую: после
+   * двух пустых проверок в A выбранная кнопкой B выключалась на первой
+   * же своей. Вызывать при каждой смене категории.
+   */
+  resetCategoryCounters(nextCategory) {
+    this.dropsMissingChecks = 0;
+    this._emptyDropsChecks = 0;
+    this._leaveVotes = 0;
+    this._gameMismatchCount = 0;
+    // Отметка «эту категорию уже бросили» нужна, только пока идёт она же
+    if (this._exhaustedCategoryId && this._exhaustedCategoryId !== nextCategory?.id) {
+      this._exhaustedCategoryId = null;
+    }
+    // «Остаться» относилось к прежней категории
+    if (this._offerDismissed && this._offerDismissed.categoryId !== (nextCategory?.id || null)) {
+      this._offerDismissed = null;
+    }
+  }
+
+  /** overrides — поля поверх собранных (stopFarming передаёт отметки ручного запуска). */
+  async saveActiveSession(stream, category, overrides = {}) {
     if (!stream || !category) return;
     await Storage.set('activeSession', {
       startTime: this.sessionStartTime || Date.now(),
@@ -965,13 +1317,33 @@ class FarmingPage {
       manualPlayLockCategoryId: this.manualPlayLockCategoryId || null,
       streamLogin: stream.login,
       streamDisplayName: stream.displayName,
-      streamTitle: stream.title || ''
+      streamTitle: stream.title || '',
+      ...overrides
     });
   }
 
   async showCategorySelector() {
+    // Окно уже открыто — второе поверх не нужно
+    const opened = this._categorySelectorModal;
+    if (opened && opened.isConnected) {
+      opened.querySelector('#category-search')?.focus();
+      return;
+    }
+    // Повторный клик, пока список грузится, открывал второе окно поверх
+    // первого и повторял тост «Загрузка категорий...». Срок у флага — на
+    // случай зависшего запроса, чтобы кнопка не умерла навсегда
+    if (Date.now() - (this._categorySelectorLoadingAt || 0) < 30000) return;
+    this._categorySelectorLoadingAt = Date.now();
+    try {
+      await this._showCategorySelector();
+    } finally {
+      this._categorySelectorLoadingAt = 0;
+    }
+  }
+
+  async _showCategorySelector() {
     console.log('Opening category selector...');
-    
+
     try {
       // Загружаем все категории Twitch
       window.utils.showToast('Загрузка категорий...', 'info');
@@ -1028,21 +1400,33 @@ class FarmingPage {
       `;
       
       document.body.appendChild(modal);
-      
+      this._categorySelectorModal = modal;
+
+      // Закрытие одно на все пути и повторно безопасно: removeChild на уже
+      // снятом окне бросал ошибку. Esc закрывает, как и остальные окна
+      const keyAbort = new AbortController();
+      const closeSelector = () => {
+        keyAbort.abort();
+        if (modal.isConnected) modal.remove();
+      };
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') closeSelector();
+      }, { signal: keyAbort.signal });
+
       // Focus на поиск
       const searchInput = modal.querySelector('#category-search');
       setTimeout(() => searchInput.focus(), 100);
-      
+
       // Обработчик поиска
       searchInput.addEventListener('input', (e) => {
         const query = e.target.value.toLowerCase().trim();
-        const filtered = categories.filter(cat => 
+        const filtered = categories.filter(cat =>
           cat.name.toLowerCase().includes(query)
         );
-        
+
         const list = modal.querySelector('#category-list');
         list.innerHTML = this.renderCategoryItems(filtered, categories);
-        
+
         // Re-attach click handlers
         list.querySelectorAll('.game-item-selector').forEach(item => {
           item.addEventListener('click', () => {
@@ -1050,24 +1434,20 @@ class FarmingPage {
             const category = categories.find(c => c.id === categoryId);
             if (category) {
               this.addCategory(category);
-              document.body.removeChild(modal);
+              closeSelector();
             }
           });
         });
       });
-      
+
       // Обработчик закрытия
       const closeBtn = modal.querySelector('.close-modal');
       const overlay = modal.querySelector('.auth-modal-overlay');
-      
-      closeBtn.addEventListener('click', () => {
-        document.body.removeChild(modal);
-      });
-      
-      overlay.addEventListener('click', () => {
-        document.body.removeChild(modal);
-      });
-      
+
+      closeBtn.addEventListener('click', closeSelector);
+
+      overlay.addEventListener('click', closeSelector);
+
       // Обработчик клика на игру
       modal.querySelectorAll('.game-item-selector').forEach(item => {
         item.addEventListener('click', () => {
@@ -1075,7 +1455,7 @@ class FarmingPage {
           const category = categories.find(c => c.id === categoryId);
           if (category) {
             this.addCategory(category);
-            document.body.removeChild(modal);
+            closeSelector();
           }
         });
       });
@@ -1104,18 +1484,18 @@ class FarmingPage {
              <svg width="10" height="10" viewBox="0 0 12 12" fill="currentColor" style="margin-right: 3px;">
                <circle cx="6" cy="6" r="6"/>
              </svg>
-             Drops
+             Дропсы
            </span>`
         : '';
       
       return `
-        <div class="game-item-selector ${isAdded ? 'added' : ''}" data-category-id="${cat.id}" style="cursor: pointer;">
-          <img src="${this.normalizeBoxArtURL(cat.boxArtURL, '52x72')}" alt="${cat.name}" onerror="this.onerror=null;this.src='https://static-cdn.jtvnw.net/ttv-boxart/509658-52x72.jpg';">
+        <div class="game-item-selector ${isAdded ? 'added' : ''}" data-category-id="${this.esc(cat.id)}" style="cursor: pointer;">
+          <img src="${this.esc(this.boxArtSrc(cat.boxArtURL, '52x72', cat.id))}" alt="${this.esc(cat.name)}" onerror="this.onerror=null;this.src=window.DROP_PLACEHOLDER||'';">
           <div class="game-item-info">
-            <div class="game-item-name">${cat.name}</div>
+            <div class="game-item-name">${this.esc(cat.name)}</div>
             <div class="game-item-viewers" style="display: flex; align-items: center;">
               <span style="color: var(--text-secondary); font-size: 13px;">
-                ${cat.viewersCount ? `${this.formatViewersCount(cat.viewersCount)} зрителей` : ''}
+                ${this.viewersLabel(cat.viewersCount)}
               </span>
               ${dropsIndicator}
             </div>
@@ -1126,33 +1506,59 @@ class FarmingPage {
     }).join('');
   }
 
+  /**
+   * Добавляет категорию в список. Единая точка входа: ею пользуются
+   * выбор категории здесь и календарь, пока страница фарминга жива.
+   * Раньше календарь писал в хранилище в обход страницы, и следующее
+   * сохранение здесь молча затирало добавленную игру.
+   *
+   * Возвращает true, если категория добавлена.
+   */
   async addCategory(category) {
-    console.log('Adding category:', category);
-    
-    // Check if already added
-    if (this.categories.some(cat => cat.id === category.id)) {
+    if (!category || !category.name) return false;
+    console.log('Adding category:', category.name);
+
+    // Дубль ищем и по id, и по названию: календарь подставляет свой id,
+    // когда Twitch не отдал настоящий
+    const isDuplicate = () => this.categories.some(cat =>
+      (category.id != null && cat.id === category.id) ||
+      this.normalizeGameKey(cat.name) === this.normalizeGameKey(category.name));
+
+    if (isDuplicate()) {
       window.utils.showToast(`${category.name} уже добавлена`, 'warning');
-      return;
+      return false;
     }
 
-    // Проверяем наличие дропсов перед добавлением
-    const hasDrops = await window.electronAPI.checkCategoryDrops(category.name);
+    // Если вызывающий уже знает, что дропсы есть (календарь, подсказка),
+    // второй раз не спрашиваем. null от проверки — Twitch не ответил.
+    let hasDrops = category.hasDrops === true;
+    if (!hasDrops) {
+      const checked = await window.electronAPI.checkCategoryDrops(category.name);
+      hasDrops = checked === true;
+    }
+
+    // Пока шла проверка, ту же игру могли добавить вторым нажатием
+    if (isDuplicate()) return false;
 
     const newCategory = {
-      id: category.id,
+      id: category.id != null ? category.id : `${Date.now()}-${Math.random()}`,
       name: category.name,
       boxArtURL: this.normalizeBoxArtURL(category.boxArtURL, '52x72'),
       viewersCount: category.viewersCount || 0,
       tags: category.tags || [],
       hasDrops: hasDrops,
       enabled: true, // По умолчанию включена
-      priority: this.categories.length + 1
+      priority: this.categories.length + 1,
+      dropsCompleted: false
     };
 
     this.categories.push(newCategory);
-    await Storage.saveCategories(this.categories);
+    // Игру добавили руками — запрет на автодобавление больше не нужен
+    await this.setCategoryDeleted(category.name, false);
+    await this.saveCategories();
     this.renderCategories();
     window.utils.showToast(`${category.name} добавлена`, 'success');
+    return true;
   }
 
   updateAutoDropsButtonState() {
@@ -1160,31 +1566,75 @@ class FarmingPage {
     if (!btn) return;
     const isAutoMode = this.autoDropsModeEnabled === true;
     const btnText = btn.querySelector('span');
+    // Подпись берётся из ключа data-i18n: роутер при каждом возврате на
+    // вкладку зовёт i18n.updatePage(), и с неизменным ключом farmAllDrops
+    // включённый автофарм после перехода по вкладкам подписывался
+    // «Фарм всех дропсов», хотя кнопка оставалась фиолетовой
+    const labelKey = isAutoMode ? 'farming.disableAutofarming' : 'farming.farmAllDrops';
+    if (btnText) {
+      btnText.setAttribute('data-i18n', labelKey);
+      btnText.textContent = this.i18n.t(labelKey);
+    }
 
     if (isAutoMode) {
       btn.style.background = '#7c5cff';
       btn.style.color = '#fff';
       btn.style.border = 'none';
       btn.style.opacity = '1';
-      if (btnText) btnText.textContent = this.i18n.t('farming.disableAutofarming');
     } else {
       btn.style.background = 'rgba(255,255,255,0.08)';
       btn.style.color = 'var(--text-primary)';
       btn.style.border = '1px solid var(--border-color)';
       btn.style.opacity = '0.9';
-      if (btnText) btnText.textContent = 'Фарм всех дропсов';
     }
   }
 
   async toggleAutoDropsCategories() {
     if (this.autoDropsModeEnabled) {
+      // Отключение убирает авто-категории — у пользователя их бывает под
+      // сотню, и случайный клик стирал почти весь список вместе с
+      // закреплениями. Закреплённые оставляем (закрепление и значит
+      // «оставить»), об остальных спрашиваем.
+      const removable = this.categories.filter(cat => cat.autoDrops === true && !cat.pinned);
+      if (removable.length > 0 && typeof window.utils?.showConfirmation === 'function') {
+        const n = removable.length;
+        const word = window.utils.plural
+          ? window.utils.plural(n, 'авто-категория', 'авто-категории', 'авто-категорий')
+          : 'авто-категорий';
+        const ok = await window.utils.showConfirmation(
+          'Отключить автофарм?',
+          `Будет убрано из списка: ${n} ${word}. Закреплённые останутся.`
+        );
+        if (!ok || this._destroyed) return;
+      }
+
       this.autoDropsModeEnabled = false;
       await Storage.set('autoDropsModeEnabled', false);
-      this.categories = this.categories.filter(cat => cat.autoDrops !== true);
-      await Storage.saveCategories(this.categories);
+
+      // Пока висел вопрос, синхронизация могла добавить новые — берём
+      // список заново
+      const removedIds = new Set(this.categories
+        .filter(cat => cat.autoDrops === true && !cat.pinned)
+        .map(cat => cat.id));
+      // Закреплённые авто-категории становятся обычными: автофарма больше
+      // нет, а удалять «отработанную» авто-категорию закреплённой нельзя
+      this.categories.forEach(cat => {
+        if (cat.autoDrops === true && cat.pinned) cat.autoDrops = false;
+      });
+      this.categories = this.categories.filter(cat => !removedIds.has(cat.id));
+      await this.saveCategories();
       this.renderCategories();
       this.updateAutoDropsButtonState();
       window.utils.showToast('Автофарм дропсов отключен', 'info');
+
+      // Раньше фарм удалённой категории продолжался: плеер играл игру,
+      // которой в списке уже не было. Уходим в оставшиеся категории, а
+      // если их нет — останавливаемся без «всё собрано».
+      if (this.sessionStartTime && this.currentCategory && removedIds.has(this.currentCategory.id)) {
+        this.manualCategoryId = null;
+        this.manualPlayLockCategoryId = null;
+        await this.switchToNextEnabledCategory({ reason: 'disabled' });
+      }
     } else {
       this.autoDropsModeEnabled = true;
       await Storage.set('autoDropsModeEnabled', true);
@@ -1206,6 +1656,8 @@ class FarmingPage {
       const categoriesByName = new Map(
         allCategories.map(cat => [this.normalizeGameKey(cat.name), cat])
       );
+      // Удалённые пользователем крестиком игры обратно не добавляем
+      const deleted = await this.getDeletedCategoryKeys();
 
       let addedCount = 0;
 
@@ -1214,7 +1666,11 @@ class FarmingPage {
           const existing = this.categories.find(cat => this.normalizeGameKey(cat.name) === gameKey);
           if (existing) {
             if (existing.autoDrops) {
-              existing.enabled = true;
+              // Выключенную пользователем не включаем
+              if (this.mayEnableCategory(existing)) {
+                existing.enabled = true;
+                existing.disabledByApp = false;
+              }
               existing.hasDrops = true;
               existing.dropsCompleted = false;
               existing.dropsProgressPercent = campaignInfo.progress;
@@ -1222,6 +1678,7 @@ class FarmingPage {
             }
             continue;
           }
+          if (deleted.has(gameKey)) continue;
 
           const freshCategory = categoriesByName.get(gameKey);
           const campaignGameName = campaignInfo.campaign?.game?.name || campaignInfo.campaign?.game?.displayName || campaignInfo.campaign?.game;
@@ -1246,15 +1703,31 @@ class FarmingPage {
           addedCount++;
         }
       } else {
-        const checkPromises = allCategories.map(async (cat) => {
-          if (this.categories.some(c => c.id === cat.id)) return null;
-          const hasDrops = await window.electronAPI.checkCategoryDrops(cat.name);
-          if (hasDrops) return cat;
-          return null;
-        });
-
-        const results = await Promise.all(checkPromises);
-        const validCategories = results.filter(cat => cat !== null);
+        // Списка кампаний ещё нет (dashboard появляется после первого
+        // стрима) — проверяем категории по одной. Раньше все сто проверок
+        // уходили разом через Promise.all: Twitch отвечал 429, а пауза после
+        // него задерживала и запросы самого фарминга. Теперь не больше
+        // четырёх одновременно, порядок списка сохраняется.
+        const candidates = allCategories.filter(cat =>
+          !this.categories.some(c => c.id === cat.id) &&
+          !deleted.has(this.normalizeGameKey(cat.name)));
+        const found = new Array(candidates.length).fill(null);
+        let nextIndex = 0;
+        const worker = async () => {
+          while (nextIndex < candidates.length) {
+            const index = nextIndex++;
+            try {
+              if (await window.electronAPI.checkCategoryDrops(candidates[index].name)) {
+                found[index] = candidates[index];
+              }
+            } catch (error) {
+              // Сбой проверки одной игры — не повод бросать остальные
+            }
+          }
+        };
+        const MAX_PARALLEL_CHECKS = 4;
+        await Promise.all(Array.from({ length: Math.min(MAX_PARALLEL_CHECKS, candidates.length) }, worker));
+        const validCategories = found.filter(cat => cat !== null);
 
         for (const category of validCategories) {
           const newCategory = {
@@ -1278,22 +1751,47 @@ class FarmingPage {
         return;
       }
 
-      await Storage.saveCategories(this.categories);
+      await this.saveCategories();
       this.renderCategories();
       this.updateAutoDropsButtonState();
-      window.utils.showToast(`Добавлено ${addedCount} ${addedCount === 1 ? 'категория' : addedCount < 5 ? 'категории' : 'категорий'} с незавершенными дропсами`, 'success');
-      setTimeout(() => this.startFarming(), 1000);
+      // «Добавлено 21 категорий» — так выходило у самодельного склонения
+      window.utils.showToast(`Добавлено категорий с незавершёнными дропсами: ${addedCount}`, 'success');
+      // Запускаем, только если фарминг не идёт. Раньше запуск шёл всегда:
+      // включение «Фарм всех дропсов» посреди сессии начинало её заново —
+      // таймер прыгал в ноль, баллы и дропсы за прошедшие часы пропадали
+      setTimeout(() => {
+        if (!this._destroyed && !this.sessionStartTime) this.startFarming();
+      }, 1000);
     } catch (error) {
       console.error('Error adding all drops categories:', error);
       window.utils.showToast('Ошибка при добавлении категорий', 'error');
     }
   }
 
+  /**
+   * Переносит отметку «Сейчас» в списке на категорию, которая фармится.
+   * Перерисовка дешёвая: заменятся только две карточки — прежняя и новая.
+   */
+  syncCurrentCategoryMark() {
+    const id = (this.currentStream && this.currentCategory) ? String(this.currentCategory.id) : null;
+    if (id === (this._renderedCurrentId ?? null)) return;
+    this.renderCategories();
+  }
+
   renderCategories() {
     const container = document.getElementById('categories-list');
-    
+
     if (!container) return;
-    
+
+    // Пока карточку тащат, список не трогаем: перерисовка раз в полминуты
+    // выбрасывала перетаскиваемый узел, и dragover вставлял его обратно
+    // дублем. Отложенную перерисовку делает dragend.
+    const dragged = this._draggedItem;
+    if (dragged && dragged.isConnected && dragged.classList.contains('dragging')) {
+      this._categoriesRenderPending = true;
+      return;
+    }
+
     if (this.categories.length === 0) {
       container.innerHTML = `
         <div class="no-categories" style="text-align: center; padding: 40px; color: var(--text-secondary);">
@@ -1302,7 +1800,7 @@ class FarmingPage {
             <path d="M2 8h20M8 2v20" stroke-width="2"/>
           </svg>
           <p style="margin-top: 16px;">Нет выбранных категорий</p>
-          <p style="font-size: 13px; margin-top: 8px;">Нажмите "Добавить категорию" чтобы начать</p>
+          <p style="font-size: 13px; margin-top: 8px;">Нажмите «Добавить категорию», чтобы начать</p>
         </div>
       `;
       this.updateAutoDropsButtonState();
@@ -1313,6 +1811,10 @@ class FarmingPage {
     let categoriesToRender = [...this.categories];
     if (this.dropsFilterEnabled) {
       categoriesToRender.sort((a, b) => {
+        // Закреплённые наверху и здесь. Без этого «Сначала с дропсами»
+        // опускала закреплённую категорию под разделитель «Остальные
+        // категории»: он ставится по числу закреплённых, а не по ним самим
+        if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;
         const aEnabled = a.enabled !== false;
         const bEnabled = b.enabled !== false;
         const aCompleted = !!(a.dropsCompleted && a.hasDrops);
@@ -1369,14 +1871,22 @@ class FarmingPage {
     // первой незакреплённой категорией, но только если закреплённые есть
     const pinnedCount = categoriesToRender.filter(cat => cat.pinned).length;
 
+    // Категория, которая фармится сейчас. Раньше по списку это было не
+    // понять: карточка ничем не отличалась от остальных
+    const currentId = (this.currentStream && this.currentCategory) ? String(this.currentCategory.id) : null;
+    this._renderedCurrentId = currentId;
+
     const html = categoriesToRender.map((cat, index) => {
       const divider = (pinnedCount > 0 && index === pinnedCount)
         ? `<div class="pinned-divider"><span>${this.i18n.t('farming.pinnedDivider')}</span></div>`
         : '';
       const tagsHtml = cat.tags && cat.tags.length > 0 
-        ? `<span class="category-tag">${cat.tags[0]}</span>` 
+        ? `<span class="category-tag">${this.esc(cat.tags[0])}</span>` 
         : '';
-      const autoBadge = cat.autoDrops ? `<span class="category-tag" style="background: rgba(124, 92, 255, 0.2); color: #bda0ff; border: 1px solid rgba(124, 92, 255, 0.4);">${this.i18n.t('farming.auto')}</span>` : '';
+      // Цвета бейджа — из темы: светлый #bda0ff на светлом фоне не читался
+      const autoBadge = cat.autoDrops ? `<span class="category-tag category-auto-tag">${this.i18n.t('farming.auto')}</span>` : '';
+      const isCurrentCard = currentId !== null && String(cat.id) === currentId;
+      const currentBadge = isCurrentCard ? '<span class="category-current-badge">Сейчас</span>' : '';
       
       // Безнадёжная кампания — это не «всё собрано», а «уже не успеть»:
       // награды есть, но времени до конца кампании на них не хватит
@@ -1388,7 +1898,7 @@ class FarmingPage {
 
       const dropsStatusHtml = cat.hasDrops ? (
         tooLate
-          ? `<span class="category-drops-status too-late" title="${skipHint}">
+          ? `<span class="category-drops-status too-late" title="${this.esc(skipHint)}">
                <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6">
                  <circle cx="6" cy="6" r="5"/>
                  <path d="M6 3.2V6l1.9 1.9"/>
@@ -1402,12 +1912,16 @@ class FarmingPage {
                </svg>
                ${this.i18n.t('farming.dropsCompleted')}
              </span>`
-          : `<span class="category-drops-status completed">
+          // Кампания ещё идёт — фиолетовая плашка, зелёная только у «Собрано».
+          // Оставшееся время — в своём span: оно меняется каждые полминуты,
+          // и applyCategoriesMarkup обновляет его текстом, не пересоздавая
+          // карточку.
+          : `<span class="category-drops-status active">
                <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
                  <circle cx="5" cy="5" r="5"/>
                </svg>
-               Drops ${cat.dropsProgressPercent !== undefined ? cat.dropsProgressPercent + '%' : this.i18n.t('farming.enabled')}
-               ${cat.dropsEndsAt ? this.formatTimeRemaining(cat.dropsEndsAt) : ''}
+               Дропсы ${cat.dropsProgressPercent !== undefined ? this.esc(cat.dropsProgressPercent) + '%' : this.i18n.t('farming.enabled')}
+               <span class="category-time-left">${cat.dropsEndsAt ? this.formatTimeRemaining(cat.dropsEndsAt) : ''}</span>
              </span>`
       ) : '';
       
@@ -1416,7 +1930,7 @@ class FarmingPage {
       
       return `
       ${divider}
-      <div class="category-item ${isDisabled ? 'disabled' : ''} ${isCompleted ? 'drops-completed' : ''} ${cat.pinned ? 'pinned' : ''}" draggable="true" data-category-id="${cat.id}">
+      <div class="category-item ${isDisabled ? 'disabled' : ''} ${isCompleted ? 'drops-completed' : ''} ${cat.pinned ? 'pinned' : ''} ${isCurrentCard ? 'current' : ''}" draggable="true" data-category-id="${this.esc(cat.id)}">
 
         <div class="category-drag-handle">
           <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
@@ -1429,36 +1943,37 @@ class FarmingPage {
           </svg>
         </div>
         <div class="category-image">
-          <img src="${this.normalizeBoxArtURL(cat.boxArtURL, '52x72')}" alt="${cat.name}" onerror="this.onerror=null;this.src='https://static-cdn.jtvnw.net/ttv-boxart/509658-52x72.jpg';">
+          <img src="${this.esc(this.boxArtSrc(cat.boxArtURL, '52x72', cat.id))}" alt="${this.esc(cat.name)}" onerror="this.onerror=null;this.src=window.DROP_PLACEHOLDER||'';">
         </div>
         <div class="category-info">
-          <div class="category-name">${cat.name}</div>
+          <div class="category-name">${this.esc(cat.name)}</div>
           <div class="category-status">
-            <span style="color: var(--text-secondary); font-size: 13px;">${this.formatViewersCount(cat.viewersCount)} зрителей</span>
+            ${currentBadge}
+            <span class="category-viewers" style="color: var(--text-secondary); font-size: 13px;">${this.viewersLabel(cat.viewersCount)}</span>
             ${tagsHtml}
             ${autoBadge}
             ${dropsStatusHtml}
           </div>
         </div>
-        <button class="category-play-btn" data-category-id="${cat.id}" title="Запустить эту категорию">
+        <button class="category-play-btn" data-category-id="${this.esc(cat.id)}" title="Запустить эту категорию">
           <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
             <path d="M3 1L10 6L3 11V1Z"/>
           </svg>
-          Play
+          ${this.esc(this.i18n.t('farming.play'))}
         </button>
-        <button class="category-pin-btn ${cat.pinned ? 'active' : ''}" data-category-id="${cat.id}"
+        <button class="category-pin-btn ${cat.pinned ? 'active' : ''}" data-category-id="${this.esc(cat.id)}"
                 title="${cat.pinned ? 'Открепить категорию' : 'Закрепить категорию'}">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
             <path d="M14 4V2H10v2H8v6l-2 2v2h5v6l1 2 1-2v-6h5v-2l-2-2V4h-2z"/>
           </svg>
         </button>
         <div class="category-priority">#${index + 1}</div>
-        <label class="category-toggle-switch ${!isDisabled ? 'checked' : ''}" data-category-id="${cat.id}">
-          <input type="checkbox" ${!isDisabled ? 'checked' : ''} data-category-id="${cat.id}">
+        <label class="category-toggle-switch ${!isDisabled ? 'checked' : ''}" data-category-id="${this.esc(cat.id)}">
+          <input type="checkbox" ${!isDisabled ? 'checked' : ''} data-category-id="${this.esc(cat.id)}">
           <span class="toggle-track"></span>
           <span class="toggle-thumb"></span>
         </label>
-        <button class="category-remove" data-category-id="${cat.id}">
+        <button class="category-remove" data-category-id="${this.esc(cat.id)}">
           <svg width="20" height="20" viewBox="0 0 20 20">
             <path d="M5 5L15 15M15 5L5 15" stroke="currentColor" stroke-width="2"/>
           </svg>
@@ -1488,6 +2003,15 @@ class FarmingPage {
    * только когда её разметка действительно другая; остальные узлы
    * переезжают на новое место как есть, вместе со своими обработчиками.
    * Поэтому все setup*-методы ниже вешают обработчик один раз на узел.
+   *
+   * Число зрителей и оставшееся время меняются каждые полминуты, поэтому
+   * в сравнение не входят: у живой карточки им просто меняется текст.
+   * Раньше из-за них пересоздавалась каждая карточка — пропадало
+   * наведение и срывалось перетаскивание.
+   *
+   * Номер #N тоже обновляется на месте: перетаскивание меняет его прямо в
+   * живой карточке, и сравнение со старой разметкой иначе оставило бы на
+   * экране номер, которого в списке уже нет.
    */
   applyCategoriesMarkup(container, html) {
     const template = document.createElement('template');
@@ -1496,6 +2020,25 @@ class FarmingPage {
     const keyOf = (el) => (el.dataset && el.dataset.categoryId)
       ? 'c:' + el.dataset.categoryId
       : 'x:' + (el.className || el.tagName);
+
+    // Части карточки, которые обновляются на месте
+    const VOLATILE = ['.category-viewers', '.category-time-left', '.category-priority'];
+    const stableMarkup = (el) => {
+      if (!el.querySelector || !VOLATILE.some(sel => el.querySelector(sel))) return el.outerHTML;
+      const copy = el.cloneNode(true);
+      VOLATILE.forEach(sel => copy.querySelectorAll(sel).forEach(part => { part.innerHTML = ''; }));
+      return copy.outerHTML;
+    };
+    const syncVolatile = (old, fresh) => {
+      VOLATILE.forEach(sel => {
+        const target = old.querySelector(sel);
+        const source = fresh.querySelector(sel);
+        // Разметку сюда кладёт только сама страница (числа и слова), не Twitch
+        if (target && source && target.innerHTML !== source.innerHTML) {
+          target.innerHTML = source.innerHTML;
+        }
+      });
+    };
 
     const existing = new Map();
     for (const el of container.children) {
@@ -1511,11 +2054,12 @@ class FarmingPage {
 
     for (const fresh of Array.from(template.content.children)) {
       const key = keyOf(fresh);
-      const markup = fresh.outerHTML;
+      const markup = stableMarkup(fresh);
       nextHtml.set(key, markup);
 
       const old = existing.get(key);
       if (old && !reused.has(old) && previousHtml.get(key) === markup) {
+        syncVolatile(old, fresh);
         reused.add(old);
         nodes.push(old);
       } else {
@@ -1525,7 +2069,19 @@ class FarmingPage {
     }
 
     this._categoryCardHtml = nextHtml;
-    container.replaceChildren(...nodes);
+
+    // Порядок не изменился — меняем только изменившиеся карточки. Полная
+    // пересборка через replaceChildren снимала наведение со всех карточек
+    const current = Array.from(container.children);
+    const sameOrder = current.length === nodes.length &&
+      current.every((el, i) => keyOf(el) === keyOf(nodes[i]));
+    if (sameOrder) {
+      current.forEach((el, i) => {
+        if (el !== nodes[i]) el.replaceWith(nodes[i]);
+      });
+    } else {
+      container.replaceChildren(...nodes);
+    }
 
     if (replaced > 0 && reused.size > 0) {
       console.log('[Категории] Обновлено карточек:', replaced, 'из', nodes.length);
@@ -1569,7 +2125,7 @@ class FarmingPage {
       return 0;
     });
 
-    await Storage.saveCategories(this.categories);
+    await this.saveCategories();
     this.renderCategories();
 
     window.utils.showToast(
@@ -1594,22 +2150,14 @@ class FarmingPage {
           console.log('Manual play category:', category.name);
           window.utils.showToast(`Запуск категории ${category.name}...`, 'info');
 
-          // Останавливаем текущий стрим без уведомления: рядом с «Запуск
-          // категории» сообщение «Фарминг остановлен» читается как отказ,
-          // хотя это лишь смена одного стрима на другой
-          if (this.currentStream) {
-            this.stopFarming(false);
-            await new Promise(resolve => setTimeout(resolve, 1000));
-          }
-
-          // Отметку ручного запуска ставим ПОСЛЕ остановки: stopFarming
-          // сбрасывает её вместе с остальным состоянием сессии, и при
-          // установке до остановки защита от автопереключения молча пропадала
-          this.manualCategoryId = category.id;
-          this.setManualPlayLock(category);
-
-          // Запускаем выбранную категорию
-          await this.startFarmingForCategory(category);
+          // Текущую сессию НЕ останавливаем. Раньше здесь стоял stopFarming:
+          // смена категории начинала новую сессию (таймер в ноль, баллы и
+          // дропсы за прошедшие часы пропадали), а Play на категории, где
+          // никто не стримит, просто убивал ночной фарм. Теперь стрим
+          // меняется только когда для новой категории нашёлся канал, а
+          // отметку ручного запуска ставит сам startFarmingForCategory —
+          // в тот же момент.
+          await this.startFarmingForCategory(category, { manual: true });
           this.updateAutoFarmButton();
         }
       });
@@ -1641,7 +2189,17 @@ class FarmingPage {
     return window.showCategoryDetailsModal(this, category);
   }
 
-  async startStreamFromModal(streamLogin, categoryId) {
+  /**
+   * «Запустить» у конкретного стримера в окне категории.
+   *
+   * Раньше выбранный логин попадал только в текст тоста, а запускался
+   * канал, который приложение выбирало само, — обычно другой. Теперь
+   * запускается именно выбранный. Текущий стрим меняется лишь после
+   * того, как убедились, что выбранный канал в эфире и в этой игре:
+   * иначе вместо одного стрима пользователь оставался без двух. Сессия
+   * при этом не прерывается.
+   */
+  async startStreamFromModal(streamLogin, categoryId, info = {}) {
     const modal = document.querySelector('.category-detail-modal');
     if (modal) {
       modal.style.opacity = '0';
@@ -1651,49 +2209,142 @@ class FarmingPage {
     const category = this.categories.find(c => c.id === categoryId);
     if (!category) return;
 
-    window.utils.showToast(`Запуск стрима ${streamLogin}...`, 'info');
+    const displayName = info.displayName || streamLogin;
+    window.utils.showToast(`Запускаю ${displayName}…`, 'info');
 
-    // Останавливаем текущий стрим если есть
-    if (this.currentStream) {
-      this.stopFarming(false);
-      await new Promise(resolve => setTimeout(resolve, 1000));
-    }
+    const stream = await this.resolveChosenStream(category, { ...info, login: streamLogin });
+    if (!stream || this._destroyed) return;
 
-    // Запускаем выбранную категорию
-    await this.startFarmingForCategory(category);
+    // Как у кнопки Play: идущая сессия продолжается, меняется только
+    // стрим, а выбор пользователя приложение само не меняет
+    await this.startFarmingForCategory(category, { stream, manual: true });
+    this.updateAutoFarmButton();
   }
 
+  /**
+   * Проверяет канал, выбранный пользователем: в эфире ли он и в той ли игре.
+   *
+   * Возвращает объект стрима или null, если запускать нечего (причина уже
+   * показана). Если Twitch не ответил, доверяем данным окна категории —
+   * канал был в эфире секунду назад.
+   */
+  async resolveChosenStream(category, info = {}) {
+    const login = window.StreamPicker.normalizeLogin(info.login).trim();
+    if (!login) return null;
+    const name = info.displayName || login;
+
+    let stats;
+    try {
+      stats = await window.electronAPI.getStreamStats(login);
+    } catch (error) {
+      stats = undefined;
+    }
+
+    if (stats === null) {
+      window.utils?.showToast(`${name} сейчас не в эфире`, 'warning');
+      return null;
+    }
+    if (stats && stats.gameName && !this.isSameGame(stats.gameName, category.name, stats.gameId, category.id)) {
+      window.utils?.showToast(`${name} сейчас стримит другую игру: ${stats.gameName}`, 'warning');
+      return null;
+    }
+
+    // Часть кампаний засчитывается только на своих каналах. Выбор
+    // пользователя не отменяем, но предупреждаем, что дропсов тут не будет.
+    const allowed = await this.allowedChannelsFor(category.name);
+    if (allowed.length > 0 && !allowed.includes(login)) {
+      window.utils?.showToast('Этот канал не засчитывает дропсы кампании', 'warning');
+    }
+
+    return {
+      login,
+      displayName: info.displayName || login,
+      title: stats?.title || info.title || '',
+      viewersCount: stats?.viewers || info.viewersCount || 0,
+      profileImageUrl: info.profileImageUrl || null
+    };
+  }
+
+  /**
+   * Подписчики — тем же русским форматом, что и зрители: «3 473»,
+   * «44 тыс.», «1,2 млн». Раньше рядом с «44 тыс. зрителей» стояло
+   * «1.2M подписчиков».
+   */
   formatFollowers(count) {
-    if (count >= 1000000) {
-      return (count / 1000000).toFixed(1) + 'M';
-    } else if (count >= 1000) {
-      return (count / 1000).toFixed(1) + 'K';
-    }
-    return count.toString();
+    return this.formatViewersCount(count);
   }
 
+  /**
+   * Число зрителей по-русски: «3 473», «44 тыс.», «1,2 млн».
+   * Раньше выходило «44.0K» — английские сокращения и точка вместо запятой.
+   * '—' значит «нет данных» (категории нет в свежем списке Twitch), а не
+   * «ноль зрителей»; в списке категорий такую подпись прячем целиком.
+   */
   formatViewersCount(count) {
     if (!count) return '—';
-    if (count < 10000) return count.toLocaleString();
-    if (count >= 1000000) {
-      return (count / 1000000).toFixed(1) + 'M';
+    if (count < 10000) return Number(count).toLocaleString('ru-RU');
+    try {
+      return new Intl.NumberFormat('ru-RU', { notation: 'compact', maximumFractionDigits: 1 }).format(count);
+    } catch (error) {
+      return count >= 1000000
+        ? (count / 1000000).toFixed(1).replace('.', ',') + ' млн'
+        : Math.round(count / 1000) + ' тыс.';
     }
-    return (count / 1000).toFixed(1) + 'K';
-  }
-  
-  getHighQualityBoxArt(url) {
-    return this.normalizeBoxArtURL(url, '285x380');
   }
 
+  /**
+   * Форма слова по числу. Общая функция живёт в dom-helpers.js; запасной
+   * вариант — на случай, если страницу подключили без неё. Самодельные
+   * «n < 5 ? … : …» давали «21 категорий» и «5 кампании».
+   */
+  plural(n, one, few, many) {
+    if (typeof window.DOMHelpers?.plural === 'function') return window.DOMHelpers.plural(n, one, few, many);
+    if (typeof window.utils?.plural === 'function') return window.utils.plural(n, one, few, many);
+    const value = Number(n) || 0;
+    if (!Number.isInteger(value)) return few;
+    const tens = Math.abs(value) % 100;
+    const units = tens % 10;
+    if (tens > 10 && tens < 20) return many;
+    if (units === 1) return one;
+    if (units >= 2 && units <= 4) return few;
+    return many;
+  }
+
+  /** «зритель / зрителя / зрителей» к числу из formatViewersCount. */
+  viewersWord(count) {
+    // После «44 тыс.» и «1,2 млн» всегда «зрителей»
+    if (!count || count >= 10000) return 'зрителей';
+    return this.plural(count, 'зритель', 'зрителя', 'зрителей');
+  }
+
+  /** Подпись «3 473 зрителя»; без данных — пустая строка. */
+  viewersLabel(count) {
+    if (!count) return '';
+    return `${this.formatViewersCount(count)} ${this.viewersWord(count)}`;
+  }
+  
+  /** Крупная обложка для окна категории; без обложки — заглушка. */
+  getHighQualityBoxArt(url, categoryId = null) {
+    return this.boxArtSrc(url, '285x380', categoryId);
+  }
+
+  /**
+   * Заглушка на месте стрима, когда фарминг не идёт. Она же кнопка
+   * запуска: обработчик висит на #current-stream-info (setupEventListeners).
+   * Раньше она выглядела кнопкой, клик не делал ничего, а подпись
+   * «Ожидание» при остановленном фарминге сбивала с толку.
+   */
   getWaitingStateMarkup() {
+    const action = this.esc(this.i18n?.t ? this.i18n.t('farming.startFarming') : 'Начать фарминг');
     return `
-      <div class="no-stream waiting-state" tabindex="0" role="button" aria-label="Ожидание стрима">
+      <div class="no-stream waiting-state" tabindex="0" role="button" aria-label="${action}">
         <div class="waiting-icon" aria-hidden="true">
           <span class="waiting-ring waiting-ring-outer"></span>
           <span class="waiting-ring waiting-ring-inner"></span>
           <span class="waiting-dot"></span>
         </div>
-        <p class="waiting-label">Ожидание</p>
+        <p class="waiting-label">Фарминг не запущен</p>
+        <p class="waiting-hint">${action}</p>
       </div>
     `;
   }
@@ -1723,7 +2374,9 @@ class FarmingPage {
    * в фарминге. Настройка сохранялась и не делала ничего.
    */
   onAllCategoriesCompleted() {
-    window.electronAPI?.showNotification?.(
+    // Через общий notifyFarmingEvent: он молчит в тихие часы и при
+    // выключенных уведомлениях Windows. Прямой вызов всплывал и ночью
+    window.notifyFarmingEvent?.(
       this.i18n.t('farming.completed'),
       'Все доступные дропсы собраны'
     );
@@ -1769,7 +2422,12 @@ class FarmingPage {
           return live;
         }
         console.warn('[Выбор стрима] Кампания только для %d каналов, никто из них не в эфире', allowed.length);
-        window.utils?.showToast('Кампания засчитывается только у ' + allowed.length + ' каналов, никто не в эфире', 'warning');
+        // При переборе категорий (options.quiet) итог сообщает перебор
+        // одним тостом — иначе на каждую категорию выходило по три
+        if (!options.quiet) {
+          const word = this.plural(allowed.length, 'канала', 'каналов', 'каналов');
+          window.utils?.showToast(`Кампания засчитывается только у ${allowed.length} ${word}, никто не в эфире`, 'warning');
+        }
         return null;
       }
     }
@@ -1833,26 +2491,52 @@ class FarmingPage {
   async findLiveAllowedChannel(allowed, categoryName, exclude) {
     if (!window.electronAPI?.getStreamStats) return null;
     const skip = window.DropCredit.normalizeLogin(exclude);
-    const candidates = allowed.filter(login => login !== skip).slice(0, 12);
+    const candidates = allowed.filter(login => login !== skip);
 
-    const checked = await Promise.all(candidates.map(async (login) => {
-      try {
-        const stats = await window.electronAPI.getStreamStats(login);
-        if (!stats || !stats.gameName) return null;
-        if (!this.isSameGame(stats.gameName, categoryName)) return null;
-        return {
-          login,
-          displayName: login,
-          title: stats.title || '',
-          viewersCount: stats.viewers || 0,
-          profileImageUrl: null
-        };
-      } catch (error) {
-        return null;
-      }
-    }));
+    // Раньше проверялись только первые 12, и категория пропускалась, хотя
+    // живые разрешённые каналы стояли в списке дальше. Теперь — пачками по
+    // 12, пока не найдётся живой. Предел и срок — чтобы кампания на сотни
+    // каналов не превратилась в сотни запросов и минуты ожидания
+    const BATCH = 12;
+    const MAX_CHECKS = 60;
+    const deadline = Date.now() + 30000;
+    const limited = candidates.slice(0, MAX_CHECKS);
 
-    return checked.find(Boolean) || null;
+    for (let i = 0; i < limited.length; i += BATCH) {
+      if (i > 0 && Date.now() > deadline) break;
+
+      let failed = 0;
+      const batch = limited.slice(i, i + BATCH);
+      const checked = await Promise.all(batch.map(async (login) => {
+        try {
+          const stats = await window.electronAPI.getStreamStats(login);
+          if (!stats || !stats.gameName) return null;
+          if (!this.isSameGame(stats.gameName, categoryName)) return null;
+          return {
+            login,
+            displayName: login,
+            title: stats.title || '',
+            viewersCount: stats.viewers || 0,
+            profileImageUrl: null
+          };
+        } catch (error) {
+          failed++;
+          return null;
+        }
+      }));
+
+      // Порядок сохраняется: первый непустой — раньше всех в списке
+      const live = checked.find(Boolean);
+      if (live) return live;
+      // Twitch не ответил ни по одному каналу пачки — дальше спрашивать
+      // бессмысленно, только нагрузим его повторами
+      if (failed === batch.length) break;
+    }
+
+    if (candidates.length > limited.length) {
+      console.log('[Выбор стрима] Проверено разрешённых каналов: %d из %d', limited.length, candidates.length);
+    }
+    return null;
   }
 
   /**
@@ -1890,70 +2574,137 @@ class FarmingPage {
   }
 
   /**
-   * Сравнение названий игр по словам.
-   * Подстрока здесь опасна: в «albion online» содержится «line».
+   * Одна ли это игра — для всех решений фарминга.
+   *
+   * Раньше сравнивалось начало названия: «World of Tanks» совпадало с
+   * «World of Tanks Console», и избранный стример соседней игры
+   * выбирался, через минуту отбрасывался как «сменил игру» — и так по
+   * кругу. Теперь сравнение строгое, как и в проверке смены игры: по id
+   * игры, если он известен с обеих сторон, иначе по точному названию.
    */
-  isSameGame(a, b) {
-    return window.StreamPicker.isSameGame(a, b);
+  isSameGame(a, b, idA, idB) {
+    return window.StreamPicker.isExactGame(a, b, idA, idB);
   }
 
-  async startFarmingForCategory(category) {
+  /**
+   * Запуск категории.
+   *
+   * options.stream — канал, уже выбранный пользователем и проверенный
+   * (окно категории, карточка подписки): тогда он и запускается, а не тот,
+   * который приложение выбрало бы само.
+   * options.manual — запуск руками (Play, окно категории, подписки):
+   * отметка ручного запуска ставится вместе со сменой стрима, а не до неё.
+   *
+   * Если сессия уже идёт, это смена категории внутри неё: время прежней
+   * категории записывается, а таймер сессии, трафик, баллы и дропсы не
+   * трогаются. Пока для новой категории не нашёлся канал, текущий стрим
+   * продолжает играть.
+   *
+   * Возвращает true, если стрим запущен, false — если нет.
+   */
+  async startFarmingForCategory(category, options = {}) {
     const revision = this.beginStreamOperation();
+
+    // Неудача при идущей сессии — не повод её бросать: говорим, что
+    // продолжаем прежнюю категорию
+    const keepTail = () => {
+      const current = this.sessionStartTime && this.currentStream && this.currentCategory &&
+        this.currentCategory.id !== category.id ? this.currentCategory : null;
+      return current ? ` — продолжаю «${current.name}»` : '';
+    };
+
     const accounts = await Storage.getAccounts();
     if (!this.isStreamOperationCurrent(revision)) return;
     if (accounts.length === 0) {
       window.utils.showToast('Добавьте хотя бы один аккаунт', 'warning');
-      return;
+      return false;
     }
-    
-    // Получаем стримы для этой категории.
-    //
-    // Раньше этот запрос стоял голым: отказ сети выбрасывал исключение
-    // прямо из обработчика нажатия, и дальше не происходило ничего —
-    // пользователь видел «Запуск категории…» и тишину. Теперь у запроса
-    // есть срок, а любая неудача называется вслух.
-    let streams = null;
-    try {
-      streams = await Promise.race([
-        window.electronAPI.getStreamsWithDrops(category.name),
-        new Promise(resolve => setTimeout(() => resolve(null), 15000))
-      ]);
+
+    let stream = options.stream?.login ? options.stream : null;
+    const chosenByUser = !!stream;
+
+    if (!stream) {
+      // Получаем стримы для этой категории.
+      //
+      // Раньше этот запрос стоял голым: отказ сети выбрасывал исключение
+      // прямо из обработчика нажатия, и дальше не происходило ничего —
+      // пользователь видел «Запуск категории…» и тишину. Теперь у запроса
+      // есть срок, а любая неудача называется вслух.
+      let streams = null;
+      try {
+        streams = await Promise.race([
+          window.electronAPI.getStreamsWithDrops(category.name),
+          new Promise(resolve => setTimeout(() => resolve(null), 15000))
+        ]);
+        if (!this.isStreamOperationCurrent(revision)) return;
+      } catch (error) {
+        console.error('[Фарминг] Не удалось получить стримы:', error);
+        window.utils.showToast(`Не удалось запустить ${category.name}: ${error?.message || 'ошибка сети'}${keepTail()}`, 'error');
+        return false;
+      }
+
+      if (streams === null) {
+        window.utils.showToast(`Twitch не ответил по категории ${category.name}${keepTail()}`, 'error');
+        return false;
+      }
+
+      if (!Array.isArray(streams) || streams.length === 0) {
+        const tail = keepTail();
+        window.utils.showToast(tail
+          ? `В «${category.name}» сейчас никто не стримит${tail}`
+          : `Нет стримов для ${category.name}`, 'warning');
+        return false;
+      }
+
+      // Выбираем первый стрим
+      stream = await this.pickPreferredStream(streams, category.name);
       if (!this.isStreamOperationCurrent(revision)) return;
-    } catch (error) {
-      console.error('[Фарминг] Не удалось получить стримы:', error);
-      window.utils.showToast(`Не удалось запустить ${category.name}: ${error?.message || 'ошибка сети'}`, 'error');
-      return;
-    }
 
-    if (streams === null) {
-      window.utils.showToast(`Twitch не ответил по категории ${category.name}`, 'error');
-      return;
-    }
-
-    if (!Array.isArray(streams) || streams.length === 0) {
-      window.utils.showToast(`Нет стримов для ${category.name}`, 'warning');
-      return;
-    }
-
-    // Выбираем первый стрим
-    const stream = await this.pickPreferredStream(streams, category.name);
-    if (!this.isStreamOperationCurrent(revision)) return;
-
-    if (!stream || !stream.login) {
-      window.utils.showToast(`Не удалось выбрать стрим в ${category.name}`, 'error');
-      return;
+      if (!stream || !stream.login) {
+        window.utils.showToast(`Не удалось выбрать стрим в ${category.name}${keepTail()}`, 'error');
+        return false;
+      }
     }
     const streamUrl = `https://www.twitch.tv/${stream.login}`;
-    
+
     console.log('Starting stream:', stream.displayName, streamUrl);
-    window.utils.showToast(`Запуск стрима: ${stream.displayName}`, 'success');
-    
+    // Для выбранного пользователем канала тост «Запускаю…» уже показан
+    if (!chosenByUser) {
+      window.utils.showToast(`Запуск стрима: ${stream.displayName}`, 'success');
+    }
+
+    // Смена категории внутри идущей сессии: время прежней записываем
+    // здесь, пока она ещё текущая. Раньше смена шла через stopFarming и
+    // новый старт, и статистика по играм записывала прежней категории
+    // всю сессию целиком.
+    const sessionRunning = !!window.sessionState?.isActive?.();
+    if (sessionRunning && this.currentCategory?.id !== category.id) {
+      await this.noteCategoryWatchTime();
+      if (!this.isStreamOperationCurrent(revision)) return;
+    }
+
+    // Отметку ручного запуска ставим только теперь, когда канал найден:
+    // при неудаче остаётся прежняя категория со своей отметкой
+    if (options.manual) {
+      this.manualCategoryId = category.id;
+      this.setManualPlayLock(category);
+    }
+
     // Сохраняем текущую категорию и стрим
     this.currentCategory = category;
     this.currentStream = stream;
-    this.dropsMissingChecks = 0;
-    this._emptyDropsChecks = 0;
-    
+    this.resetCategoryCounters(category);
+
+    // Новую сессию начинает SessionState.start(): он заводит таймер
+    // автовыключения и сбрасывает качество плеера. Раньше здесь стояло
+    // голое присваивание sessionStartTime, которое шло через restore(),
+    // и выключение по таймеру не срабатывало никогда. Делаем это до
+    // загрузки плеера, чтобы сброс качества успел к ней.
+    const newSession = !!window.sessionState && !window.sessionState.isActive();
+    if (newSession) {
+      window.sessionState.start({ categoryName: category.name, streamLogin: stream.login });
+    }
+
     // Открываем стрим
     await window.electronAPI.openStream(streamUrl, accounts[0]);
     if (!this.isStreamOperationCurrent(revision)) return;
@@ -1983,13 +2734,21 @@ class FarmingPage {
       this.sessionInterval = null;
     }
     
-    // Запускаем трекинг
-    this.sessionStartTime = Date.now();
-    this.categoryStartTime = Date.now();
-    this.estimatedBandwidth = 0;
-    this.bandwidthHistory = [];
-    window.electronAPI?.resetTrafficSession?.();
-    this.resetSessionPointsTracking();
+    // Запускаем трекинг. Трафик и баллы новой сессии уже обнулил
+    // SessionState.start(); здесь — то, что живёт на странице. Идущую
+    // сессию смена категории не обнуляет. Отсчёт категории при её смене
+    // уже начат noteCategoryWatchTime; другой стрим той же категории
+    // отсчёт не сбрасывает.
+    if (!sessionRunning || !this.categoryStartTime) {
+      this.categoryStartTime = Date.now();
+    }
+    if (newSession) {
+      this.estimatedBandwidth = 0;
+      this.bandwidthHistory = [];
+      this._sessionDropsBaseline = null;
+      this._sessionCountedDrops = null;
+      this._sessionSeenCampaigns = null;
+    }
 
     this.updateSessionInfo();
 
@@ -2007,13 +2766,13 @@ class FarmingPage {
       this.updateSessionInfo();
     }, 1000);
 
-    // Запускаем периодическое обновление статистики (каждые 30 секунд)
+    // Запускаем периодическое обновление статистики (раз в минуту, см. LIVE_STATS_MS)
     if (this.statsUpdateInterval) {
       clearInterval(this.statsUpdateInterval);
     }
     this.statsUpdateInterval = setInterval(() => {
       this.updateLiveStatistics();
-    }, 30000); // 30 секунд
+    }, FarmingPage.LIVE_STATS_MS);
 
     // Создаем начальную сессию в статистике
     this.updateLiveStatistics();
@@ -2041,6 +2800,7 @@ class FarmingPage {
 
     // Отображаем корректное состояние кнопок
     this.showFarmingState();
+    return true;
   }
 
   setupToggleButtons() {
@@ -2054,13 +2814,19 @@ class FarmingPage {
         const label = e.target.closest('.category-toggle-switch');
         
         if (category) {
-          const wasEnabled = category.enabled;
+          // Категория без поля enabled считается включённой
+          const wasEnabled = category.enabled !== false;
           category.enabled = e.target.checked;
 
           // Пользователь распорядился сам — снимаем отметку о том, что
           // категорию выключило приложение, иначе оно вернуло бы её
-          // в работу при новой кампании вопреки решению пользователя
+          // в работу при новой кампании вопреки решению пользователя.
+          // Выключение руками запоминаем: синхронизация автокатегорий
+          // раньше включала такую категорию обратно через пару минут.
           category.disabledByCompletion = false;
+          category.disabledByApp = false;
+          if (category.enabled) delete category.userDisabled;
+          else category.userDisabled = true;
           
           console.log('Toggle category:', {
             name: category.name,
@@ -2078,19 +2844,34 @@ class FarmingPage {
             label.classList.remove('checked');
           }
           
-          await Storage.saveCategories(this.categories);
+          await this.saveCategories();
           
           const status = category.enabled ? 'включена' : 'отключена';
           window.utils.showToast(`${category.name} ${status}`, 'success');
+
+          // Список сразу не пересортировываем: выключенная карточка уезжала
+          // вниз, к выключенным, и чтобы вернуть тумблер, её приходилось
+          // искать. Меняем только вид самой карточки, порядок поправит
+          // следующая перерисовка (разметка карточки уже другая, и она
+          // заменится целиком)
+          const card = e.target.closest('.category-item');
+          if (card) card.classList.toggle('disabled', !category.enabled);
           
-          // Перерисовываем список для пересортировки
-          this.renderCategories();
-          
-          // Если выключили текущую категорию, переключаемся на следующую
+          // Если выключили текущую категорию, переключаемся на следующую.
+          //
+          // Отметку ручного запуска снимаем: пользователь сам выключил
+          // категорию, которую запускал. Раньше защита от автопереключения
+          // её удерживала — плеер продолжал её смотреть, а предложение
+          // сообщало «дропсов нет», хотя дело было не в этом.
           if (wasEnabled && !category.enabled && this.currentCategory && this.currentCategory.id === categoryId) {
             console.log('Current category disabled, switching to next enabled category');
+            if (this.manualCategoryId === categoryId) this.manualCategoryId = null;
+            if (this.manualPlayLockCategoryId === categoryId) this.manualPlayLockCategoryId = null;
+            this.updateAutoFarmButton();
             setTimeout(() => {
-              this.switchToNextEnabledCategory();
+              // За секунду категорию могли включить обратно или сменить
+              if (this._destroyed || category.enabled || this.currentCategory?.id !== categoryId) return;
+              this.switchToNextEnabledCategory({ reason: 'disabled' });
             }, 1000);
           }
         }
@@ -2098,83 +2879,152 @@ class FarmingPage {
     });
   }
   
-  async addChannelToFarming(channelLogin) {
-    // Добавляет канал в список фарминга и запускает его
+  /**
+   * «Начать фарминг» с карточки канала в подписках.
+   *
+   * Раньше здесь создавалась категория с именем канала («ow_esports_kr»),
+   * а Twitch ищет стримы по названию игры — дальше было только «нет
+   * стримов с дропсами», и список засорялся мусором. Теперь узнаём, что
+   * канал стримит сейчас, находим (или заводим) категорию этой игры и
+   * запускаем именно этот канал — как ручной выбор.
+   *
+   * Возвращает { ok: true } или { ok: false, reason } — тост по результату
+   * показывает вызывающая страница. Если запустить нечего, список
+   * категорий не меняется.
+   */
+  async addChannelToFarming(channelLogin, info = {}) {
+    const login = window.StreamPicker.normalizeLogin(channelLogin).trim();
+    if (!login) return { ok: false, reason: 'Не указан канал' };
+    const name = info.displayName || login;
+
     try {
-      // Ищем категорию для этого канала
-      const categoryName = channelLogin;
-      
-      // Проверяем есть ли уже эта категория
-      let category = this.categories.find(c => c.name.toLowerCase() === channelLogin.toLowerCase());
-      
+      // Без аккаунта startFarmingForCategory показал бы свой тост, а
+      // подписки — второй («Не удалось запустить»). Отвечаем сразу, пока
+      // в список категорий ничего не добавлено. Сбой чтения — незнание:
+      // идём дальше, там проверка повторится
+      const accounts = await Promise.resolve()
+        .then(() => Storage.getAccounts())
+        .catch(() => null);
+      if (Array.isArray(accounts) && accounts.length === 0) {
+        return { ok: false, reason: 'Добавьте хотя бы один аккаунт' };
+      }
+
+      let stats;
+      try {
+        stats = await window.electronAPI.getStreamStats(login);
+      } catch (error) {
+        return { ok: false, reason: 'Twitch не ответил, попробуйте позже' };
+      }
+      if (!stats) return { ok: false, reason: `${name} сейчас не в эфире` };
+
+      const gameName = stats.gameName;
+      if (!gameName) return { ok: false, reason: `Не удалось узнать, во что играет ${name}` };
+
+      let category = this.categories.find(c => this.isSameGame(c.name, gameName, c.id, stats.gameId)) || null;
+
+      // Дропсы проверяем по игре, а не по логину канала
+      if (category?.hasDrops !== true) {
+        const checked = await window.electronAPI.checkCategoryDrops(gameName);
+        if (checked === null || checked === undefined) {
+          return { ok: false, reason: 'Twitch не ответил, попробуйте позже' };
+        }
+        if (!checked) return { ok: false, reason: `У игры «${gameName}» сейчас нет дропсов` };
+      }
+
       if (!category) {
-        // Создаём новую категорию
-        category = {
-          id: Date.now().toString(),
-          name: channelLogin,
-          enabled: true,
-          autoDrops: false,
-          hasDrops: await window.electronAPI.checkCategoryDrops(channelLogin),
-          priority: 0,
-          tags: [],
-          viewersCount: 0,
-          dropsCompleted: false
-        };
-        
-        this.categories.push(category);
-        await Storage.saveCategories(this.categories);
-        this.renderCategories();
-      } else if (!category.enabled) {
+        // Свежие данные Twitch дают id, обложку и зрителей; без них
+        // категория тоже работает
+        let fresh = null;
+        try {
+          const all = await window.electronAPI.fetchTwitchCategories();
+          fresh = (all || []).find(c => this.isSameGame(c.name, gameName, c.id, stats.gameId)) || null;
+        } catch (error) {
+          // не критично
+        }
+        // Пока шли запросы, ту же игру могли добавить
+        category = this.categories.find(c => this.isSameGame(c.name, gameName, c.id, stats.gameId)) || null;
+        if (!category) {
+          const slug = String(gameName).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '');
+          category = {
+            id: fresh?.id || ('game-' + (slug || Date.now().toString(36))),
+            name: fresh?.name || gameName,
+            boxArtURL: this.normalizeBoxArtURL(fresh?.boxArtURL, '52x72'),
+            viewersCount: fresh?.viewersCount || 0,
+            tags: fresh?.tags || [],
+            enabled: true,
+            autoDrops: false,
+            hasDrops: true,
+            priority: this.categories.length + 1,
+            dropsCompleted: false
+          };
+          this.categories.push(category);
+        }
+      }
+
+      category.hasDrops = true;
+      if (!category.enabled) {
         category.enabled = true;
-        await Storage.saveCategories(this.categories);
-        this.renderCategories();
+        category.disabledByCompletion = false;
+        category.disabledByApp = false;
       }
+      // Канал запущен руками — прежние «выключил» и «удалил» больше не действуют
+      delete category.userDisabled;
+      await this.setCategoryDeleted(category.name, false);
+      await this.saveCategories();
+      this.renderCategories();
 
-      // Переключаемся на этот канал
-      const accounts = await Storage.getAccounts();
-      if (!accounts || accounts.length === 0) {
-        window.utils.showToast('Нет аккаунтов для запуска', 'error');
-        return;
-      }
+      const stream = {
+        login,
+        displayName: name,
+        title: stats.title || '',
+        viewersCount: stats.viewers || 0,
+        profileImageUrl: info.profileImageUrl || null
+      };
 
-      const account = accounts[0];
-      const streams = await window.electronAPI.getStreamsWithDrops(channelLogin);
-      
-      if (!streams || streams.length === 0) {
-        window.utils.showToast(`На канале ${channelLogin} нет стримов с дропсами`, 'warning');
-        return;
-      }
-
-      const stream = await this.pickPreferredStream(streams, channelLogin);
-      if (!stream?.login) {
-        window.utils.showToast('На канале ' + channelLogin + ' нет подходящего стрима', 'warning');
-        return;
-      }
-
-      // Переключаемся на стрим
-      await window.electronAPI.openStream(`https://www.twitch.tv/${stream.login}`, account);
-      
-      this.currentCategory = category;
-      this.currentStream = stream;
-      this.resetChannelPointsTracking();
-      this.updateCurrentStreamUI(stream, category);
-      await this.saveActiveSession(stream, category);
-      
-      window.utils.showToast(`Начинаем фарминг ${stream.displayName}...`, 'success');
+      // Канал выбран руками — приложение само его не меняет. Идущую
+      // сессию не останавливаем: меняется только стрим
+      const started = await this.startFarmingForCategory(category, { stream, manual: true });
+      this.updateAutoFarmButton();
+      return started === true
+        ? { ok: true, category: category.name }
+        : { ok: false, reason: `Не удалось запустить ${name}` };
     } catch (error) {
       console.error('Error adding channel to farming:', error);
-      window.utils.showToast('Ошибка при добавлении канала в фарминг', 'error');
+      return { ok: false, reason: 'Ошибка при запуске канала' };
     }
   }
 
-  async switchToNextEnabledCategory() {
+  /**
+   * Переход к следующей категории, где есть что фармить.
+   *
+   * Возвращает:
+   *   true    — переключились (или ручная блокировка держит текущую);
+   *   false   — переключаться некуда: фарминг остановлен (или ручная
+   *             категория — тогда показано предложение);
+   *   'retry' — Twitch не ответил: текущий стрим оставлен, повтор по таймеру;
+   *   undefined — операцию перебила более новая.
+   *
+   * options.keepCurrent — текущая категория рабочая, и уходить из неё
+   * стоит только если нашлось куда. Тогда при неудаче ничего не меняем.
+   *
+   * options.reason — почему уходим: 'noDrops', 'offline', 'gameChanged',
+   * 'noCredit', 'done' или 'disabled'. Нужна, чтобы предложение у ручной
+   * категории называло настоящую причину, а не всегда «дропсов нет».
+   * 'disabled' — категорию убрал сам пользователь: если перейти некуда,
+   * фарминг останавливается без «всё собрано» и без автовыключения.
+   */
+  async switchToNextEnabledCategory(options = {}) {
+    const keepCurrent = options.keepCurrent === true;
+    const reason = options.reason || '';
     const revision = this.beginStreamOperation();
+    clearTimeout(this._categoryRetryTimer);
+    this._categoryRetryTimer = null;
     // Категорию, запущенную вручную, не меняем ни по какой причине.
     // Раньше защита стояла только в handleCategoryNoDrops, а сюда ведут
     // и другие пути: смена игры у стримера, завершение дропсов, ошибки.
     if (this.isManualCategoryActive()) {
       console.log('[Ручной запуск] Смена категории отменена:', this.currentCategory?.name);
-      this.showSwitchOffer();
+      this.showSwitchOffer(reason, options.detail);
       return false;
     }
 
@@ -2188,8 +3038,16 @@ class FarmingPage {
     
     // Находим следующую включенную категорию (пропускаем завершенные)
     // Приоритет: 1) ручные категории, 2) подписанные каналы с дропсами (если включен приоритет), 3) наличие дропсов, 4) сохранённый порядок/priority
-    let enabledCategories = this.categories
+    const candidates = this.categories
       .filter(cat => cat.enabled && cat.id !== this.currentCategory?.id && !cat.dropsCompleted);
+
+    // Где только что никто не стримил, в этом проходе не спрашиваем
+    // снова. Такие категории не выключаются: они вернутся сами.
+    if (!this._noStreamsUntil) this._noStreamsUntil = new Map();
+    const pausedUntil = this._noStreamsUntil;
+    const now = Date.now();
+    let enabledCategories = candidates.filter(cat => !((pausedUntil.get(cat.id) || 0) > now));
+    const pausedCount = candidates.length - enabledCategories.length;
 
     // Проверяем включен ли приоритет подписок
     const subscriptionsPriorityEnabled = await Storage.getItem('subscriptions_priority_enabled');
@@ -2255,36 +3113,67 @@ class FarmingPage {
         return true;
       }
 
-      window.utils.showToast('Нет доступных категорий для переключения', 'warning');
-      
-      // Закрываем текущий стрим
-      console.log('Stopping - no enabled categories');
-      await window.electronAPI.closeStream();
-      if (!this.isStreamOperationCurrent(revision)) return;
-      this.currentCategory = null;
-      
-      // Скрываем плеер, показываем "нет стрима"
-      const streamInfo = document.getElementById('current-stream-info');
-      const playerContainer = document.getElementById('player-container');
-      if (streamInfo && playerContainer) {
-        streamInfo.style.display = 'flex';
-        playerContainer.style.display = 'none';
+      if (keepCurrent) return false;
+
+      // Пользователь сам убрал текущую категорию, а других нет. Это не
+      // «все дропсы собраны»: раньше здесь срабатывало уведомление о
+      // завершении и автовыключение компьютера.
+      if (reason === 'disabled') {
+        window.utils.showToast('Других включённых категорий нет — фарминг остановлен', 'info');
+        this.stopFarming(false);
+        return false;
       }
 
-      // Больше фармить нечего — это и есть завершение работы
+      // Кампании есть, но стримов по ним сейчас нет — это не «всё
+      // собрано». Сообщать о завершении и выключать компьютер рано.
+      //
+      // То же, когда уходим из НЕотработанной категории только потому, что
+      // в ней некого смотреть: стрим кончился, стример сменил игру, канал
+      // не засчитывает. Других категорий нет — но награды в этой остались.
+      // Раньше здесь звучало «Все категории отработаны» и срабатывало
+      // автовыключение «по дропсам»
+      const current = this.currentCategory;
+      const leftUnfinished = ['offline', 'gameChanged', 'noCredit'].includes(reason) &&
+        !!current && current.enabled !== false && !current.dropsCompleted;
+      if (pausedCount > 0 || leftUnfinished) {
+        this.stopWhenNothingLive();
+        return false;
+      }
+
+      // Больше фармить нечего — это и есть завершение работы.
+      //
+      // Раньше здесь только снимался запрет сна, а плеер продолжал
+      // играть: всю ночь качался трафик, шла сессия в статистике, а
+      // интерфейс показывал фарм, хотя приложение ничего не фармило.
+      console.log('[Категории] Переключаться некуда — фарминг завершён');
+      window.utils.showToast('Все категории отработаны — фарминг остановлен', 'info');
+      this.stopFarming(false);
       this.onAllCategoriesCompleted();
       return false;
     }
-    
+
+    // Twitch, не ответивший по категории, — это незнание, а не «стримов
+    // нет». Раньше пустой ответ при сбое сети выключал категорию насовсем:
+    // минутная заминка Twitch разом отключала весь список, и фарминг
+    // стоял до утра. Теперь такие категории не трогаем.
+    const unanswered = [];
+    // Пропущенные «никто не в эфире» — одним итоговым тостом, а не по
+    // тосту на категорию: раньше за пару секунд их высыпало с дюжину
+    const skippedOffline = [];
+    let failuresInRow = 0;
+    const MAX_FAILURES_IN_ROW = 3;
+    const NO_STREAMS_PAUSE_MS = 15 * 60 * 1000;
+
     // Пробуем категории по очереди, пока не найдем со стримами
     for (const nextCategory of enabledCategories) {
       console.log('Trying category:', nextCategory.name);
-      
+
       try {
         const accounts = await Storage.getAccounts();
         if (!this.isStreamOperationCurrent(revision)) return;
         if (!accounts || accounts.length === 0) {
           window.utils.showToast('Нет аккаунтов для запуска стрима', 'error');
+          if (!keepCurrent) this.stopFarming(false);
           return false;
         }
         const account = accounts[0];
@@ -2292,78 +3181,161 @@ class FarmingPage {
         // Получаем стримы для категории
         const streams = await window.electronAPI.getStreamsWithDrops(nextCategory.name);
         if (!this.isStreamOperationCurrent(revision)) return;
-        
-        if (!streams || streams.length === 0) {
-          console.warn('No streams found for category:', nextCategory.name, '- disabling instead of removing');
-          // Отключаем категорию без стримов вместо удаления
-          nextCategory.enabled = false;
-          await Storage.saveCategories(this.categories);
-          if (!this.isStreamOperationCurrent(revision)) return;
-          this.renderCategories();
-          window.utils.showToast(`${nextCategory.name} отключена (нет стримов)`, 'info');
-          continue; // Пробуем следующую категорию
+
+        if (!Array.isArray(streams)) {
+          console.warn('[Категории] Twitch не ответил по категории, её не трогаю:', nextCategory.name);
+          unanswered.push(nextCategory.name);
+          // Несколько отказов подряд — Twitch лежит, остальные спрашивать
+          // бессмысленно: только нагрузим его повторами
+          if (++failuresInRow >= MAX_FAILURES_IN_ROW) break;
+          continue;
         }
-        
-        // Нашли стримы! Закрываем текущий и открываем новый
-        window.utils.showToast(`Переключение на ${nextCategory.name}...`, 'info');
-        console.log('Closing current stream before switching');
-        await window.electronAPI.closeStream();
-        if (!this.isStreamOperationCurrent(revision)) return;
-        
-        // Берём первый стрим
-        const stream = await this.pickPreferredStream(streams, nextCategory.name);
+        failuresInRow = 0;
+
+        if (streams.length === 0) {
+          // Стримов сейчас нет. Категорию не выключаем — пропускаем на
+          // время: ночью стримы кончаются, утром появляются снова
+          console.warn('[Категории] Сейчас никто не стримит, пропускаю:', nextCategory.name);
+          pausedUntil.set(nextCategory.id, Date.now() + NO_STREAMS_PAUSE_MS);
+          skippedOffline.push(nextCategory.name);
+          continue;
+        }
+
+        // Берём первый стрим. Тихо: про пропуск скажет итоговый тост
+        const stream = await this.pickPreferredStream(streams, nextCategory.name, { quiet: true });
         if (!this.isStreamOperationCurrent(revision)) return;
         if (!stream?.login) {
           // Кампания привязана к каналам, и никто из них не в эфире: это не
           // поломка категории, а вопрос времени — выключать её не надо
           console.warn('[Категории] Разрешённые каналы не в эфире:', nextCategory.name);
-          window.utils.showToast(nextCategory.name + ': разрешённые каналы не в эфире, пробую следующую', 'info');
+          pausedUntil.set(nextCategory.id, Date.now() + NO_STREAMS_PAUSE_MS);
+          skippedOffline.push(nextCategory.name);
           continue;
         }
         console.log('Selected stream:', stream.displayName);
-        
+
+        // Нашли стрим! Закрываем текущий и открываем новый. Закрываем
+        // только теперь: раньше это делалось до выбора канала, и если
+        // выбрать было некого, система оставалась без запрета сна.
+        // Тоста «Переключение…» нет: через секунду придёт итог
+        await window.electronAPI.closeStream();
+        if (!this.isStreamOperationCurrent(revision)) return;
+
         // Открываем стрим
         await window.electronAPI.openStream(`https://www.twitch.tv/${stream.login}`, account);
         if (!this.isStreamOperationCurrent(revision)) return;
-        
+
         // КРИТИЧЕСКИ ВАЖНО: обновляем UI и устанавливаем currentCategory
         this.currentCategory = nextCategory;
         this.currentStream = stream;
-        this.dropsMissingChecks = 0; // Сбрасываем счетчик проверок
+        this.resetCategoryCounters(nextCategory);
+        pausedUntil.delete(nextCategory.id);
         this.resetChannelPointsTracking();
         this.updateCurrentStreamUI(stream, nextCategory);
         await this.saveActiveSession(stream, nextCategory);
         if (!this.isStreamOperationCurrent(revision)) return;
-        
-        window.utils.showToast(`Переключено на: ${stream.displayName}`, 'success');
+
+        const skippedNote = skippedOffline.length > 0
+          ? `. Пропущено ${skippedOffline.length} ${this.plural(skippedOffline.length, 'категория', 'категории', 'категорий')}: никто не в эфире`
+          : '';
+        window.utils.showToast(`Переключено на ${nextCategory.name} — ${stream.displayName}${skippedNote}`, 'success');
         console.log('Stream switched successfully, currentCategory set to:', this.currentCategory);
         return true;
       } catch (error) {
         console.error('Error switching to category:', nextCategory.name, error);
         if (!this.isStreamOperationCurrent(revision)) return;
-        // Отключаем проблемную категорию вместо удаления
-        nextCategory.enabled = false;
-        await Storage.saveCategories(this.categories);
-        if (!this.isStreamOperationCurrent(revision)) return;
-        this.renderCategories();
-        window.utils.showToast(`${nextCategory.name} удалена (ошибка переключения)`, 'error');
+        // Исключение здесь — временный сбой (сеть, IPC), а не свойство
+        // категории. Раньше категория выключалась с подписью «удалена».
+        unanswered.push(nextCategory.name);
+        if (++failuresInRow >= MAX_FAILURES_IN_ROW) break;
         continue;
       }
     }
-    
-    // Если дошли сюда - не нашли ни одной рабочей категории
-    window.utils.showToast('Не удалось найти категорию с доступными стримами', 'error');
-    await window.electronAPI.closeStream();
-    if (!this.isStreamOperationCurrent(revision)) return;
-    this.currentCategory = null;
-    
-    const streamInfo = document.getElementById('current-stream-info');
-    const playerContainer = document.getElementById('player-container');
-    if (streamInfo && playerContainer) {
-      streamInfo.style.display = 'flex';
-      playerContainer.style.display = 'none';
+
+    if (keepCurrent) return false;
+
+    // Twitch не ответил хотя бы по одной категории: там вполне могут быть
+    // стримы. Текущий стрим оставляем и пробуем снова через минуту.
+    if (unanswered.length > 0) {
+      console.warn('[Категории] Twitch не ответил по категориям:', unanswered.join(', '));
+      this.scheduleCategoryRetry({ reason, detail: options.detail });
+      return 'retry';
     }
+
+    // Ответы есть, но смотреть сейчас нечего: стримов нет или нужные
+    // каналы не в эфире
+    this.stopWhenNothingLive();
     return false;
+  }
+
+  /**
+   * Twitch не отвечает: пробуем сменить категорию позже.
+   * Тост один на всю полосу сбоя, а не на каждую попытку.
+   */
+  scheduleCategoryRetry(retryOptions = {}) {
+    clearTimeout(this._categoryRetryTimer);
+
+    const now = Date.now();
+    if (!this._twitchDownToastAt || now - this._twitchDownToastAt > 10 * 60 * 1000) {
+      this._twitchDownToastAt = now;
+      window.utils?.showToast('Twitch не отвечает — повторю через минуту', 'warning');
+    }
+
+    const snapshot = this.streamSnapshot();
+    this._categoryRetryTimer = setTimeout(() => {
+      this._categoryRetryTimer = null;
+      // Пользователь мог сам сменить стрим или остановить фарминг
+      if (this._destroyed || !this.sessionStartTime || !this.isCurrentStream(snapshot)) return;
+      // Причина переезжает в повтор: убранная пользователем категория
+      // и при повторе не должна заканчиваться «всё собрано»
+      this.switchToNextEnabledCategory({ reason: retryOptions.reason, detail: retryOptions.detail });
+    }, 60 * 1000);
+  }
+
+  /**
+   * Смотреть нечего, но кампании ждут — останавливаемся честно и
+   * пробуем позже.
+   *
+   * Раньше в этом месте плеер продолжал играть отработанный канал: шла
+   * сессия, качался трафик, интерфейс показывал фарм.
+   */
+  stopWhenNothingLive() {
+    const minutes = Math.round(FarmingPage.AUTO_RESTART_MS / 60000);
+    const text = `Сейчас никто не стримит категории с дропсами. Попробую снова через ${minutes} мин`;
+    console.warn('[Категории] Стримов с дропсами сейчас нет — останавливаюсь, повтор через', minutes, 'мин');
+    window.utils?.showToast(`Фарминг остановлен. ${text}`, 'warning');
+    window.notifyFarmingEvent?.('Фарминг остановлен', text);
+    this.stopFarming(false);
+    this.scheduleAutoRestart();
+  }
+
+  static get AUTO_RESTART_MS() {
+    return 15 * 60 * 1000;
+  }
+
+  /**
+   * Повторный запуск после остановки «стримов нет».
+   *
+   * Ночью стримы кончаются, а утром появляются снова — без повтора
+   * фарминг стоял бы до тех пор, пока пользователь не нажмёт кнопку.
+   * Ручная остановка и ручной запуск повтор отменяют.
+   */
+  scheduleAutoRestart(attemptsLeft = 32) {
+    clearTimeout(this._autoRestartTimer);
+    this._autoRestartTimer = setTimeout(async () => {
+      this._autoRestartTimer = null;
+      if (this._destroyed || this.sessionStartTime || window._farmingStarting) return;
+      // Открытое окно входа — сначала его решает пользователь
+      if (document.querySelector('.auth-modal')) return;
+
+      console.log('[Фарминг] Повторная попытка запуска после паузы');
+      await this.startFarming({ auto: true });
+
+      if (!this._destroyed && !this.sessionStartTime && attemptsLeft > 1 &&
+          !document.querySelector('.auth-modal')) {
+        this.scheduleAutoRestart(attemptsLeft - 1);
+      }
+    }, FarmingPage.AUTO_RESTART_MS);
   }
 
   setupDragAndDrop() {
@@ -2384,41 +3356,104 @@ class FarmingPage {
 
       item.addEventListener('dragend', () => {
         item.classList.remove('dragging');
+        // Раньше ссылка на узел жила вечно, и dragover следующего
+        // перетаскивания мог вставить в список уже выброшенную карточку
+        if (this._draggedItem === item) this._draggedItem = null;
+        // Порядок сохраняем и здесь, а не только в drop. drop приходит,
+        // лишь когда карточку отпустили над другой карточкой; отпущенная
+        // в зазор между ними или за краем списка, она оставалась на новом
+        // месте, но порядок не сохранялся — через полминуты список
+        // откатывался. После drop повторный вызов ничего не пишет: порядок
+        // уже совпадает. Он же делает перерисовку, отложенную на время
+        // перетаскивания.
+        this._categoriesRenderPending = false;
+        this.commitDraggedOrder();
       });
 
       item.addEventListener('dragover', (e) => {
         e.preventDefault();
-        const dragged = this._draggedItem;
-        if (!dragged || dragged === item) return;
-        const afterElement = this.getDragAfterElement(e.clientY);
-        if (afterElement == null) {
-          container.appendChild(dragged);
-        } else {
-          container.insertBefore(dragged, afterElement);
-        }
+        if (this._draggedItem === item) return;
+        this.moveDraggedCategory(container, e.clientY);
       });
     });
 
-    // Обработчик сброса — один на контейнер. Раньше он добавлялся при
+    // Обработчики контейнера — по одному. Раньше сброс добавлялся при
     // каждой перерисовке: за ночь их набегали десятки, и одно
     // перетаскивание сохраняло и перерисовывало список десятки раз.
     if (!container.dataset.dropBound) {
       container.dataset.dropBound = '1';
-      container.addEventListener('drop', async () => {
-        const items = container.querySelectorAll('.category-item');
-        const newOrder = Array.from(items).map(item => item.getAttribute('data-category-id'));
 
-        this.categories = newOrder
-          .map(id => this.categories.find(cat => cat.id === id))
-          .filter(Boolean);
-        this.categories.forEach((cat, index) => {
-          cat.priority = index + 1;
-        });
+      // Зазоры между карточками тоже место для сброса: без preventDefault
+      // курсор над ними становился «нельзя», и drop не приходил вовсе
+      container.addEventListener('dragover', (e) => {
+        if (!this._draggedItem) return;
+        e.preventDefault();
+        // Над карточкой место уже выбрал её собственный обработчик
+        if (e.target.closest && e.target.closest('.category-item')) return;
+        this.moveDraggedCategory(container, e.clientY);
+      });
 
-        await Storage.saveCategories(this.categories);
-        this.renderCategories();
+      container.addEventListener('drop', (e) => {
+        e.preventDefault();
+        this.commitDraggedOrder();
       });
     }
+  }
+
+  /** Ставит перетаскиваемую карточку на место под курсором. */
+  moveDraggedCategory(container, clientY) {
+    const dragged = this._draggedItem;
+    if (!dragged || !dragged.isConnected) return;
+
+    const afterElement = this.getDragAfterElement(clientY);
+    if (afterElement == null) {
+      if (container.lastElementChild === dragged) return;
+      container.appendChild(dragged);
+    } else {
+      if (afterElement === dragged || dragged.nextElementSibling === afterElement) return;
+      container.insertBefore(dragged, afterElement);
+    }
+
+    // Номера #N — по новому месту уже во время перетаскивания: раньше до
+    // отпускания карточка показывала прежний номер. Число в разметке
+    // обновляется на месте (applyCategoriesMarkup), так что следующая
+    // перерисовка поправит его, если порядок в итоге не сохранится
+    container.querySelectorAll('.category-item .category-priority').forEach((el, index) => {
+      el.textContent = `#${index + 1}`;
+    });
+  }
+
+  /**
+   * Сохраняет порядок категорий так, как он стоит на экране после
+   * перетаскивания. Если порядок не изменился, ничего не пишет.
+   */
+  async commitDraggedOrder() {
+    const container = document.getElementById('categories-list');
+    if (!container) return;
+
+    const items = container.querySelectorAll('.category-item');
+    // Дубли убираем: сорванное перетаскивание могло оставить в списке
+    // две карточки одной категории, и она сохранялась дважды
+    const newOrder = [...new Set(Array.from(items).map(item => item.getAttribute('data-category-id')))];
+
+    // Категории, которых нет на экране (добавлены, пока перерисовка
+    // ждала конца перетаскивания), не теряем — ставим в конец
+    const byId = new Map(this.categories.map(cat => [String(cat.id), cat]));
+    const ordered = newOrder.map(id => byId.get(id)).filter(Boolean);
+    const placed = new Set(newOrder);
+    const next = [...ordered, ...this.categories.filter(cat => !placed.has(String(cat.id)))];
+
+    const changed = next.length !== this.categories.length ||
+      next.some((cat, index) => cat !== this.categories[index]);
+
+    if (changed) {
+      this.categories = next;
+      this.categories.forEach((cat, index) => {
+        cat.priority = index + 1;
+      });
+      await this.saveCategories();
+    }
+    this.renderCategories();
   }
 
   getDragAfterElement(y) {
@@ -2443,21 +3478,79 @@ class FarmingPage {
       btn.addEventListener('click', async (e) => {
         e.stopPropagation();
         const categoryId = btn.getAttribute('data-category-id');
+        const index = this.categories.findIndex(cat => cat.id === categoryId);
+        if (index < 0) return;
+        const removed = this.categories[index];
         const isCurrent = this.currentCategory && this.currentCategory.id === categoryId;
         this.categories = this.categories.filter(cat => cat.id !== categoryId);
-        await Storage.saveCategories(this.categories);
+        // Запоминаем удаление: синхронизация автокатегорий и подписки
+        // раньше возвращали игру через пару минут
+        await this.setCategoryDeleted(removed.name, true);
+        await this.saveCategories();
         this.renderCategories();
-        if (isCurrent) {
-          await this.stopFarming();
-          if (this.categories.length > 0) {
-            await this.startFarming();
-          } else {
-            await window.electronAPI.closeStream();
-          }
+        this.showUndoRemove(removed, index);
+
+        if (isCurrent && this.sessionStartTime) {
+          // Удалили то, что сейчас фармится: уходим в другую категорию
+          // внутри той же сессии. Раньше сессия останавливалась и
+          // начиналась заново — таймер и счётчики сбрасывались
+          if (this.manualCategoryId === categoryId) this.manualCategoryId = null;
+          if (this.manualPlayLockCategoryId === categoryId) this.manualPlayLockCategoryId = null;
+          await this.switchToNextEnabledCategory({ reason: 'disabled' });
         }
-        window.utils.showToast('Категория удалена', 'success');
       });
     });
+  }
+
+  /**
+   * «Категория удалена» с кнопкой «Вернуть».
+   *
+   * Крестик удалял сразу и без подтверждения: промахнулся мимо
+   * переключателя — и игра со всеми отметками пропала. Несколько секунд
+   * на отмену дешевле, чем вопрос перед каждым удалением.
+   */
+  showUndoRemove(category, index) {
+    const host = document.getElementById('categories-list')?.parentElement;
+    if (!host) {
+      window.utils.showToast('Категория удалена', 'success');
+      return;
+    }
+
+    clearTimeout(this._undoTimer);
+    this._undoBar?.remove();
+
+    const bar = document.createElement('div');
+    bar.className = 'category-undo';
+    bar.setAttribute('role', 'status');
+    bar.innerHTML = `
+      <span class="category-undo-text"></span>
+      <button type="button" class="btn btn-secondary category-undo-btn">Вернуть</button>
+    `;
+    bar.querySelector('.category-undo-text').textContent = `«${category.name}» удалена`;
+
+    const close = () => {
+      clearTimeout(this._undoTimer);
+      bar.remove();
+      if (this._undoBar === bar) this._undoBar = null;
+    };
+
+    bar.querySelector('.category-undo-btn').addEventListener('click', async () => {
+      close();
+      if (this._destroyed) return;
+      // Ту же игру могли успеть добавить заново
+      const key = this.normalizeGameKey(category.name);
+      if (this.categories.some(cat => cat.id === category.id || this.normalizeGameKey(cat.name) === key)) return;
+
+      this.categories.splice(Math.min(index, this.categories.length), 0, category);
+      await this.setCategoryDeleted(category.name, false);
+      await this.saveCategories();
+      this.renderCategories();
+      window.utils.showToast(`«${category.name}» возвращена`, 'success');
+    });
+
+    host.appendChild(bar);
+    this._undoBar = bar;
+    this._undoTimer = setTimeout(close, 6000);
   }
 
   /**
@@ -2470,17 +3563,25 @@ class FarmingPage {
    * навигации, и отложенный вызов от прежнего экземпляра иначе прошёл бы мимо
    * защиты.
    */
-  async startFarming() {
+  async startFarming(options = {}) {
+    // Ручной запуск отменяет отложенный повтор после «стримов нет»
+    if (!options.auto) {
+      clearTimeout(this._autoRestartTimer);
+      this._autoRestartTimer = null;
+    }
+
     // Защёлка от двойного запуска. Раньше она снималась только в finally,
     // то есть при зависшем сетевом запросе не снималась никогда: блок
     // await не завершался, и кнопка молча переставала работать до
     // перезапуска приложения. Теперь у неё есть срок годности.
-    const STALE_MS = 90000;
+    const STALE_MS = FarmingPage.START_LATCH_MS;
     const startedAt = window._farmingStartingAt || 0;
 
     if (window._farmingStarting) {
       if (Date.now() - startedAt < STALE_MS) {
         console.log('[Фарминг] Запуск уже идёт — повторное нажатие пропущено');
+        // Нажатие (кнопка, горячая клавиша) не должно пропадать молча
+        if (!options.auto) this.toastOnce('start-busy', 'Поиск стрима ещё идёт…', 'info', 5000);
         return;
       }
       console.warn('[Фарминг] Прошлый запуск завис, снимаю защёлку');
@@ -2528,12 +3629,14 @@ class FarmingPage {
         label.textContent = 'Ищем стрим…';
       }
 
-      // Поиск ограничен и по числу категорий, и по времени. Всё, что
-      // дольше минуты, — зависание, и кнопку надо вернуть пользователю
+      // Поиск ограничен и по числу категорий, и по времени. Дольше срока
+      // защёлки — зависание, и кнопку надо вернуть пользователю. Срок
+      // общий с защёлкой: кнопка, разблокированная через 60 с при
+      // защёлке на 90, ещё полминуты выглядела рабочей и молча не нажималась
       this._startButtonTimer = setTimeout(() => {
         console.warn('[Фарминг] Поиск затянулся, разблокирую кнопку');
         this.setStartButtonBusy(false);
-      }, 60000);
+      }, FarmingPage.START_LATCH_MS);
     } else {
       btn.disabled = false;
       btn.style.opacity = '1';
@@ -2542,6 +3645,16 @@ class FarmingPage {
   }
 
   async _startFarming() {
+    // Фарминг уже идёт — новый старт начал бы сессию заново. Раньше так и
+    // выходило при включении «Фарм всех дропсов» посреди сессии: таймер
+    // прыгал в ноль, баллы и дропсы за прошедшие часы пропадали. Сменить
+    // категорию внутри сессии можно кнопкой Play.
+    if (this.sessionStartTime && this.currentStream) {
+      console.log('[Фарминг] Сессия уже идёт — повторный запуск пропущен');
+      this.showFarmingState();
+      return;
+    }
+
     const revision = this.beginStreamOperation();
     if (this.categories.length === 0) {
       window.utils.showToast('Добавьте хотя бы одну категорию', 'warning');
@@ -2710,6 +3823,9 @@ class FarmingPage {
     let category = null;
     let streams = [];
     const skipped = [];
+    // Отдельно — категории, по которым Twitch не ответил: это не «стримов
+    // нет», и пользователю надо видеть разницу
+    const unanswered = [];
 
     // Каждый запрос со своим сроком: одна залипшая категория не должна
     // останавливать перебор остальных
@@ -2728,10 +3844,19 @@ class FarmingPage {
         break;
       }
 
-      const found = await withTimeout(window.electronAPI.getStreamsWithDrops(candidate.name), 12000);
+      let found = null;
+      try {
+        found = await withTimeout(window.electronAPI.getStreamsWithDrops(candidate.name), 12000);
+      } catch (error) {
+        found = null;
+      }
       if (!this.isStreamOperationCurrent(revision)) return;
-      if (found === null) console.warn('[Фарминг] Категория не ответила вовремя:', candidate.name);
-      if (found && found.length > 0) {
+      if (!Array.isArray(found)) {
+        console.warn('[Фарминг] Twitch не ответил по категории:', candidate.name);
+        unanswered.push(candidate.name);
+        continue;
+      }
+      if (found.length > 0) {
         category = candidate;
         streams = found;
         break;
@@ -2747,10 +3872,11 @@ class FarmingPage {
     }
 
     if (!category) {
-      window.utils.showToast(
-        `Нет стримов с дропсами: ${skipped.slice(0, 3).join(', ')}${skipped.length > 3 ? ' и др.' : ''}`,
-        'warning'
-      );
+      const list = (names) => `${names.slice(0, 3).join(', ')}${names.length > 3 ? ' и др.' : ''}`;
+      const parts = [];
+      if (skipped.length > 0) parts.push(`Нет стримов с дропсами: ${list(skipped)}`);
+      if (unanswered.length > 0) parts.push(`Twitch не ответил по категориям: ${list(unanswered)}`);
+      window.utils.showToast(parts.join('. ') || 'Не нашлось стрима с дропсами', 'warning');
       return;
     }
     
@@ -2769,8 +3895,18 @@ class FarmingPage {
     // Сохраняем текущую категорию и стрим
     this.currentCategory = category;
     this.currentStream = stream;
-    this.dropsMissingChecks = 0;
-    
+    this.resetCategoryCounters(category);
+
+    // Новую сессию начинает SessionState.start(): только он заводит таймер
+    // автовыключения и сбрасывает качество плеера. Раньше здесь стояло
+    // присваивание sessionStartTime, которое шло через restore(), и
+    // выключение по таймеру не срабатывало никогда. До загрузки плеера —
+    // чтобы сброс качества успел к ней.
+    const newSession = !!window.sessionState && !window.sessionState.isActive();
+    if (newSession) {
+      window.sessionState.start({ categoryName: category.name, streamLogin: stream.login });
+    }
+
     // Открываем стрим в фоновом окне с аккаунтом
     await window.electronAPI.openStream(streamUrl, accounts[0]);
     if (!this.isStreamOperationCurrent(revision)) return;
@@ -2808,13 +3944,16 @@ class FarmingPage {
       }, 10);
     }
     
-    // Запускаем трекинг сессии
-    this.sessionStartTime = Date.now();
+    // Запускаем трекинг сессии. Трафик и баллы новой сессии уже обнулил
+    // SessionState.start(); здесь — то, что живёт на странице
     this.categoryStartTime = Date.now();
-    this.estimatedBandwidth = 0;
-    this.bandwidthHistory = [];
-    window.electronAPI?.resetTrafficSession?.();
-    this.resetSessionPointsTracking();
+    if (newSession) {
+      this.estimatedBandwidth = 0;
+      this.bandwidthHistory = [];
+      this._sessionDropsBaseline = null;
+      this._sessionCountedDrops = null;
+      this._sessionSeenCampaigns = null;
+    }
     this.updateSessionInfo();
 
     // Mark global farming active for other modules (e.g., mini-player)
@@ -2828,20 +3967,20 @@ class FarmingPage {
       this.sessionInterval = null;
     }
     
+    // Без requestAnimationFrame: в свёрнутом в трей окне он не срабатывает
+    // вовсе, и трафик за ночь в итог сессии не попадал. Отрисовки здесь
+    // больше нет — только учёт.
     this.sessionInterval = setInterval(() => {
-      // Используем requestAnimationFrame для более плавного обновления
-      requestAnimationFrame(() => {
-        this.updateSessionInfo();
-      });
+      this.updateSessionInfo();
     }, 1000);
 
-    // Запускаем периодическое обновление статистики (каждые 30 секунд)
+    // Запускаем периодическое обновление статистики (раз в минуту, см. LIVE_STATS_MS)
     if (this.statsUpdateInterval) {
       clearInterval(this.statsUpdateInterval);
     }
     this.statsUpdateInterval = setInterval(() => {
       this.updateLiveStatistics();
-    }, 30000); // 30 секунд
+    }, FarmingPage.LIVE_STATS_MS);
 
     // Создаем начальную сессию в статистике
     this.updateLiveStatistics();
@@ -2907,13 +4046,13 @@ class FarmingPage {
       return `
         <div style="margin-bottom: 16px; padding: 16px; background: var(--bg-primary); border-radius: var(--radius-md); border: 1px solid var(--border-color);">
           <div style="display: flex; gap: 12px; margin-bottom: 12px;">
-            <img src="${campaign.imageUrl}" 
-                 alt="${campaign.name}" 
+            <img src="${this.esc(campaign.imageUrl)}" 
+                 alt="${this.esc(campaign.name)}" 
                  style="width: 60px; height: 80px; border-radius: var(--radius-sm); object-fit: cover; flex-shrink: 0;"
                  onerror="this.style.display='none'">
             <div style="flex: 1;">
-              <div style="font-size: 15px; font-weight: 600; color: var(--text-primary); margin-bottom: 6px;">${campaign.name}</div>
-              <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 8px;">${campaign.game}</div>
+              <div style="font-size: 15px; font-weight: 600; color: var(--text-primary); margin-bottom: 6px;">${this.esc(campaign.name)}</div>
+              <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 8px;">${this.esc(campaign.game)}</div>
               <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
                 <span style="font-size: 12px; padding: 4px 8px; background: ${campaign.isActive ? 'rgba(53, 208, 138, 0.15)' : 'rgba(239, 68, 68, 0.15)'}; color: ${campaign.isActive ? '#35d08a' : '#ef4444'}; border-radius: var(--radius-sm); font-weight: 600;">
                   ${campaign.isActive ? 'Активно' : 'Завершено'}
@@ -2947,14 +4086,14 @@ class FarmingPage {
                    onmouseover="this.style.background='rgba(124, 92, 255, 0.1)'; this.style.transform='translateX(4px)'"
                    onmouseout="this.style.background='var(--bg-secondary)'; this.style.transform='translateX(0)'">
                 ${drop.imageUrl ? `
-                  <img src="${drop.imageUrl}" 
-                       alt="${drop.name}" 
+                  <img src="${this.esc(drop.imageUrl)}" 
+                       alt="${this.esc(drop.name)}" 
                        style="width: 48px; height: 48px; border-radius: var(--radius-sm); object-fit: cover; flex-shrink: 0;">
                 ` : ''}
                 <div style="flex: 1; min-width: 0;">
-                  <div style="font-size: 13px; font-weight: 600; color: var(--text-primary); margin-bottom: 4px;">${drop.name}</div>
+                  <div style="font-size: 13px; font-weight: 600; color: var(--text-primary); margin-bottom: 4px;">${this.esc(drop.name)}</div>
                   <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 6px;">
-                    Смотреть ${drop.requiredMinutes} мин
+                    Смотреть ${this.esc(drop.requiredMinutes)} мин
                   </div>
                   <div style="height: 6px; background: var(--bg-primary); border-radius: var(--radius-sm); overflow: hidden;">
                     <div style="height: 100%; width: ${drop.progress || 0}%; background: var(--accent-color); transition: width 0.5s ease;"></div>
@@ -3004,37 +4143,23 @@ class FarmingPage {
    * Раньше здесь стоял find() и бралась только первая кампания — если у игры
    * их несколько (например, две компании со своими наборами наград),
    * вторая просто не отображалась.
+   *
+   * Сравнение строгое — то же правило, что в выборе стрима и в проверке
+   * смены игры: по id игры, если он известен с обеих сторон, иначе по
+   * точному названию. Раньше при отсутствии точного совпадения брались
+   * кампании, чьё название начинается так же: у «World of Tanks» без
+   * своей кампании находилась кампания «World of Tanks Console», и
+   * категория фармилась впустую.
    */
-  matchCampaignsForGame(campaigns, gameName) {
-    const target = this.normalizeGameName(gameName);
-    if (!target || !Array.isArray(campaigns)) return [];
+  matchCampaignsForGame(campaigns, gameName, gameId) {
+    if (!this.normalizeGameName(gameName) || !Array.isArray(campaigns)) return [];
 
-    const nameOf = (campaign) => this.normalizeGameName(
-      campaign?.game?.displayName || campaign?.game?.name || campaign?.game
-    );
-
-    const exact = campaigns.filter(c => nameOf(c) && nameOf(c) === target);
-    if (exact.length > 0) return exact;
-
-    // Фолбэк: сравниваем по словам, а НЕ по вхождению подстроки.
-    //
-    // Подстрока здесь опасна: в «albion online» содержится «line», в «rust» —
-    // «us», поэтому кампания игры с коротким названием могла прицепиться к
-    // чужой игре. Риск вырос после того, как в список стали попадать все
-    // доступные кампании аккаунта (сотня вместо пары).
-    //
-    // Совпадением считаем только случай, когда одно название целиком является
-    // началом другого по словам: «Albion» ↔ «Albion Online» — да,
-    // «Line» ↔ «Albion Online» — нет.
-    const targetTokens = target.split(' ').filter(Boolean);
-    const isTokenPrefix = (short, long) =>
-      short.length > 0 && short.length <= long.length && short.every((t, i) => t === long[i]);
-
-    return campaigns.filter(c => {
-      const tokens = nameOf(c).split(' ').filter(Boolean);
-      if (tokens.length === 0) return false;
-      return isTokenPrefix(tokens, targetTokens) || isTokenPrefix(targetTokens, tokens);
-    });
+    return campaigns.filter(c => window.StreamPicker.isExactGame(
+      c?.game?.displayName || c?.game?.name || c?.game,
+      gameName,
+      c?.game?.id || c?.gameId,
+      gameId
+    ));
   }
 
   /** Дроп считается выполненным, если получен или уже доступен к получению. */
@@ -3116,8 +4241,8 @@ class FarmingPage {
       >
         <div style="display: flex; align-items: center; justify-content: center; margin-bottom: 10px;">
           ${drop.imageURL ? `
-            <img src="${drop.imageURL}"
-                 alt="${dropName}"
+            <img src="${this.esc(drop.imageURL)}"
+                 alt="${this.esc(dropName)}"
                  style="width: 64px; height: 64px; border-radius: var(--radius-md); object-fit: cover; opacity: ${isCompleted ? '0.7' : '1'}; transition: all 0.3s ease;">
           ` : `
             <div style="width: 64px; height: 64px; border-radius: var(--radius-md); background: rgba(124, 92, 255, 0.2); display: flex; align-items: center; justify-content: center;">
@@ -3129,7 +4254,7 @@ class FarmingPage {
         </div>
         <div style="text-align: center; margin-bottom: 10px;">
           <div style="display: flex; align-items: center; justify-content: center; gap: 6px; margin-bottom: 8px;">
-            <span style="font-size: 13px; font-weight: 600; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%;" title="${dropName}">${dropName}</span>
+            <span style="font-size: 13px; font-weight: 600; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%;" title="${this.esc(dropName)}">${this.esc(dropName)}</span>
             ${isCompleted ? `
               <svg width="14" height="14" viewBox="0 0 16 16" fill="#35d08a" style="flex-shrink: 0;">
                 <circle cx="8" cy="8" r="8" fill="rgba(53, 208, 138, 0.2)"/>
@@ -3145,7 +4270,7 @@ class FarmingPage {
         <div style="font-size: 11px; color: var(--text-secondary); text-align: center;">
           ${isCompleted
             ? `<span style="color: #35d08a; font-weight: 600;">✓ ${i18n.t('farming.claimedOrAvailable')}</span>`
-            : `<div>${drop.progress} / ${drop.required} ${i18n.t('farming.min')}</div>${remaining > 0 ? `<div style="margin-top: 4px; color: var(--text-tertiary);">${i18n.t('farming.remaining')}: ${remaining} ${i18n.t('farming.min')}</div>` : ''}`
+            : `<div>${this.esc(drop.progress)} / ${this.esc(drop.required)} ${i18n.t('farming.min')}</div>${remaining > 0 ? `<div style="margin-top: 4px; color: var(--text-tertiary);">${i18n.t('farming.remaining')}: ${remaining} ${i18n.t('farming.min')}</div>` : ''}`
           }
         </div>
       </div>
@@ -3175,8 +4300,8 @@ class FarmingPage {
     const header = showHeader ? `
       <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; padding: 8px 12px; background: rgba(124, 92, 255, 0.06); border: 1px solid rgba(124, 92, 255, 0.18); border-radius: var(--radius-md);">
         <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
-          ${campaign.game?.boxArtURL ? `<img src="${campaign.game.boxArtURL}" alt="" style="width: 24px; height: 32px; border-radius: var(--radius-sm); object-fit: cover; flex-shrink: 0;">` : ''}
-          <span style="font-size: 13px; font-weight: 700; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${campaignTitle}">${campaignTitle}</span>
+          ${campaign.game?.boxArtURL ? `<img src="${this.esc(campaign.game.boxArtURL)}" alt="" style="width: 24px; height: 32px; border-radius: var(--radius-sm); object-fit: cover; flex-shrink: 0;">` : ''}
+          <span style="font-size: 13px; font-weight: 700; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${this.esc(campaignTitle)}">${this.esc(campaignTitle)}</span>
           ${notStarted ? `<span style="flex-shrink: 0; padding: 2px 6px; background: rgba(255, 152, 0, 0.15); color: #ff9800; border-radius: var(--radius-sm); font-size: 10px; font-weight: 700; text-transform: uppercase;">Не начата</span>` : ''}
         </div>
         <div style="display: flex; align-items: center; gap: 10px; flex-shrink: 0;">
@@ -3240,9 +4365,19 @@ class FarmingPage {
       }
 
       // ВСЕ кампании этой игры, а не только первая найденная
-      const matched = this.matchCampaignsForGame(result.campaigns, currentGameName)
+      const matched = this.matchCampaignsForGame(result.campaigns, currentGameName,
+        this.currentCategory?.name === currentGameName ? this.currentCategory?.id : undefined)
         .filter(c => Array.isArray(c.drops) && c.drops.length > 0);
       this._lastMatchedCount = matched.length;
+
+      // Инвентарь без dashboard знает только НАЧАТЫЕ кампании. Новая,
+      // ещё не начатая кампания игры в нём не видна — это незнание, а не
+      // «дропсов нет». Раньше на таком ответе в первые минуты после
+      // запуска категории с новыми кампаниями выключались и удалялись.
+      if (matched.length === 0 && result.dashboardComplete === false) {
+        console.log('[Дропсы] Список кампаний неполный (нет dashboard) — проверку пропускаю');
+        return { hasDrops: true, unknown: true };
+      }
 
       const horizontal = document.getElementById('drops-progress-horizontal');
       if (!horizontal) return { hasDrops: false };
@@ -3253,10 +4388,17 @@ class FarmingPage {
         // возвращалась. Прячем только когда кампаний нет несколько
         // проверок подряд — тем же порогом, по которому меняется
         // категория, чтобы панель не пропадала раньше времени.
+        //
+        // Терпимость — только к своей категории. Панель с прогрессом
+        // прошлой игры (или «Загрузка…» после смены) прячем сразу
         this._emptyDropsChecks = (this._emptyDropsChecks || 0) + 1;
+        const ownPanel = !!this.currentCategory &&
+          horizontal.dataset.categoryId === String(this.currentCategory.id);
 
-        if (this._emptyDropsChecks >= 3) {
+        if (this._emptyDropsChecks >= 3 || !ownPanel) {
           horizontal.style.display = 'none';
+          // Блок в сайдбаре живёт, пока у категории есть кампания
+          this.hideMiniDropsProgress();
         } else {
           console.log('[Дропсы] Пустой ответ', this._emptyDropsChecks,
             'из 3 — панель оставляю как есть');
@@ -3300,6 +4442,11 @@ class FarmingPage {
       // под одним названием «дропсы» показывались разные проценты: 63
       // против 29. Считает CampaignValue, чтобы определение было одно.
       const overallPercent = window.CampaignValue.progressPercent(matched);
+      // Время набрано, но готовую награду ещё не удалось забрать — это не
+      // «всё получено»: раньше категорию в этот момент бросали, и
+      // незабранная награда могла сгореть
+      const pendingClaim = overallPercent === 100 && this.hasPendingClaims(matched);
+      const allDone = overallPercent === 100 && !pendingClaim;
 
       // Ближайшее время окончания среди всех кампаний
       const soonestEnd = matched
@@ -3310,6 +4457,11 @@ class FarmingPage {
 
       const accentSolid = overallPercent === 100 ? '#35d08a' : '#7c5cff';
       const accentRgb = overallPercent === 100 ? '53, 208, 138' : '124, 92, 255';
+
+      // Чей прогресс на панели — по этой отметке смена категории понимает,
+      // что показанное устарело (resetDropsViewForCategory)
+      if (this.currentCategory) horizontal.dataset.categoryId = String(this.currentCategory.id);
+      else delete horizontal.dataset.categoryId;
 
       horizontal.innerHTML = `
         <style>
@@ -3332,7 +4484,7 @@ class FarmingPage {
             </div>
             ${matched.length > 1 ? `
               <span style="padding: 3px 8px; background: rgba(124, 92, 255, 0.15); border: 1px solid rgba(124, 92, 255, 0.3); border-radius: var(--radius-md); font-size: 11px; font-weight: 700; color: #7c5cff;">
-                ${matched.length} кампании
+                ${matched.length} ${this.plural(matched.length, 'кампания', 'кампании', 'кампаний')}
               </span>
             ` : ''}
             ${timeRemaining ? `
@@ -3353,14 +4505,24 @@ class FarmingPage {
         ${this.buildForecastMarkup(matched)}
         ${sections.map(s => s.html).join('')}
         <div id="drops-received-footer" style="margin-top: 12px; padding: 12px; background: rgba(${accentRgb}, 0.1); border-radius: var(--radius-sm); border: 1px solid rgba(${accentRgb}, 0.3); font-size: 13px; color: var(--text-secondary); text-align: center;">
-          ${overallPercent === 100
-            ? `<span style="color: #35d08a; font-weight: 600;">✓ ${i18n.t('farming.allDropsClaimed')}</span>`
-            : `<span style="color: var(--text-primary); font-weight: 600; cursor: pointer;">${completedDrops}/${totalDrops} ${i18n.t('statistics.dropsReceived')}</span>`
+          ${allDone
+            ? `<div class="drops-done">
+                 <span class="drops-done-text">✓ ${i18n.t('farming.allDropsClaimed')}</span>
+                 <div class="drops-done-actions" id="drops-done-actions"></div>
+               </div>`
+            : pendingClaim
+              ? `<span style="color: var(--text-primary); font-weight: 600;">Награда готова — забираю</span>`
+              // «3 из 5 дропсов получено» вместо «3/5 Дропсов получено».
+              // Без курсора-руки: обычный клик по подвалу ничего не делает
+              // (тестовое уведомление — только Shift+клик в режиме разработчика)
+              : `<span style="color: var(--text-primary); font-weight: 600;">${completedDrops} из ${totalDrops} ${this.plural(totalDrops, 'дропса', 'дропсов', 'дропсов')} получено</span>`
           }
         </div>
       `;
 
-      if (overallPercent === 100) {
+      // Место под кнопку перехода теперь есть в разметке выше. Раньше его
+      // не было, и кнопка «Перейти к …» не появлялась никогда
+      if (allDone) {
         this.renderNextCategoryAction();
       }
 
@@ -3397,13 +4559,13 @@ class FarmingPage {
 
       // Обновляем статус категории
       if (this.currentCategory) {
-        this.currentCategory.dropsCompleted = overallPercent === 100;
+        this.currentCategory.dropsCompleted = allDone;
         this.currentCategory.dropsProgressPercent = overallPercent;
         this.currentCategory.dropsEndsAt = soonestEnd;
         // Идентификаторы кампаний нужны, чтобы отличить «та же кампания
         // всё ещё идёт» от «началась новая»
         this.currentCategory.dropsCampaignIds = matched.map(c => c.id).filter(Boolean).sort().join(',');
-        await Storage.saveCategories(this.categories);
+        await this.saveCategories();
         this.renderCategories();
 
         // Сайдбарная шкала идёт по времени просмотра, чтобы деления
@@ -3412,14 +4574,55 @@ class FarmingPage {
         this.updateMiniDropsProgress(overallPercent);
         this.updateTrayStatus(matched, timeline);
 
-        // Если все дропсы получены - сразу переключаемся
-        if (overallPercent === 100 && !this.currentCategory._switchScheduled) {
+        // Если все дропсы получены - сразу переключаемся.
+        //
+        // Отметка «уже переключаемся» живёт на странице, а не в категории:
+        // поле в объекте уходило в хранилище вместе со списком и переживало
+        // новую кампанию — по её завершении категорию уже никто не
+        // переключал
+        if (!this._switchScheduledIds) this._switchScheduledIds = new Set();
+        const switchScheduled = this._switchScheduledIds;
+        if (allDone && !switchScheduled.has(this.currentCategory.id)) {
           if (this.isSingleManualPlayLocked()) {
             console.log('[ManualPlayLock] Drops completed, keeping category enabled');
             return { hasDrops: true, overallPercent };
           }
 
-          this.currentCategory._switchScheduled = true;
+          // Категорию, запущенную вручную, приложение само не выключает и
+          // не меняет — как и при «дропсов нет». Раньше этот путь обходил
+          // защиту: при нескольких включённых категориях ручную выключало
+          // и уводило в другую. Под шкалой уже есть кнопка «Перейти к …»,
+          // а в сайдбаре — «Перейти к автоматике».
+          if (this.isManualCategoryActive()) {
+            if (this._manualDoneShownFor !== this.currentCategory.id) {
+              this._manualDoneShownFor = this.currentCategory.id;
+              console.log('[Ручной запуск] Все награды получены, категорию не меняем:', this.currentCategory.name);
+              window.utils?.showToast(
+                `«${this.currentCategory.name}»: все награды получены. Категория запущена вручную — переключите, когда захотите`,
+                'success'
+              );
+            }
+            return { hasDrops: true, overallPercent };
+          }
+          // Отметка ручного запуска относится к другой категории — она
+          // больше ничего не защищает
+          this.manualCategoryId = null;
+
+          const completedCategory = this.currentCategory;
+          switchScheduled.add(completedCategory.id);
+
+          // Время категории — до того, как она перестанет быть текущей:
+          // следующая смена уже не знает, откуда ушла
+          try {
+            await this.noteCategoryWatchTime();
+          } finally {
+            // Отметка нужна лишь на время этого ожидания: дальше категория
+            // либо удалена, либо выключена и перестала быть текущей
+            switchScheduled.delete(completedCategory.id);
+          }
+          if (!this.isCurrentStream(snapshot) || this.currentCategory !== completedCategory) {
+            return { hasDrops: true, overallPercent };
+          }
 
           // Авто-категории удаляем СРАЗУ после завершения
           if (this.currentCategory.autoDrops) {
@@ -3427,7 +4630,7 @@ class FarmingPage {
             const categoryId = this.currentCategory.id;
             this.categories = this.categories.filter(c => c.id !== categoryId);
             this.currentCategory = null;
-            await Storage.saveCategories(this.categories);
+            await this.saveCategories();
             this.renderCategories();
           } else {
             // Пользовательские категории отключаем вместо удаления.
@@ -3437,15 +4640,15 @@ class FarmingPage {
             console.log('Category completed, disabling:', this.currentCategory.name);
             this.currentCategory.enabled = false;
             this.currentCategory.disabledByCompletion = true;
-            await Storage.saveCategories(this.categories);
-            this.renderCategories();
             this.currentCategory = null;
+            await this.saveCategories();
+            this.renderCategories();
           }
 
           // Переключаемся на следующую категорию
           const completedSnapshot = this.streamSnapshot();
           setTimeout(() => {
-            if (this.isCurrentStream(completedSnapshot)) this.switchToNextEnabledCategory();
+            if (this.isCurrentStream(completedSnapshot)) this.switchToNextEnabledCategory({ reason: 'done' });
           }, 2000);
         }
       }
@@ -3463,9 +4666,19 @@ class FarmingPage {
    * ожидает увидеть их состояние. Решение остаётся за ним: приложение не
    * трогает категорию, которую он выбрал сам.
    */
-  showSwitchOffer() {
-    const container = document.getElementById('drops-progress-horizontal');
+  showSwitchOffer(reason = '', detail = '') {
+    // Своё место под панелью дропсов: панель перерисовывается каждые
+    // полминуты и стирала предложение сразу же
+    const container = document.getElementById('switch-offer-slot') ||
+      document.getElementById('drops-progress-horizontal');
     if (!container) return;
+
+    // Пользователь уже ответил «Остаться» на это же предложение в этой же
+    // категории. Раньше плашка возвращалась каждые полторы минуты весь
+    // сеанс. Отказ забывается при смене категории и появлении дропсов
+    const offerCategoryId = this.currentCategory?.id || null;
+    const dismissed = this._offerDismissed;
+    if (dismissed && dismissed.categoryId === offerCategoryId && dismissed.reason === reason) return;
 
     const candidate = this.categories.find(cat =>
       cat.enabled !== false &&
@@ -3475,26 +4688,39 @@ class FarmingPage {
     );
 
     const categoryName = this.currentCategory?.name || '';
+    this._switchOfferCategoryId = this.currentCategory?.id || null;
+
+    // Причина — настоящая. Раньше предложение всегда говорило «дропсов
+    // нет», даже когда стример ушёл в другую игру или кампания отработана
+    const name = `«${categoryName}»`;
+    const titles = {
+      noDrops: `В категории ${name} дропсов нет`,
+      offline: `Стрим в ${name} закончился`,
+      gameChanged: `Стример ушёл из ${name} в другую игру`,
+      noCredit: `Канал в ${name} не засчитывает дропсы`,
+      done: `${name}: ${detail || 'кампания отработана'}`
+    };
+    const title = titles[reason] || `В ${name} сейчас брать нечего`;
 
     container.style.display = 'block';
     container.innerHTML = `
       <div class="switch-offer">
         <div class="switch-offer-text">
-          <div class="switch-offer-title">В категории «${categoryName}» дропсов нет</div>
+          <div class="switch-offer-title">${this.esc(title)}</div>
           <div class="switch-offer-sub">
             ${candidate
-              ? `Категория запущена вручную, поэтому переключать её сами не будем. Есть дропсы в «${candidate.name}».`
+              ? `Категория запущена вручную, поэтому переключать её сами не будем. Есть дропсы в «${this.esc(candidate.name)}».`
               : 'Категория запущена вручную и останется активной. Других категорий с дропсами сейчас нет.'}
           </div>
         </div>
-        ${candidate ? `
-          <div class="switch-offer-actions">
-            <button class="btn btn-secondary" id="switch-offer-stay">Остаться</button>
-            <button class="btn btn-primary" id="switch-offer-go" data-category-id="${candidate.id}">
-              Перейти в «${candidate.name}»
+        <div class="switch-offer-actions">
+          <button class="btn btn-secondary" id="switch-offer-stay">${candidate ? 'Остаться' : 'Понятно'}</button>
+          ${candidate ? `
+            <button class="btn btn-primary" id="switch-offer-go" data-category-id="${this.esc(candidate.id)}">
+              Перейти в «${this.esc(candidate.name)}»
             </button>
-          </div>
-        ` : ''}
+          ` : ''}
+        </div>
       </div>
     `;
 
@@ -3503,6 +4729,8 @@ class FarmingPage {
       stay.addEventListener('click', () => {
         container.innerHTML = '';
         container.style.display = 'none';
+        this.hideSwitchOffer();
+        this._offerDismissed = { categoryId: offerCategoryId, reason };
       });
     }
 
@@ -3523,12 +4751,24 @@ class FarmingPage {
     }
   }
 
+  /** Убирает предложение сменить категорию. */
+  hideSwitchOffer() {
+    this._switchOfferCategoryId = null;
+    const slot = document.getElementById('switch-offer-slot');
+    if (slot) {
+      slot.innerHTML = '';
+      slot.style.display = 'none';
+    }
+  }
+
   /** Идёт ли сейчас категория, которую пользователь запустил вручную. */
   isManualCategoryActive() {
     return !!(this.manualCategoryId && this.currentCategory?.id === this.manualCategoryId);
   }
 
   async handleCategoryNoDrops() {
+    // Без сессии категорию не меняем и плеер не запускаем
+    if (!this.sessionStartTime) return;
     if (!this.currentCategory) return;
 
     // Категорию, запущенную вручную, приложение не переключает само.
@@ -3538,60 +4778,94 @@ class FarmingPage {
     if (this.isManualCategoryActive()) {
       console.log('[Ручной запуск] Дропсов нет, но категорию не меняем:', this.currentCategory.name);
       this.dropsMissingChecks = 0;
-      this.showSwitchOffer();
+      this.showSwitchOffer('noDrops');
       return;
     }
 
     console.warn('No drops visible for category, disabling from list...', this.currentCategory.name);
+
+    // Время категории записываем, пока она ещё текущая: следующая смена
+    // уже не знает, откуда ушла, и время пропадало из статистики по играм
+    const leaving = this.currentCategory;
+    await this.noteCategoryWatchTime();
+    if (this._destroyed || this.currentCategory !== leaving) return;
     
     // Отключаем категорию без дропсов (не удаляем)
     const categoryName = this.currentCategory.name;
+    // Тост говорит, что сделано на самом деле: раньше удалённая
+    // авто-категория звалась «отключена», и её искали в списке
+    let removedFromList = false;
     
     if (this.currentCategory.autoDrops) {
       // Авто-категории можем удалить
       if (this.currentCategory.pinned) {
-        // Закреплённую категорию не удаляем, только выключаем
+        // Закреплённую категорию не удаляем, только выключаем. Пометка —
+        // что выключило приложение: синхронизация вернёт её в работу,
+        // когда у игры появятся кампании, а выключенную руками — нет
         this.currentCategory.enabled = false;
+        this.currentCategory.disabledByApp = true;
       } else {
         this.categories = this.categories.filter(cat => cat.id !== this.currentCategory.id);
+        removedFromList = true;
       }
     } else {
       // Пользовательские категории отключаем
       this.currentCategory.enabled = false;
+      this.currentCategory.disabledByApp = true;
     }
-    
+
     this.currentCategory = null;
     this.dropsMissingChecks = 0;
     const snapshot = this.streamSnapshot();
 
-    await Storage.saveCategories(this.categories);
+    await this.saveCategories();
     if (!this.isCurrentStream(snapshot)) return;
     this.renderCategories();
     
-    window.utils.showToast(`${categoryName} отключена (дропсы не найдены)`, 'warning');
+    window.utils.showToast(removedFromList
+      ? `${categoryName} убрана из списка: дропсов нет`
+      : `${categoryName} выключена: дропсов нет`, 'warning');
 
-    // Переключаемся на следующую доступную категорию
-    const switched = await this.switchToNextEnabledCategory();
-    if (switched === false) {
-      // Если переключаться некуда — останавливаем фарминг и закрываем стрим
-      await this.stopFarming();
-    }
+    // Переключаемся на следующую доступную категорию. Если переключаться
+    // некуда, фарминг останавливает сам switchToNextEnabledCategory —
+    // второй stopFarming здесь давал два тоста «Фарминг остановлен».
+    await this.switchToNextEnabledCategory({ reason: 'noDrops' });
   }
 
+  /**
+   * Возвращает промис всех записей в хранилище (итог сессии, время по
+   * игре, сохранённая сессия). Обычным вызовам ждать его незачем, а при
+   * закрытии приложения ждать обязательно: окно закрывается сразу после
+   * ответа, и недописанное пропадает.
+   */
   stopFarming(showToast = true, preserveSession = false) {
+    const saves = [];
+    // Отметки ручного запуска нужны сохранённой сессии: после перезапуска
+    // приложение не должно само переключать выбранную руками категорию
+    const manualIds = {
+      manualCategoryId: this.manualCategoryId || null,
+      manualPlayLockCategoryId: this.manualPlayLockCategoryId || null
+    };
     this.beginStreamOperation();
     this._playbackRevision = (this._playbackRevision || 0) + 1;
     this.manualPlayLockCategoryId = null;
     this.manualCategoryId = null;
+    this._exhaustedCategoryId = null;
+    // Отложенные повторы принадлежат остановленной сессии. Повтор после
+    // «стримов нет» заводится уже после этой остановки, отдельно.
+    clearTimeout(this._categoryRetryTimer);
+    this._categoryRetryTimer = null;
+    clearTimeout(this._autoRestartTimer);
+    this._autoRestartTimer = null;
     this.updateAutoFarmButton();
 
     if (showToast) {
       window.utils.showToast('Фарминг остановлен', 'info');
     }
     if (!preserveSession) {
-      Storage.delete('activeSession').catch(() => {});
+      saves.push(Storage.delete('activeSession'));
     }
-    
+
     // Останавливаем интервал обновления статистики
     if (this.statsUpdateInterval) {
       clearInterval(this.statsUpdateInterval);
@@ -3601,22 +4875,34 @@ class FarmingPage {
     // Финализируем текущую сессию в статистике
     if (this.sessionStartTime) {
       const duration = Math.floor((Date.now() - this.sessionStartTime) / 60000); // в минутах
-      const durationMs = Date.now() - this.sessionStartTime; // в миллисекундах
       
-      Storage.finalizeCurrentSession({
+      saves.push(Storage.finalizeCurrentSession({
         duration: duration,
         bandwidth: this.estimatedBandwidth,
         bandwidthHistory: this.bandwidthHistory,
         pointsEarned: this.channelPoints.sessionEarned || 0,
         chestsCollected: this.channelPoints.chestsCollected || 0,
         dropsCollected: this.sessionDropsCollected || 0
-      });
-      
-      // Сохраняем статистику по категории
-      if (this.currentCategory?.name) {
-        this.saveWatchTimeForCategory(this.currentCategory.name, durationMs);
+      }));
+
+      // Статистика по категории — только её собственное время, от
+      // последней смены категории. Раньше сюда писалась длительность всей
+      // сессии: после A час и B час игре B доставалось два часа.
+      // stopFarming синхронный, поэтому считаем на месте, без await.
+      const categoryStart = this.categoryStartTime || this.sessionStartTime;
+      if (this.currentCategory?.name && categoryStart) {
+        saves.push(this.saveWatchTimeForCategory(this.currentCategory.name, Date.now() - categoryStart));
+      }
+
+      // Приложение закрывается, а сессия продолжится после запуска: в
+      // сохранённой сессии отсчёт категории переносим на сейчас, иначе
+      // записанное время засчиталось бы второй раз
+      if (preserveSession && this.currentStream && this.currentCategory) {
+        this.categoryStartTime = Date.now();
+        saves.push(this.saveActiveSession(this.currentStream, this.currentCategory, manualIds));
       }
     }
+    this.categoryStartTime = null;
     
     // Обновляем кнопки в сайдбаре с плавной анимацией
     const startBtn = document.getElementById('sidebar-start-farming-btn');
@@ -3667,16 +4953,11 @@ class FarmingPage {
       sessionTimerDisplay.style.display = 'none';
     }
     
-    // Скрываем прогресс дропсов в сайдбаре
-    const sidebarProgress = document.getElementById('sidebar-drops-progress');
-    if (sidebarProgress) {
-      sidebarProgress.style.opacity = '0';
-      sidebarProgress.style.transform = 'translateY(-10px)';
-      setTimeout(() => {
-        sidebarProgress.style.display = 'none';
-      }, 300);
-    }
-    
+    // Скрываем прогресс дропсов в сайдбаре. Через общий метод: его таймер
+    // снимает следующий показ, а свой таймер здесь мог спрятать блок уже
+    // новой сессии
+    this.hideMiniDropsProgress();
+
     // Скрываем панель топ категорий
     const topPanel = document.getElementById('top-categories-panel');
     if (topPanel) {
@@ -3743,11 +5024,13 @@ class FarmingPage {
 
     const dropsPanel = document.getElementById('drops-progress-horizontal');
     if (dropsPanel) dropsPanel.style.display = 'none';
+    this.hideSwitchOffer();
+    // Новый запуск — новое решение пользователя
+    this._offerDismissed = null;
+    this._manualDoneShownFor = null;
 
     const legacyDrops = document.getElementById('drops-progress-container');
     if (legacyDrops) legacyDrops.style.display = 'none';
-
-    this.updateMiniDropsProgress(0);
 
     window.electronAPI?.updateTrayStatus?.({ active: false });
 
@@ -3767,56 +5050,65 @@ class FarmingPage {
     window.playerManager?.unload();
     this.currentStream = null;
     this.currentCategory = null;
+    // Снимаем отметку «Сейчас» со списка
+    this.syncCurrentCategoryMark();
 
     if (streamInfo && playerContainer) {
       playerContainer.style.display = 'none';
       streamInfo.style.display = 'block';
       streamInfo.innerHTML = this.getWaitingStateMarkup();
     }
+
+    // allSettled: сбой одной записи не должен ни бросать необработанную
+    // ошибку у тех, кто промис не ждёт, ни задерживать ответ при выходе
+    return Promise.allSettled(saves);
   }
 
   async updateSessionInfo() {
     if (!this.sessionStartTime) return;
 
     // Отрисовкой таймера и трафика занимается SessionState — он тикает
-    // независимо от того, открыта ли сейчас страница фарминга.
-    await window.sessionState?._tick();
+    // сам, раз в секунду, независимо от того, открыта ли страница. Раньше
+    // здесь стоял ещё один его _tick(): таймер тикал дважды в секунду, а
+    // запас «стрима нет 45 с» кончался через 23 с.
     await this.updateTrafficInfo();
   }
 
   /**
-   * Забирает реальный расход трафика из main-процесса.
-   * Источник — CDP Network.dataReceived, единственный счётчик в приложении.
+   * Копит расход трафика для статистики сессии.
+   *
+   * Источник — CDP Network.dataReceived в main-процессе. Его каждую
+   * секунду уже спрашивает SessionState и рисует в сайдбаре; здесь берём
+   * тот же ответ из его кэша, а не шлём второй запрос и не пишем в те же
+   * элементы второй раз. Запрос сами делаем только без SessionState.
    */
   async updateTrafficInfo() {
-    if (!window.electronAPI?.getTrafficStats) return;
+    let stats = null;
+    const cached = window.sessionState?.lastTraffic;
 
-    try {
-      const stats = await window.electronAPI.getTrafficStats();
-      if (!stats) return;
-
-      this.estimatedBandwidth = stats.sessionBytes || 0;
-
-      // История скорости для графика в статистике (храним последние 120 замеров)
-      const rate = Math.round(stats.currentRateKBs || 0);
-      this.bandwidthHistory.push(rate);
-      if (this.bandwidthHistory.length > 120) {
-        this.bandwidthHistory = this.bandwidthHistory.slice(-120);
+    if (window.sessionState) {
+      // Тот же замер второй раз в историю не кладём
+      if (!cached || cached.at === this._lastTrafficAt) return;
+      this._lastTrafficAt = cached.at;
+      stats = cached.stats;
+    } else {
+      if (!window.electronAPI?.getTrafficStats) return;
+      try {
+        stats = await window.electronAPI.getTrafficStats();
+      } catch (error) {
+        console.warn('[Traffic] Не удалось получить статистику трафика:', error?.message);
+        return;
       }
+    }
+    if (!stats) return;
 
-      const trafficEl = document.getElementById('session-traffic-value');
-      if (trafficEl) {
-        trafficEl.textContent = this.formatBytes(this.estimatedBandwidth);
-      }
+    this.estimatedBandwidth = stats.sessionBytes || 0;
 
-      const rateEl = document.getElementById('session-traffic-rate');
-      if (rateEl) {
-        rateEl.textContent = rate > 1024
-          ? `${(rate / 1024).toFixed(1)} МБ/с`
-          : `${rate} КБ/с`;
-      }
-    } catch (error) {
-      console.warn('[Traffic] Не удалось получить статистику трафика:', error?.message);
+    // История скорости для графика в статистике (храним последние 120 замеров)
+    const rate = Math.round(stats.currentRateKBs || 0);
+    this.bandwidthHistory.push(rate);
+    if (this.bandwidthHistory.length > 120) {
+      this.bandwidthHistory = this.bandwidthHistory.slice(-120);
     }
   }
 
@@ -3882,9 +5174,8 @@ class FarmingPage {
       })
       .join('');
 
-    const escape = (text) => String(text ?? '').replace(/[&<>"']/g, ch => ({
-      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-    }[ch]));
+    // Общее экранирование страницы — одно на всё приложение
+    const escape = (text) => this.esc(text);
 
     if (!next) {
       tip.innerHTML = '<div class="drops-tip-name">Незабранных наград нет</div>';
@@ -3986,38 +5277,74 @@ class FarmingPage {
     return `${rest} мин`;
   }
 
+  /**
+   * Блок «Дропсы» в сайдбаре. Вызывается, когда у текущей категории есть
+   * кампания, — и показывает блок при любом проценте, в том числе при 0.
+   *
+   * Раньше 0 % прятал блок, а вместе с ним и красное «Не засчитывается»:
+   * предупреждения не было видно ровно тогда, когда минуты не шли. Прячет
+   * блок только hideMiniDropsProgress — при остановке и смене категории.
+   */
   updateMiniDropsProgress(percent) {
     const sidebarProgress = document.getElementById('sidebar-drops-progress');
     const sidebarPercent = document.getElementById('sidebar-drops-percent');
     const sidebarBar = document.getElementById('sidebar-drops-bar');
-    
+
     if (sidebarProgress && sidebarPercent && sidebarBar) {
-      if (percent > 0) {
-        sidebarProgress.style.display = 'block';
-        setTimeout(() => {
-          sidebarProgress.style.opacity = '1';
-          sidebarProgress.style.transform = 'translateY(0)';
-        }, 10);
-        
-        sidebarPercent.textContent = `${Math.round(percent)}%`;
-        sidebarBar.style.width = `${percent}%`;
-        
-        // Меняем цвет в зависимости от прогресса
-        if (percent === 100) {
-          sidebarProgress.style.borderColor = 'rgba(53, 208, 138, 0.4)';
-          sidebarBar.style.background = '#35d08a';
-        } else {
-          sidebarProgress.style.borderColor = 'var(--border-color)';
-          sidebarBar.style.background = '#7c5cff';
-        }
+      const value = Math.max(0, Math.min(100, Number(percent) || 0));
+
+      // Отложенное скрытие от прошлой остановки не должно спрятать блок
+      clearTimeout(this._miniDropsHideTimer);
+      sidebarProgress.style.display = 'block';
+      setTimeout(() => {
+        sidebarProgress.style.opacity = '1';
+        sidebarProgress.style.transform = 'translateY(0)';
+      }, 10);
+
+      sidebarPercent.textContent = `${Math.round(value)}%`;
+      sidebarBar.style.width = `${value}%`;
+
+      // Меняем цвет в зависимости от прогресса
+      if (value === 100) {
+        sidebarProgress.style.borderColor = 'rgba(53, 208, 138, 0.4)';
+        sidebarBar.style.background = '#35d08a';
       } else {
-        sidebarProgress.style.opacity = '0';
-        sidebarProgress.style.transform = 'translateY(-10px)';
-        setTimeout(() => {
-          sidebarProgress.style.display = 'none';
-        }, 300);
+        sidebarProgress.style.borderColor = 'var(--border-color)';
+        sidebarBar.style.background = '#7c5cff';
       }
     }
+  }
+
+  /** Прячет блок «Дропсы» в сайдбаре: фарминг остановлен или сменилась категория. */
+  hideMiniDropsProgress() {
+    const sidebarProgress = document.getElementById('sidebar-drops-progress');
+    if (!sidebarProgress) return;
+
+    sidebarProgress.style.opacity = '0';
+    sidebarProgress.style.transform = 'translateY(-10px)';
+    clearTimeout(this._miniDropsHideTimer);
+    this._miniDropsHideTimer = setTimeout(() => {
+      sidebarProgress.style.display = 'none';
+    }, 300);
+  }
+
+  /**
+   * Сбрасывает панель дропсов и блок в сайдбаре, если они показывают
+   * другую категорию.
+   *
+   * После смены категории там до первой проверки (а при пустых ответах —
+   * ещё три) висели прогресс и прогноз прошлой игры, и казалось, что
+   * фармится не то. Чья это панель, записано в data-category-id.
+   */
+  resetDropsViewForCategory(category) {
+    const horizontal = document.getElementById('drops-progress-horizontal');
+    const shown = horizontal?.dataset?.categoryId;
+    if (!horizontal || !shown || !category || shown === String(category.id)) return;
+
+    delete horizontal.dataset.categoryId;
+    horizontal.innerHTML = '<div style="font-size: 13px; color: var(--text-secondary); text-align: center;">Загрузка дропсов…</div>';
+    horizontal.style.display = 'block';
+    this.hideMiniDropsProgress();
   }
 
   async saveWatchTimeForCategory(categoryName, durationMs) {
@@ -4057,10 +5384,36 @@ class FarmingPage {
     }
   }
   
+  /**
+   * Возвращает true, если разметка нашлась и статистика стрима уже
+   * запущена отсюда. Повторный startStreamStatsUpdate после этого вызова
+   * удваивал запросы к Twitch и проверки дропсов при каждой смене стрима.
+   */
   updateCurrentStreamUI(stream, category) {
     this._playbackRevision = (this._playbackRevision || 0) + 1;
-    // Ручной режим мог смениться вместе с категорией
-    setTimeout(() => this.updateAutoFarmButton(), 0);
+    // Отметка «эту категорию уже бросили» относится к прошлому заходу в неё.
+    // Раньше она снималась только при «выгодной» проверке: вернувшись в
+    // безнадёжную категорию, приложение больше не уходило из неё никогда.
+    if (this._exhaustedCategoryId && this._exhaustedCategoryId !== category?.id) {
+      this._exhaustedCategoryId = null;
+    }
+    // Прогресс дропсов прошлой игры до первой проверки новой не показываем
+    this.resetDropsViewForCategory(category);
+    // Предложение сменить категорию относится к прежней категории
+    if (this._switchOfferCategoryId && this._switchOfferCategoryId !== category?.id) {
+      this.hideSwitchOffer();
+    }
+    // Как и отказ от него
+    if (this._offerDismissed && this._offerDismissed.categoryId !== (category?.id || null)) {
+      this._offerDismissed = null;
+    }
+    // Ручной режим мог смениться вместе с категорией, а с ней и отметка
+    // «Сейчас» в списке. Позже, а не сразу: вызывающий код к этому
+    // моменту уже записал новый стрим и категорию
+    setTimeout(() => {
+      this.updateAutoFarmButton();
+      if (!this._destroyed) this.syncCurrentCategoryMark();
+    }, 0);
 
     const streamInfo = document.getElementById('current-stream-info');
     const playerContainer = document.getElementById('twitch-player-container');
@@ -4162,6 +5515,11 @@ class FarmingPage {
       if (gameCover && category.boxArtURL) {
         gameCover.src = category.boxArtURL;
         gameCover.style.display = 'block';
+      } else if (gameCover) {
+        // Без обложки — пустая заглушка (фон из farming.html), а не
+        // картинка прошлой игры
+        gameCover.removeAttribute('src');
+        gameCover.style.display = 'block';
       }
       
       // Очищаем историю зрителей
@@ -4173,12 +5531,13 @@ class FarmingPage {
       // Запускаем обновление статистики
       this.startStreamStatsUpdate(stream.login);
       
-      // Проверяем статус подписки
-      this.checkFollowingStatus();
-      
       // Добавляем обработчик клика на информацию о стриме
       this.setupStreamInfoClick();
+      return true;
     }
+    // Разметки страницы нет — статистику стрима здесь не запустили,
+    // это сделает вызывающий
+    return false;
   }
 
   registerFarmingWebviewLabels() {
@@ -4282,44 +5641,6 @@ class FarmingPage {
       animation: slideUp 0.3s ease;
     `;
 
-    // Получаем полную информацию о канале
-    const accounts = await Storage.getAccounts();
-    
-    // Пытаемся найти токен: сначала из кук (authToken), потом OAuth (accessToken)
-    let authToken = '';
-    let account = null;
-    
-    // Приоритет 1: auth-token из кук
-    for (const acc of accounts) {
-      if (acc.cookies) {
-        try {
-          const cookies = JSON.parse(acc.cookies);
-          const authTokenCookie = cookies.find(c => c.name === 'auth-token');
-          if (authTokenCookie?.value) {
-            authToken = authTokenCookie.value;
-            account = acc;
-            console.log('[StreamDetails] Using auth-token from cookies');
-            break;
-          }
-        } catch (e) {
-          console.warn('[StreamDetails] Failed to parse cookies:', e);
-        }
-      }
-    }
-    
-    // Приоритет 2: OAuth accessToken если auth-token не найден
-    if (!authToken) {
-      account = accounts.find(acc => acc.accessToken);
-      authToken = account?.accessToken || '';
-      if (authToken) {
-        console.log('[StreamDetails] Using OAuth accessToken');
-      }
-    }
-    
-    console.log('[StreamDetails] Found accounts:', accounts.length);
-    console.log('[StreamDetails] Selected account:', account?.username || 'none');
-    console.log('[StreamDetails] Auth token available:', !!authToken);
-    
     let channelDetails = {
       profileImageUrl: '',
       description: '',
@@ -4333,22 +5654,18 @@ class FarmingPage {
     };
     
     try {
-      // Загружаем данные параллельно
-      const promises = [
-        window.electronAPI.getStreamStats(stream.login)
-      ];
-      
-      // getChannelDetails требует токен
-      if (authToken) {
-        promises.push(window.electronAPI.getChannelDetails(authToken, stream.login));
-      }
-      
-      const results = await Promise.all(promises);
+      // Загружаем данные параллельно. Каждый запрос со своей страховкой:
+      // сбой одного (Twitch не ответил — вызов отклоняется) не должен
+      // оставлять окно без данных другого
+      // Подробности канала main берёт из публичного GQL без токена.
+      // Раньше их запрашивали только при найденном токене аккаунта, и без
+      // входа окно оставалось без аватарки и описания
+      const results = await Promise.all([
+        window.electronAPI.getStreamStats(stream.login).catch(() => null),
+        window.electronAPI.getChannelDetails(null, stream.login).catch(() => null)
+      ]);
       streamStats = results[0] || streamStats;
-      
-      if (results.length > 1) {
-        channelDetails = results[1] || channelDetails;
-      }
+      channelDetails = results[1] || channelDetails;
       
       console.log('[StreamDetails] Channel details:', channelDetails);
       console.log('[StreamDetails] Channel details JSON:', JSON.stringify(channelDetails, null, 2));
@@ -4362,17 +5679,15 @@ class FarmingPage {
     }
 
     // Фоллбэк для аватарки
-    const profileImageUrl = channelDetails.profileImageUrl || 
-      `https://static-cdn.jtvnw.net/user-default-pictures-uv/cdd517fe-def4-11e9-948e-784f43822e80-profile_image-300x300.png`;
+    // Адрес проверяется: он попадает и в src, и в CSS url('…')
+    const profileImageUrl = this.safeImageUrl(channelDetails.profileImageUrl,
+      `https://static-cdn.jtvnw.net/user-default-pictures-uv/cdd517fe-def4-11e9-948e-784f43822e80-profile_image-300x300.png`);
     
     console.log('[StreamDetails] Profile image URL:', profileImageUrl);
     
-    // Функция форматирования зрителей
-    const formatViewers = (count) => {
-      if (!count) return '—';
-      if (count < 10000) return count.toLocaleString();
-      return (count / 1000).toFixed(1) + 'K';
-    };
+    // Функция форматирования зрителей — общая, по-русски («44 тыс.»),
+    // а не «44.0K», как было здесь
+    const formatViewers = (count) => this.formatViewersCount(count);
 
     modalContent.innerHTML = `
       <div style="position: relative;">
@@ -4390,13 +5705,13 @@ class FarmingPage {
           <div style="position: relative; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px; text-align: center;">
             <div style="position: relative; margin-bottom: 12px;">
               <img src="${profileImageUrl}" 
-                   alt="${stream.displayName}"
+                   alt="${this.esc(stream.displayName)}"
                    onerror="this.onerror=null; this.src='https://static-cdn.jtvnw.net/user-default-pictures-uv/cdd517fe-def4-11e9-948e-784f43822e80-profile_image-300x300.png';"
                    style="width: 80px; height: 80px; border-radius: var(--radius-circle); border: 3px solid white; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);">
               ${channelDetails.isLive ? '<div style="position: absolute; bottom: 0; right: 0; width: 24px; height: 24px; background: #ff0000; border: 3px solid white; border-radius: var(--radius-circle); box-shadow: 0 0 12px rgba(255, 0, 0, 0.8);"></div>' : ''}
             </div>
-            <h2 style="color: white; font-size: 26px; font-weight: 700; margin: 0 0 4px; text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);">${stream.displayName}</h2>
-            <div style="color: rgba(255, 255, 255, 0.8); font-size: 14px; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);">@${stream.login}</div>
+            <h2 style="color: white; font-size: 26px; font-weight: 700; margin: 0 0 4px; text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);">${this.esc(stream.displayName)}</h2>
+            <div style="color: rgba(255, 255, 255, 0.8); font-size: 14px; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);">@${this.esc(stream.login)}</div>
           </div>
         </div>
 
@@ -4407,7 +5722,7 @@ class FarmingPage {
             ${channelDetails.followers ? `
             <div style="background: rgba(255, 215, 0, 0.1); border: 1px solid rgba(255, 215, 0, 0.2); border-radius: var(--radius-md); padding: 16px; text-align: center;">
               <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; color: rgba(255, 215, 0, 0.8); margin-bottom: 6px; letter-spacing: 0.5px;">Подписчиков</div>
-              <div style="font-size: 20px; font-weight: 700; color: var(--text-primary);">${this.formatFollowers(channelDetails.followers)}</div>
+              <div style="font-size: 20px; font-weight: 700; color: var(--text-primary);">${this.esc(this.formatFollowers(channelDetails.followers))}</div>
             </div>` : ''}
             ${streamStats.viewers ? `
             <div style="background: rgba(124, 92, 255, 0.1); border: 1px solid rgba(124, 92, 255, 0.2); border-radius: var(--radius-md); padding: 16px; text-align: center;">
@@ -4417,11 +5732,11 @@ class FarmingPage {
             ${streamStats.uptime ? `
             <div style="background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: var(--radius-md); padding: 16px; text-align: center;">
               <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; color: rgba(59, 130, 246, 0.8); margin-bottom: 6px; letter-spacing: 0.5px;">В эфире</div>
-              <div style="font-size: 20px; font-weight: 700; color: var(--text-primary);">${streamStats.uptime}</div>
+              <div style="font-size: 20px; font-weight: 700; color: var(--text-primary);">${this.esc(streamStats.uptime)}</div>
             </div>` : ''}
             ${streamStats.points ? `
             <div style="background: rgba(53, 208, 138, 0.1); border: 1px solid rgba(53, 208, 138, 0.2); border-radius: var(--radius-md); padding: 16px; text-align: center;">
-              <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; color: rgba(53, 208, 138, 0.8); margin-bottom: 6px; letter-spacing: 0.5px;">Очки канала</div>
+              <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; color: rgba(53, 208, 138, 0.8); margin-bottom: 6px; letter-spacing: 0.5px;">Баллы канала</div>
               <div style="font-size: 20px; font-weight: 700; color: var(--text-primary);">${streamStats.points.toLocaleString()}</div>
             </div>` : ''}
           </div>
@@ -4435,13 +5750,7 @@ class FarmingPage {
               </svg>
               Название стрима
             </div>
-            <div id="stream-title-text" style="font-size: 15px; line-height: 1.5; color: var(--text-primary); font-weight: 500; cursor: pointer; padding: 8px; margin: -8px; border-radius: var(--radius-sm); transition: all 0.2s;" onmouseover="this.style.background='rgba(124, 92, 255, 0.1)'" onmouseout="this.style.background='transparent'" onclick="
-              navigator.clipboard.writeText('${(stream.title || 'Без названия').replace(/'/g, "\\'")}').then(() => {
-                window.utils.showToast('Название скопировано', 'success');
-              }).catch(() => {
-                window.utils.showToast('Ошибка копирования', 'error');
-              });
-            ">${stream.title || 'Без названия'}</div>
+            <div id="stream-title-text" style="font-size: 15px; line-height: 1.5; color: var(--text-primary); font-weight: 500; cursor: pointer; padding: 8px; margin: -8px; border-radius: var(--radius-sm); transition: all 0.2s;" onmouseover="this.style.background='rgba(124, 92, 255, 0.1)'" onmouseout="this.style.background='transparent'">${this.esc(stream.title || 'Без названия')}</div>
           </div>
 
           <!-- Category Info -->
@@ -4454,18 +5763,20 @@ class FarmingPage {
               Категория
             </div>
             <div style="display: flex; align-items: center; gap: 12px;">
-              <img src="${category.boxArtURL || 'https://static-cdn.jtvnw.net/ttv-boxart/509658-60x84.jpg'}" 
-                   alt="${category.name}"
+              <img src="${this.esc(this.boxArtSrc(category.boxArtURL, '60x84', category.id))}"
+                   alt="${this.esc(category.name)}"
+                   onerror="this.onerror=null;this.src=window.DROP_PLACEHOLDER||'';"
                    style="width: 48px; height: 67px; border-radius: var(--radius-md); object-fit: cover; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);">
               <div style="flex: 1;">
-                <div style="font-size: 15px; font-weight: 600; color: var(--text-primary); margin-bottom: 4px;">${category.name}</div>
+                <div style="font-size: 15px; font-weight: 600; color: var(--text-primary); margin-bottom: 4px;">${this.esc(category.name)}</div>
                 <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                  ${category.viewersCount ? `
                   <span style="color: var(--text-secondary); font-size: 12px; display: flex; align-items: center; gap: 4px;">
                     <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" style="color: #7c5cff;">
                       <path d="M8 2C4.5 2 1.5 4.5 0 8c1.5 3.5 4.5 6 8 6s6.5-2.5 8-6c-1.5-3.5-4.5-6-8-6zm0 10c-2.2 0-4-1.8-4-4s1.8-4 4-4 4 1.8 4 4-1.8 4-4 4zm0-6.5c-1.4 0-2.5 1.1-2.5 2.5s1.1 2.5 2.5 2.5 2.5-1.1 2.5-2.5-1.1-2.5-2.5-2.5z"/>
                     </svg>
-                    ${this.formatViewersCount(category.viewersCount)} зрителей
-                  </span>
+                    ${this.viewersLabel(category.viewersCount)}
+                  </span>` : ''}
                   ${category.hasDrops ? `
                   <span style="display: flex; align-items: center; gap: 4px; padding: 3px 8px; background: rgba(124, 92, 255, 0.15); border: 1px solid rgba(124, 92, 255, 0.3); border-radius: var(--radius-md); font-size: 11px; font-weight: 600; color: #7c5cff;">
                     <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor">
@@ -4488,12 +5799,12 @@ class FarmingPage {
               </svg>
               О канале
             </div>
-            <div style="font-size: 13px; line-height: 1.6; color: var(--text-primary);">${channelDetails.description}</div>
+            <div style="font-size: 13px; line-height: 1.6; color: var(--text-primary);">${this.esc(channelDetails.description)}</div>
           </div>` : ''}
 
           <!-- Action Buttons -->
           <div style="display: flex; gap: 12px; margin-top: 20px;">
-            <button onclick="window.electronAPI.openExternal('https://twitch.tv/${stream.login}')" style="flex: 1; padding: 12px 20px; background: #7c5cff; color: white; border: none; border-radius: var(--radius-md); font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 8px;" onmouseover="this.style.boxShadow='0 4px 12px rgba(124, 92, 255, 0.4)'" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'">
+            <button id="open-stream-on-twitch" style="flex: 1; padding: 12px 20px; background: #7c5cff; color: white; border: none; border-radius: var(--radius-md); font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 8px;" onmouseover="this.style.boxShadow='0 4px 12px rgba(124, 92, 255, 0.4)'" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'">
               <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
                 <path d="M2 1h12l1 1v10l-1 1h-3v2l-2-2H6l-2 2v-2H2l-1-1V2l1-1z"/>
                 <path d="M5 4h1v4H5V4zm4 0h1v4H9V4z" fill="#7c5cff"/>
@@ -4508,15 +5819,48 @@ class FarmingPage {
     modal.appendChild(modalContent);
     document.body.appendChild(modal);
 
-    // Обработчик закрытия
+    // Копирование названия и переход на Twitch — обработчиками, а не
+    // атрибутами onclick: значение атрибута браузер сначала раскодирует,
+    // и экранированная кавычка из названия стрима снова становилась
+    // кавычкой, вырываясь из строки JS. Данные берём из замыкания.
+    const titleEl = modal.querySelector('#stream-title-text');
+    if (titleEl) {
+      titleEl.addEventListener('click', () => {
+        navigator.clipboard.writeText(stream.title || 'Без названия').then(() => {
+          window.utils.showToast('Название скопировано', 'success');
+        }).catch(() => {
+          window.utils.showToast('Ошибка копирования', 'error');
+        });
+      });
+    }
+
+    const openBtn = modal.querySelector('#open-stream-on-twitch');
+    if (openBtn) {
+      openBtn.addEventListener('click', () => {
+        window.electronAPI.openExternal('https://twitch.tv/' + encodeURIComponent(stream.login));
+      });
+    }
+
+    // Обработчик закрытия. Повторное нажатие во время анимации не должно
+    // удалять окно второй раз — removeChild на уже снятом узле бросал ошибку
+    let closing = false;
+    // Esc закрывает окно, как и остальные окна приложения; слушатель
+    // снимается вместе с окном
+    const keyAbort = new AbortController();
     const closeModal = () => {
+      if (closing) return;
+      closing = true;
+      keyAbort.abort();
       modal.style.opacity = '0';
       modalContent.style.transform = 'translateY(20px)';
       setTimeout(() => {
-        document.body.removeChild(modal);
+        modal.remove();
         this.isStreamDetailsOpen = false;
       }, 200);
     };
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeModal();
+    }, { signal: keyAbort.signal });
 
     // Закрытие по клику на overlay
     modal.addEventListener('click', (e) => {
@@ -4574,20 +5918,31 @@ class FarmingPage {
           const expectedCategory = this.currentCategory?.name;
           const currentGame = stats.gameName || '';
           if (expectedCategory && currentGame) {
-            const match = this._gameMatchesCategory(currentGame, expectedCategory);
+            const match = this._gameMatchesCategory(currentGame, expectedCategory,
+              stats.gameId, this.currentCategory?.id);
             if (!match) {
               this._gameMismatchCount = (this._gameMismatchCount || 0) + 1;
               console.log('Game mismatch detected:', { currentGame, expectedCategory, count: this._gameMismatchCount });
               const MAX_MISMATCHES = 2; // две проверки подряд (~60 сек)
               if (this._gameMismatchCount >= MAX_MISMATCHES) {
                 this._gameMismatchCount = 0;
-                if (window.settings?.get('autoSwitchStreams') === false) return;
+                if (window.settings?.get('autoSwitchStreams') === false) {
+                  // Раньше здесь был молчаливый return: всю ночь шёл
+                  // просмотр не той игры. Переключать запрещено, но сказать
+                  // об этом нужно — один раз на канал, а не каждую минуту
+                  this.toastOnce('game:' + channelLogin,
+                    'Стример сменил игру, дропсы не идут. Автопереключение выключено', 'warning');
+                  return;
+                }
                 window.utils?.showToast('Стример сменил игру — переключаюсь', 'info');
                 try {
                   // Пытаемся найти другой стрим в той же категории
                   const streams = await window.electronAPI.getStreamsWithDrops(expectedCategory);
                   if (!isCurrent()) return;
-                  if (streams && streams.length > 0) {
+                  // Twitch не ответил — это не «стримов нет»: решим на
+                  // следующей проверке, а категорию не бросаем
+                  if (!Array.isArray(streams)) return;
+                  if (streams.length > 0) {
                     const nextStream = await this.pickPreferredStream(streams, expectedCategory, { exclude: channelLogin });
                     if (!isCurrent()) return;
                     if (nextStream && nextStream.login.toLowerCase() !== channelLogin.toLowerCase()) {
@@ -4596,7 +5951,7 @@ class FarmingPage {
                     }
                   }
                   // Если нет стримов в категории — идём к следующей включенной
-                  await this.switchToNextEnabledCategory();
+                  await this.switchToNextEnabledCategory({ reason: 'gameChanged' });
                 } catch (switchErr) {
                   console.error('Error switching after game change:', switchErr);
                 }
@@ -4618,12 +5973,10 @@ class FarmingPage {
     this.startDropsProgressUpdate(channelLogin);
   }
 
-  _gameMatchesCategory(gameName, categoryName) {
-    const a = window.StreamPicker.normalizeGameName(gameName);
-    const b = window.StreamPicker.normalizeGameName(categoryName);
-    if (!a || !b) return false;
-    // Подстрока может обозначать другую игру, поэтому сравниваем целые названия.
-    return a === b;
+  _gameMatchesCategory(gameName, categoryName, gameId, categoryId) {
+    // Подстрока может обозначать другую игру, поэтому сравниваем целые
+    // названия — тем же правилом, что выбор стрима и подбор кампаний
+    return window.StreamPicker.isExactGame(gameName, categoryName, gameId, categoryId);
   }
   
   startDropsProgressUpdate(channelLogin) {
@@ -4639,6 +5992,12 @@ class FarmingPage {
       if (legacyContainer) legacyContainer.style.display = 'none';
     };
 
+    // Первые минуты после запуска стрима Twitch ещё не отчитывается о
+    // кампании, а свежий кэш инвентаря может быть собран до неё. Судить
+    // категорию в это время рано — промахи не считаем.
+    const watchStartedAt = Date.now();
+    const warmupMs = window.DropCredit?.WARMUP_MS || 4 * 60 * 1000;
+
     // Обновляем только новую цветную раскладку, старый список скрываем
     const updateDrops = async () => {
       try {
@@ -4649,6 +6008,14 @@ class FarmingPage {
 
         if (hasDrops) {
           this.dropsMissingChecks = 0;
+          // Дропсы появились (не догадка по неполному инвентарю) — отказ
+          // «Остаться» на «дропсов нет» больше ни к чему: если кампания
+          // снова пропадёт, это уже новый случай
+          if (!progressState.unknown && this._offerDismissed?.reason === 'noDrops') {
+            this._offerDismissed = null;
+          }
+        } else if (Date.now() - watchStartedAt < warmupMs) {
+          console.log('[Дропсы] Кампаний не видно, но стрим только запущен — промах не считаю');
         } else {
           this.dropsMissingChecks = (this.dropsMissingChecks || 0) + 1;
           // If drops not visible for a while, treat category as completed and move on
@@ -4717,7 +6084,7 @@ class FarmingPage {
       try {
         const inv = await window.electronAPI.fetchDropsInventory();
         if (!this.isCurrentStream(snapshot)) return;
-        const matched = this.matchCampaignsForGame(inv?.campaigns || [], this.currentCategory?.name || '');
+        const matched = this.matchCampaignsForGame(inv?.campaigns || [], this.currentCategory?.name || '', this.currentCategory?.id);
         const sum = matched.reduce((acc, c) => acc + (c.drops || []).reduce((a, d) => a + (Number(d.progress) || 0), 0), 0);
         const prev = this._creditProgress;
         progressGrew = prev.length > 0 && sum > Math.min(...prev.slice(-3));
@@ -4770,17 +6137,29 @@ class FarmingPage {
 
   /** Twitch подтвердил: этот канал не засчитывает. Ищем другой в категории. */
   async onNoCredit(verdict) {
+    // Без сессии ничего не переключаем: иначе остановленный фарминг мог
+    // сам включить плеер, и видео шло без учёта
+    if (!this.sessionStartTime) return;
     if (this._destroyed || !this.currentStream || !this.currentCategory) return;
 
-    console.warn('[Зачёт] Канал не засчитывает дропсы:', this.currentStream.login, '—', verdict?.reason || '');
+    const login = this.currentStream.login;
+    console.warn('[Зачёт] Канал не засчитывает дропсы:', login, '—', verdict?.reason || '');
 
+    // Тосты — один раз на канал: проверка повторяется каждые две минуты,
+    // и раньше одно и то же сообщение висело всю ночь
     if (window.settings && window.settings.get('autoSwitchStreams') === false) {
-      window.utils?.showToast('Канал не засчитывает дропсы. Автопереключение выключено', 'warning');
+      this.toastOnce('nocredit:' + login, 'Канал не засчитывает дропсы. Автопереключение выключено', 'warning');
       return;
     }
 
-    window.utils?.showToast('Канал не засчитывает дропсы, ищу другой', 'warning');
-    await this.switchToNextStream();
+    this.toastOnce('nocredit:' + login, 'Канал не засчитывает дропсы, ищу другой', 'warning');
+    const result = await this.switchToNextStream({ quiet: true });
+
+    // Других стримов в категории нет — пробуем другие категории (у ручной
+    // категории switchToNextEnabledCategory сам покажет предложение)
+    if (result === 'none' && !this._destroyed && this.currentStream?.login === login) {
+      await this.switchToNextEnabledCategory({ reason: 'noCredit' });
+    }
   }
   
   
@@ -4804,10 +6183,13 @@ class FarmingPage {
       isShowing = true;
       
       const rect = viewersEl.getBoundingClientRect();
-      // Позиционируем СЛЕВА от элемента
+      // Позиционируем СЛЕВА от элемента. Высоту узнаём, только когда
+      // подсказка уже видна (у скрытой она нулевая): раньше низ графика
+      // уходил за край окна, если «Зрители» были у нижней границы
       canvas.style.left = Math.max(10, rect.left - 420) + 'px';
-      canvas.style.top = Math.max(10, rect.top - 60) + 'px';
       canvas.style.display = 'block';
+      const maxTop = window.innerHeight - canvas.offsetHeight - 10;
+      canvas.style.top = Math.max(10, Math.min(rect.top - 60, maxTop)) + 'px';
       this.drawViewersChart(ctx);
     };
     
@@ -4853,24 +6235,41 @@ class FarmingPage {
       snapshot.category === this.currentCategory && snapshot.login === this.currentStream?.login;
   }
   
-  async switchToNextStream() {
+  /**
+   * Другой стрим в той же категории (кнопка «Другой стрим» и автоматика).
+   *
+   * Возвращает 'switched', 'none' (в категории больше некого смотреть),
+   * 'error' (Twitch не ответил — решать пока нечего) или undefined, если
+   * операцию перебила более новая. По 'none' автоматика идёт дальше — в
+   * другую категорию; кнопка остаётся в пределах категории.
+   *
+   * options.quiet — без тостов «Ищем…» и «стримов нет»: при автоматическом
+   * переключении их повторение раз в минуту только мешало, а итог
+   * («Переключено на…» или «Фарминг остановлен…») скажет следующий шаг.
+   */
+  async switchToNextStream(options = {}) {
     if (!this.currentCategory || !this.currentStream) {
       window.utils.showToast('Нет активного стрима', 'warning');
-      return;
+      return 'none';
     }
 
     const revision = this.beginStreamOperation();
     const snapshot = this.streamSnapshot();
     try {
-      window.utils.showToast('Ищем следующий стрим...', 'info');
-      
+      if (!options.quiet) window.utils.showToast('Ищем следующий стрим...', 'info');
+
       // Получаем стримы текущей категории
       const streams = await window.electronAPI.getStreamsWithDrops(this.currentCategory.name);
       if (!this.isStreamOperationCurrent(revision) || !this.isCurrentStream(snapshot)) return;
-      
-      if (!streams || streams.length === 0) {
-        window.utils.showToast('Нет доступных стримов', 'warning');
-        return;
+
+      if (!Array.isArray(streams)) {
+        window.utils.showToast('Twitch не отвечает, попробуйте позже', 'warning');
+        return 'error';
+      }
+
+      if (streams.length === 0) {
+        if (!options.quiet) window.utils.showToast('Нет доступных стримов', 'warning');
+        return 'none';
       }
 
       // Явно исключаем текущий канал: иначе выбор мог вернуть тот же самый,
@@ -4878,23 +6277,29 @@ class FarmingPage {
       const nextStream = await this.pickPreferredStream(
         streams,
         this.currentCategory.name,
-        { exclude: this.currentStream?.login }
+        { exclude: this.currentStream?.login, quiet: !!options.quiet }
       );
       if (!this.isStreamOperationCurrent(revision) || !this.isCurrentStream(snapshot)) return;
 
       if (nextStream && nextStream.login === this.currentStream?.login) {
-        window.utils.showToast('Других стримов в этой категории нет', 'warning');
-        return;
+        if (!options.quiet) window.utils.showToast('Других стримов в этой категории нет', 'warning');
+        return 'none';
       }
-      
+
       if (nextStream) {
         // Переключаемся на следующий стрим
         await this.switchToStream(nextStream);
         window.utils.showToast(`Переключено на ${nextStream.displayName}`, 'success');
+        return 'switched';
       }
+
+      // Кампания засчитывается только на своих каналах, и никого из них
+      // нет в эфире (без quiet об этом уже сказал pickPreferredStream)
+      return 'none';
     } catch (error) {
       console.error('Error switching stream:', error);
       window.utils.showToast('Ошибка переключения стрима', 'error');
+      return 'error';
     }
   }
 
@@ -4930,8 +6335,14 @@ class FarmingPage {
       // Получаем стримы для предыдущей категории
       const streams = await window.electronAPI.getStreamsWithDrops(prevCategory.name);
       if (!this.isStreamOperationCurrent(revision)) return;
+
+      // Не ответил — не то же самое, что «стримов нет»
+      if (!Array.isArray(streams)) {
+        window.utils.showToast(`Twitch не ответил по категории ${prevCategory.name}`, 'warning');
+        return;
+      }
       
-      if (!streams || streams.length === 0) {
+      if (streams.length === 0) {
         window.utils.showToast('Нет доступных стримов', 'warning');
         return;
       }
@@ -4945,6 +6356,7 @@ class FarmingPage {
       }
       this.currentCategory = prevCategory;
       this.currentStream = stream;
+      this.resetCategoryCounters(prevCategory);
       this.resetChannelPointsTracking();
       
       // Смена канала — единственный случай, когда перезагрузка плеера уместна
@@ -4953,8 +6365,9 @@ class FarmingPage {
       // Чат переводим на новый канал (он живёт вне страницы и не перезагружается зря)
       window.chatManager?.load(stream.login);
       
-      this.updateCurrentStreamUI(stream, prevCategory);
-      this.startStreamStatsUpdate(stream.login);
+      if (!this.updateCurrentStreamUI(stream, prevCategory)) {
+        this.startStreamStatsUpdate(stream.login);
+      }
 
       // Сохраняем сессию, иначе в хранилище останется прежняя категория:
       // стоило уйти на другую вкладку и вернуться, как приложение
@@ -5001,8 +6414,14 @@ class FarmingPage {
       // Получаем стримы для следующей категории
       const streams = await window.electronAPI.getStreamsWithDrops(nextCategory.name);
       if (!this.isStreamOperationCurrent(revision)) return;
+
+      // Не ответил — не то же самое, что «стримов нет»
+      if (!Array.isArray(streams)) {
+        window.utils.showToast(`Twitch не ответил по категории ${nextCategory.name}`, 'warning');
+        return;
+      }
       
-      if (!streams || streams.length === 0) {
+      if (streams.length === 0) {
         window.utils.showToast('Нет доступных стримов', 'warning');
         return;
       }
@@ -5016,6 +6435,7 @@ class FarmingPage {
       }
       this.currentCategory = nextCategory;
       this.currentStream = stream;
+      this.resetCategoryCounters(nextCategory);
       this.resetChannelPointsTracking();
       
       // Смена канала — единственный случай, когда перезагрузка плеера уместна
@@ -5024,8 +6444,9 @@ class FarmingPage {
       // Чат переводим на новый канал (он живёт вне страницы и не перезагружается зря)
       window.chatManager?.load(stream.login);
       
-      this.updateCurrentStreamUI(stream, nextCategory);
-      this.startStreamStatsUpdate(stream.login);
+      if (!this.updateCurrentStreamUI(stream, nextCategory)) {
+        this.startStreamStatsUpdate(stream.login);
+      }
       await this.saveActiveSession(stream, nextCategory);
       if (!this.isStreamOperationCurrent(revision)) return;
 
@@ -5096,77 +6517,9 @@ class FarmingPage {
     }
   }
   
-  followCurrentChannel() {
-    if (!this.currentStream) {
-      window.utils.showToast('Нет активного стрима', 'warning');
-      return;
-    }
-    
-    // Проверяем авторизацию
-    const authData = JSON.parse(localStorage.getItem('authData') || '{}');
-    if (!authData.username) {
-      window.utils.showToast('Необходима авторизация в Twitch', 'warning');
-      return;
-    }
-    
-    const followBtn = document.getElementById('follow-channel-btn');
-    if (followBtn) {
-      followBtn.disabled = true;
-      followBtn.style.opacity = '0.5';
-    }
-    
-    window.utils.showToast('Подписка на канал...', 'info');
-    
-    window.electronAPI.followChannel(this.currentStream.login)
-      .then(result => {
-        if (result.success) {
-          window.utils.showToast(`Подписка на ${this.currentStream.displayName} оформлена!`, 'success');
-          
-          // Обновляем кнопку
-          if (followBtn) {
-            const span = followBtn.querySelector('span');
-            if (span) span.textContent = 'Подписан';
-            followBtn.style.background = 'var(--accent-color)';
-            followBtn.style.color = 'white';
-          }
-        } else {
-          window.utils.showToast(`Ошибка подписки: ${result.error || 'Unknown'}`, 'error');
-        }
-      })
-      .catch(err => {
-        console.error('Follow error:', err);
-        window.utils.showToast('Ошибка подписки', 'error');
-      })
-      .finally(() => {
-        if (followBtn) {
-          followBtn.disabled = false;
-          followBtn.style.opacity = '1';
-        }
-      });
-  }
-  
-  async checkFollowingStatus() {
-    if (!this.currentStream) return;
-    
-    const result = await window.electronAPI.checkFollowing(this.currentStream.login);
-    
-    const followBtn = document.getElementById('follow-channel-btn');
-    if (!followBtn) return;
-    
-    if (result.success && result.following) {
-      const span = followBtn.querySelector('span');
-      if (span) span.textContent = 'Подписан';
-      followBtn.style.background = 'var(--accent-color)';
-      followBtn.style.color = 'white';
-      followBtn.disabled = true;
-    } else {
-      const span = followBtn.querySelector('span');
-      if (span) span.textContent = 'Подписаться';
-      followBtn.style.background = '';
-      followBtn.style.color = '';
-      followBtn.disabled = false;
-    }
-  }
+  // Кнопки «Подписаться на канал» в разметке нет, а проверка подписки при
+  // каждой смене стрима слала в Twitch два заведомо неудачных запроса.
+  // Методы followCurrentChannel и checkFollowingStatus удалены вместе с ней.
   
   toggleNotifications() {
     if (!this.currentStream) {
@@ -5180,6 +6533,8 @@ class FarmingPage {
   }
 
   async switchToStream(stream) {
+    // Сессия уже остановлена (например, по простою) — плеер не включаем
+    if (!this.sessionStartTime) return;
     const player = window.playerManager?.getWebview();
     if (!player) return;
     this.beginStreamOperation();
@@ -5194,11 +6549,11 @@ class FarmingPage {
     // Чат переводим на новый канал
     window.chatManager?.load(stream.login);
     
-    // Обновляем информацию о стриме
-    this.updateCurrentStreamUI(stream, this.currentCategory);
-    
-    // Обновляем статистику
-    this.startStreamStatsUpdate(stream.login);
+    // Обновляем информацию о стриме. Статистику запускает он же, второй
+    // запуск нужен только когда разметки страницы нет
+    if (!this.updateCurrentStreamUI(stream, this.currentCategory)) {
+      this.startStreamStatsUpdate(stream.login);
+    }
 
     // Смена стрима тоже должна попадать в сохранённую сессию: иначе после
     // возврата на вкладку приложение вернуло бы прежний канал
@@ -5346,6 +6701,7 @@ class FarmingPage {
     window.sessionState?.resetPoints();
     this._sessionDropsBaseline = null;
     this._sessionCountedDrops = null;
+    this._sessionSeenCampaigns = null;
   }
 
   /**
@@ -5377,7 +6733,7 @@ class FarmingPage {
         <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
           <path d="M5 3l14 9-14 9V3z"/>
         </svg>
-        Перейти к «${next.name}»
+        Перейти к «${this.esc(next.name)}»
       </button>
     `;
 
@@ -5437,7 +6793,9 @@ class FarmingPage {
       if (!game || скрытые.has(game)) return false;
 
       // Уже в списке — предлагать нечего
-      if (this.categories.some(cat => SP.isSameGame(cat.name, game))) return false;
+      if (this.categories.some(cat => SP.isExactGame(cat.name, game, cat.id, campaign.game?.id))) return false;
+      // Удалённую пользователем игру не навязываем снова
+      if (this._deletedCategoryKeys?.has(this.normalizeGameKey(game))) return false;
 
       const value = CV.evaluate(campaign, now);
       return value.feasible && value.perHour > 0;
@@ -5453,16 +6811,15 @@ class FarmingPage {
     const game = лучшая.game?.displayName || лучшая.game?.name || лучшая.name;
     const value = CV.evaluate(лучшая, now);
 
-    const escape = (t) => String(t ?? '').replace(/[&<>"']/g, ch => ({
-      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-    }[ch]));
+    // Общее экранирование страницы — одно на всё приложение
+    const escape = (text) => this.esc(text);
 
     box.innerHTML = `
       <div class="suggestion">
-        <img class="suggestion-art" src="${escape(this.normalizeBoxArtURL(лучшая.game?.boxArtURL, '52x72'))}"
+        <img class="suggestion-art" src="${escape(this.boxArtSrc(лучшая.game?.boxArtURL, '52x72', лучшая.game?.id))}"
              alt="" onerror="this.style.visibility='hidden'">
         <div class="suggestion-text">
-          <div class="suggestion-title">${escape(game)} — ${value.perHour} ${value.perHour === 1 ? 'награда' : 'награды'} за час</div>
+          <div class="suggestion-title">${escape(game)} — ${value.perHour} ${this.plural(value.perHour, 'награда', 'награды', 'наград')} за час</div>
           <div class="suggestion-sub">Этой категории нет в вашем списке · осталось ${window.CampaignCalendar.formatLeft(value.minutesLeft)}</div>
         </div>
         <button class="btn btn-primary suggestion-add" id="suggestion-add">Добавить</button>
@@ -5470,7 +6827,18 @@ class FarmingPage {
       </div>
     `;
 
-    box.querySelector('#suggestion-add').addEventListener('click', () => this.addSuggestedCategory(game, лучшая));
+    // Кнопка гаснет на время запроса: быстрый двойной клик добавлял две
+    // одинаковые категории с одним id
+    const addBtn = box.querySelector('#suggestion-add');
+    addBtn.addEventListener('click', async () => {
+      if (addBtn.disabled) return;
+      addBtn.disabled = true;
+      try {
+        await this.addSuggestedCategory(game, лучшая);
+      } finally {
+        addBtn.disabled = false;
+      }
+    });
     box.querySelector('#suggestion-hide').addEventListener('click', () => {
       скрытые.add(game);
       box.innerHTML = '';
@@ -5483,14 +6851,29 @@ class FarmingPage {
       let fresh = null;
       try {
         const all = await window.electronAPI.fetchTwitchCategories();
-        fresh = (all || []).find(c => window.StreamPicker.isSameGame(c.name, game)) || null;
+        fresh = (all || []).find(c => window.StreamPicker.isExactGame(c.name, game, c.id, campaign?.game?.id)) || null;
       } catch (e) {
         // без свежих данных категория тоже работает
       }
 
+      const id = fresh?.id || campaign.game?.id || ('sug-' + String(game).toLowerCase().replace(/\s+/g, '-'));
+      const name = fresh?.name || game;
+
+      // Пока шёл запрос, ту же игру могли добавить другим путём (второй
+      // клик, календарь, выбор категорий) — второй раз не добавляем
+      const SP = window.StreamPicker;
+      const exists = this.categories.some(cat =>
+        String(cat.id) === String(id) ||
+        SP.isExactGame(cat.name, name, cat.id, fresh?.id || campaign?.game?.id));
+      if (exists) {
+        const box = document.getElementById('category-suggestion');
+        if (box) box.innerHTML = '';
+        return;
+      }
+
       this.categories.push({
-        id: fresh?.id || campaign.game?.id || ('sug-' + String(game).toLowerCase().replace(/\s+/g, '-')),
-        name: fresh?.name || game,
+        id,
+        name,
         boxArtURL: this.normalizeBoxArtURL(fresh?.boxArtURL || campaign.game?.boxArtURL, '52x72'),
         viewersCount: fresh?.viewersCount || 0,
         tags: fresh?.tags || [],
@@ -5500,7 +6883,8 @@ class FarmingPage {
         dropsCompleted: false
       });
 
-      await Storage.saveCategories(this.categories);
+      await this.setCategoryDeleted(fresh?.name || game, false);
+      await this.saveCategories();
       this.renderCategories();
 
       const box = document.getElementById('category-suggestion');
@@ -5570,11 +6954,13 @@ class FarmingPage {
     const va = this.getCategoryValue(a);
     const vb = this.getCategoryValue(b);
 
-    if (!va && !vb) return 0;
-    if (!va) return 1;
-    if (!vb) return -1;
+    // Порядок: выполнимые, затем без оценки, и только потом безнадёжные.
+    // Раньше категория без оценки шла после любой оценённой — в том числе
+    // после той, где наград заведомо не успеть, и ночь уходила на неё.
+    const rank = (v) => (!v ? 1 : (v.feasible ? 0 : 2));
+    if (rank(va) !== rank(vb)) return rank(va) - rank(vb);
+    if (!va || !vb) return 0;
 
-    if (va.feasible !== vb.feasible) return va.feasible ? -1 : 1;
     if (va.perHour !== vb.perHour) return vb.perHour - va.perHour;
     if (va.minutesLeft !== vb.minutesLeft) return va.minutesLeft - vb.minutesLeft;
     return 0;
@@ -5658,7 +7044,10 @@ class FarmingPage {
 
     const now = Date.now();
 
-    if (!CV.shouldLeave(matched, now)) {
+    // Готовая награда ещё не забрана, а автосбор пробует снова: уходить
+    // рано. CampaignValue считает такую награду полученной, и категорию
+    // бросали — забирать её на чужой игре уже никто не пытался
+    if (!CV.shouldLeave(matched, now) || this.hasPendingClaims(matched)) {
       this._exhaustedCategoryId = null;
       this._leaveVotes = 0;
       return;
@@ -5690,11 +7079,14 @@ class FarmingPage {
 
     const category = this.categories.find(c => c.id === this.currentCategory.id);
     if (category) {
-      // Пометка снимается сама, когда у игры начинается новая кампания
+      // Пометка снимается сама, когда у игры начинается новая кампания.
+      // Какие кампании отработаны, запоминаем по id: без этого обновление
+      // списка через полминуту снимало отметку с той же самой кампании.
       category.dropsCompleted = true;
       category.dropsCompletedDate = new Date().toISOString();
       category.skipReason = reason;
-      Storage.saveCategories(this.categories).catch(() => {});
+      category.skipCampaignIds = matched.map(c => c.id).filter(Boolean).sort().join(',');
+      this.saveCategories().catch(() => {});
     }
 
     window.notifyFarmingEvent?.('Категория отработана', `${this.currentCategory.name}: ${reason}`);
@@ -5704,11 +7096,11 @@ class FarmingPage {
     // при отсутствии дропсов, только предлагаем переключиться
     if (this.isManualCategoryActive()) {
       console.log('[Ручной запуск] Категория отработана, но не меняем:', this.currentCategory.name);
-      this.showSwitchOffer();
+      this.showSwitchOffer('done', reason);
       return;
     }
 
-    await this.switchToNextEnabledCategory();
+    await this.switchToNextEnabledCategory({ reason: 'done', detail: reason });
   }
 
   warnAboutEndingCampaigns(campaigns) {
@@ -5756,64 +7148,134 @@ class FarmingPage {
     if (!window.electronAPI?.claimDrop) return;
 
     if (!this._claimAttempted) this._claimAttempted = new Set();
+    if (!this._claimRetry) this._claimRetry = new Map();
 
     for (const campaign of campaigns) {
       for (const drop of (campaign.drops || [])) {
         const id = drop.dropInstanceID;
         if (!id) continue;                     // Twitch выдаёт его только у готовых наград
         if (drop.claimed) continue;
+        // Запрос по этой награде уже идёт
         if (this._claimAttempted.has(id)) continue;
+        // После неудачи ждём паузу, а не долбим Twitch каждые 30 секунд
+        const retry = this._claimRetry.get(id);
+        if (retry && Date.now() < retry.nextAt) continue;
 
         const ready = drop.required > 0 && drop.progress >= drop.required;
         if (!ready && !drop.canClaim && !drop.isClaimable) continue;
 
-        // Помечаем до запроса: повторная попытка каждые 30 секунд
-        // при неудаче превратилась бы в спам по сети
         this._claimAttempted.add(id);
 
         const name = drop.benefitName || drop.name || 'Награда';
         console.log('[Дропсы] Забираю награду:', name);
 
+        let failure = null;
         try {
           const result = await window.electronAPI.claimDrop(id);
 
           if (result?.success) {
             window.chime?.dropClaimed();
             drop.claimed = true;
+            this._claimRetry.delete(id);
             window.utils?.showToast(`Награда получена: ${name}`, 'success');
             window.showDropNotification?.(name, campaign.game?.name || campaign.name || '', drop.imageURL);
           } else {
-            console.warn('[Дропсы] Не удалось забрать:', name, result?.error);
+            failure = result?.error || 'нет ответа';
           }
         } catch (error) {
-          console.warn('[Дропсы] Ошибка при получении:', error?.message);
+          failure = error?.message || 'ошибка запроса';
+        } finally {
+          this._claimAttempted.delete(id);
         }
+
+        if (failure) this.noteClaimFailure(id, name, failure);
       }
     }
   }
 
   /**
+   * Неудачная попытка забрать награду.
+   *
+   * Раньше неудача была окончательной: id помечался «уже пробовали», и
+   * повтора не было до перезапуска приложения. Нет cookie-токена, 429,
+   * обрыв сети — и награда молча оставалась незабранной, а категорию
+   * бросали как отработанную. Теперь повторяем через 2, 5 и 15 минут
+   * (дальше — раз в 15), а после нескольких неудач подряд говорим
+   * пользователю забрать вручную.
+   */
+  noteClaimFailure(id, name, error) {
+    const DELAYS_MIN = [2, 5, 15];
+    const prev = this._claimRetry.get(id);
+    const attempts = (prev?.attempts || 0) + 1;
+    const delay = DELAYS_MIN[Math.min(attempts - 1, DELAYS_MIN.length - 1)];
+    this._claimRetry.set(id, { attempts, nextAt: Date.now() + delay * 60 * 1000 });
+
+    console.warn('[Дропсы] Не удалось забрать:', name, error, '— повтор через', delay, 'мин');
+
+    if (attempts === 1) {
+      window.utils?.showToast(`Не удалось забрать «${name}» — повторю через ${delay} мин`, 'warning');
+    }
+    if (attempts === FarmingPage.CLAIM_ATTEMPTS_BEFORE_GIVING_UP) {
+      window.notifyFarmingEvent?.('Награда не получена', `${name}: забрать не удалось — заберите вручную`);
+      window.utils?.showToast(`«${name}»: забрать не удалось — заберите вручную`, 'warning');
+    }
+  }
+
+  static get CLAIM_ATTEMPTS_BEFORE_GIVING_UP() {
+    return 4;
+  }
+
+  /**
+   * Есть ли готовая награда, которую автосбор ещё пытается забрать.
+   *
+   * Пока есть, категорию не считаем отработанной. После нескольких
+   * неудач подряд держать её больше не стоит — пользователю уже сказано
+   * забрать награду вручную.
+   */
+  hasPendingClaims(campaigns) {
+    if (window.settings && window.settings.get('autoClaimDrops') === false) return false;
+    if (!window.electronAPI?.claimDrop) return false;
+
+    const retry = this._claimRetry || new Map();
+    return (campaigns || []).some(campaign => (campaign.drops || []).some(drop => {
+      if (!drop?.dropInstanceID || drop.claimed) return false;
+      const attempts = retry.get(drop.dropInstanceID)?.attempts || 0;
+      return attempts < FarmingPage.CLAIM_ATTEMPTS_BEFORE_GIVING_UP;
+    }));
+  }
+
+  /**
    * Считает дропсы, полученные именно в этой сессии.
    *
-   * Первый проход только запоминает уже полученное ранее, иначе весь
-   * накопленный за месяцы инвентарь засчитался бы как добытый сейчас.
-   * Раньше в статистику писался жёсткий ноль (стояла заглушка с TODO),
-   * поэтому счётчик «Дропсов получено» ничего не отражал.
+   * Первая встреча с кампанией только запоминает уже полученное в ней
+   * ранее, иначе весь накопленный за месяцы инвентарь засчитался бы как
+   * добытый сейчас. Раньше в статистику писался жёсткий ноль (стояла
+   * заглушка с TODO), поэтому счётчик «Дропсов получено» ничего не
+   * отражал.
+   *
+   * Базу ведём по кампаниям, а не по первому проходу сессии: сюда
+   * приходят кампании только текущей игры, и после смены игры награды
+   * новой, полученные в прошлые дни, засчитывались этой сессии.
    */
   trackSessionDrops(campaigns) {
-    const firstPass = !this._sessionDropsBaseline;
-    if (firstPass) {
+    if (!this._sessionDropsBaseline) {
       this._sessionDropsBaseline = new Set();
       this._sessionCountedDrops = new Set();
+      this._sessionSeenCampaigns = new Set();
     }
+    if (!this._sessionSeenCampaigns) this._sessionSeenCampaigns = new Set();
 
     campaigns.forEach(campaign => {
+      const campaignKey = campaign.id || campaign.name || '';
+      const firstSeen = !this._sessionSeenCampaigns.has(campaignKey);
+      this._sessionSeenCampaigns.add(campaignKey);
+
       (campaign.drops || []).forEach(drop => {
         if (!this.isDropEarned(drop)) return;
 
         const id = drop.id || `${campaign.id}:${drop.name}`;
 
-        if (firstPass) {
+        if (firstSeen) {
           this._sessionDropsBaseline.add(id);
           return;
         }
@@ -5845,16 +7307,67 @@ class FarmingPage {
     if (!this.currentStream || !this.currentCategory) return;
     if (detail.channel && detail.channel.toLowerCase() !== this.currentStream.login.toLowerCase()) return;
 
+    const login = this.currentStream.login;
+    const name = this.currentStream.displayName || login;
+
     // Настройка «Автопереключение стримов» должна что-то значить
     if (window.settings && window.settings.get('autoSwitchStreams') === false) {
+      // Переключаться нельзя. Если эфир действительно закончился, держать
+      // сессию на погасшем канале незачем: раньше здесь был только тост раз
+      // в минуту, а фарминг молча стоял до утра. Сбой сети офлайном не
+      // считаем — сторож плеера сам оживит канал, когда сеть вернётся.
+      if (await this.isConfirmedOffline(login)) {
+        if (this._destroyed || this.currentStream?.login !== login) return;
+        this.finishStreamEnded(`${name} закончил эфир, автопереключение выключено`);
+        return;
+      }
       console.log('[Плеер] Стрим недоступен, но автопереключение выключено в настройках');
-      window.utils.showToast('Стрим недоступен. Автопереключение выключено', 'warning');
+      this.toastOnce('dead:' + login, 'Стрим недоступен. Автопереключение выключено', 'warning');
       return;
     }
 
     console.warn('[Плеер] Стрим не оживить, переключаюсь:', detail.reason || '');
-    window.utils.showToast('Стрим недоступен, переключение...', 'warning');
-    await this.switchToNextStream();
+    this.toastOnce('dead:' + login, 'Стрим недоступен, переключение...', 'warning');
+    const result = await this.switchToNextStream({ quiet: true });
+    if (result !== 'none') return;
+    if (this._destroyed || this.currentStream?.login !== login) return;
+
+    // В категории смотреть больше некого — пробуем другие категории.
+    // Раньше на этом всё заканчивалось: тост «Других стримов нет», и
+    // фарминг стоял до утра.
+    const switched = await this.switchToNextEnabledCategory({ reason: 'offline' });
+    if (switched !== false) return;
+
+    // Переключиться некуда. Если фарминг ещё идёт (ручная категория —
+    // ей показано предложение), останавливаем его здесь
+    if (this.sessionStartTime && this.currentStream?.login === login) {
+      this.finishStreamEnded(`${name}: стрим недоступен, других стримов нет`);
+      return;
+    }
+    window.shutdownManager?.onStreamEnded();
+  }
+
+  /** Twitch подтвердил, что канал не в эфире. Сбой запроса — не подтверждение. */
+  async isConfirmedOffline(login) {
+    if (!window.electronAPI?.getStreamStats) return false;
+    try {
+      return (await window.electronAPI.getStreamStats(login)) === null;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  /**
+   * Стрим закончился, а переключиться нельзя или некуда.
+   * Здесь же срабатывает автовыключение «по концу стрима»: раньше его не
+   * вызывал никто, и эта настройка ничего не делала.
+   */
+  finishStreamEnded(text) {
+    console.warn('[Плеер] Стрим закончился, переключиться некуда:', text);
+    window.utils?.showToast(`${text}. Фарминг остановлен`, 'warning');
+    window.notifyFarmingEvent?.('Фарминг остановлен', text);
+    this.stopFarming(false);
+    window.shutdownManager?.onStreamEnded();
   }
 
   // Форматирование оставшегося времени
@@ -5899,6 +7412,10 @@ class FarmingPage {
         delete this[key];
       }
     });
+    clearTimeout(this._categoryRetryTimer);
+    clearTimeout(this._autoRestartTimer);
+    this._categoryRetryTimer = null;
+    this._autoRestartTimer = null;
 
     // Снимаем все обработчики событий этого экземпляра страницы.
     // Без этого обработчики на кнопках сайдбара и на document оставались
@@ -5987,6 +7504,15 @@ window.FarmingPage = FarmingPage;
  */
 window.showDropNotification = function(dropName, gameName, dropIcon = null) {
   if (window.settings && window.settings.get('notifyOnDropClaimed') === false) return;
+  // Окно о награде — тоже уведомление Windows: его глушат и общий
+  // выключатель, и тихие часы. Раньше оно всплывало поверх всего даже
+  // ночью, хотя настройка обещала тишину
+  if (window.settings && (window.settings.get('systemNotifications') === false ||
+      window.settings.get('notifications') === false)) return;
+  if (window.QuietHours?.active()) {
+    console.log('[Уведомления] Тихие часы, окно о награде не показываю:', dropName);
+    return;
+  }
 
   if (window.electronAPI && window.electronAPI.showDropNotification) {
     window.electronAPI.showDropNotification(dropName, gameName, dropIcon);
@@ -6002,7 +7528,10 @@ window.showDropNotification = function(dropName, gameName, dropIcon = null) {
  * пор, пока пользователь сам не откроет окно.
  */
 window.notifyFarmingEvent = function(title, body) {
-  if (window.settings && window.settings.get('notifications') === false) return;
+  // Выключатель «Уведомления Windows» пишет оба ключа; проверяем оба,
+  // чтобы старое значение одного из них не включало уведомления обратно
+  if (window.settings && (window.settings.get('notifications') === false ||
+      window.settings.get('systemNotifications') === false)) return;
 
   // В тихие часы событие всё равно происходит и попадает в журнал —
   // молчит только само уведомление

@@ -42,10 +42,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Не давать системе уснуть, пока плеер играет (и отпустить, когда стих)
   keepAwake: (on) => ipcRenderer.send('keep-awake', !!on),
   
-  // Follow/Unfollow
-  followChannel: (channelLogin) => ipcRenderer.invoke('follow-channel', channelLogin),
-  checkFollowing: (channelLogin) => ipcRenderer.invoke('check-following', channelLogin),
-  
   // Fetch Twitch categories
   fetchTwitchCategories: () => ipcRenderer.invoke('fetch-twitch-categories'),
   checkCategoryDrops: (categoryName) => ipcRenderer.invoke('check-category-drops', categoryName),
@@ -61,20 +57,33 @@ contextBridge.exposeInMainWorld('electronAPI', {
   claimDrop: (dropInstanceID) => ipcRenderer.invoke('claim-drop', dropInstanceID),
   updateTrayStatus: (status) => ipcRenderer.send('tray-status', status),
   refreshStreamLimit: (quality) => ipcRenderer.send('refresh-stream-limit', quality),
-  getChannelPoints: (channelId, userId) => ipcRenderer.invoke('get-channel-points', channelId, userId),
+  // main ждёт логин канала (session-state передаёт streamLogin), а не id:
+  // прежние имена channelId/userId сбивали с толку, второй аргумент main не читал
+  getChannelPoints: (channelLogin) => ipcRenderer.invoke('get-channel-points', channelLogin),
   
   // Subscriptions
   getUserSubscriptions: (authToken) => ipcRenderer.invoke('get-user-subscriptions', authToken),
-  unsubscribeChannel: (authToken, channelId) => ipcRenderer.invoke('unsubscribe-channel', authToken, channelId),
+  unsubscribeChannel: (authToken, channelLogin) => ipcRenderer.invoke('unsubscribe-channel', authToken, channelLogin),
   getChannelDetails: (authToken, channelLogin) => ipcRenderer.invoke('get-channel-details', authToken, channelLogin),
-  loadImage: (imageUrl) => ipcRenderer.invoke('load-image', imageUrl),
   
   // Обработчик закрытия приложения
   onAppClosing: (callback) => ipcRenderer.on('app-closing', callback),
+  // Ответ на app-closing: сессия сохранена, можно выходить. Без него main
+  // ждёт не дольше 3 секунд при любом выходе: крестик, «Выход» в трее,
+  // установка обновления
+  notifyFarmingSaved: () => ipcRenderer.send('farming-saved'),
 
-  // Обработчик навигации из трея
-  onNavigateToPage: (callback) => ipcRenderer.on('navigate-to-page', callback),
+  // Обработчик навигации из трея. Первым аргументом ipcRenderer.on отдаёт
+  // событие, а не имя страницы: без обёртки роутер получал объект события,
+  // и пункт трея «Открыть настройки» оставлял прежнюю страницу
+  onNavigateToPage: (callback) => ipcRenderer.on('navigate-to-page', (_e, page) => callback(page)),
+  // Показать окно поверх остальных: отсчёт до выключения ПК не должен
+  // идти в спрятанном в трей окне, где его некому прервать
+  showMainWindow: () => ipcRenderer.invoke('show-main-window'),
   onShortcut: (callback) => ipcRenderer.on('shortcut', (e, action) => callback(action)),
+  // Необработанная ошибка главного процесса: main шлёт её текст, окно
+  // показывает короткое сообщение. Без подписки она была видна только в логе
+  onMainProcessError: (callback) => ipcRenderer.on('main-process-error', (_e, message) => callback(message)),
   // Сундук собран запросом из main — для уведомления и звука
   onChestClaimed: (callback) => ipcRenderer.on('chest-claimed', (e, data) => callback(data)),
   // Игровой режим: запущена ли игра (main следит за процессами)
@@ -83,6 +92,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   hasTwitchSession: () => ipcRenderer.invoke('has-twitch-session'),
   onGameMode: (callback) => ipcRenderer.on('game-mode', (e, state) => callback(state)),
   setGlobalShortcuts: (enabled) => ipcRenderer.send('set-global-shortcuts', enabled),
+  // Какие сочетания заняты другими программами: { enabled, failed: ['Control+Alt+F', …] }
+  getShortcutStatus: () => ipcRenderer.invoke('get-shortcut-status'),
 
   // Auto updater
   checkForUpdates: () => ipcRenderer.send('check-for-updates'),

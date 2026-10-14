@@ -12,13 +12,17 @@
     </div>
     
     <div id="current-stream-info">
-      <div class="no-stream waiting-state" tabindex="0" role="button" aria-label="Ожидание стрима">
+      <!-- Заглушка — это кнопка запуска (обработчик в farming-page.js).
+           Раньше она выглядела кнопкой, а клик не делал ничего, и подпись
+           «Ожидание» при остановленном фарминге сбивала с толку -->
+      <div class="no-stream waiting-state" tabindex="0" role="button" aria-label="Начать фарминг">
         <div class="waiting-icon" aria-hidden="true">
           <span class="waiting-ring waiting-ring-outer"></span>
           <span class="waiting-ring waiting-ring-inner"></span>
           <span class="waiting-dot"></span>
         </div>
-        <p class="waiting-label" data-i18n="farming.idle">Ожидание</p>
+        <p class="waiting-label">Фарминг не запущен</p>
+        <p class="waiting-hint" data-i18n="farming.startFarming">Начать фарминг</p>
       </div>
     </div>
     
@@ -77,7 +81,7 @@
         <div id="stream-details" class="stream-info-card">
           <!-- Game Cover with gradient background -->
           <div class="stream-cover-wrapper">
-            <img id="stream-game-cover" src="" alt="Game" class="stream-game-cover">
+            <img id="stream-game-cover" src="" alt="" class="stream-game-cover">
           </div>
           
           <!-- Info -->
@@ -99,7 +103,7 @@
             </div>
             <div class="stream-stat-divider"></div>
             <div class="stream-stat-item">
-              <div class="stream-stat-label">Uptime</div>
+              <div class="stream-stat-label">В эфире</div>
               <div id="stream-uptime" class="stream-stat-value">-</div>
             </div>
           </div>
@@ -113,7 +117,10 @@
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
             <path d="M15 18l-6-6 6-6"/>
           </svg>
-          <span style="font-weight: 500;" data-i18n="farming.back">Назад</span>
+          <!-- «Категория», а не «Назад»: кнопка листает категории, а не
+               стримы. Без data-i18n — перевод farming.back всё ещё «Назад»
+               и перезаписал бы подпись при каждом переходе -->
+          <span style="font-weight: 500;">Категория</span>
         </button>
         <button class="btn btn-primary" id="next-stream-btn" style="flex: 2; height: 42px; font-size: 13px; display: flex; align-items: center; justify-content: center; gap: 8px; background: #7c5cff; border: none; box-shadow: none; transition: all 0.2s ease; color: white;" title="Следующий стрим">
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -125,7 +132,7 @@
           <span style="font-weight: 600; color: white;" data-i18n="farming.anotherStream">Другой стрим</span>
         </button>
         <button class="btn btn-secondary" id="next-category-btn" style="flex: 1; height: 42px; font-size: 13px; display: flex; align-items: center; justify-content: center; gap: 8px; background: var(--bg-secondary); border: 1px solid var(--border-color); transition: all 0.2s ease;" title="Следующая категория">
-          <span style="font-weight: 500;" data-i18n="farming.forward">Вперед</span>
+          <span style="font-weight: 500;">Категория</span>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
             <path d="M9 18l6-6-6-6"/>
           </svg>
@@ -140,7 +147,12 @@
     <div id="drops-progress-horizontal" style="display: none; margin-top: 12px; padding: 16px; background: rgba(124, 92, 255, 0.08); border-radius: var(--radius-md); border: 1px solid rgba(124, 92, 255, 0.25); box-shadow: none;">
       <!-- Контент генерируется динамически в updateDropsHorizontalProgress() -->
     </div>
-    
+
+    <!-- Предложение сменить вручную запущенную категорию. Отдельно от
+         панели дропсов: та перерисовывается каждые полминуты и стирала
+         предложение в тот же миг, когда оно появлялось -->
+    <div id="switch-offer-slot" style="display: none; margin-top: 12px;"></div>
+
     <!-- Channel Points Stats - показывается только во время фарминга -->
     <div id="channel-points-card" class="card" style="margin-top: 12px; display: none;">
       <div class="card-title" style="display: flex; align-items: center; gap: 8px;">
@@ -220,7 +232,7 @@
           <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
             <circle cx="6" cy="6" r="6"/>
           </svg>
-          <span data-i18n="farming.dropsFirst">Drops сверху</span>
+          <span data-i18n="farming.dropsFirst">Сначала с дропсами</span>
         </button>
       </div>
       <div style="display: flex; gap: 8px;">
@@ -313,6 +325,12 @@
     object-fit: cover;
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
     position: relative;
+  }
+
+  /* Заглушка, пока у категории нет обложки: иначе оставалась картинка прошлой игры */
+  .stream-game-cover:not([src]),
+  .stream-game-cover[src=""] {
+    background: var(--bg-tertiary);
   }
 
   .stream-live-indicator {
@@ -421,6 +439,23 @@
     align-items: center;
     justify-content: center;
     padding: 60px 20px;
+  }
+
+  /* Заглушка запускает фарминг по клику — пусть и выглядит кнопкой целиком */
+  .waiting-state {
+    cursor: pointer;
+  }
+
+  .waiting-state:hover,
+  .waiting-state:focus-visible {
+    border-color: var(--accent-color);
+  }
+
+  .waiting-hint {
+    margin: -6px 0 0;
+    color: var(--accent-color);
+    font-size: 13px;
+    font-weight: 600;
   }
 
   .stream-card {
@@ -592,11 +627,18 @@
     flex-shrink: 0;
   }
 
+  /* Номер, Play и булавка — одной высоты и с одним скруглением, как у
+     остальных кнопок: раньше строка выглядела неровной */
   .category-priority {
     background: var(--accent-color);
     color: white;
-    padding: 6px 12px;
-    border-radius: var(--radius-md);
+    box-sizing: border-box;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 12px;
+    border-radius: var(--radius-ctl);
     font-size: 13px;
     font-weight: 600;
     flex-shrink: 0;
@@ -623,8 +665,10 @@
     border: 1px solid rgba(124, 92, 255, 0.3);
     color: #7c5cff;
     cursor: pointer;
-    padding: 8px 12px;
-    border-radius: var(--radius-sm);
+    box-sizing: border-box;
+    height: 30px;
+    padding: 0 12px;
+    border-radius: var(--radius-ctl);
     transition: all 0.2s;
     flex-shrink: 0;
     display: flex;
@@ -660,6 +704,40 @@
   .category-drops-status.completed {
     background: rgba(53, 208, 138, 0.15);
     color: #35d08a;
+  }
+
+  /* Зрителей и срок карточка обновляет на месте; пока данных нет, пустой
+     span не должен добавлять лишний отступ в строке */
+  .category-viewers:empty,
+  .category-time-left:empty {
+    display: none;
+  }
+
+  /* Бейдж «Авто» — цветами темы: прежний светлый #bda0ff на светлой
+     теме почти не читался */
+  .category-tag.category-auto-tag {
+    background: var(--accent-quiet);
+    color: var(--accent-color);
+    border: 1px solid var(--accent-color);
+  }
+
+  /* Категория, которая фармится сейчас: по списку из сотни карточек
+     иначе было не понять, что именно идёт */
+  .category-item.current {
+    border-color: var(--accent-color);
+    box-shadow: inset 0 0 0 1px var(--accent-color);
+  }
+
+  .category-current-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: var(--radius-sm);
+    background: var(--accent-color);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
   }
 
   .category-remove:hover {
@@ -793,6 +871,39 @@
   .checkpoint.active {
     border-color: var(--accent-color);
     animation: checkpointPulse 1.5s infinite;
+  }
+
+  /* «Категория удалена — Вернуть»: несколько секунд на отмену крестика */
+  .category-undo {
+    position: fixed;
+    left: 50%;
+    bottom: 24px;
+    transform: translateX(-50%);
+    z-index: 9000;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    max-width: calc(100vw - 32px);
+    padding: 8px 8px 8px 16px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    color: var(--text-primary);
+    font-size: 13px;
+  }
+
+  .category-undo-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .category-undo-btn {
+    flex-shrink: 0;
+    height: 30px;
+    padding: 0 12px;
+    font-size: 13px;
   }
 </style>
 

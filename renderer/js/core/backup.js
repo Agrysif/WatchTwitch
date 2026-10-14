@@ -20,6 +20,26 @@ class Backup {
     return ['categories', 'subscriptions', 'statistics', 'settings'];
   }
 
+  /**
+   * Служебные поля настроек, которые не переносятся.
+   *
+   * lastSeenVersion из старой копии показывал ложное «Приложение обновлено»,
+   * qualityRepaired повторно запускал разовую починку качества, а autostart
+   * отражает то, что записано в Windows на этом компьютере, а не выбор из
+   * копии.
+   */
+  static get SERVICE_SETTINGS() {
+    return ['lastSeenVersion', 'qualityRepaired', 'autostart'];
+  }
+
+  /** Настройки без служебных полей или null, если это не объект. */
+  static cleanSettings(settings) {
+    if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return null;
+    const rest = { ...settings };
+    for (const key of Backup.SERVICE_SETTINGS) delete rest[key];
+    return rest;
+  }
+
   /** Собирает копию. Время проставляет вызывающий — так удобнее проверять. */
   static async collect(stamp) {
     const [categories, subscriptions, statistics] = await Promise.all([
@@ -42,7 +62,7 @@ class Backup {
       categories: categories || [],
       subscriptions: subscriptions || [],
       statistics: statistics || null,
-      settings
+      settings: Backup.cleanSettings(settings)
     };
   }
 
@@ -69,6 +89,82 @@ class Backup {
     return { ok: true };
   }
 
+  /**
+   * Оставляет в копии только записи правильной формы.
+   *
+   * validate() проверяет лишь, что файл вообще копия WatchTwitch. Но его
+   * могли поправить руками, обрезать или собрать старой версией: один null
+   * в списке категорий ронял фарминг при старте, а текущие данные к тому
+   * моменту были уже перезаписаны. Мусор отбрасываем и считаем, чтобы
+   * сказать об этом перед восстановлением.
+   *
+   * Раздел, в котором не уцелело ни одной записи, считается отсутствующим:
+   * иначе битый список молча стёр бы рабочий.
+   */
+  static sanitize(data) {
+    const isObject = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
+    const isId = (v) => (typeof v === 'string' && v.trim() !== '') || Number.isFinite(v);
+    // Имена попадают в разметку страниц, поэтому угловые скобки не пускаем
+    const isName = (v) => typeof v === 'string' && v.trim() !== '' && !/[<>]/.test(v);
+    const count = (v) => (Number.isFinite(v) && v >= 0 ? v : 0);
+
+    const dropped = { categories: 0, subscriptions: 0, sessions: 0 };
+
+    const pick = (list, ok, key) => {
+      if (!Array.isArray(list)) return null;
+      const kept = list.filter(ok);
+      dropped[key] = list.length - kept.length;
+      return list.length > 0 && kept.length === 0 ? null : kept;
+    };
+
+    const categories = pick(data?.categories,
+      (c) => isObject(c) && isId(c.id) && isName(c.name), 'categories');
+
+    // У подписки нет name: канал определяют id и login, а displayName
+    // показывается на странице подписок
+    const subscriptions = pick(data?.subscriptions,
+      (s) => isObject(s) && isId(s.id) &&
+        typeof s.login === 'string' && /^[a-z0-9_]+$/i.test(s.login) &&
+        (s.displayName == null || isName(s.displayName)), 'subscriptions');
+
+    let statistics = null;
+    if (isObject(data?.statistics)) {
+      const raw = Array.isArray(data.statistics.sessions) ? data.statistics.sessions : [];
+      const sessions = raw
+        .filter((s) => isObject(s) && Number.isFinite(s.timestamp) && Number.isFinite(s.duration))
+        // Сессия из копии уже не идёт. Активной её оставлять нельзя:
+        // текущий фарминг дописывал бы свои минуты в чужую запись
+        .map((s) => (s.isActive ? { ...s, isActive: false } : s));
+      dropped.sessions = raw.length - sessions.length;
+
+      statistics = {
+        ...data.statistics,
+        totalWatchTime: count(data.statistics.totalWatchTime),
+        totalDrops: count(data.statistics.totalDrops),
+        categoriesCompleted: count(data.statistics.categoriesCompleted),
+        sessions
+      };
+    }
+
+    return {
+      categories,
+      subscriptions,
+      statistics,
+      settings: Backup.cleanSettings(data?.settings),
+      dropped
+    };
+  }
+
+  /** Сколько записей отброшено при проверке, по-человечески; '' если ни одной. */
+  static describeDropped(dropped) {
+    if (!dropped) return '';
+    const parts = [];
+    if (dropped.categories > 0) parts.push(`категорий: ${dropped.categories}`);
+    if (dropped.subscriptions > 0) parts.push(`подписок: ${dropped.subscriptions}`);
+    if (dropped.sessions > 0) parts.push(`сессий статистики: ${dropped.sessions}`);
+    return parts.join(', ');
+  }
+
   /** Краткое описание копии — показать перед восстановлением. */
   static describe(data) {
     const parts = [];
@@ -89,23 +185,42 @@ class Backup {
     const check = Backup.validate(data);
     if (!check.ok) throw new Error(check.error);
 
+    const clean = Backup.sanitize(data);
+
+    // Текущие данные откладываем перед перезаписью: если копия окажется
+    // не той, к ним можно вернуться. Без этого отката не было вовсе, поэтому
+    // при неудаче не восстанавливаем
+    try {
+      const before = await Backup.collect(new Date().toISOString());
+      await Storage.set('backupBeforeRestore', before);
+    } catch (error) {
+      console.error('[Копия] Не удалось отложить текущие данные:', error);
+      throw new Error('Не удалось сохранить текущие данные перед восстановлением');
+    }
+
     const applied = [];
 
-    if (Array.isArray(data.categories)) {
-      await Storage.saveCategories(data.categories);
+    if (clean.categories) {
+      await Storage.saveCategories(clean.categories);
       applied.push('категории');
+
+      // Фарминг держит список категорий в памяти и при следующем сохранении
+      // затёр бы восстановленные своим — просим его перечитать хранилище
+      window.dispatchEvent(new CustomEvent('wt:categories-changed'));
     }
-    if (Array.isArray(data.subscriptions)) {
-      await Storage.saveSubscriptions(data.subscriptions);
+    if (clean.subscriptions) {
+      await Storage.saveSubscriptions(clean.subscriptions);
       applied.push('подписки');
     }
-    if (data.statistics) {
-      await Storage.set('statistics', data.statistics);
+    if (clean.statistics) {
+      await Storage.set('statistics', clean.statistics);
+      window.dispatchEvent(new CustomEvent('statistics-updated'));
       applied.push('статистика');
     }
-    if (data.settings && window.settings?.import) {
-      window.settings.import(JSON.stringify(data.settings));
-      applied.push('настройки');
+    if (clean.settings && window.settings?.import) {
+      if (window.settings.import(JSON.stringify(clean.settings))) {
+        applied.push('настройки');
+      }
     }
 
     return applied;

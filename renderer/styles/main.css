@@ -96,20 +96,30 @@ body {
   padding: 12px 8px;
 }
 
+/* Меню и блок фарминга делят высоту так:
+   — меню по возможности целиком; ужаться может, но не меньше чем до
+     четырёх пунктов, и тогда видна полоса прокрутки. Раньше меню
+     сжималось до нуля без всякого признака прокрутки: на ноутбуке во
+     время фарминга пропадали Настройки и Статистика, а в игровом режиме
+     и сама кнопка «Остановить» уезжала за нижний край;
+   — блок фарминга не сжимается и не прокручивается: внутри него
+     мини-плеер (отдельный слой webview, его обрезает только собственный
+     контейнер, а не прокрутка блока) и подсказка шкалы дропсов,
+     раскрывающаяся вверх, — прокрутка срезала бы её;
+   — место освобождают иначе: первым прячется мини-плеер, на низком окне
+     блок фарминга уплотняется (медиазапросы ниже). */
 .sidebar-top {
   display: flex;
   flex-direction: column;
-  /* Меню уступает место блоку фарминга: когда в сайдбаре плеер, шкала
-     дропсов и сессия, кнопка «Остановить» должна оставаться внизу на
-     виду, а прячутся нижние пункты меню (Настройки), а не она */
-  flex: 1 1 auto;
-  min-height: 0;
+  flex: 0 1 auto;
+  /* Четыре пункта и край пятого — чтобы было видно, что есть ещё */
+  min-height: 168px;
   overflow-y: auto;
-  scrollbar-width: none;
 }
 
+/* Тонкая полоса прокрутки: заметна, но не съедает ширину пунктов */
 .sidebar-top::-webkit-scrollbar {
-  display: none;
+  width: 4px;
 }
 
 .sidebar-farming {
@@ -120,6 +130,110 @@ body {
   flex: 0 0 auto;
   padding-top: var(--gap-base);
   border-top: 1px solid var(--border-color);
+}
+
+/* Отступы элементов блока фарминга. Раньше они были прописаны в разметке,
+   и уплотнить блок на низком окне было нечем */
+#sidebar-mini-player-container {
+  margin-bottom: 8px;
+}
+
+#sidebar-drops-progress {
+  padding: 12px 14px;
+  margin-bottom: 6px;
+}
+
+#farming-session-info {
+  padding: 16px;
+  margin-bottom: 8px;
+}
+
+#sidebar-start-farming-btn,
+#sidebar-stop-farming-btn {
+  padding: 14px 20px;
+}
+
+#sidebar-to-autofarm-btn {
+  padding: 11px 20px;
+  margin-bottom: 8px;
+}
+
+/* Окно ниже 780px. Обычному фармингу (плеер, дропсы, сессия, «Остановить»)
+   при полном меню нужно 780px высоты, поэтому здесь:
+   — мини-плеер уступает место первым: меню и «Остановить» важнее. Поток
+     при этом не прерывается: SlottedWebview видит, что слот скрыт, и прячет
+     видео, не выгружая плеер;
+   — блок фарминга плотнее, чтобы и при всех значках сразу (минимум окна —
+     600px) «Остановить» оставалась на экране, а меню — хотя бы на четыре
+     пункта. */
+@media (max-height: 779px) {
+  #sidebar-mini-player-container {
+    display: none !important;
+  }
+
+  .sidebar-farming {
+    gap: 6px;
+    padding-top: 8px;
+  }
+
+  #sidebar-drops-progress {
+    padding: 9px 12px;
+    margin-bottom: 0;
+  }
+
+  #sidebar-drops-progress .drops-credit {
+    margin-top: 6px;
+  }
+
+  .sidebar-farming > .game-mode-badge {
+    padding: 6px 10px;
+    margin-bottom: 0;
+  }
+
+  /* Заголовок «Сессия» лишний: зелёная точка «Активна» говорит то же */
+  #farming-session-info {
+    padding: 10px 12px;
+    margin-bottom: 0;
+  }
+
+  #farming-session-info .session-title {
+    display: none;
+  }
+
+  #sidebar-start-farming-btn,
+  #sidebar-stop-farming-btn {
+    padding: 10px 16px;
+  }
+
+  #sidebar-to-autofarm-btn {
+    padding: 8px 12px;
+    margin-bottom: 0;
+    font-size: 12px;
+  }
+
+  /* Без значка подпись помещается в одну строку, а не в две */
+  #sidebar-to-autofarm-btn svg {
+    display: none;
+  }
+
+  #sidebar-to-autofarm-btn span {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+}
+
+/* Значок «Нет входа», значок игрового режима и кнопка «Переключить на
+   автофарм» добавляют по 50–70px — с любым из них плееру нужно окно выше.
+   Кнопку farming-page.js показывает через style.display, поэтому и смотрим
+   на атрибут style; значки прячутся атрибутом hidden. */
+@media (max-height: 919px) {
+  .sidebar-farming:has(> #login-badge:not([hidden])) > #sidebar-mini-player-container,
+  .sidebar-farming:has(> #game-mode-badge:not([hidden])) > #sidebar-mini-player-container,
+  .sidebar-farming:has(> #sidebar-to-autofarm-btn:not([style*="display: none"])) > #sidebar-mini-player-container {
+    display: none !important;
+  }
 }
 
 .sidebar-farming button {
@@ -294,6 +408,27 @@ body {
 
 .btn-danger:hover {
   background: #c20010;
+}
+
+/* Недоступная кнопка видна, но не откликается на наведение. Раньше это
+   держали копии .btn-primary/.btn-secondary у старого окна обновления —
+   их убрали, потому что они же делали вторичные кнопки прозрачными. */
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-primary:disabled:hover {
+  background: var(--accent-color);
+}
+
+.btn-secondary:disabled:hover {
+  background: var(--button-secondary-bg);
+  border-color: var(--border-color);
+}
+
+.btn-danger:disabled:hover {
+  background: #f0555f;
 }
 
 /* Input Fields */
@@ -981,6 +1116,18 @@ body {
   padding: 20px;
 }
 
+/* Заголовок настроек стоит рядом с колонкой, а не внутри неё (оба лежат
+   прямо в #page-container), поэтому на широком окне висел у левого края,
+   отдельно от карточек. Та же ширина и тот же боковой отступ, что у
+   .settings-container, ставят его ровно над карточками. */
+.settings-header {
+  max-width: 800px;
+  margin-left: auto;
+  margin-right: auto;
+  padding: 0 20px;
+  box-sizing: border-box;
+}
+
 .settings-section {
   background: var(--bg-secondary);
   border-radius: var(--radius-md);
@@ -1355,12 +1502,15 @@ body {
   transform: translateY(0);
 }
 
-/* Красная обводка для кнопки сброса */
-#reset-settings-btn {
+/* Красная обводка для необратимых действий: сброс настроек и очистка
+   статистики должны выглядеть одинаково опасными */
+#reset-settings-btn,
+#clear-statistics-btn {
   border-color: rgba(239, 68, 68, 0.3);
 }
 
-#reset-settings-btn:hover {
+#reset-settings-btn:hover,
+#clear-statistics-btn:hover {
   border-color: rgba(239, 68, 68, 0.6);
   background: rgba(239, 68, 68, 0.05);
   color: #ef4444;
@@ -1388,11 +1538,13 @@ body {
   border-color: rgba(124, 92, 255, 0.4);
 }
 
-.theme-light #reset-settings-btn {
+.theme-light #reset-settings-btn,
+.theme-light #clear-statistics-btn {
   border-color: rgba(239, 68, 68, 0.35);
 }
 
-.theme-light #reset-settings-btn:hover {
+.theme-light #reset-settings-btn:hover,
+.theme-light #clear-statistics-btn:hover {
   border-color: rgba(239, 68, 68, 0.6);
   background: rgba(239, 68, 68, 0.08);
   color: #dc2626;
@@ -1616,573 +1768,14 @@ body.no-animations * {
   border-color: var(--accent-color);
   box-shadow: none;
 }
-/* ===== UPDATE NOTIFICATION ===== */
-.update-notification {
-  position: fixed;
-  top: 50px;
-  right: 20px;
-  background: var(--card-bg);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
-  z-index: 10000;
-  max-width: 380px;
-  animation: slideInRight 0.3s ease-out;
-}
 
-/* ===== UPDATE OVERLAY (FULL SCREEN) ===== */
-.update-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(8, 8, 12, 0.7);
-  backdrop-filter: blur(8px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 10002;
-}
-
-.update-overlay-card {
-  width: 520px;
-  max-width: 90vw;
-  background: #14141a;
-  border: 1px solid rgba(124, 92, 255, 0.4);
-  border-radius: var(--radius-md);
-  padding: 24px;
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55);
-}
-
-.update-overlay-header {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  margin-bottom: 20px;
-}
-
-.update-overlay-icon {
-  width: 52px;
-  height: 52px;
-  border-radius: var(--radius-md);
-  background: rgba(124, 92, 255, 0.2);
-  color: #d6c5ff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: none;
-}
-
-.update-overlay-title {
-  font-size: 18px;
-  font-weight: 700;
-  color: var(--text-primary);
-}
-
-.update-overlay-subtitle {
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-.update-overlay-body {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  margin-bottom: 20px;
-}
-
-.update-overlay-anim {
-  width: 48px;
-  height: 48px;
-  border-radius: var(--radius-circle);
-  border: 3px solid rgba(124, 92, 255, 0.25);
-  border-top-color: #7c5cff;
-  animation: spin 1s linear infinite;
-  flex-shrink: 0;
-}
-
-.update-overlay-text {
-  font-size: 14px;
-  color: var(--text-primary);
-}
-
-.update-overlay-progress {
-  height: 6px;
-  background: rgba(124, 92, 255, 0.15);
-  border-radius: var(--radius-pill);
-  overflow: hidden;
-  margin-bottom: 10px;
-}
-
-.update-overlay-progress-fill {
-  height: 100%;
-  width: 0%;
-  background: #7c5cff;
-  transition: width 0.2s ease-out;
-}
-
-.update-overlay-status {
-  font-size: 12px;
-  color: var(--text-secondary);
-  margin-bottom: 16px;
-}
-
-.update-overlay-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-}
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-/* ===== UPDATE MODAL ===== */
-.update-modal {
-  position: fixed;
-  inset: 0;
-  background: rgba(10, 10, 12, 0.65);
-  backdrop-filter: blur(6px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 10001;
-}
-
-.update-modal-card {
-  width: 420px;
-  max-width: 90vw;
-  background: #141419;
-  border: 1px solid rgba(124, 92, 255, 0.35);
-  border-radius: var(--radius-md);
-  padding: 20px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
-}
-
-.update-modal-header {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  margin-bottom: 16px;
-}
-
-.update-modal-icon {
-  width: 44px;
-  height: 44px;
-  border-radius: var(--radius-md);
-  background: rgba(124, 92, 255, 0.2);
-  color: #cdb7ff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: none;
-}
-
-.update-modal-title {
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--text-primary);
-}
-
-.update-modal-subtitle {
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-.update-modal-progress {
-  height: 6px;
-  background: rgba(124, 92, 255, 0.15);
-  border-radius: var(--radius-pill);
-  overflow: hidden;
-  margin-bottom: 10px;
-}
-
-.update-modal-progress-fill {
-  height: 100%;
-  width: 0%;
-  background: #7c5cff;
-  transition: width 0.2s ease-out;
-}
-
-.update-modal-status {
-  font-size: 12px;
-  color: var(--text-secondary);
-  margin-bottom: 16px;
-}
-
-.update-modal-actions {
-  display: flex;
-  gap: 8px;
-  justify-content: flex-end;
-}
-
-.update-notification.error {
-  border-color: rgba(255, 68, 68, 0.5);
-  background: rgba(255, 68, 68, 0.05);
-}
-
-.update-content {
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.update-header {
-  display: flex;
-  gap: 12px;
-  align-items: flex-start;
-}
-
-.update-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: var(--radius-circle);
-  background: rgba(124, 92, 255, 0.1);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--accent-color);
-  flex-shrink: 0;
-}
-
-.update-icon.success {
-  background: rgba(76, 175, 80, 0.1);
-  color: #4caf50;
-}
-
-.update-icon.error {
-  background: rgba(255, 68, 68, 0.1);
-  color: #ff4444;
-}
-
-.update-text {
-  flex: 1;
-  min-width: 0;
-}
-
-.update-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: 2px;
-}
-
-.update-version {
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-.close-notification {
-  background: none;
-  border: none;
-  color: var(--text-secondary);
-  cursor: pointer;
-  padding: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: color 0.2s;
-  flex-shrink: 0;
-}
-
-.close-notification:hover {
-  color: var(--text-primary);
-}
-
-.update-progress {
-  height: 4px;
-  background: rgba(124, 92, 255, 0.1);
-  border-radius: var(--radius-sm);
-  overflow: hidden;
-}
-
-.progress-fill {
-  height: 100%;
-  background: var(--accent-color);
-  width: 0%;
-  transition: width 0.2s ease-out;
-}
-
-.update-actions {
-  display: flex;
-  gap: 8px;
-  justify-content: flex-end;
-}
-
-.btn-secondary,
-.btn-primary {
-  padding: 8px 12px;
-  border-radius: var(--radius-sm);
-  border: none;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.btn-secondary {
-  background: var(--input-bg);
-  color: var(--text-primary);
-  border: 1px solid var(--border-color);
-}
-
-.btn-secondary:hover {
-  background: var(--hover-bg);
-}
-
-.btn-secondary:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.btn-primary {
-  background: var(--accent-color);
-  color: white;
-}
-
-.btn-primary:hover:not(:disabled) {
-  background: #6b49f0;
-  box-shadow: none;
-}
-
-.btn-primary:disabled {
-  opacity: 0.7;
-  cursor: not-allowed;
-}
-
-.update-install {
-  background: var(--accent-color);
-}
-
-.update-install:hover {
-  background: #6b49f0;
-  box-shadow: none;
-}
-
-@media (max-width: 600px) {
-  .update-notification {
-    right: 10px;
-    left: 10px;
-    max-width: none;
-  }
-}
-
-/* Update Overlay */
-.update-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(8, 8, 12, 0.85);
-  backdrop-filter: blur(12px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 10000;
-  animation: overlayFadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-@keyframes overlayFadeIn {
-  from {
-    opacity: 0;
-    backdrop-filter: blur(0px);
-  }
-  to {
-    opacity: 1;
-    backdrop-filter: blur(12px);
-  }
-}
-
-.update-modal {
-  position: relative;
-  width: 600px;
-  max-width: 90vw;
-  background: rgba(24, 24, 32, 0.98);
-  backdrop-filter: blur(24px);
-  border: 1.5px solid rgba(124, 92, 255, 0.25);
-  border-radius: var(--radius-md);
-  box-shadow: 
-    0 32px 64px rgba(0, 0, 0, 0.8),
-    0 0 0 1px rgba(124, 92, 255, 0.2) inset;
-  overflow: hidden;
-  animation: modalSlideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-@keyframes modalSlideUp {
-  from {
-    transform: translateY(40px) scale(0.95);
-    opacity: 0;
-  }
-  to {
-    transform: translateY(0) scale(1);
-    opacity: 1;
-  }
-}
-
-/* Animated Background Gradient */
-.update-modal-bg-gradient {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 200px;
-  background: rgba(124, 92, 255, 0.12);
-  pointer-events: none;
-  z-index: 0;
-}
-
-/* Animated Particles */
-.update-modal-particles {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  overflow: hidden;
-  pointer-events: none;
-  z-index: 0;
-}
-
-.particle {
-  position: absolute;
-  width: 4px;
-  height: 4px;
-  background: rgba(124, 92, 255, 0.4);
-  border-radius: var(--radius-circle);
-  animation: particleFloatUp linear infinite;
-  box-shadow: none;
-}
-
-@keyframes particleFloatUp {
-  0% {
-    transform: translateY(100vh) translateX(0);
-    opacity: 0;
-  }
-  10% {
-    opacity: 1;
-  }
-  90% {
-    opacity: 1;
-  }
-  100% {
-    transform: translateY(-100vh) translateX(100px);
-    opacity: 0;
-  }
-}
-
-/* Generate particles with different positions and durations */
-.particle:nth-child(1) { left: 10%; animation-duration: 8s; animation-delay: 0s; }
-.particle:nth-child(2) { left: 20%; animation-duration: 10s; animation-delay: 1s; }
-.particle:nth-child(3) { left: 30%; animation-duration: 7s; animation-delay: 2s; }
-.particle:nth-child(4) { left: 40%; animation-duration: 9s; animation-delay: 0.5s; }
-.particle:nth-child(5) { left: 50%; animation-duration: 11s; animation-delay: 1.5s; }
-.particle:nth-child(6) { left: 60%; animation-duration: 8s; animation-delay: 3s; }
-.particle:nth-child(7) { left: 70%; animation-duration: 10s; animation-delay: 2.5s; }
-.particle:nth-child(8) { left: 80%; animation-duration: 9s; animation-delay: 1s; }
-.particle:nth-child(9) { left: 90%; animation-duration: 7s; animation-delay: 0s; }
-.particle:nth-child(10) { left: 15%; animation-duration: 12s; animation-delay: 3.5s; }
-.particle:nth-child(11) { left: 45%; animation-duration: 8.5s; animation-delay: 2s; }
-.particle:nth-child(12) { left: 75%; animation-duration: 9.5s; animation-delay: 0.8s; }
-
-@keyframes gradientRotate {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-/* Modal Icon - Centered */
-.update-modal-icon {
-  width: 96px;
-  height: 96px;
-  margin: 0 auto 32px;
-  background: rgba(124, 92, 255, 0.2);
-  border: 2px solid rgba(124, 92, 255, 0.4);
-  border-radius: var(--radius-md);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 
-    none
-    0 0 0 1px rgba(124, 92, 255, 0.2) inset;
-  animation: iconPulse 2.5s ease-in-out infinite;
-}
-
-.update-modal-icon svg {
-  width: 48px;
-  height: 48px;
-  color: #7c5cff;
-  filter: drop-shadow(0 4px 12px rgba(124, 92, 255, 0.5));
-  animation: iconRotate 3s linear infinite;
-}
-
-@keyframes iconPulse {
-  0%, 100% {
-    box-shadow: 
-      none
-      0 0 0 1px rgba(124, 92, 255, 0.2) inset;
-  }
-  50% {
-    box-shadow: 
-      none
-      0 0 0 1px rgba(124, 92, 255, 0.4) inset;
-  }
-}
-
-@keyframes iconRotate {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-/* Header Text - Centered */
-.update-modal-header {
-  text-align: center;
-  margin-bottom: 24px;
-  display: block;
-}
-
-.update-modal-title {
-  font-size: 24px;
-  font-weight: 700;
-  color: #ffffff;
-  margin-bottom: 12px;
-  letter-spacing: -0.02em;
-  display: block;
-}
-
-.update-modal-version {
-  font-size: 15px;
-  font-weight: 500;
-  color: #7c5cff;
-  opacity: 0.95;
-  display: block;
-}
-
-/* Modal Content */
-.update-modal-content {
-  position: relative;
-  z-index: 1;
-  padding: 56px 56px 48px;
-  text-align: center;
-}
-
-.update-modal-info {
-  font-size: 15px;
-  line-height: 1.8;
-  color: #b8b8c0;
-  margin-bottom: 36px;
-  max-width: 440px;
-  margin-left: auto;
-  margin-right: auto;
-}
-
-/* Progress Bar */
-.update-modal-progress {
-  margin-bottom: 36px;
-  max-width: 440px;
-  margin-left: auto;
-  margin-right: auto;
-}
-
+/* ===== ОКНО ОБНОВЛЕНИЯ =====
+   Окно строит updater.js со своими стилями, здесь — дополняющие правила
+   его классов. Стили старых окон (.update-overlay, .update-modal,
+   .update-notification) удалены: такой разметки давно нет, а вместе с
+   ними лежали три копии правил .btn-primary/.btn-secondary, которые
+   перебивали основные. Вторичные кнопки из-за них были прозрачными
+   (фон из несуществующей переменной) и не откликались на наведение. */
 .update-progress-bar {
   height: 8px;
   background: rgba(124, 92, 255, 0.1);
@@ -2206,23 +1799,6 @@ body.no-animations * {
 @keyframes progressShimmer {
   0% { background-position: 0% 50%; }
   100% { background-position: 200% 50%; }
-}
-
-.update-progress-stats {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 12px;
-  font-weight: 500;
-  color: #848d9b;
-}
-
-/* Actions */
-.update-modal-actions {
-  display: flex;
-  gap: 16px;
-  justify-content: center;
-  flex-wrap: wrap;
 }
 
 .update-btn {
@@ -2279,173 +1855,6 @@ body.no-animations * {
   box-shadow: none;
 }
 
-/* ===== UPDATE NOTIFICATION =====
-*/
-.update-notification {
-  position: fixed;
-  top: 50px;
-  right: 20px;
-  background: var(--card-bg);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
-  z-index: 10000;
-  max-width: 380px;
-  animation: slideInRight 0.3s ease-out;
-}
-
-.update-notification.error {
-  border-color: rgba(255, 68, 68, 0.5);
-  background: rgba(255, 68, 68, 0.05);
-}
-
-.update-content {
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.update-header {
-  display: flex;
-  gap: 12px;
-  align-items: flex-start;
-}
-
-.update-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: var(--radius-circle);
-  background: rgba(124, 92, 255, 0.1);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--accent-color);
-  flex-shrink: 0;
-}
-
-.update-icon.success {
-  background: rgba(76, 175, 80, 0.1);
-  color: #4caf50;
-}
-
-.update-icon.error {
-  background: rgba(255, 68, 68, 0.1);
-  color: #ff4444;
-}
-
-.update-text {
-  flex: 1;
-  min-width: 0;
-}
-
-.update-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: 2px;
-}
-
-.update-version {
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-.close-notification {
-  background: none;
-  border: none;
-  color: var(--text-secondary);
-  cursor: pointer;
-  padding: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: color 0.2s;
-  flex-shrink: 0;
-}
-
-.close-notification:hover {
-  color: var(--text-primary);
-}
-
-.update-progress {
-  height: 4px;
-  background: rgba(124, 92, 255, 0.1);
-  border-radius: var(--radius-sm);
-  overflow: hidden;
-}
-
-.progress-fill {
-  height: 100%;
-  background: var(--accent-color);
-  width: 0%;
-  transition: width 0.2s ease-out;
-}
-
-.update-actions {
-  display: flex;
-  gap: 8px;
-  justify-content: flex-end;
-}
-
-.btn-secondary,
-.btn-primary {
-  padding: 8px 12px;
-  border-radius: var(--radius-sm);
-  border: none;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.btn-secondary {
-  background: var(--input-bg);
-  color: var(--text-primary);
-  border: 1px solid var(--border-color);
-}
-
-.btn-secondary:hover {
-  background: var(--hover-bg);
-}
-
-.btn-secondary:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.btn-primary {
-  background: var(--accent-color);
-  color: white;
-}
-
-.btn-primary:hover:not(:disabled) {
-  background: #6b49f0;
-  box-shadow: none;
-}
-
-.btn-primary:disabled {
-  opacity: 0.7;
-  cursor: not-allowed;
-}
-
-.update-install {
-  background: var(--accent-color);
-}
-
-.update-install:hover {
-  background: #6b49f0;
-  box-shadow: none;
-}
-
-@media (max-width: 600px) {
-  .update-notification {
-    right: 10px;
-    left: 10px;
-    max-width: none;
-  }
-}
-
 /* Update Notification Badge in Sidebar */
 .update-notification-badge {
   position: absolute;
@@ -2459,75 +1868,11 @@ body.no-animations * {
   align-items: center;
   justify-content: center;
   color: white;
+  /* Общий pulse (мерцание прозрачностью). Свой @keyframes pulse с
+     бирюзовым кольцом здесь был лишним: одноимённые keyframes
+     перебивают друг друга, и анимация зависела от порядка файлов. */
   animation: pulse 2s ease-in-out infinite;
   flex-shrink: 0;
-}
-
-@keyframes pulse {
-  0%, 100% {
-    box-shadow: 0 0 0 0 rgba(0, 212, 255, 0.7);
-  }
-  50% {
-    box-shadow: 0 0 0 8px rgba(0, 212, 255, 0);
-  }
-}
-
-/* Update Manager Notifications */
-.update-notification {
-  position: fixed;
-  bottom: 20px;
-  right: 20px;
-  width: 400px;
-  max-width: 90%;
-  background: var(--secondary-bg);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
-  z-index: 9999;
-  animation: slideInRight 0.3s ease-out;
-}
-
-.update-notification.ready {
-  border-color: #3fb9d6;
-  background: var(--secondary-bg);
-}
-
-.update-notification.error {
-  border-color: #f0555f;
-  background: var(--secondary-bg);
-}
-
-.update-content {
-  padding: 16px;
-}
-
-.update-header {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.update-icon {
-  width: 24px;
-  height: 24px;
-  flex-shrink: 0;
-  color: #3fb9d6;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.update-icon.success {
-  color: #00ff88;
-}
-
-.update-icon.error {
-  color: #f0555f;
-}
-
-.update-text {
-  flex: 1;
 }
 
 .update-title {
@@ -2542,108 +1887,10 @@ body.no-animations * {
   color: var(--text-secondary);
 }
 
-.close-notification {
-  background: none;
-  border: none;
-  color: var(--text-secondary);
-  cursor: pointer;
-  padding: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: color 0.2s;
-}
-
-.close-notification:hover {
-  color: var(--text-primary);
-}
-
-.update-progress {
-  height: 3px;
-  background: rgba(0, 212, 255, 0.1);
-  border-radius: var(--radius-sm);
-  margin-bottom: 12px;
-  overflow: hidden;
-}
-
-.progress-fill {
-  height: 100%;
-  background: #3fb9d6;
-  width: 0%;
-  transition: width 0.2s linear;
-}
-
 .update-actions {
   display: flex;
   gap: 8px;
   justify-content: flex-end;
-}
-
-.btn-primary,
-.btn-secondary {
-  padding: 8px 16px;
-  border: none;
-  border-radius: var(--radius-md);
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.btn-primary {
-  background: #7c5cff;
-  color: white;
-}
-
-.btn-primary:hover:not(:disabled) {
-  background: #a259ff;
-  box-shadow: none;
-}
-
-.btn-primary:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.btn-secondary {
-  background: var(--tertiary-bg);
-  color: var(--text-primary);
-  border: 1px solid var(--border-color);
-}
-
-.btn-secondary:hover {
-  background: var(--secondary-bg);
-  border-color: var(--text-secondary);
-}
-
-@keyframes slideInRight {
-  from {
-    transform: translateX(420px);
-    opacity: 0;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
-}
-
-@keyframes slideOutRight {
-  from {
-    transform: translateX(0);
-    opacity: 1;
-  }
-  to {
-    transform: translateX(420px);
-    opacity: 0;
-  }
-}
-
-@media (max-width: 480px) {
-  .update-notification {
-    width: calc(100% - 20px);
-    bottom: 10px;
-    right: 10px;
-  }
 }
 
 /* ===== DROP NOTIFICATION ===== */
@@ -3020,56 +2267,58 @@ body.no-animations * {
 
 /* ===== ЗАКРЕПЛЁННЫЕ КАТЕГОРИИ ===== */
 
-/* Кнопка закрепления не занимает места, пока скрыта: у карточки
-   display:flex с gap:12px, поэтому даже нулевая ширина съедала бы
-   промежуток — он гасится отрицательным margin-left.
-
-   При наведении кнопка раскрывается через секунду, и ровно на её
-   ширину влево уезжает Play: место под кнопку появляется само,
-   а не держится пустым всё время. Сворачивается мгновенно. */
+/* Место под кнопку закрепления есть в каждой строке, даже пока её не
+   видно. Раньше скрытая кнопка схлопывалась в ноль, и Play у
+   закреплённых и обычных строк стоял на разных местах — список
+   выглядел неровным. Теперь кнопка только становится невидимой.
+   Прячем через visibility, а не одной прозрачностью: по невидимой
+   кнопке нельзя случайно кликнуть. Исчезает мгновенно. */
 .category-pin-btn {
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
   box-sizing: border-box;
-  width: 0;
+  width: 30px;
   height: 30px;
-  margin-left: -12px;
   padding: 0;
-  overflow: hidden;
-  border: 0 solid var(--border-color);
+  border: 1px solid var(--border-color);
   border-radius: var(--radius-ctl);
   background: var(--button-secondary-bg);
   color: var(--text-tertiary);
   cursor: pointer;
   opacity: 0;
-  transition: width var(--transition-base),
-              margin-left var(--transition-base),
-              opacity var(--transition-fast),
+  visibility: hidden;
+  transition: opacity var(--transition-fast),
               background var(--transition-fast),
               color var(--transition-fast);
-  transition-delay: 0s;
 }
 
-.category-item:hover .category-pin-btn,
-.category-pin-btn:focus-visible {
-  width: 30px;
-  margin-left: 0;
-  border-width: 1px;
+.category-item:hover .category-pin-btn {
   opacity: 1;
+  visibility: visible;
   /* Секунда наведения — чтобы кнопка не мелькала при простом
-     перемещении курсора по списку */
-  transition-delay: 1s;
+     перемещении курсора по списку. Задержка только у появления,
+     на наведение на саму кнопку она отвечает сразу */
+  transition: opacity var(--transition-fast) 1s,
+              visibility 0s 1s,
+              background var(--transition-fast),
+              color var(--transition-fast);
+}
+
+/* С клавиатуры — без задержки: скрытая кнопка не получает фокус, и
+   Tab с Play должен попасть на уже видимую кнопку */
+.category-item:has(:focus-visible) .category-pin-btn {
+  opacity: 1;
+  visibility: visible;
+  transition-delay: 0s;
 }
 
 /* Закреплённые видны всегда и без задержки: иначе открепить
    было бы неочевидно */
 .category-pin-btn.active {
-  width: 30px;
-  margin-left: 0;
-  border-width: 1px;
   opacity: 1;
+  visibility: visible;
   transition-delay: 0s;
   background: var(--accent-quiet);
   border-color: var(--accent-color);
@@ -3601,23 +2850,11 @@ body.no-animations * {
 
 /* Кнопки окна обновления должны ужиматься под свою подпись.
    «Установить и перезагрузить» длиннее исходного «Установить», а при
-   nowrap и отступах в 36px кнопка вылезала за край окна. */
-.update-modal-actions .update-btn {
-  flex: 0 1 auto;
-  min-width: 0;
-  max-width: 100%;
-  padding-left: 24px;
-  padding-right: 24px;
-}
-
-/* Подпись переносится по словам, а не обрезается: «Установить и
-   перезагрузить» в одну строку не влезает ни при каких отступах, а
-   обрезанная подпись хуже двухстрочной.
-   Окно обновления строится в updater.js с классом .update-actions —
-   правила, привязанные только к .update-modal-actions из разметки
-   index.html, до настоящей кнопки не доставали вовсе. */
-.update-actions .update-btn,
-.update-modal-actions .update-btn {
+   nowrap и отступах в 36px кнопка вылезала за край окна.
+   Подпись переносится по словам, а не обрезается: в одну строку она не
+   влезает ни при каких отступах, а обрезанная подпись хуже двухстрочной.
+   Окно строится в updater.js с классом .update-actions. */
+.update-actions .update-btn {
   white-space: normal;
   min-height: 46px;
   line-height: 1.25;
@@ -3628,8 +2865,7 @@ body.no-animations * {
   max-width: 100%;
 }
 
-.update-actions .update-btn span,
-.update-modal-actions .update-btn span {
+.update-actions .update-btn span {
   min-width: 0;
   white-space: normal;
   text-align: center;
@@ -4034,8 +3270,13 @@ body.no-animations * {
   font-size: 12px;
 }
 
-.calendar-days.active {
-  background: #7c5cff;
+/* Выбранный вариант подсвечен — и у периода ленты, и у фильтра кампаний.
+   У фильтра подсветки не было вовсе, и было не понять, что сейчас показано */
+.calendar-days.active,
+.calendar-filter.active,
+.calendar-days.active:hover,
+.calendar-filter.active:hover {
+  background: var(--accent-color);
   color: #fff;
   border-color: transparent;
 }
@@ -4358,18 +3599,10 @@ body.low-graphics *::after {
   text-shadow: none !important;
 }
 
-body.low-graphics .update-overlay,
-body.low-graphics .update-modal,
 body.low-graphics .drop-notification {
   background-color: var(--bg-secondary, #16161c) !important;
 }
 
-body.low-graphics .particle {
-  display: none !important;
-}
-
-body.low-graphics .update-modal-icon,
-body.low-graphics .update-modal-icon svg,
 body.low-graphics .update-progress-fill,
 body.low-graphics .update-notification-badge,
 body.low-graphics .progress-fill-animated::before,

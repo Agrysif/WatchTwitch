@@ -227,11 +227,22 @@ class SlottedWebview {
 
     window.addEventListener('scroll', this._onGeometryChange, { passive: true, capture: true });
     window.addEventListener('resize', this._onGeometryChange, { passive: true });
+    // Мини-плеер в сайдбаре появляется со сдвигом translateY(-10px) → 0.
+    // Сдвиг через transform не меняет размеров и не порождает прокрутки, и
+    // без этого плеер до следующего опроса висел на 10px выше своего места.
+    window.addEventListener('transitionend', this._onGeometryChange, { passive: true, capture: true });
 
     if (window.ResizeObserver) {
       this._resizeObserver = new ResizeObserver(this._onGeometryChange);
       this._resizeObserver.observe(this.slot);
       this._resizeObserver.observe(document.body);
+      // Слот в сайдбаре сдвигается, не меняя своего размера: блок фарминга
+      // прижат к низу, и когда под плеером появляется шкала «Дропсы» или
+      // значок «Нет входа», он растёт вверх и уводит слот за собой. Раньше
+      // это ловил только страховочный опрос, и видео до двух секунд
+      // наезжало на соседние элементы. Рост самого блока ResizeObserver видит.
+      const container = this.slot.closest('.sidebar-farming') || this.slot.parentElement;
+      if (container && container !== document.body) this._resizeObserver.observe(container);
     }
 
     // Страховка на случай перемещений, которые не дают ни события прокрутки,
@@ -251,6 +262,7 @@ class SlottedWebview {
     if (this._onGeometryChange) {
       window.removeEventListener('scroll', this._onGeometryChange, { capture: true });
       window.removeEventListener('resize', this._onGeometryChange);
+      window.removeEventListener('transitionend', this._onGeometryChange, { capture: true });
       this._onGeometryChange = null;
     }
 

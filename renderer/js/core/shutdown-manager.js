@@ -52,8 +52,13 @@ class ShutdownManager {
    * Отдельный режим, не связанный с дропсами: «пусть фармит три часа и
    * выключит компьютер». Заводится при старте сессии и снимается при
    * остановке — иначе он сработал бы после того, как фарминг уже не идёт.
+   *
+   * startedAt — когда началась сессия. При восстановлении после
+   * перезапуска приложения таймер заводится на остаток, а не на полный
+   * срок заново. Если срок уже вышел, пока приложение не работало, не
+   * заводим: выключать компьютер сразу после запуска — слишком внезапно.
    */
-  startSessionTimer() {
+  startSessionTimer(startedAt = Date.now()) {
     this.cancelSessionTimer();
 
     const settings = this.settings;
@@ -63,8 +68,15 @@ class ShutdownManager {
     const hours = Number(settings.get('shutdownTimerHours'));
     if (!Number.isFinite(hours) || hours <= 0) return;
 
-    const ms = hours * 60 * 60 * 1000;
-    console.log('[Выключение] Таймер сессии на', hours, 'ч');
+    const start = Number(startedAt) || Date.now();
+    const elapsed = Math.max(0, Date.now() - start);
+    const ms = hours * 60 * 60 * 1000 - elapsed;
+    if (ms <= 0) {
+      console.log('[Выключение] Срок таймера сессии вышел, пока приложение не работало — не завожу');
+      return;
+    }
+    console.log('[Выключение] Таймер сессии на', hours, 'ч',
+      elapsed > 60 * 1000 ? `(осталось ${Math.round(ms / 60000)} мин)` : '');
 
     // Момент срабатывания запоминаем отдельно: из setTimeout его не
     // достать, а он нужен, чтобы показать, что успеется забрать до него
@@ -156,6 +168,49 @@ class ShutdownManager {
     console.log('[Выключение] Отсчёт запущен:', action, totalSeconds, 'сек, причина:', reasonText);
 
     this._showOverlay(action, totalSeconds, reasonText);
+    this._announce(action, totalSeconds);
+  }
+
+  /**
+   * Отсчёт должен быть виден, даже когда окно спрятано в трей.
+   *
+   * Раньше оверлей появлялся только внутри окна: если оно было свёрнуто в
+   * трей, а пользователь играл или работал, компьютер выключался без
+   * всякого предупреждения — обещание «отсчёт можно прервать» ничего не
+   * стоило. Теперь окно выводится на глаза (main мигает кнопкой на панели
+   * задач, если Windows не отдаёт фокус), а системное уведомление говорит,
+   * что будет и как отменить.
+   *
+   * Уведомление идёт мимо тихих часов: выключение компьютера — не новость,
+   * о которой можно не сказать.
+   */
+  _announce(action, totalSeconds) {
+    try {
+      const shown = window.electronAPI?.showMainWindow?.();
+      if (shown && typeof shown.catch === 'function') shown.catch(() => {});
+    } catch (error) {
+      // окно не показалось — остаётся уведомление
+    }
+
+    const when = totalSeconds < 60
+      ? `${totalSeconds} с`
+      : `${Math.round(totalSeconds / 60)} мин`;
+
+    try {
+      window.electronAPI?.showNotification?.(
+        this._countdownTitle(action).replace(/ через$/, ''),
+        `${this._countdownTitle(action)} ${when} — откройте WatchTwitch, чтобы отменить`
+      );
+    } catch (error) {
+      // без уведомления отсчёт всё равно идёт в окне
+    }
+  }
+
+  /** Заголовок отсчёта: что произойдёт, без времени. */
+  _countdownTitle(action) {
+    if (action === 'sleep') return 'Компьютер уйдёт в сон через';
+    if (action === 'hibernate') return 'Компьютер уйдёт в гибернацию через';
+    return 'Компьютер выключится через';
   }
 
   cancel() {
@@ -194,19 +249,28 @@ class ShutdownManager {
 
     const overlay = document.createElement('div');
     overlay.className = 'shutdown-overlay';
+    // Заголовок читается вместе с отсчётом: «Компьютер выключится через
+    // 04:59». Прежнее «Выключение компьютера» над голыми цифрами не
+    // говорило, что это обратный отсчёт и что он закончится выключением.
     overlay.innerHTML = `
       <div class="shutdown-dialog" role="alertdialog" aria-live="assertive">
-        <div class="shutdown-title">${this._actionLabel(action)}</div>
-        <div class="shutdown-reason">${reasonText}</div>
+        <div class="shutdown-title"></div>
         <div class="shutdown-countdown" id="shutdown-countdown">${this._format(remaining)}</div>
-        <button class="btn btn-primary" id="shutdown-cancel">Отменить</button>
+        <div class="shutdown-reason"></div>
+        <button class="btn btn-primary" id="shutdown-cancel" style="margin-top: 18px;">Отменить</button>
       </div>
     `;
+    // Тексты — только как текст: причина собирается из названий категорий
+    overlay.querySelector('.shutdown-title').textContent = this._countdownTitle(action);
+    overlay.querySelector('.shutdown-reason').textContent = reasonText || '';
 
     document.body.appendChild(overlay);
     this.overlay = overlay;
 
-    overlay.querySelector('#shutdown-cancel').addEventListener('click', () => this.cancel());
+    const cancelBtn = overlay.querySelector('#shutdown-cancel');
+    cancelBtn.addEventListener('click', () => this.cancel());
+    // Окно вывели на глаза — отменить можно сразу клавишей Enter или пробелом
+    try { cancelBtn.focus(); } catch (error) { /* без фокуса кнопка работает мышью */ }
 
     const counter = overlay.querySelector('#shutdown-countdown');
     this.tick = setInterval(() => {
