@@ -87,7 +87,15 @@ class SettingsManager {
       
       // Тема
       theme: 'dark',
-      
+
+      // Оформление: 'classic' или 'ios27' — необязательный слой «жидкого
+      // стекла» (styles/theme-ios27.css). По умолчанию классика: новый вид
+      // только для того, кто сам его выбрал
+      uiStyle: 'classic',
+      // Плотность стекла в оформлении iOS 27: 0.25 — почти прозрачное,
+      // 0.9 — почти сплошное
+      glassOpacity: 0.55,
+
       // Завершение работы
       enableShutdown: false,
       shutdownAction: 'shutdown',
@@ -364,6 +372,25 @@ class SettingsManager {
     // а вот размытие, тени и вечные анимации можно снять сразу — без
     // видеокарты их рисует процессор, и в фоне это заметно
     document.body.classList.toggle('low-graphics', this.get('lowGraphics') !== false);
+
+    // Оформление «iOS 27». Всё его оформление привязано к классу body, так
+    // что снять класс — значит вернуть классику целиком, без перезапуска.
+    // Прозрачность стекла — переменная на <html>: её читают все стеклянные
+    // поверхности, и ползунок меняет их разом
+    document.body.classList.toggle('ui-ios27', this.get('uiStyle') === 'ios27');
+    document.documentElement.style.setProperty('--glass-alpha', String(SettingsManager.clampGlassOpacity(this.get('glassOpacity'))));
+  }
+
+  /**
+   * Плотность стекла в допустимых пределах. Значение приходит и из импорта
+   * настроек, где может оказаться чем угодно: вне 0.25–0.9 стекло либо
+   * исчезает совсем, либо становится непрозрачной плашкой.
+   */
+  static clampGlassOpacity(value) {
+    // Number(null) и Number('') дают 0 — это не выбор пользователя
+    const number = (value === null || value === '') ? NaN : Number(value);
+    if (!Number.isFinite(number)) return 0.55;
+    return Math.min(0.9, Math.max(0.25, number));
   }
 
   /**

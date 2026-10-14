@@ -481,6 +481,61 @@ class SettingsPage {
               </div>
             </div>
           </div>
+
+          <!-- Оформление: классика или слой «жидкого стекла» iOS 27.
+               Выпадающий список того же вида, что выбор темы рядом -->
+          <div class="settings-item">
+            <div class="settings-item-info">
+              <div class="settings-item-label">Оформление</div>
+              <div class="settings-item-description">Классика — привычный вид. iOS 27 — полупрозрачное «жидкое стекло» в духе Apple. Полное размытие стекла работает при выключенном экономном режиме графики</div>
+            </div>
+            <div class="custom-select" id="ui-style-select">
+              <div class="custom-select-trigger">
+                <span class="custom-select-value">${settings.get('uiStyle') === 'ios27' ? 'iOS 27' : 'Классика'}</span>
+                <svg class="custom-select-arrow" width="14" height="8" viewBox="0 0 14 8" fill="none">
+                  <path d="M1 1L7 7L13 1" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </div>
+              <div class="custom-select-options">
+                <div class="custom-select-option ${settings.get('uiStyle') === 'ios27' ? '' : 'selected'}" data-value="classic">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="4" width="18" height="16" rx="2"/>
+                    <path d="M3 9h18M9 9v11"/>
+                  </svg>
+                  <span>Классика</span>
+                  <svg class="check-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12"/>
+                  </svg>
+                </div>
+                <div class="custom-select-option ${settings.get('uiStyle') === 'ios27' ? 'selected' : ''}" data-value="ios27">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="3" width="18" height="18" rx="6"/>
+                    <path d="M7.5 8.5c1.5-1.5 4-2 6-1"/>
+                  </svg>
+                  <span>iOS 27</span>
+                  <svg class="check-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12"/>
+                  </svg>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Плотность стекла. Только для iOS 27: у классики стекла нет -->
+          <div class="settings-item" id="glass-opacity-item" style="${settings.get('uiStyle') === 'ios27' ? '' : 'display: none;'}">
+            <div class="settings-item-info">
+              <div class="settings-item-label">Прозрачность стекла</div>
+              <div class="settings-item-description">Насколько панели пропускают фон: левее — прозрачнее, правее — плотнее</div>
+            </div>
+            <div class="glass-opacity-control" style="width: 210px; flex-shrink: 0;">
+              <input type="range" class="ios-range" id="setting-glass-opacity" min="0.25" max="0.9" step="0.05"
+                     value="${settings.constructor.clampGlassOpacity(settings.get('glassOpacity'))}" aria-label="Прозрачность стекла">
+              <div class="glass-opacity-scale">
+                <span>Прозрачнее</span>
+                <span>Плотнее</span>
+              </div>
+            </div>
+          </div>
         </div>
 
         <!-- Диагностика -->
@@ -1166,6 +1221,66 @@ class SettingsPage {
       document.addEventListener('click', () => {
         themeSelect.classList.remove('open');
       }, { signal: this._abort.signal });
+    }
+
+    // Оформление (кастомный select). Применяется сразу через set(), без
+    // тоста: смену вида и так видно, а сообщение поверх только что
+    // перестроившегося интерфейса ничего не добавляет
+    const uiStyleSelect = document.getElementById('ui-style-select');
+    if (uiStyleSelect) {
+      const trigger = uiStyleSelect.querySelector('.custom-select-trigger');
+      const options = uiStyleSelect.querySelectorAll('.custom-select-option');
+      const glassItem = document.getElementById('glass-opacity-item');
+
+      trigger.addEventListener('click', (e) => {
+        e.stopPropagation();
+        uiStyleSelect.classList.toggle('open');
+      });
+
+      options.forEach(option => {
+        option.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const value = option.dataset.value === 'ios27' ? 'ios27' : 'classic';
+
+          options.forEach(opt => opt.classList.toggle('selected', opt === option));
+          trigger.querySelector('.custom-select-value').textContent = option.querySelector('span').textContent;
+
+          settings.set('uiStyle', value);
+          // Ползунок прозрачности нужен только стеклу
+          if (glassItem) glassItem.style.display = value === 'ios27' ? '' : 'none';
+
+          uiStyleSelect.classList.remove('open');
+        });
+      });
+
+      document.addEventListener('click', () => {
+        uiStyleSelect.classList.remove('open');
+      }, { signal: this._abort.signal });
+    }
+
+    // Прозрачность стекла. Пока ползунок тянут, меняется только переменная
+    // на <html> — стекло откликается мгновенно. В настройки значение
+    // уходит через set() по отпусканию: set() пишет на диск и в
+    // main-процесс, а событие input приходит десятки раз в секунду
+    const glassRange = document.getElementById('setting-glass-opacity');
+    if (glassRange) {
+      const clamp = settings.constructor.clampGlassOpacity;
+      // Дорожка залита акцентом до ручки — как у ползунков iOS
+      const paint = () => {
+        const min = Number(glassRange.min);
+        const max = Number(glassRange.max);
+        const value = clamp(glassRange.value);
+        glassRange.style.setProperty('--fill', ((value - min) / (max - min) * 100).toFixed(1) + '%');
+        return value;
+      };
+      paint();
+
+      glassRange.addEventListener('input', () => {
+        document.documentElement.style.setProperty('--glass-alpha', String(paint()));
+      });
+      glassRange.addEventListener('change', () => {
+        settings.set('glassOpacity', paint());
+      });
     }
 
     // Сброс настроек
