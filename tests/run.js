@@ -640,9 +640,9 @@ function loadClass(relativePath, className, globals = {}) {
   check('без истории', MD.analyze(null, сейчас).total, 0);
 
   check('вывод с почти собранными', MD.describe(итог),
-    'Упущено 3 награды, из них 2 почти собрано');
+    'Упущены 3 награды, из них 2 почти собраны');
   check('вывод без потерь', MD.describe({ total: 0 }), 'Ничего не упущено');
-  check('вывод об одной', MD.describe({ total: 1, close: 0 }), 'Упущено 1 награда');
+  check('вывод об одной', MD.describe({ total: 1, close: 0 }), 'Упущена 1 награда');
 }
 
 // ─── Тихие часы ──────────────────────────────────────────────────────
@@ -1054,7 +1054,7 @@ function loadClass(relativePath, className, globals = {}) {
   check('дробное число — вторая форма', DH.plural(1.5, 'час', 'часа', 'часов'), 'часа');
 
   const MD = loadClass('renderer/js/features/calendar/missed-drops.js', 'MissedDrops');
-  check('21 упущенная — «награда»', MD.describe({ total: 21, close: 0 }), 'Упущено 21 награда');
+  check('21 упущенная — «награда»', MD.describe({ total: 21, close: 0 }), 'Упущена 21 награда');
   check('11 упущенных — «наград»', MD.describe({ total: 11, close: 0 }), 'Упущено 11 наград');
 }
 
