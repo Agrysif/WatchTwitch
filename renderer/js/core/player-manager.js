@@ -314,6 +314,7 @@ class PlayerManager extends SlottedWebview {
             var text = document.body ? document.body.innerText || '' : '';
             return {
               started: !!v && v.currentTime > 0.3,
+              offline: /не в сети|не в эфире|офлайн|offline/i.test(text),
               netError: /ошибка сети|network error|(?:ошибка|error)\\s*#?\\s*2000/i.test(text)
             };
           })();
@@ -335,6 +336,14 @@ class PlayerManager extends SlottedWebview {
         if (this.fallbackQuality === requestedQuality && this._fallbackFor === this.channel) {
           this._fallbackStarted = true;
         }
+        return;
+      }
+
+      // Канал закончил эфир: качество тут ни при чём. Раньше лестница на
+      // погасшем канале поднимала его до «Источника» и перезагружала
+      // плеер, сбивая сторожа, который как раз должен был сменить канал.
+      if (state && state.offline) {
+        console.warn('[PlayerManager] Канал не в эфире — качество не меняю, решает сторож');
         return;
       }
 
@@ -551,7 +560,14 @@ class PlayerManager extends SlottedWebview {
     // настройки: иначе после подъёма лестницы предел оказался бы тесным
     window.electronAPI?.refreshStreamLimit?.(quality);
     this.lastPlaybackTime = null;
-    this.stallStrikes = 0;
+    // Счётчик попыток сторожа обнуляем только на другом канале. Перезагрузки
+    // того же канала (лестница качества, ступень «переустановить адрес»)
+    // раньше сбрасывали его, и до смены канала дело не доходило никогда.
+    if (this._strikesChannel !== login) {
+      this.stallStrikes = 0;
+      this.offlineStrikes = 0;
+      this._strikesChannel = login;
+    }
     // Новый канал всегда начинается без звука. Исключение — перезагрузка
     // того же канала ради смены качества: там звук осознанно сохраняем.
     this.muted = options.keepSound ? false : true;
@@ -596,6 +612,25 @@ class PlayerManager extends SlottedWebview {
     this.stallStrikes = 0;
   }
 
+  /**
+   * Что происходит с плеером по одному замеру.
+   *
+   * Экран Twitch «канал не в сети» держит на странице видео-элемент с
+   * заставкой, поэтому прежняя проверка «текст офлайна и нет видео» его не
+   * узнавала: сторож принимал конец эфира за зависание и чинил плеер по
+   * кругу, а фарминг стоял. Офлайн — это надпись плюс картинка, которая не
+   * идёт (или видео нет совсем).
+   *
+   * Возвращает 'offline' | 'stalled' | 'ok'.
+   */
+  static verdict(state, lastTime) {
+    if (!state) return 'ok';
+    const advanced = lastTime !== null && lastTime !== undefined && state.time > lastTime + 0.5;
+    if (state.offline && (!state.hasVideo || !advanced)) return 'offline';
+    const stalled = state.hasError || !state.hasVideo || (!advanced && lastTime !== null && lastTime !== undefined);
+    return stalled ? 'stalled' : 'ok';
+  }
+
   async checkPlayback() {
     if (!this.webview || !this.channel || !this.webview.src) return;
 
@@ -621,13 +656,17 @@ class PlayerManager extends SlottedWebview {
 
     if (!state) return;
 
+    const verdict = PlayerManager.verdict(state, this.lastPlaybackTime);
+
     // Канал не в эфире: чинить плеер бессмысленно, нужен другой стрим.
     // Ждём двух проверок подряд (минуту), чтобы не сорваться на мигание
     // текста во время загрузки страницы.
-    if (state.offline && !state.hasVideo) {
+    if (verdict === 'offline') {
+      this.lastPlaybackTime = state.time;
       this.offlineStrikes = (this.offlineStrikes || 0) + 1;
       if (this.offlineStrikes >= 2) {
         this.offlineStrikes = 0;
+        this.stallStrikes = 0;
         this.reportDead('канал не в эфире');
       }
       return;
@@ -643,8 +682,7 @@ class PlayerManager extends SlottedWebview {
       return;
     }
 
-    const advanced = this.lastPlaybackTime !== null && state.time > this.lastPlaybackTime + 0.5;
-    const stalled = state.hasError || !state.hasVideo || (!advanced && this.lastPlaybackTime !== null);
+    const stalled = verdict === 'stalled';
 
     this.lastPlaybackTime = state.time;
 

@@ -831,3 +831,73 @@ body.compact-mode .subscriptions-list-view .subs-status {
   color: var(--text-tertiary);
   white-space: nowrap;
 }
+
+
+/* ───────── Избранные отдельной рамкой ─────────
+   Когда на экране и избранные, и остальные каналы, каждая группа — своя
+   карточка, а общая карточка списка становится просто контейнером.
+   Условие на видимость списка: пока идёт загрузка, список скрыт, и
+   скелетон должен остаться в обычной карточке. */
+.subs-list-card:has(> #subscriptions-list:not([style*="display: none"]) > .subs-group) {
+  background: transparent;
+  border: none;
+  padding: 0;
+  box-shadow: none;
+}
+
+.subs-group {
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+  margin-bottom: var(--space-3);
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+}
+
+.subs-group:last-child {
+  margin-bottom: 0;
+}
+
+/* Избранные чуть заметнее остальных: рамка плотнее, сердечко акцентом.
+   Без цветной заливки — цвет только там, где он что-то значит */
+.subs-group-fav {
+  border-color: var(--border-strong);
+}
+
+.subs-section-label {
+  display: flex;
+  align-items: center;
+}
+
+.subs-section-icon {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 6px;
+  color: var(--accent-text, var(--accent));
+}
+
+.subs-section-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Разделители между строками внутри группы — те же, что у .list */
+.list > .subs-group > .list-row + .list-row::before {
+  content: '';
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  top: 0;
+  height: 1px;
+  background: var(--border-color);
+}
+
+/* Плитка: каждая группа — своя сетка на всю ширину */
+.subscriptions-grid-view > .subs-group {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 8px;
+  margin-bottom: 0;
+}

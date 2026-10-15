@@ -1130,6 +1130,18 @@ function loadClass(relativePath, className, globals = {}) {
     LG.shouldRestore({ account: { twitchSessionLost: true }, loggedIn: false }), false);
 }
 
+// ─── Сторож плеера: экран «канал не в сети» ──────────────────────────
+{
+  const PM = loadClass('renderer/js/core/player-manager.js', 'PlayerManager', { SlottedWebview: class {} });
+  check('офлайн-заставка с видео-элементом — офлайн', PM.verdict({ offline: true, hasVideo: true, time: 5 }, 5), 'offline');
+  check('офлайн без видео — офлайн', PM.verdict({ offline: true, hasVideo: false, time: 0 }, null), 'offline');
+  check('надпись есть, но видео идёт — не офлайн', PM.verdict({ offline: true, hasVideo: true, time: 12 }, 5), 'ok');
+  check('видео идёт — ок', PM.verdict({ hasVideo: true, time: 12 }, 5), 'ok');
+  check('видео стоит — зависание', PM.verdict({ hasVideo: true, time: 5 }, 5), 'stalled');
+  check('первый замер не считается зависанием', PM.verdict({ hasVideo: true, time: 0 }, null), 'ok');
+  check('ошибка на странице — зависание', PM.verdict({ hasVideo: true, hasError: true, time: 9 }, 5), 'stalled');
+}
+
 // ─── Итог ────────────────────────────────────────────────────────────
 console.log('');
 if (failures.length) {

@@ -839,14 +839,25 @@ class SubscriptionsPage {
 
     let html = '';
     if (grouped) {
-      html += this.renderSectionLabel('Избранные', favorites.length,
-        favorites.length > 1 ? 'порядок меняется перетаскиванием' : '');
+      // Избранные — своей рамкой над остальными каналами: это короткий
+      // список, который ведёт выбор стрима, и он не должен теряться в
+      // общей простыне из полусотни подписок. Обе группы остаются внутри
+      // одного #subscriptions-list, поэтому клики и перетаскивание,
+      // повешенные на список, работают как прежде.
+      html += '<section class="subs-group subs-group-fav" aria-label="Избранные">'
+        + this.renderSectionLabel('Избранные', favorites.length,
+          favorites.length > 1 ? 'порядок меняется перетаскиванием' : '', 'heart')
+        + favorites.map(sub => this.renderSubscriptionItem(sub)).join('')
+        + '</section>';
+      const other = this.i18n?.t('subscriptions.otherChannels') || 'Остальные каналы';
+      html += '<section class="subs-group subs-group-rest" aria-label="' + this.esc(other) + '">'
+        + this.renderSectionLabel(other, regular.length)
+        + regular.map(sub => this.renderSubscriptionItem(sub)).join('')
+        + '</section>';
+    } else {
+      html += favorites.map(sub => this.renderSubscriptionItem(sub)).join('');
+      html += regular.map(sub => this.renderSubscriptionItem(sub)).join('');
     }
-    html += favorites.map(sub => this.renderSubscriptionItem(sub)).join('');
-    if (grouped) {
-      html += this.renderSectionLabel(this.i18n?.t('subscriptions.otherChannels') || 'Остальные каналы', regular.length);
-    }
-    html += regular.map(sub => this.renderSubscriptionItem(sub)).join('');
 
     // Если разметка не изменилась, DOM не трогаем вовсе.
     //
@@ -863,8 +874,12 @@ class SubscriptionsPage {
     list.innerHTML = html;
   }
 
-  renderSectionLabel(title, count, hint = '') {
+  renderSectionLabel(title, count, hint = '', icon = '') {
+    const iconHtml = icon && window.Icons?.get
+      ? `<span class="subs-section-icon" aria-hidden="true">${window.Icons.get(icon, 14)}</span>`
+      : '';
     return `<div class="section-label subs-section-label">`
+      + iconHtml
       + `<span>${this.esc(title)}</span><span class="count num">${count}</span>`
       + (hint ? `<span class="subs-section-hint">${this.esc(hint)}</span>` : '')
       + `</div>`;
