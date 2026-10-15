@@ -5,7 +5,7 @@ class SettingsManager {
    * донести и до существующих установок (см. migrate).
    */
   static get VERSION() {
-    return 2;
+    return 3;
   }
 
   constructor() {
@@ -97,10 +97,14 @@ class SettingsManager {
       // Тема
       theme: 'dark',
 
-      // Оформление: 'classic' или 'ios27' — необязательный слой «жидкого
-      // стекла» (styles/theme-ios27.css). По умолчанию классика: новый вид
-      // только для того, кто сам его выбрал
-      uiStyle: 'classic',
+      // Оформление: 'ios27' (слой «жидкого стекла», styles/theme-ios27.css)
+      // или 'classic'. По умолчанию iOS 27; классика остаётся одним
+      // переключателем в настройках
+      uiStyle: 'ios27',
+      // Выбирал ли пользователь оформление сам. Без этой отметки нельзя
+      // отличить осознанную «Классику» от значения по умолчанию, которое
+      // сохранилось вместе с любой другой настройкой
+      uiStyleChosen: false,
       // Плотность стекла в оформлении iOS 27: 0.25 — почти прозрачное,
       // 0.9 — почти сплошное
       glassOpacity: 0.55,
@@ -154,6 +158,13 @@ class SettingsManager {
     // же конце эфира
     if (from < 2) {
       merged.autoSwitchStreams = true;
+    }
+
+    // v3: оформление iOS 27 по умолчанию. Классика у старых установок
+    // записана в настройки сама, вместе с любой другой правкой, поэтому
+    // переводим всех, кто не выбирал оформление явно
+    if (from < 3 && saved?.uiStyleChosen !== true) {
+      merged.uiStyle = 'ios27';
     }
 
     merged.settingsVersion = SettingsManager.VERSION;

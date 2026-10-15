@@ -1113,6 +1113,9 @@ class SettingsPage {
     // Оформление применяется сразу через set(), без тоста: смену вида и так
     // видно, а сообщение поверх перестроившегося интерфейса ничего не добавляет
     this.bindSegmented('ui-style-select', (value) => {
+      // Отметка ставится до смены вида: set() сразу применяет настройки и
+      // сохраняет их вместе с ней
+      settings.settings.uiStyleChosen = true;
       settings.set('uiStyle', value === 'ios27' ? 'ios27' : 'classic');
     });
 
