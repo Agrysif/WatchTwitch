@@ -1,0 +1,833 @@
+/* ===== ПОДПИСКИ =====
+ *
+ * Владелец: SUBS. Здесь — страница «Подписки» (subscriptions.html, subscriptions-page.js) и окно канала.
+ *
+ * Подключается после main.css, themes.css и animations.css, поэтому
+ * перекрывает общие компоненты и прежние правила страниц из main.css без
+ * !important. Только токены themes.css (var(--surface-1), var(--accent-text)…),
+ * без готовых цветов. Рамки и разделители — border или псевдоэлемент, не
+ * box-shadow: экономный режим графики (включён по умолчанию) снимает все тени.
+ *
+ * Раньше стили страницы жили в <style> внутри subscriptions.html: сотни
+ * строк с захардкоженными фиолетовым, розовым и красным, у каждой кнопки
+ * строки — своя цветная рамка при наведении. Теперь строка канала — это
+ * .list-row из общих компонентов, кнопки — .btn-ghost, а цвет остался
+ * только там, где он что-то значит: точка «в эфире», точка рейтинга,
+ * «В эфире» зелёным и полоска текущего канала.
+ */
+
+/* Элементы с hidden у страницы прячутся всегда: .btn и .page-actions
+   задают свой display и иначе перебили бы атрибут */
+.subscriptions-page [hidden] {
+  display: none !important;
+}
+
+/* ───────── Шапка ───────── */
+
+.subs-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+/* Пустой счётчик (список ещё не пришёл) не показываем вовсе */
+.subs-heading .badge:empty {
+  display: none;
+}
+
+/* Значок «Обновить» крутится, пока идёт обновление: и по кнопке, и
+   фоновое при открытии страницы (у списка тогда класс refreshing) */
+#refresh-subs-btn.is-spinning svg,
+.subscriptions-page:has(#subscriptions-list.refreshing) #refresh-subs-btn svg {
+  animation: spin 1s linear infinite;
+}
+
+/* ───────── Приоритет подписок ─────────
+   Строка под шапкой без своей рамки: это одна настройка, а не раздел */
+.subs-priority {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 0 0 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.subs-priority .switch {
+  margin-top: 0;
+}
+
+.subs-priority-text {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 10px;
+  min-width: 0;
+}
+
+.subs-priority-title {
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  font-weight: var(--fw-medium);
+  color: var(--text-primary);
+}
+
+.subs-priority-hint {
+  font-size: var(--fs-small);
+  line-height: var(--lh-small);
+  color: var(--text-secondary);
+}
+
+/* ───────── Панель: поиск, фильтры, вид ─────────
+   Прилипает к верху прокрутки: на списке из шестидесяти каналов поиск и
+   фильтры нужны и внизу. Подложка и граница появляются только в
+   прилипшем виде (класс is-stuck ставит страница): в обычном положении
+   панель лежит прямо на фоне окна, и в теме со стеклом под ней не было
+   тёмной полосы. Ширина — ровно ширина содержимого: отрицательные поля
+   на ширину отступа страницы давали горизонтальную прокрутку там, где
+   отступ другой (у iOS 27 он 22px) */
+.subs-toolbar-sentinel {
+  height: 1px;
+  margin-bottom: -1px;
+}
+
+.subs-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 8px 0;
+  background: transparent;
+  border-bottom: 1px solid transparent;
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+
+.subs-toolbar.is-stuck {
+  background: var(--surface-0);
+  border-bottom-color: var(--border-color);
+}
+
+/* В iOS 27 прилипшая панель — стекло, как всплывающие панели темы.
+   Своих цветов тут нет: имена — из theme-ios27.css, запасные — классика */
+body.ui-ios27 .subs-toolbar.is-stuck {
+  background: var(--glass-fill-float, var(--surface-0));
+  backdrop-filter: var(--glass-blur-float, none);
+  -webkit-backdrop-filter: var(--glass-blur-float, none);
+}
+
+.subs-search {
+  flex: 1 1 220px;
+  min-width: 180px;
+}
+
+/* Слева место под лупу, справа — под крестик очистки. Селектор с
+   корнем страницы: оформление полей в теме iOS 27 сильнее общего
+   .search-field, и лупа ложилась поверх текста */
+.subscriptions-page .subs-search > .input-field {
+  padding-left: 34px;
+  padding-right: 34px;
+}
+
+.subs-search > .subs-search-clear {
+  position: absolute;
+  right: 2px;
+}
+
+.subs-filters,
+.subs-view {
+  flex: none;
+}
+
+.subs-view > button {
+  padding: 0 9px;
+}
+
+/* ───────── Список ─────────
+   Строки сами держат отступ 12px, поэтому у карточки поля узкие: края
+   подсветки строки при наведении стоят на одной линии с текстом шапки */
+.subs-list-card {
+  padding: 6px;
+}
+
+/* Фоновое обновление больше не приглушает список: старые данные ничем
+   не хуже, а о работе говорит крутящийся значок в шапке */
+#subscriptions-list.refreshing {
+  opacity: 1;
+}
+
+/* Подписи групп «Избранные» и «Остальные каналы» */
+.subs-section-label {
+  margin: 12px 12px 4px;
+}
+
+.subs-section-label:first-child {
+  margin-top: 6px;
+}
+
+.subs-section-label .count {
+  color: var(--text-tertiary);
+  font-weight: var(--fw-regular);
+}
+
+.subs-section-hint {
+  margin-left: auto;
+  font-weight: var(--fw-regular);
+  color: var(--text-tertiary);
+}
+
+/* Строка канала: .list-row + своё. Вся строка открывает окно канала */
+.subs-row {
+  cursor: pointer;
+}
+
+.subs-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* Избранные можно перетаскивать — рука вместо стрелки только у них */
+.subs-row[draggable="true"] {
+  cursor: grab;
+}
+
+.subs-row.dragging {
+  cursor: grabbing;
+}
+
+/* Аватар и точка «в эфире». Обводка точки — цвет карточки: точка
+   «вырезана» из аватара, а не лежит на нём пятном */
+.subs-avatar {
+  position: relative;
+  flex: none;
+  width: 36px;
+  height: 36px;
+}
+
+.subs-avatar > .row-avatar {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.subs-avatar-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-3);
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: var(--fw-semibold);
+}
+
+.subs-live-dot {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 12px;
+  height: 12px;
+  box-sizing: border-box;
+  border: 2px solid var(--surface-1);
+  border-radius: var(--radius-circle);
+  background: var(--success);
+}
+
+.subs-name-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.subs-name-line > .row-title {
+  min-width: 0;
+}
+
+/* Отметка избранного у имени — тихая, акцентным текстом, без подложки.
+   Розовая заливка всей строки ушла */
+.subs-fav-mark {
+  display: inline-flex;
+  flex: none;
+  color: var(--accent-text);
+}
+
+.subs-fav-mark svg,
+.favorite-btn.active svg,
+.subs-fav-toggle[aria-pressed="true"] svg {
+  fill: currentColor;
+}
+
+/* Рейтинг: нейтральный бейдж, цвет — только в точке */
+.subs-rating {
+  flex: none;
+  gap: 5px;
+  cursor: help;
+}
+
+.subs-rating-dot {
+  display: inline-block;
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-circle);
+  background: var(--text-tertiary);
+}
+
+.subs-rating-dot.is-good { background: var(--success); }
+.subs-rating-dot.is-mid { background: var(--warning); }
+.subs-rating-dot.is-low { background: var(--danger); }
+
+.subs-status {
+  margin-top: 2px;
+}
+
+.subs-now {
+  color: var(--accent-text);
+  font-weight: var(--fw-medium);
+}
+
+/* Правая часть строки: число фолловеров, а при наведении и фокусе на
+   его месте — кнопки. Обе части лежат в одной ячейке сетки, поэтому
+   строка не меняет ширину и ничего не прыгает */
+.subs-side {
+  display: grid;
+  flex: none;
+  align-items: center;
+  justify-items: end;
+  min-width: 124px;
+}
+
+.subs-side > * {
+  grid-area: 1 / 1;
+}
+
+.subs-followers {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-small);
+  line-height: var(--lh-small);
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  transition: opacity var(--transition-fast);
+}
+
+.subs-followers svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+
+/* Невидимые кнопки не перехватывают клик по строке */
+.subs-row .subs-actions {
+  pointer-events: none;
+}
+
+.subs-row:hover .subs-actions,
+.subs-row:focus-within .subs-actions {
+  pointer-events: auto;
+}
+
+.subs-row:hover .subs-followers,
+.subs-row:focus-within .subs-followers {
+  opacity: 0;
+}
+
+/* Избранное — акцентным сердцем, без фиолетовой плашки кнопки-чипа */
+.subs-actions .favorite-btn[aria-pressed="true"] {
+  background: transparent;
+  border-color: transparent;
+  color: var(--accent-text);
+}
+
+.subs-actions .favorite-btn[aria-pressed="true"]:hover {
+  background: var(--hover-bg);
+}
+
+.subs-actions .unsub-btn:hover {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+/* Текущий канал фарминга подсвечен поверхностью, как текущая категория */
+.subs-row.is-current {
+  background: var(--surface-2);
+}
+
+/* ───────── Плитка ─────────
+   Та же разметка, перестроенная в карточки 180px: аватар, имя, статус,
+   внизу фолловеры, а при наведении на их месте — кнопки, как в списке.
+   Четыре значка на каждой из шестидесяти плиток сразу рябили. Рейтинг —
+   в углу */
+.subscriptions-grid-view {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 8px;
+}
+
+.subscriptions-grid-view .subs-section-label {
+  grid-column: 1 / -1;
+  margin: 10px 6px 2px;
+}
+
+.subscriptions-grid-view .subs-section-label:first-child {
+  margin-top: 4px;
+}
+
+.subscriptions-grid-view .subs-row {
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  min-height: 0;
+  padding: 18px 10px 10px;
+  text-align: center;
+  background: var(--surface-2);
+  border: 1px solid transparent;
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+
+.subscriptions-grid-view .subs-row:hover {
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+}
+
+.subscriptions-grid-view .subs-row.is-current {
+  border-color: var(--accent-line);
+}
+
+.subscriptions-grid-view .subs-avatar {
+  width: 48px;
+  height: 48px;
+}
+
+.subscriptions-grid-view .subs-live-dot {
+  width: 14px;
+  height: 14px;
+  border-color: var(--surface-2);
+}
+
+.subscriptions-grid-view .subs-main {
+  flex: none;
+  width: 100%;
+}
+
+.subscriptions-grid-view .subs-name-line {
+  justify-content: center;
+}
+
+.subscriptions-grid-view .subs-rating {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+}
+
+.subscriptions-grid-view .subs-status {
+  justify-content: center;
+}
+
+.subscriptions-grid-view .subs-side {
+  justify-items: center;
+  width: 100%;
+  min-width: 0;
+  min-height: var(--ctl-h-sm);
+  margin-top: auto;
+}
+
+/* Полоска текущего канала в плитке не нужна: там рамка */
+.subscriptions-grid-view .subs-row.is-current::after {
+  content: none;
+}
+
+/* ───────── Пустое состояние и загрузка ───────── */
+
+#subscriptions-empty .empty-state {
+  padding: 48px 24px;
+}
+
+.subs-skeleton {
+  padding: 2px 0;
+}
+
+.subs-skeleton-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: var(--row-h);
+  padding: 8px 12px;
+}
+
+.subs-skeleton-avatar {
+  display: block;
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-circle);
+}
+
+.subs-skeleton-lines {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.subs-skeleton-lines .skeleton-text {
+  display: block;
+  height: 10px;
+  margin: 3px 0;
+}
+
+/* ───────── Компактный режим ───────── */
+
+body.compact-mode .subscriptions-list-view .subs-row {
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
+body.compact-mode .subscriptions-list-view .subs-avatar,
+body.compact-mode .subs-skeleton-avatar {
+  width: 28px;
+  height: 28px;
+}
+
+body.compact-mode .subscriptions-list-view .subs-status {
+  margin-top: 0;
+}
+
+/* ───────── Окно канала ───────── */
+
+.subs-channel-dialog {
+  position: relative;
+  width: min(560px, 100%);
+}
+
+.subs-channel-dialog:focus {
+  outline: none;
+}
+
+.subs-channel-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 1;
+}
+
+/* Содержимое окна строит страница: шапка, тело с прокруткой, подвал */
+.subs-channel-content {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.subs-channel-head {
+  align-items: center;
+  gap: 14px;
+  padding-right: 56px;
+}
+
+.subs-channel-head > .subs-avatar {
+  flex: none;
+  width: 56px;
+  height: 56px;
+}
+
+.subs-channel-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: var(--radius-circle);
+  object-fit: cover;
+  background: var(--surface-2);
+}
+
+.subs-channel-head .subs-avatar-fallback {
+  font-size: 20px;
+}
+
+.subs-channel-head .subs-live-dot {
+  right: 0;
+  bottom: 0;
+  width: 14px;
+  height: 14px;
+  border-color: var(--surface-overlay);
+}
+
+.subs-channel-id {
+  flex: 1;
+  min-width: 0;
+}
+
+.subs-channel-id .dialog-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.subs-channel-meta {
+  margin-top: 2px;
+}
+
+.subs-channel-body {
+  min-height: 0;
+}
+
+.subs-channel-desc-wrap {
+  margin-bottom: 16px;
+}
+
+/* Описание — три строки, полностью по кнопке. Текст пишет стример,
+   поэтому длинные ссылки без пробелов переносятся где угодно */
+.subs-channel-desc {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+.subs-channel-desc.is-expanded {
+  display: block;
+  -webkit-line-clamp: unset;
+}
+
+/* Кнопка-ссылка: «Показать полностью», «Снять все» */
+.subs-link-btn {
+  margin-top: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent-text);
+  font: var(--fw-medium) 12px/16px var(--font-ui);
+  cursor: pointer;
+}
+
+.subs-link-btn:hover {
+  text-decoration: underline;
+}
+
+.subs-link-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
+}
+
+/* Три числа без подложек: рейтинг, фолловеры, активность. Делят их
+   тонкие линии, а не три цветные плитки, как раньше */
+.subs-channel-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: 14px 0;
+  border-top: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.subs-channel-stats > .kpi {
+  padding: 0 16px;
+}
+
+.subs-channel-stats > .kpi:first-child {
+  padding-left: 0;
+}
+
+.subs-channel-stats > .kpi + .kpi {
+  border-left: 1px solid var(--border-color);
+}
+
+.subs-channel-stats .kpi-value {
+  color: var(--text-primary);
+}
+
+.subs-channel-stats .kpi-sub {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+}
+
+.subs-kpi-of {
+  margin-left: 4px;
+  font-family: var(--font-ui);
+  font-size: var(--fs-small);
+  font-weight: var(--fw-regular);
+  color: var(--text-tertiary);
+}
+
+/* Активность — словом, а не числом: поменьше, с точкой состояния */
+.subs-kpi-state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 18px;
+}
+
+.subs-channel-perk {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  color: var(--text-primary);
+}
+
+.subs-channel-perk svg {
+  flex: none;
+  color: var(--text-tertiary);
+}
+
+.subs-channel-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 12px 0 0;
+  font-size: var(--fs-small);
+  line-height: var(--lh-small);
+  color: var(--text-tertiary);
+}
+
+.subs-channel-note svg {
+  flex: none;
+  margin-top: 1px;
+}
+
+.subs-channel-foot {
+  align-items: center;
+}
+
+.subs-foot-spacer {
+  flex: 1;
+}
+
+/* ───────── Подтверждения отписки и очистки ─────────
+   Окно подтверждения общее (app.js) и живёт вне страницы, поэтому
+   селекторы — без корневого класса страницы */
+.subs-confirm {
+  text-align: left;
+  color: var(--text-secondary);
+}
+
+.subs-confirm-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.subs-confirm-avatar {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-circle);
+  object-fit: cover;
+  background: var(--surface-2);
+}
+
+.subs-confirm-title {
+  margin: 0 0 8px;
+  font-family: var(--font-display);
+  font-size: var(--fs-h2);
+  line-height: var(--lh-h2);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--ls-tight);
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.subs-confirm-head .subs-confirm-title {
+  margin: 0;
+}
+
+.subs-confirm-text {
+  margin: 0;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  color: var(--text-secondary);
+}
+
+.subs-cleanup-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 14px 0 6px;
+  font-size: var(--fs-small);
+  line-height: var(--lh-small);
+  color: var(--text-secondary);
+}
+
+.subs-cleanup-bar .subs-link-btn {
+  margin-top: 0;
+}
+
+.subs-cleanup-list {
+  max-height: 264px;
+  overflow-y: auto;
+  padding: 4px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+}
+
+.subs-cleanup-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.subs-cleanup-row:hover {
+  background: var(--hover-bg);
+}
+
+.subs-cleanup-row input {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.subs-cleanup-avatar {
+  display: block;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-circle);
+  object-fit: cover;
+  background: var(--surface-3);
+}
+
+.subs-cleanup-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--fs-body);
+  color: var(--text-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Снятая галочка — канал остаётся: имя тише, чтобы было видно, кто уйдёт */
+.subs-cleanup-row:has(input:not(:checked)) .subs-cleanup-name {
+  color: var(--text-tertiary);
+}
+
+.subs-cleanup-when {
+  flex: none;
+  font-size: var(--fs-small);
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}

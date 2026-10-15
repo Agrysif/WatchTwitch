@@ -21,7 +21,16 @@ class SettingsManager {
       // Звук
       soundEnabled: false,
       soundVolume: 0.5,
-      
+      // Какие события звучат (их читает chime.js). Сундук выключен: он
+      // бывает каждые 15 минут, и сигнал быстро превращается в шум. Во
+      // время игры приложение молчит — кроме сигнала «нужно вмешаться»
+      soundDrop: true,
+      soundChest: false,
+      soundAllDone: true,
+      soundAttention: true,
+      soundFavourite: true,
+      soundInGame: false,
+
       // Уведомления
       // Системные уведомления Windows. Ключ назван так же, как его читает
       // main-процесс (store.get('settings.notifications')): раньше здесь
@@ -391,6 +400,16 @@ class SettingsManager {
     const number = (value === null || value === '') ? NaN : Number(value);
     if (!Number.isFinite(number)) return 0.55;
     return Math.min(0.9, Math.max(0.25, number));
+  }
+
+  /**
+   * Громкость сигналов 0–1. Как и прозрачность, может прийти из импорта
+   * чем угодно; громкость больше единицы перегружала бы синтез и хрипела.
+   */
+  static clampVolume(value) {
+    const number = (value === null || value === '') ? NaN : Number(value);
+    if (!Number.isFinite(number)) return 0.5;
+    return Math.min(1, Math.max(0, number));
   }
 
   /**

@@ -1,0 +1,762 @@
+/* ===== ДРОПСЫ =====
+ *
+ * Владелец: DROPS. Здесь — страница «Дропсы» (drops.html, drops-page.js) и окно награды drop-detail-modal.js. Корневой класс .drops-page.
+ *
+ * Подключается после main.css, themes.css и animations.css, поэтому
+ * перекрывает общие компоненты и прежние правила страниц из main.css без
+ * !important. Только токены themes.css (var(--surface-1), var(--accent-text)…),
+ * без готовых цветов. Рамки и разделители — border или псевдоэлемент, не
+ * box-shadow: экономный режим графики (включён по умолчанию) снимает все тени.
+ *
+ * Раньше страница держалась на <style> внутри drops.html и сотнях
+ * инлайновых стилей шаблонов: баннер 180px с размытой обложкой на каждую
+ * кампанию (на окне 1000px — одна кампания на экран), «переворот» плиток
+ * при наведении, фиолетовые вкладки и цветные счётчики. Теперь карточка
+ * кампании компактная, цвет — только у смысла (прогресс, «получено»,
+ * «скоро конец»), и светлая тема работает без подпорок.
+ */
+
+/* ───────────────────────── Шапка ───────────────────────── */
+
+/* На узком окне действия переносятся под название, а не сжимают его */
+.drops-page .page-header {
+  flex-wrap: wrap;
+}
+
+.drops-header-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+/* Вкладки «Прогресс | Инвентарь» — сегменты; выбранный — приподнятой
+   поверхностью, а не фиолетовой заливкой: рядом с «Забрать все» она
+   читалась как вторая главная кнопка */
+.drops-tabs > .drops-tab-button {
+  min-width: 84px;
+  justify-content: center;
+}
+
+/* ───────────────────────── Сводка ─────────────────────────
+   Тонкая строка вместо карточки с тремя цветными счётчиками: красное
+   «Активно 4» читалось как ошибка, хотя это просто число */
+.drops-summary {
+  margin: -6px 0 16px;
+}
+
+.drops-summary-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  color: var(--text-secondary);
+}
+
+.drops-summary-avatar {
+  width: 24px;
+  height: 24px;
+  flex: none;
+  border-radius: var(--radius-circle);
+  object-fit: cover;
+  background: var(--surface-2);
+}
+
+/* Аватара нет — не показываем пустой кружок и значок битой картинки */
+.drops-summary-avatar[src=""],
+.drops-summary-avatar:not([src]) {
+  display: none;
+}
+
+.drops-summary-name {
+  min-width: 0;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: var(--fw-semibold);
+  color: var(--text-primary);
+}
+
+.drops-summary-stats {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0 6px;
+  min-width: 0;
+}
+
+.drops-summary-stats::before,
+.drops-summary-stats > span + span::before {
+  content: '·';
+  color: var(--text-tertiary);
+}
+
+.drops-summary-stats > span + span::before {
+  margin-right: 6px;
+}
+
+.drops-summary-stats > span {
+  white-space: nowrap;
+}
+
+.drops-summary-stats b {
+  font-weight: var(--fw-semibold);
+  color: var(--text-primary);
+}
+
+.drops-account-btn {
+  margin-left: auto;
+}
+
+/* До первого ответа Twitch числа — нули; не показываем их, чтобы
+   сводка не мигала «0 · 0 · 0» на каждом заходе */
+.drops-summary.is-pending .drops-summary-stats {
+  visibility: hidden;
+}
+
+/* ───────────────────────── Нет входа ───────────────────────── */
+
+.drops-auth {
+  padding: 0;
+}
+
+.drops-auth .empty-state {
+  padding: 56px 24px;
+}
+
+/* Свой логотип вместо глифа Twitch: кнопка ведёт ко входу в Twitch, но
+   рисуем её знаком приложения. Тонкая светлая рамка отделяет фиолетовый
+   квадрат логотипа от фиолетовой кнопки */
+.drops-auth-logo {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  border-radius: 5px;
+  outline: 1px solid rgba(255, 255, 255, 0.35);
+  outline-offset: -1px;
+}
+
+/* ───────────────────────── Сетка кампаний ─────────────────────────
+   1280px → две колонки, 1000px → одна */
+.drops-campaigns-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+  gap: 12px;
+}
+
+.drops-campaigns-grid:empty {
+  display: none;
+}
+
+.drops-campaigns-grid > .card {
+  margin: 0;
+}
+
+.drops-campaigns-grid > .drops-empty {
+  grid-column: 1 / -1;
+}
+
+/* ───────────────────────── Карточка кампании ─────────────────────────
+   Обложка 44×59, название и срок, полоса прогресса, плитки наград. Без
+   баннера и без подсветки рамки по наведению: сама карточка не
+   нажимается, нажимаются плитки */
+.campaign-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  padding: var(--pad-card);
+}
+
+.campaign-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.campaign-cover {
+  width: 44px;
+  height: 59px;
+  flex: none;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  background: var(--surface-2);
+}
+
+.campaign-info {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.campaign-title-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.campaign-title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-display);
+  font-size: var(--fs-title);
+  line-height: var(--lh-title);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--ls-tight);
+  color: var(--text-primary);
+}
+
+.campaign-pct {
+  flex: none;
+  font-family: var(--font-display);
+  font-size: var(--fs-title);
+  line-height: var(--lh-title);
+  font-weight: var(--fw-semibold);
+  color: var(--text-primary);
+}
+
+.campaign-title-row .badge {
+  flex: none;
+}
+
+/* Игра, срок и «осталось» — одной строкой мета; длинное название игры
+   сжимается первым */
+.campaign-meta {
+  flex-wrap: nowrap;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.campaign-meta > span {
+  flex: none;
+  white-space: nowrap;
+}
+
+.campaign-meta > .campaign-game {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.campaign-progress-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.campaign-progress-row .progress {
+  flex: 1;
+}
+
+.campaign-count {
+  flex: none;
+  font-size: var(--fs-small);
+  line-height: var(--lh-small);
+  color: var(--text-secondary);
+}
+
+/* Кампания, у которой вышел срок, — полоса без акцента: здесь уже
+   ничего не идёт */
+.campaign-card.is-expired .progress-fill {
+  background: var(--text-tertiary);
+}
+
+.campaign-card.is-expired .progress.is-complete .progress-fill {
+  background: var(--success);
+}
+
+.campaign-no-drops {
+  font-size: var(--fs-small);
+  color: var(--text-tertiary);
+}
+
+/* ───────────────────────── Плитки наград ─────────────────────────
+   Квадратная картинка, под ней название в две строки и тонкая полоса.
+   Высота плитки ~130px вместо прежних 220, без «переворота» по наведению */
+.camp-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, 80px);
+  gap: 12px 10px;
+}
+
+.camp-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+/* Квадрат держит aspect-ratio, а картинка лежит поверх абсолютно: иначе
+   портретная обложка растягивала бы квадрат в высоту по своим пропорциям,
+   и плитки в одном ряду выходили разной высоты */
+.camp-tile-art {
+  position: relative;
+  aspect-ratio: 1;
+  min-height: 0;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  transition: border-color var(--transition-fast);
+}
+
+.camp-tile-art img {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: calc(var(--radius-md) - 1px);
+}
+
+.camp-tile:hover .camp-tile-art {
+  border-color: var(--border-strong);
+}
+
+/* Полученная — приглушённая картинка и галочка в углу */
+.camp-tile.is-claimed .camp-tile-art img {
+  opacity: 0.55;
+}
+
+.camp-tile-check {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--surface-1);
+  border-radius: var(--radius-circle);
+  background: var(--success);
+  color: var(--surface-0);
+}
+
+.camp-tile-check svg {
+  stroke-width: 3;
+}
+
+.camp-tile-name {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-height: 28px;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+  font-weight: var(--fw-medium);
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.camp-tile:hover .camp-tile-name {
+  color: var(--accent-text);
+}
+
+.camp-tile-progress {
+  height: 3px;
+}
+
+.camp-tile-meta {
+  margin-top: -2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+  color: var(--text-tertiary);
+}
+
+.camp-tile-claim {
+  width: 100%;
+  padding: 0 6px;
+}
+
+/* Награда без картинки (или с битой ссылкой) — пустая рамка со значком
+   подарка. Значок нарисован маской и красится цветом темы: прежняя
+   заглушка была тёмным квадратом и на светлой теме выглядела дырой */
+.camp-tile-art.is-empty,
+.inv-tile-art.is-empty,
+.drop-dialog-art.is-empty,
+.campaign-cover.is-empty {
+  position: relative;
+  display: block;
+}
+
+.camp-tile-art.is-empty::after,
+.inv-tile-art.is-empty::after,
+.drop-dialog-art.is-empty::after,
+.campaign-cover.is-empty::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 36%;
+  height: 36%;
+  background: var(--text-tertiary);
+  opacity: 0.6;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='8' width='18' height='4' rx='1'/%3E%3Cpath d='M12 8v13'/%3E%3Cpath d='M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7'/%3E%3Cpath d='M7.5 8a2.5 2.5 0 0 1 0-5C10 3 12 8 12 8s2-5 4.5-5a2.5 2.5 0 0 1 0 5'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='8' width='18' height='4' rx='1'/%3E%3Cpath d='M12 8v13'/%3E%3Cpath d='M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7'/%3E%3Cpath d='M7.5 8a2.5 2.5 0 0 1 0-5C10 3 12 8 12 8s2-5 4.5-5a2.5 2.5 0 0 1 0 5'/%3E%3C/svg%3E") center / contain no-repeat;
+  pointer-events: none;
+}
+
+/* Обложка кампании мала — значок крупнее относительно неё */
+.campaign-cover.is-empty::after {
+  width: 50%;
+  height: 50%;
+}
+
+/* Только что забранная награда: отметка вместо кнопки до обновления списка */
+.btn.is-claimed-mark,
+.btn.is-claimed-mark:disabled {
+  opacity: 1;
+  color: var(--success);
+  cursor: default;
+}
+
+/* ───────────────────────── Завершённые ─────────────────────────
+   Свёрнутая строка-раскрывашка под списком, а не отдельная карточка */
+.camp-completed {
+  margin-top: 4px;
+}
+
+.camp-completed-toggle {
+  margin: 16px 0 8px -6px;
+  padding: 4px 8px 4px 6px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.camp-completed-toggle:hover {
+  background: var(--hover-bg);
+  color: var(--text-primary);
+}
+
+.camp-completed-arrow {
+  display: inline-flex;
+  color: var(--text-tertiary);
+  transition: transform var(--transition-base);
+}
+
+.camp-completed-toggle[aria-expanded="true"] .camp-completed-arrow {
+  transform: rotate(90deg);
+}
+
+.camp-completed-toggle .count {
+  color: var(--text-tertiary);
+}
+
+/* Завершённые карточки чуть тише активных */
+.camp-completed .campaign-card {
+  background: transparent;
+}
+
+/* ───────────────────────── Пустые состояния ───────────────────────── */
+
+.drops-empty {
+  padding: 0;
+}
+
+.drops-empty-inline .empty-state {
+  padding: 28px 24px;
+}
+
+/* ───────────────────────── Инвентарь ───────────────────────── */
+
+/* Фильтры по играм — один ряд сегментов; если игр много, ряд
+   прокручивается вбок, а не растёт в три строки кнопок */
+.drops-inventory-filters {
+  margin: 0 0 16px;
+  padding-bottom: 4px;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.drops-inventory-filters::-webkit-scrollbar {
+  height: 6px;
+}
+
+.drops-inventory-filters .segmented {
+  flex: none;
+}
+
+/* На светлой теме подложка сегментов почти сливается с белой карточкой —
+   в инвентаре они лежат прямо на ней */
+.theme-light .drops-inventory-filters .segmented {
+  background: var(--surface-0);
+}
+
+.drops-inventory-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  gap: 16px 12px;
+}
+
+.inv-tile {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.inv-tile-art {
+  margin-bottom: 8px;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  transition: border-color var(--transition-fast);
+}
+
+.inv-tile-art img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.inv-tile:hover .inv-tile-art {
+  border-color: var(--border-strong);
+}
+
+.inv-tile-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-body);
+  line-height: 18px;
+  font-weight: var(--fw-medium);
+  color: var(--text-primary);
+}
+
+.inv-tile:hover .inv-tile-name {
+  color: var(--accent-text);
+}
+
+.inv-tile-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-caption);
+  line-height: 15px;
+  color: var(--text-tertiary);
+}
+
+.inv-tile-claim {
+  margin-top: 8px;
+}
+
+.drops-more {
+  display: flex;
+  justify-content: center;
+  margin-top: 20px;
+}
+
+.drops-more-count {
+  color: var(--text-tertiary);
+}
+
+/* ───────────────────────── Загрузка ─────────────────────────
+   Две карточки-скелетона на месте кампаний, сетка плиток — в инвентаре */
+.campaign-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.campaign-skeleton-head {
+  display: flex;
+  gap: 12px;
+}
+
+.campaign-skeleton-cover {
+  width: 44px;
+  height: 59px;
+  flex: none;
+  border-radius: var(--radius-sm);
+}
+
+.campaign-skeleton-lines {
+  flex: 1;
+  min-width: 0;
+}
+
+.campaign-skeleton-lines .skeleton-text:last-child {
+  width: 55%;
+}
+
+.campaign-skeleton-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, 80px);
+  gap: 10px;
+}
+
+/* ───────────────────────── Окно награды ─────────────────────────
+   .dialog 560: картинка 140 слева, справа название, игра, редкость
+   точкой, сведения строками. Рамка — общая --border-strong, не цвет
+   редкости */
+.drop-dialog {
+  position: relative;
+  width: min(560px, 100%);
+}
+
+.drop-dialog-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 1;
+}
+
+.drop-dialog-body {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr);
+  gap: 20px;
+  padding: 20px 20px 4px;
+  overflow: auto;
+}
+
+.drop-dialog-art {
+  width: 140px;
+  height: 140px;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+}
+
+.drop-dialog-art img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.drop-dialog-info {
+  min-width: 0;
+}
+
+/* Место справа под крестик */
+.drop-dialog-title {
+  padding-right: 32px;
+  overflow-wrap: anywhere;
+}
+
+.drop-dialog-game {
+  margin-top: 2px;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  color: var(--text-secondary);
+}
+
+.drop-dialog-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+/* Цвет редкости живёт только в этой точке */
+.drop-rarity-dot {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: var(--radius-circle);
+}
+
+.drop-dialog-facts {
+  margin: 14px 0 0;
+}
+
+.drop-fact {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-top: 1px solid var(--border-color);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+}
+
+.drop-fact dt {
+  color: var(--text-secondary);
+}
+
+.drop-fact dd {
+  margin: 0;
+  text-align: right;
+  font-weight: var(--fw-medium);
+  color: var(--text-primary);
+}
+
+.drop-fact-progress {
+  flex-wrap: wrap;
+  row-gap: 6px;
+}
+
+.drop-fact-progress .progress {
+  flex-basis: 100%;
+}
+
+.drop-fact-sub {
+  flex-basis: 100%;
+  margin-top: -2px;
+  font-size: var(--fs-small);
+  line-height: var(--lh-small);
+  color: var(--text-tertiary);
+}
+
+.drop-dialog .dialog-foot {
+  padding-top: 16px;
+}
+
+/* ───────────────────────── Прежние подпорки main.css ─────────────────────────
+   В main.css (раздел «Прежние правила страниц», чистится после слияния)
+   остались светлые правила .campaign-card с !important: тень и
+   фиолетовая рамка по наведению. Гасим их тем же оружием и только в
+   классике — у iOS 27 свои стеклянные правила для этой карточки */
+.theme-light:not(.ui-ios27) .drops-page .campaign-card,
+.theme-light:not(.ui-ios27) .drops-page .campaign-card:hover {
+  border-color: var(--border-color) !important;
+  box-shadow: none !important;
+}
+
+.theme-light:not(.ui-ios27) .drops-page .camp-completed .campaign-card {
+  background: transparent !important;
+}
+
+/* ───────────────────────── Компактный режим ───────────────────────── */
+
+body.compact-mode .campaign-card {
+  gap: 10px;
+}
+
+/* Плитки той же ширины — уже 80px слово «Легендарный» не помещается и
+   рвётся посередине, — плотнее только промежутки */
+body.compact-mode .camp-tiles,
+body.compact-mode .campaign-skeleton-tiles {
+  gap: 10px 8px;
+}
+
+body.compact-mode .drops-inventory-grid {
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 12px 10px;
+}

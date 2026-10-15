@@ -5,13 +5,24 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>WatchTwitch</title>
   <style>
-    /* Радиусы те же, что в renderer/styles/themes.css. Заставка эту таблицу
-       не подключает, и без своих объявлений var(--radius-*) не значили
-       ничего: логотип, свечение вокруг него и частицы выходили квадратными */
+    /* Заставка при запуске.
+     *
+     * Окно прозрачное и чуть больше карточки: место под мягкую тень.
+     * Цвета свои — themes.css заставка не грузит. Сцена тёмная и
+     * нейтральная; единственное цветное пятно — свечение за логотипом:
+     * это знак приложения, а не фон.
+     *
+     * Полоса показывает настоящие этапы запуска (их присылает main через
+     * window.splash.stage). Не пришло ни одного за 1,2 с — полоса переходит
+     * в «неопределённый» бег, чтобы не казалось, что всё встало.
+     */
     :root {
-      --radius-sm: 4px;
-      --radius-md: 8px;
-      --radius-circle: 50%;
+      --text: #ececf0;
+      --text-2: #a3a7b1;
+      --text-3: #858a95;
+      --accent: #7c5cff;
+      --track: rgba(255, 255, 255, 0.08);
+      --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
     }
 
     * {
@@ -20,222 +31,254 @@
       box-sizing: border-box;
     }
 
+    html,
     body {
-      font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      background: linear-gradient(135deg, #0a0b0d 0%, #1a1a2e 100%);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      height: 100vh;
+      width: 100%;
+      height: 100%;
+      background: transparent;
       overflow: hidden;
-      color: #e4e8ee;
     }
 
-    .splash-container {
-      text-align: center;
-      animation: fadeIn 0.5s ease-in-out;
-    }
-
-    @keyframes fadeIn {
-      from {
-        opacity: 0;
-        transform: translateY(20px);
-      }
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
-    }
-
-    .logo-container {
-      position: relative;
-      margin-bottom: 32px;
-    }
-
-    .logo {
-      width: 120px;
-      height: 120px;
-      background: linear-gradient(135deg, #7c5cff 0%, #6b49f0 100%);
-      border-radius: var(--radius-md);
+    body {
       display: flex;
       align-items: center;
       justify-content: center;
-      margin: 0 auto;
-      box-shadow: 0 20px 60px rgba(124, 92, 255, 0.4);
-      position: relative;
-      z-index: 2;
+      font-family: "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+      color: var(--text);
+      -webkit-font-smoothing: antialiased;
+      user-select: none;
     }
 
-    .logo svg {
-      width: 64px;
-      height: 64px;
-      fill: white;
+    .card {
+      position: relative;
+      width: 380px;
+      height: 260px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding-top: 34px;
+      background: linear-gradient(180deg, #17181b 0%, #111214 100%);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 16px;
+      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.42), 0 1px 3px rgba(0, 0, 0, 0.3);
+      overflow: hidden;
+      animation: card-in 260ms var(--ease-out) both;
+    }
+
+    body.done .card {
+      opacity: 0;
+      transform: scale(0.98);
+      transition: opacity 180ms ease-in, transform 180ms ease-in;
+    }
+
+    @keyframes card-in {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: none; }
+    }
+
+    .logo-wrap {
+      position: relative;
+      width: 72px;
+      height: 72px;
+      z-index: 1;
     }
 
     .logo-glow {
       position: absolute;
-      width: 140px;
-      height: 140px;
-      background: radial-gradient(circle, rgba(124, 92, 255, 0.3) 0%, transparent 70%);
-      border-radius: var(--radius-circle);
-      animation: pulse 2s ease-in-out infinite;
-      z-index: 1;
+      left: 50%;
+      top: 50%;
+      width: 180px;
+      height: 180px;
+      margin: -90px 0 0 -90px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(124, 92, 255, 0.22) 0%, transparent 70%);
+      animation: glow 2.4s ease-in-out infinite;
+      pointer-events: none;
     }
 
-    @keyframes pulse {
-      0%, 100% {
-        transform: scale(1);
-        opacity: 1;
-      }
-      50% {
-        transform: scale(1.2);
-        opacity: 0.5;
-      }
+    @keyframes glow {
+      0%, 100% { transform: scale(0.9); opacity: 0.85; }
+      50% { transform: scale(1.05); opacity: 1; }
+    }
+
+    .logo {
+      position: relative;
+      display: block;
+      width: 72px;
+      height: 72px;
+      border-radius: 18px;
     }
 
     .app-name {
-      font-size: 32px;
-      font-weight: 700;
-      margin-bottom: 8px;
-      background: linear-gradient(135deg, #7c5cff 0%, #35d08a 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
+      position: relative;
+      margin-top: 18px;
+      font-family: "Segoe UI Variable Display", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+      font-size: 22px;
+      line-height: 28px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      color: var(--text);
     }
 
     .app-tagline {
-      font-size: 14px;
-      color: #848d9b;
-      margin-bottom: 48px;
-      letter-spacing: 0.5px;
-    }
-
-    .loading-bar {
-      width: 240px;
-      height: 4px;
-      background: rgba(124, 92, 255, 0.2);
-      border-radius: var(--radius-sm);
-      margin: 0 auto;
-      overflow: hidden;
       position: relative;
-    }
-
-    .loading-bar-fill {
-      height: 100%;
-      background: linear-gradient(90deg, #7c5cff 0%, #35d08a 100%);
-      border-radius: var(--radius-sm);
-      animation: loading 1.5s ease-in-out infinite;
-    }
-
-    @keyframes loading {
-      0% {
-        width: 0%;
-        margin-left: 0%;
-      }
-      50% {
-        width: 60%;
-        margin-left: 20%;
-      }
-      100% {
-        width: 0%;
-        margin-left: 100%;
-      }
-    }
-
-    .loading-text {
-      margin-top: 16px;
+      margin-top: 2px;
       font-size: 13px;
-      color: #848d9b;
-      animation: fadeInOut 2s ease-in-out infinite;
+      line-height: 18px;
+      color: var(--text-2);
     }
 
-    @keyframes fadeInOut {
-      0%, 100% {
-        opacity: 0.5;
-      }
-      50% {
-        opacity: 1;
-      }
+    .progress {
+      position: relative;
+      width: 200px;
+      height: 4px;
+      margin-top: 28px;
+      border-radius: 999px;
+      background: var(--track);
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      width: 0;
+      height: 100%;
+      border-radius: inherit;
+      background: var(--accent);
+      transition: width 400ms ease-out;
+    }
+
+    /* Неопределённый бег — пока не пришёл ни один этап */
+    .progress.indeterminate .progress-fill {
+      width: 40%;
+      transition: none;
+      animation: run 1.4s ease-in-out infinite;
+    }
+
+    @keyframes run {
+      0% { transform: translateX(-100%); }
+      100% { transform: translateX(250%); }
+    }
+
+    .stage {
+      position: relative;
+      margin-top: 10px;
+      min-height: 16px;
+      font-size: 12px;
+      line-height: 16px;
+      color: var(--text-3);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .version {
+      position: absolute;
+      right: 14px;
+      bottom: 10px;
+      font-size: 11px;
+      line-height: 14px;
+      color: var(--text-3);
+      font-variant-numeric: tabular-nums;
     }
 
     .particles {
       position: absolute;
-      width: 100%;
-      height: 100%;
-      top: 0;
-      left: 0;
+      inset: 0;
       overflow: hidden;
-      z-index: 0;
+      pointer-events: none;
     }
 
     .particle {
       position: absolute;
-      width: 4px;
-      height: 4px;
-      background: rgba(124, 92, 255, 0.3);
-      border-radius: var(--radius-circle);
+      bottom: -6px;
+      width: 3px;
+      height: 3px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.18);
+      opacity: 0;
       animation: float linear infinite;
     }
 
     @keyframes float {
-      0% {
-        transform: translateY(100vh) translateX(0);
-        opacity: 0;
-      }
-      10% {
-        opacity: 1;
-      }
-      90% {
-        opacity: 1;
-      }
-      100% {
-        transform: translateY(-10vh) translateX(100px);
-        opacity: 0;
-      }
+      0% { transform: translateY(0) translateX(0); opacity: 0; }
+      15% { opacity: 1; }
+      85% { opacity: 1; }
+      100% { transform: translateY(-280px) translateX(24px); opacity: 0; }
     }
 
-    /* Generate particles */
-    .particle:nth-child(1) { left: 10%; animation-duration: 8s; animation-delay: 0s; }
-    .particle:nth-child(2) { left: 20%; animation-duration: 10s; animation-delay: 1s; }
-    .particle:nth-child(3) { left: 30%; animation-duration: 7s; animation-delay: 2s; }
-    .particle:nth-child(4) { left: 40%; animation-duration: 9s; animation-delay: 0.5s; }
-    .particle:nth-child(5) { left: 50%; animation-duration: 11s; animation-delay: 1.5s; }
-    .particle:nth-child(6) { left: 60%; animation-duration: 8s; animation-delay: 3s; }
-    .particle:nth-child(7) { left: 70%; animation-duration: 10s; animation-delay: 2.5s; }
-    .particle:nth-child(8) { left: 80%; animation-duration: 9s; animation-delay: 1s; }
-    .particle:nth-child(9) { left: 90%; animation-duration: 7s; animation-delay: 0s; }
+    .particle:nth-child(1) { left: 12%; animation-duration: 7.5s; animation-delay: 0s; }
+    .particle:nth-child(2) { left: 28%; animation-duration: 9s; animation-delay: 1.2s; }
+    .particle:nth-child(3) { left: 44%; animation-duration: 8s; animation-delay: 2.4s; }
+    .particle:nth-child(4) { left: 60%; animation-duration: 10s; animation-delay: 0.6s; }
+    .particle:nth-child(5) { left: 74%; animation-duration: 8.5s; animation-delay: 1.8s; }
+    .particle:nth-child(6) { left: 88%; animation-duration: 9.5s; animation-delay: 3s; }
+
+    @media (prefers-reduced-motion: reduce) {
+      .particles { display: none; }
+      .logo-glow { animation: none; }
+      .card { animation: none; }
+      .progress.indeterminate .progress-fill { animation: none; width: 100%; opacity: 0.4; }
+    }
   </style>
 </head>
 <body>
-  <div class="particles">
-    <div class="particle"></div>
-    <div class="particle"></div>
-    <div class="particle"></div>
-    <div class="particle"></div>
-    <div class="particle"></div>
-    <div class="particle"></div>
-    <div class="particle"></div>
-    <div class="particle"></div>
-    <div class="particle"></div>
-  </div>
+  <div class="card" role="status" aria-live="polite">
+    <div class="particles" aria-hidden="true">
+      <div class="particle"></div>
+      <div class="particle"></div>
+      <div class="particle"></div>
+      <div class="particle"></div>
+      <div class="particle"></div>
+      <div class="particle"></div>
+    </div>
 
-  <div class="splash-container">
-    <div class="logo-container">
-      <div class="logo-glow"></div>
-      <div class="logo">
-        <svg viewBox="0 0 24 24" fill="currentColor">
-          <path d="M11.571 4.714h1.715v5.143H11.57zm4.715 0H18v5.143h-1.714zM6 0L1.714 4.286v15.428h5.143V24l4.286-4.286h3.428L22.286 12V0zm14.571 11.143l-3.428 3.428h-3.429l-3 3v-3H6.857V1.714h13.714Z"/>
-        </svg>
-      </div>
+    <div class="logo-wrap">
+      <div class="logo-glow" aria-hidden="true"></div>
+      <img class="logo" src="assets/logo.svg" alt="" width="72" height="72">
     </div>
 
     <div class="app-name">WatchTwitch</div>
-    <div class="app-tagline">Автоматический фарминг дропсов</div>
+    <div class="app-tagline">Фарминг дропсов Twitch</div>
 
-    <div class="loading-bar">
-      <div class="loading-bar-fill"></div>
-    </div>
-    <div class="loading-text">Загрузка приложения...</div>
+    <div class="progress" id="progress"><div class="progress-fill" id="progress-fill"></div></div>
+    <div class="stage" id="stage">Запуск…</div>
+
+    <div class="version" id="version"></div>
   </div>
+
+  <script>
+    (function () {
+      var progress = document.getElementById('progress');
+      var fill = document.getElementById('progress-fill');
+      var stageText = document.getElementById('stage');
+      var current = -1;
+      var gotStage = false;
+
+      try {
+        var v = new URLSearchParams(location.search).get('v');
+        if (v && /^[\w.\-]{1,32}$/.test(v)) document.getElementById('version').textContent = 'v' + v;
+      } catch (e) { /* без версии */ }
+
+      window.splash = {
+        // Этапы только растут: поздний ответ о раннем этапе полосу назад не двигает
+        stage: function (index, text, percent) {
+          if (index < current) return;
+          current = index;
+          if (index > 0) gotStage = true;
+          progress.classList.remove('indeterminate');
+          var p = Math.max(0, Math.min(100, Number(percent) || 0));
+          fill.style.width = p + '%';
+          if (text) stageText.textContent = text;
+        },
+        done: function () {
+          document.body.classList.add('done');
+        }
+      };
+
+      window.splash.stage(0, 'Запуск…', 12);
+
+      // Ни одного этапа от main за 1,2 с — бег, а не застывшие 12%
+      setTimeout(function () {
+        if (!gotStage) progress.classList.add('indeterminate');
+      }, 1200);
+    })();
+  </script>
 </body>
 </html>

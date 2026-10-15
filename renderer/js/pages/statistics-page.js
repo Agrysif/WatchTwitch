@@ -5,6 +5,10 @@ class StatisticsPage {
     this.customStartDate = null;
     this.customEndDate = null;
     this._abort = new AbortController();
+    // Раскрыт ли полный список упущенных наград. Живёт между перерисовками:
+    // во время фарминга страница перерисовывается каждые полминуты, и
+    // раскрытый список не должен сворачиваться сам
+    this._missedExpanded = false;
     this.init();
   }
 
@@ -17,7 +21,7 @@ class StatisticsPage {
   async init() {
     this.setupEventListeners();
     await this.loadStatistics();
-    
+
     // Слушаем события обновления статистики в реальном времени.
     // Подписка снимается в destroy(), иначе каждый заход на страницу
     // добавлял ещё один обработчик и лишнюю перерисовку.
@@ -27,21 +31,22 @@ class StatisticsPage {
   }
 
   setupEventListeners() {
-    // Period buttons
+    // Период — сегменты в шапке. aria-pressed вместе с .active: по нему
+    // экранный диктор понимает, какой период выбран
     const periodBtns = document.querySelectorAll('.period-btn');
     periodBtns.forEach(btn => {
       btn.addEventListener('click', () => {
-        periodBtns.forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
+        periodBtns.forEach(b => {
+          b.classList.toggle('active', b === btn);
+          b.setAttribute('aria-pressed', String(b === btn));
+        });
         this.currentPeriod = btn.dataset.period;
-        
-        // Показываем/скрываем календарь
+
+        // Строка выбора дат под шапкой. Появление анимирует сам CSS
+        // (.stats-range): анимация запускается при каждом показе блока
         const datePicker = document.getElementById('custom-date-picker');
         if (this.currentPeriod === 'custom') {
-          datePicker.style.display = 'block';
-          // Своё имя анимации: общее fadeIn из animations.css страница
-          // раньше переопределяла для всего приложения
-          datePicker.style.animation = 'statsFadeIn 0.3s ease';
+          datePicker.style.display = '';
 
           // Устанавливаем сегодняшнюю дату автоматически. Дата местная:
           // toISOString давал дату по UTC, и ночью подставлялось «вчера»
@@ -67,33 +72,32 @@ class StatisticsPage {
         }
       });
     });
-    
-    // Обработчики для кастомных дат
-    const startDateDisplay = document.getElementById('start-date-display');
-    const endDateDisplay = document.getElementById('end-date-display');
-    const startDateInput = document.getElementById('start-date');
-    const endDateInput = document.getElementById('end-date');
-    
-    if (startDateDisplay && startDateInput) {
-      startDateDisplay.addEventListener('click', () => {
-        startDateInput.showPicker();
+
+    // Видимое поле даты — текст в русском формате, а выбор открывает
+    // скрытое системное поле. С клавиатуры окно выбора открывается так
+    // же, как по щелчку: иначе дату без мыши было не задать
+    const bindDate = (id) => {
+      const display = document.getElementById(id + '-display');
+      const input = document.getElementById(id);
+      if (!display || !input) return;
+
+      const open = () => {
+        try { input.showPicker(); } catch (e) { /* окно выбора уже открыто */ }
+      };
+      display.addEventListener('click', open);
+      display.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown') {
+          e.preventDefault();
+          open();
+        }
       });
-      
-      startDateInput.addEventListener('change', (e) => {
-        this.updateDateDisplay('start-date', e.target.value);
+      input.addEventListener('change', (e) => {
+        this.updateDateDisplay(id, e.target.value);
       });
-    }
-    
-    if (endDateDisplay && endDateInput) {
-      endDateDisplay.addEventListener('click', () => {
-        endDateInput.showPicker();
-      });
-      
-      endDateInput.addEventListener('change', (e) => {
-        this.updateDateDisplay('end-date', e.target.value);
-      });
-    }
-    
+    };
+    bindDate('start-date');
+    bindDate('end-date');
+
     // Кнопка применения дат
     const applyBtn = document.getElementById('apply-date-range');
     if (applyBtn) {
@@ -162,7 +166,7 @@ class StatisticsPage {
       month: '2-digit',
       year: 'numeric'
     });
-    
+
     const displayId = inputId + '-display';
     const displayInput = document.getElementById(displayId);
     if (displayInput) {
@@ -191,7 +195,7 @@ class StatisticsPage {
 
       // Подозрительные сессии в итоги не идут: на реальных данных шесть
       // таких записей давали 92% всего времени, и ни одной цифре на странице
-      // нельзя было верить. Они остаются в списке и в экспорте, а над
+      // нельзя было верить. Они остаются в списке и в экспорте, а под
       // итогами написано, сколько их и как их удалить.
       const suspect = filteredSessions.filter(s => this.isSuspect(s));
       const counted = filteredSessions.filter(s => !this.isSuspect(s));
@@ -233,9 +237,9 @@ class StatisticsPage {
 
       // Обновляем UI
       this.renderExcluded(suspect);
-      this.updateStatsCards(totalMinutes, totalStreams, totalPoints, totalChests, totalBandwidth, totalDrops);
+      this.updateStatsCards(totalMinutes, totalStreams, totalPoints, totalChests, totalBandwidth, totalDrops, suspect.length);
       this.renderAnalytics(watched, { totalMinutes, totalDrops, totalPoints, totalBandwidth, topCategories });
-      this.renderTopCategories(topCategories);
+      this.renderTopCategories(topCategories, totalMinutes);
       this.updateSessionsTable(filteredSessions);
 
     } catch (error) {
@@ -257,13 +261,13 @@ class StatisticsPage {
 
       case 'custom':
         if (this.customStartDate && this.customEndDate) {
-          return sessions.filter(s => 
-            s.timestamp >= this.customStartDate && 
+          return sessions.filter(s =>
+            s.timestamp >= this.customStartDate &&
             s.timestamp <= this.customEndDate
           );
         }
         return [];
-      
+
       case 'all':
       default:
         return sessions;
@@ -300,7 +304,39 @@ class StatisticsPage {
     return !name || name === 'Unknown' ? 'Неизвестный канал' : String(name);
   }
 
-  /** Строка над итогами: сколько сессий не учтено и кнопка их удалить. */
+  /** Иконка из общего набора; до его загрузки — пустая строка. */
+  icon(name, size = 16) {
+    return window.Icons?.get(name, size) ?? '';
+  }
+
+  /** Пустое состояние общего вида (иконка, заголовок, одно предложение). */
+  emptyHtml({ icon, title, text }) {
+    if (typeof window.DOMHelpers?.emptyState === 'function') {
+      return window.DOMHelpers.emptyState({ icon, title, text });
+    }
+    const esc = window.escapeHtml;
+    return `<div class="empty-state"><h3>${esc(title)}</h3>${text ? `<p>${esc(text)}</p>` : ''}</div>`;
+  }
+
+  /**
+   * Обложка категории в строке списка.
+   *
+   * Слот держит размер и серую подложку с тихим значком игры: пока
+   * картинка грузится, не загрузилась или её нет вовсе, строка не
+   * прыгает и не показывает значок битого изображения.
+   */
+  coverHtml(url, extraClass = '') {
+    const esc = window.escapeHtml;
+    return `<span class="stats-cover ${extraClass}" aria-hidden="true">${this.icon('gamepad', 14)}${url
+      ? `<img src="${esc(url)}" alt="" loading="lazy" onerror="this.hidden=true">`
+      : ''}</span>`;
+  }
+
+  /**
+   * Строка о сессиях, не вошедших в итоги, — внизу страницы, рядом со
+   * списком, где они помечены. Под итогами об этом говорит подпись
+   * «N не учтено».
+   */
   renderExcluded(suspect) {
     const box = document.getElementById('stats-excluded');
     if (!box) return;
@@ -315,12 +351,12 @@ class StatisticsPage {
     const minutes = suspect.reduce((sum, s) => sum + (Number(s.duration) || 0), 0);
 
     box.innerHTML = `
+      ${this.icon('info', 16)}
       <div class="stats-excluded-text">
-        <b>Исключено из итогов: ${count} ${this.pluralSessions(count)}</b> с подозрительной
-        длительностью — больше суток без отметок о просмотре, всего ${this.formatDuration(minutes)}.
-        Так их записывала старая версия приложения.
+        <b>Не учтено в итогах: ${count} ${this.pluralSessions(count)}</b> — больше суток без отметок
+        о просмотре, всего ${this.formatDuration(minutes)}. Так их записывала старая версия приложения.
       </div>
-      <button class="btn btn-secondary stats-excluded-delete" type="button">Удалить</button>
+      <button class="btn btn-danger-ghost btn-sm stats-excluded-delete" type="button">Удалить</button>
     `;
     box.style.display = '';
 
@@ -349,19 +385,16 @@ class StatisticsPage {
     }
 
     // После «Удалить» нужен винительный падеж: «1 сессию», а не «1 сессия».
-    // Одна сессия — «она», а не «они»
+    // Одна сессия — «она», а не «они». Классы окна — общие (.dialog-title),
+    // без инлайновых цветов: так текст читается и в светлой теме
     const one = count === 1;
     const confirmed = await window.utils.showCustomConfirmation(`
-      <div style="text-align: center;">
-        <h3 style="font-size: 20px; font-weight: 600; color: var(--text-primary); margin-bottom: 12px;">
-          Удалить ${count} ${this.plural(count, 'сессию', 'сессии', 'сессий')}?
-        </h3>
-        <p style="font-size: 14px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 0;">
-          ${one
-            ? 'Она пропадёт из списка и из экспорта. Вернуть её будет нельзя.'
-            : 'Они пропадут из списка и из экспорта. Вернуть их будет нельзя.'}
-        </p>
-      </div>
+      <h3 class="dialog-title">Удалить ${count} ${this.plural(count, 'сессию', 'сессии', 'сессий')}?</h3>
+      <p class="stats-confirm-text">
+        ${one
+          ? 'Она пропадёт из списка и из экспорта. Вернуть её будет нельзя.'
+          : 'Они пропадут из списка и из экспорта. Вернуть их будет нельзя.'}
+      </p>
     `, { confirmText: 'Удалить', cancelText: 'Отмена', confirmClass: 'btn-danger' });
     if (!confirmed) return;
 
@@ -409,14 +442,41 @@ class StatisticsPage {
     }).format(n);
   }
 
+  /** Сколько строк упущенных наград видно, пока список свёрнут. */
+  static get MISSED_PREVIEW() {
+    return 3;
+  }
+
   /**
-   * Аналитика: выводы из накопленных цифр.
+   * Все упущенные награды, ближайшие к получению — первыми.
    *
-   * Приложение давно собирало историю сессий, трафик, баллы и категории,
-   * но показывало только суммы. Сумма отвечает на вопрос «сколько всего»,
-   * а решения принимаются по другим: выгодно ли это, что окупается, чего
-   * ждать дальше.
+   * MissedDrops.analyze отдаёт для сводки только пять ближайших, а по
+   * «Показать все» нужен полный список. Отбор тот же: закончившиеся
+   * кампании и награды, к которым приступали, но не добрали
+   * (MissedDrops.isMissed), — иначе число на кнопке разошлось бы со сводкой.
    */
+  missedList(history, now = Date.now()) {
+    const MD = window.MissedDrops;
+    const list = [];
+
+    for (const campaign of history || []) {
+      const ends = new Date(campaign?.endsAt).getTime();
+      if (!Number.isFinite(ends) || ends > now) continue;
+
+      const game = campaign?.game?.displayName || campaign?.game?.name || campaign?.name || '';
+      for (const drop of (campaign.drops || [])) {
+        if (!MD.isMissed(drop)) continue;
+        list.push({
+          game,
+          name: drop.name || 'Награда',
+          shortBy: (Number(drop.required) || 0) - (Number(drop.progress) || 0)
+        });
+      }
+    }
+
+    return list.sort((a, b) => a.shortBy - b.shortBy);
+  }
+
   /**
    * Сколько наград не удалось добрать до конца кампаний.
    *
@@ -435,33 +495,62 @@ class StatisticsPage {
     // Пока приложение не накопило историю, блок честнее спрятать
     if (result.total === 0) {
       box.style.display = 'none';
+      this._missed = null;
       return;
     }
-    box.style.display = '';
 
-    const escape = (t) => String(t ?? '').replace(/[&<>"']/g, ch => ({
-      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-    }[ch]));
+    this._missed = { result, items: this.missedList(history) };
+    this.paintMissed();
+  }
+
+  /** Рисует блок упущенных из запомненных данных (и при раскрытии списка). */
+  paintMissed() {
+    const box = document.getElementById('missed-card');
+    if (!box || !this._missed) return;
+
+    const { result, items } = this._missed;
+    const esc = window.escapeHtml;
+    const CLOSE = window.MissedDrops.CLOSE_MINUTES;
+    const LIMIT = StatisticsPage.MISSED_PREVIEW;
+    const expanded = this._missedExpanded && items.length > LIMIT;
+    const shown = expanded ? items : items.slice(0, LIMIT);
+
+    // Янтарным — только то, до чего оставалось меньше часа: это самый
+    // обидный случай. Остальное — обычным текстом, без заливки строк
+    const rows = shown.map(m => `
+      <div class="list-row missed-item ${m.shortBy <= CLOSE ? 'close' : ''}">
+        <div class="row-main missed-main">
+          <span class="missed-name" title="${esc(m.name)}">${esc(m.name)}</span>
+          <span class="missed-game" title="${esc(m.game)}">${esc(m.game)}</span>
+        </div>
+        <span class="missed-short ${m.shortBy <= CLOSE ? 'tone-warn' : ''}">не хватило ${this.formatShort(m.shortBy)}</span>
+      </div>
+    `).join('');
 
     box.innerHTML = `
-      <div class="missed-head">
-        <span class="missed-title">Упущенные награды</span>
-        <span class="missed-sum">${escape(window.MissedDrops.describe(result))}</span>
+      <div class="card-header">
+        <div class="card-title">${this.icon('clock', 16)}<span>Упущенные награды</span></div>
+        <span class="missed-sum">${esc(window.MissedDrops.describe(result))}</span>
       </div>
-      <div class="missed-note">
-        Всего не хватило около ${this.formatDuration(result.shortMinutes)} просмотра · считается по кампаниям,
-        которые приложение видело за последний месяц
-      </div>
-      <div class="missed-list">
-        ${result.closest.map(m => `
-          <div class="missed-item ${m.shortBy <= window.MissedDrops.CLOSE_MINUTES ? 'close' : ''}">
-            <div class="missed-name">${escape(m.name)}</div>
-            <div class="missed-game">${escape(m.game)}</div>
-            <div class="missed-short">не хватило ${this.formatShort(m.shortBy)}</div>
-          </div>
-        `).join('')}
+      <div class="list missed-list">${rows}</div>
+      <div class="missed-foot">
+        <span class="missed-note">Всего не хватило около ${this.formatDuration(result.shortMinutes)} просмотра ·
+          по кампаниям, которые приложение видело за последний месяц</span>
+        ${items.length > LIMIT ? `
+          <button type="button" class="btn btn-ghost btn-sm missed-more" aria-expanded="${expanded}">
+            ${expanded ? 'Свернуть' : `Показать все (${items.length})`}
+            ${this.icon(expanded ? 'chevron-up' : 'chevron-down', 14)}
+          </button>` : ''}
       </div>
     `;
+    box.style.display = '';
+
+    box.querySelector('.missed-more')?.addEventListener('click', () => {
+      this._missedExpanded = !expanded;
+      this.paintMissed();
+      // Фокус остаётся на кнопке: она перерисована вместе с блоком
+      box.querySelector('.missed-more')?.focus();
+    }, { signal: this._abort.signal });
   }
 
   /** Недобор в человеческом виде: меньше минуты не бывает. */
@@ -469,6 +558,14 @@ class StatisticsPage {
     return this.formatDuration(Math.max(1, Math.round(Number(minutes) || 0)));
   }
 
+  /**
+   * Аналитика: выводы из накопленных цифр.
+   *
+   * Приложение давно собирало историю сессий, трафик, баллы и категории,
+   * но показывало только суммы. Сумма отвечает на вопрос «сколько всего»,
+   * а решения принимаются по другим: выгодно ли это, что окупается, чего
+   * ждать дальше.
+   */
   renderAnalytics(sessions, totals) {
     const card = document.getElementById('analytics-card');
     const grid = document.getElementById('analytics-grid');
@@ -493,14 +590,14 @@ class StatisticsPage {
 
     const items = [
       {
-        label: 'Дропсов в час',
+        label: 'Наград в час',
         value: totals.totalDrops > 0 ? this.formatNumber(dropsPerHour, 2) : '—',
         sub: hoursPerDrop
           ? `примерно ${this.formatHours(hoursPerDrop)} на одну награду`
           : 'награды пока не засчитывались'
       },
       {
-        label: 'Трафик на час',
+        label: 'Трафик в час',
         value: trafficPerHour > 0 ? this.formatBytes(trafficPerHour) : '—',
         sub: trafficPerHour > 0
           ? `около ${this.formatBytes(trafficPerHour * 24)} за сутки фарминга`
@@ -525,7 +622,7 @@ class StatisticsPage {
     if (saved) {
       const ratio = TE.ratio(totals.totalBandwidth, totals.totalMinutes);
       items.push({
-        label: 'Сэкономлено трафика',
+        label: 'Экономия трафика',
         value: this.formatBytes(saved),
         sub: ratio
           ? `в ${this.formatNumber(ratio, 1)} раза экономнее, чем в ${TE.BASELINE_LABEL}`
@@ -537,11 +634,13 @@ class StatisticsPage {
     // кампаниях — раньше они исчезали вместе с самой кампанией
     this.renderMissed().catch(e => console.warn('[Статистика] Упущенные:', e?.message));
 
+    // Показатели внутри карточки — без своих рамок, разделены тонкими
+    // вертикальными линиями (.kpi-inline)
     grid.innerHTML = items.map(item => `
-      <div class="analytics-item">
-        <div class="analytics-label">${item.label}</div>
-        <div class="analytics-value">${item.value}</div>
-        <div class="analytics-sub">${item.sub}</div>
+      <div class="kpi kpi-inline analytics-item">
+        <div class="kpi-label">${item.label}</div>
+        <div class="kpi-value">${item.value}</div>
+        <div class="kpi-sub">${item.sub}</div>
       </div>
     `).join('');
 
@@ -550,6 +649,7 @@ class StatisticsPage {
         // После «за» нужен винительный падеж: «за 1 сессию», а не «за 1 сессия»
         ? `Больше всего времени уходит на «${best.name}» — ${this.formatHours(best.time / 60)} за ${best.streams} ${this.plural(best.streams, 'сессию', 'сессии', 'сессий')}.`
         : '';
+      note.hidden = !best;
     }
 
     card.style.display = 'block';
@@ -567,26 +667,42 @@ class StatisticsPage {
     return this.plural(count, 'сессия', 'сессии', 'сессий');
   }
 
-  updateStatsCards(minutes, streams, points, chests, bandwidth, drops) {
+  updateStatsCards(minutes, streams, points, chests, bandwidth, drops, excluded = 0) {
     // Общее время просмотра — тем же форматом, что и везде на странице:
     // раньше здесь было «1068h 41m», а рядом «ч/мин» и «ч м»
     const watchTimeEl = document.getElementById('total-watch-time');
     if (watchTimeEl) {
       watchTimeEl.textContent = this.formatDuration(minutes);
     }
-    
+
+    // Под временем — из скольких сессий оно сложилось и сколько не
+    // учтено. Объяснение и кнопка удаления — внизу страницы, но сам факт
+    // должен быть виден рядом с итогом, иначе цифра молча расходится со
+    // списком сессий
+    const subEl = document.getElementById('total-sessions-sub');
+    if (subEl) {
+      const parts = [];
+      if (streams > 0) parts.push(`${this.formatNumber(streams)} ${this.pluralSessions(streams)}`);
+      if (excluded > 0) parts.push(`${excluded} не ${this.plural(excluded, 'учтена', 'учтены', 'учтено')}`);
+      subEl.textContent = parts.join(' · ');
+      subEl.title = excluded > 0
+        ? 'Сессии больше суток без отметок о просмотре в итоги не входят — подробности внизу страницы'
+        : '';
+      subEl.hidden = parts.length === 0;
+    }
+
     // Заработано баллов
     const pointsEl = document.getElementById('total-points');
     if (pointsEl) {
       pointsEl.textContent = this.formatNumber(points);
     }
-    
+
     // Собрано сундучков
     const chestsEl = document.getElementById('total-chests');
     if (chestsEl) {
       chestsEl.textContent = this.formatNumber(chests);
     }
-    
+
     // Получено дропсов
     const dropsEl = document.getElementById('drops-collected');
     if (dropsEl) {
@@ -595,7 +711,7 @@ class StatisticsPage {
   }
 
   /**
-   * Приводит URL обложки Twitch к крупному размеру.
+   * Приводит URL обложки Twitch к нужному размеру.
    * Ссылки приходят либо шаблоном {width}x{height}, либо уже с конкретным
    * размером в имени файла — обрабатываем оба случая.
    */
@@ -613,313 +729,160 @@ class StatisticsPage {
       .replace(/-\d+x\d+(\.[a-z0-9]+)(\?.*)?$/i, `-${size}$1$2`);
   }
 
-  renderTopCategories(categories) {
-    const i18n = window.i18n;
+  /** Обложка в строке: 52×72 — вдвое больше места под неё (32×43). */
+  rowCoverUrl(boxUrl, categoryName) {
+    const own = this.upscaleBoxArt(boxUrl, '52x72');
+    if (own) return own;
+    if (!categoryName || categoryName === 'Без категории') return '';
+    return this.getDefaultCoverUrl(categoryName);
+  }
+
+  /**
+   * Топ категорий — список с долей времени.
+   *
+   * Раньше слева стоял веер из трёх крупных обложек, а цифры были
+   * фиолетовыми с зелёной плашкой процента. Теперь акцент — только у
+   * полосы доли: по ней сравнивают, а не по цвету текста.
+   */
+  renderTopCategories(categories, totalMinutes) {
     const container = document.getElementById('top-categories-section');
     if (!container) return;
-    
+
     if (categories.length === 0) {
-      container.innerHTML = `<div style="color: var(--text-secondary); text-align: center; padding: 40px;">${i18n.t('statistics.noData')}</div>`;
+      container.innerHTML = this.emptyHtml(this.currentPeriod === 'all'
+        ? { icon: 'chart', title: 'Пока пусто', text: 'Здесь появятся игры, на которые уходит больше всего времени фарминга.' }
+        : { icon: 'chart', title: 'За этот период ничего нет', text: 'Выберите другой период — например, «Всё время».' });
       return;
     }
 
-    const topThree = categories.slice(0, 3);
     // Названия приходят от Twitch и вставляются в разметку и атрибуты
     const esc = window.escapeHtml;
 
-    let html = `
-      <div style="display: flex; gap: 28px; align-items: stretch;">
-        <!-- Обложки (стопка) с новым дизайном -->
-        <div class="categories-stack-wrapper">
-          <div class="categories-stack-container">
-    `;
+    // Доля — от всего времени периода, а не только от показанных строк:
+    // иначе у пятёрки из двадцати игр проценты в сумме давали бы 100
+    const shown = categories.slice(0, Math.min(5, categories.length));
+    const totalTime = Number(totalMinutes) > 0
+      ? Number(totalMinutes)
+      : categories.reduce((sum, cat) => sum + cat.time, 0);
 
-    // Стопка первых 3 обложек
-    topThree.forEach((cat, idx) => {
-      const offset = idx * 12;
-      const gameId = this.getCategoryIdFromName(cat.name);
-      // В сессиях обложка сохраняется в размере 52x72 (миниатюра для списка
-      // категорий), а здесь она рисуется крупно — отсюда мыло. Поднимаем размер.
-      const boxUrl = this.upscaleBoxArt(cat.box) || `https://static-cdn.jtvnw.net/ttv-boxart/${gameId}-272x380.jpg`;
-      html += `
-        <div class="stack-cover-wrapper" style="transform: translate(${offset * 2}px, ${offset}px); z-index: ${10 - idx};">
-          <img src="${esc(boxUrl)}"
-               alt="${esc(cat.name)}"
-               class="stack-cover"
-               data-category="${esc(cat.name)}"
-               data-game-id="${esc(gameId)}"
-               title="${esc(cat.name)}"
-               onerror="this.style.background='rgba(124, 92, 255, 0.2)'; this.style.opacity='0.6';">
-        </div>`;
-    });
-
-    html += `
-          </div>
-        </div>
-        <!-- Информация с новым дизайном -->
-        <div style="flex: 1; min-width: 0;">
-          <div class="top-categories-list">
-    `;
-
-    // Считаем общее время для процентов
-    const totalTime = categories.reduce((sum, cat) => sum + cat.time, 0);
-    
-    categories.slice(0, Math.min(5, categories.length)).forEach((cat, idx) => {
-      // Процент от общего времени
+    // Склонение раньше знало только «сеанс» и «сеансов» — выходило
+    // «2 сеансов». Слово то же, что в аналитике: «сессия».
+    container.innerHTML = shown.map(cat => {
       const percentage = totalTime > 0 ? Math.round((cat.time / totalTime) * 100) : 0;
-
-      // Средняя длительность сессии
       const avgSessionMins = cat.streams > 0 ? Math.round(cat.time / cat.streams) : 0;
 
-      // Склонение раньше знало только «сеанс» и «сеансов» — выходило
-      // «2 сеансов». Слово то же, что в аналитике: «сессия».
-      html += `
-        <div class="category-item">
-          <div class="category-rank">#${idx + 1}</div>
-          <div class="category-info">
-            <div class="category-name" title="${esc(cat.name)}">${esc(cat.name)}</div>
-            <div class="category-meta">
-              <span class="category-sessions">${cat.streams} ${this.pluralSessions(cat.streams)}</span>
-              <span class="category-divider">•</span>
-              <span class="category-avg">в среднем ${this.formatDuration(avgSessionMins)}</span>
+      return `
+        <div class="list-row top-cat-row">
+          ${this.coverHtml(this.rowCoverUrl(cat.box, cat.name))}
+          <div class="row-main">
+            <div class="row-title" title="${esc(cat.name)}">${esc(cat.name)}</div>
+            <div class="row-meta">
+              <span>${this.formatNumber(cat.streams)} ${this.pluralSessions(cat.streams)}</span>
+              <span>в среднем ${this.formatDuration(avgSessionMins)}</span>
             </div>
           </div>
-          <div class="category-stats">
-            <div class="category-time">${this.formatDuration(cat.time)}</div>
-            <div class="category-percentage">${percentage}%</div>
+          <div class="top-cat-share">
+            <div class="top-cat-time num">${this.formatDuration(cat.time)}</div>
+            <div class="progress progress-sm" role="img" aria-label="${percentage}% всего времени">
+              <div class="progress-fill" style="width: ${Math.max(percentage, 1)}%"></div>
+            </div>
+            <div class="top-cat-pct num">${percentage}%</div>
           </div>
         </div>
       `;
-    });
+    }).join('');
+  }
 
-    html += `</div></div></div>`;
-    
-    container.innerHTML = html;
+  /**
+   * Когда была сессия: «сегодня, 01:06», «вчера, 22:02», «10.10, 01:06».
+   * Год — только у прошлогодних: в пределах года он лишь удлинял строку.
+   */
+  sessionWhen(timestamp) {
+    const date = new Date(timestamp);
+    if (!Number.isFinite(date.getTime())) return '';
 
-    // Добавляем интерактивность к стопке
-    const stackContainer = container.querySelector('.categories-stack-container');
-    if (stackContainer) {
-      stackContainer.addEventListener('mouseenter', () => {
-        const covers = stackContainer.querySelectorAll('.stack-cover-wrapper');
-        covers.forEach((wrapper, idx) => {
-          wrapper.style.transform = `translateX(${idx * 125}px) translateY(${idx * 5}px) scale(1.08)`;
-          wrapper.style.zIndex = idx + 100;
-        });
-      });
-      stackContainer.addEventListener('mouseleave', () => {
-        const covers = stackContainer.querySelectorAll('.stack-cover-wrapper');
-        covers.forEach((wrapper, idx) => {
-          const offset = idx * 12;
-          wrapper.style.transform = `translate(${offset * 2}px, ${offset}px) scale(1)`;
-          wrapper.style.zIndex = 10 - idx;
-        });
-      });
-    }
+    const time = date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1).getTime();
+    const at = date.getTime();
+
+    if (at >= today) return `сегодня, ${time}`;
+    if (at >= yesterday) return `вчера, ${time}`;
+
+    const day = date.toLocaleDateString('ru-RU', date.getFullYear() === now.getFullYear()
+      ? { day: '2-digit', month: '2-digit' }
+      : { day: '2-digit', month: '2-digit', year: 'numeric' });
+    return `${day}, ${time}`;
   }
 
   updateSessionsTable(sessions) {
-    const i18n = window.i18n;
     const container = document.getElementById('recent-sessions');
     if (!container) return;
-    
-    container.innerHTML = '';
-    
+
     // Показываем последние 10 сессий
     const recentSessions = sessions.slice(-10).reverse();
-    
+
+    // Подписи колонок нужны только над строками
+    const cols = document.getElementById('session-cols');
+    if (cols) cols.hidden = recentSessions.length === 0;
+
     if (recentSessions.length === 0) {
-      container.innerHTML = `<div style="text-align: center; padding: 40px; color: var(--text-secondary);">${i18n.t('statistics.noData')}</div>`;
+      container.innerHTML = this.emptyHtml(this.currentPeriod === 'all'
+        ? { icon: 'clock', title: 'Сессий пока нет', text: 'Запустите фарминг — каждая сессия появится здесь с длительностью, баллами и трафиком.' }
+        : { icon: 'clock', title: 'За этот период сессий нет', text: 'Выберите другой период — например, «Всё время».' });
       return;
     }
-    
+
     const esc = window.escapeHtml;
 
-    recentSessions.forEach((session, idx) => {
-      const div = document.createElement('div');
-      div.className = 'session-item';
-      div.id = `session-${idx}`;
-      
-      const date = new Date(session.timestamp);
-      const dateStr = date.toLocaleDateString('ru-RU');
-      const timeStr = date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-      
-      const duration = this.formatDuration(session.duration || 0);
+    container.innerHTML = recentSessions.map((session, idx) => {
       const unknownCategory = !session.category || session.category === 'Unknown';
       const category = this.categoryLabel(session.category);
       const channel = this.channelLabel(session.channel);
+      const duration = this.formatDuration(session.duration || 0);
       const bandwidth = session.bandwidth ? this.formatBytes(session.bandwidth) : '—';
 
       // Используем реальную обложку из сессии. Для неизвестной категории
-      // подставлять обложку «Общения» нечестно — лучше без неё
-      const coverUrl = session.categoryBoxArtURL || (unknownCategory ? '' : this.getDefaultCoverUrl(category));
-
-      // Данные для графика (история пинга/интернета)
-      const bandwidthHistory = session.bandwidthHistory || [];
+      // подставлять чужую обложку нечестно — лучше без неё
+      const coverUrl = unknownCategory ? '' : this.rowCoverUrl(session.categoryBoxArtURL, category);
 
       // Баллы — те, что сессия записала сама. Раньше здесь стояла выдуманная
       // формула «10 за каждые 5 минут», и список спорил с итогами наверху:
       // сессия с нулём баллов показывала «+55 010». Нет поля — нет цифры.
       const points = Number(session.pointsEarned);
-      const pointsText = session.pointsEarned == null || !Number.isFinite(points)
-        ? '—'
-        : (points > 0 ? '+' + this.formatNumber(points) : '0');
+      const noPoints = session.pointsEarned == null || !Number.isFinite(points);
+      const pointsText = noPoints ? '—' : (points > 0 ? '+' + this.formatNumber(points) : '0');
       const chests = Number(session.chestsCollected) || 0;
 
-      div.innerHTML = `
-        <div class="session-cover-wrapper">
-          ${coverUrl ? `<img src="${esc(coverUrl)}"
-               alt="${esc(category)}"
-               class="session-cover"
-               onerror="this.style.display='none'">` : ''}
-        </div>
-        <div class="session-info" style="flex: 1; min-width: 0;">
-          <div class="session-game">${esc(category)}</div>
-          <div class="session-meta">
-            <span style="display: flex; align-items: center; gap: 4px;">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                <circle cx="12" cy="12" r="10"/>
-                <path d="M12 6v6l4 2"/>
-              </svg>
-              ${esc(channel)}
-            </span>
-            <span class="session-divider">•</span>
-            <span>${dateStr} ${timeStr}</span>
-            ${chests > 0 ? `
-              <span class="session-divider">•</span>
-              <span>${this.formatNumber(chests)} ${this.plural(chests, 'сундук', 'сундука', 'сундуков')}</span>` : ''}
-            ${this.isSuspect(session) ? `
-              <span class="session-divider">•</span>
-              <span class="session-suspect" title="Больше суток без отметок о просмотре — в итоги не входит">не учтена в итогах</span>` : ''}
+      // Нули и прочерки — тихим цветом: глаз цепляется за то, что есть.
+      // Наведение больше ничего не рисует: график скорости по
+      // bandwidthHistory жил в блоке без размера и ни разу не показался
+      return `
+        <div class="list-row session-item" id="session-${idx}">
+          ${this.coverHtml(coverUrl, 'is-sm')}
+          <div class="row-main">
+            <div class="row-title session-game" title="${esc(category)}">${esc(category)}</div>
+            <div class="row-meta session-meta">
+              <span>${esc(channel)}</span>
+              <span>${esc(this.sessionWhen(session.timestamp))}</span>
+              ${chests > 0 ? `<span>${this.formatNumber(chests)} ${this.plural(chests, 'сундук', 'сундука', 'сундуков')}</span>` : ''}
+              ${this.isSuspect(session)
+                ? '<span class="badge badge-warning" title="Больше суток без отметок о просмотре — в итоги не входит">не учтена в итогах</span>'
+                : ''}
+            </div>
           </div>
-        </div>
-        <div class="session-stats-grid">
-          <div class="session-stat">
-            <div class="session-stat-value">${duration}</div>
-            <div class="session-stat-label">${i18n.t('statistics.duration')}</div>
+          <div class="session-nums">
+            <span class="session-num num" title="Длительность"><span class="visually-hidden">Длительность: </span>${duration}</span>
+            <span class="session-num num ${noPoints || points <= 0 ? 'is-zero' : ''}" title="Баллы канала"><span class="visually-hidden">Баллы: </span>${pointsText}</span>
+            <span class="session-num num ${bandwidth === '—' ? 'is-zero' : ''}" title="Трафик за сессию"><span class="visually-hidden">Трафик: </span>${bandwidth}</span>
           </div>
-          <div class="session-stat">
-            <div class="session-stat-value session-points">${pointsText}</div>
-            <div class="session-stat-label">${i18n.t('statistics.points')}</div>
-          </div>
-          <div class="session-stat">
-            <div class="session-stat-value session-bandwidth">${bandwidth}</div>
-            <div class="session-stat-label">${i18n.t('statistics.traffic')}</div>
-          </div>
-        </div>
-        <div style="position: relative; overflow: hidden; display: none;" class="session-graph-container" data-graph-id="graph-${idx}">
-          <canvas id="graph-${idx}" width="300" height="80" style="position: absolute; right: 0; bottom: 0; width: 300px; height: 80px;"></canvas>
         </div>
       `;
-      
-      div.style.transition = 'all 0.2s';
-      div.addEventListener('mouseenter', () => {
-        div.style.background = 'rgba(124, 92, 255, 0.08)';
-        this.showBandwidthGraph(div, bandwidthHistory, idx);
-      });
-      div.addEventListener('mouseleave', () => {
-        div.style.background = '';
-        const graph = div.querySelector('.session-graph-container');
-        if (graph) graph.style.display = 'none';
-      });
-      
-      container.appendChild(div);
-    });
+    }).join('');
   }
 
-  showBandwidthGraph(element, bandwidthHistory, sessionIdx) {
-    const graphContainer = element.querySelector('.session-graph-container');
-    if (!graphContainer || bandwidthHistory.length === 0) return;
-    
-    graphContainer.style.display = 'block';
-    const canvas = element.querySelector(`#graph-${sessionIdx}`);
-    if (!canvas) return;
-    
-    const ctx = canvas.getContext('2d');
-    const width = canvas.width;
-    const height = canvas.height;
-    const padding = 8;
-    
-    // Очищаем канвас
-    ctx.clearRect(0, 0, width, height);
-    
-    // Данные для графика (берем последние 30 точек)
-    const data = bandwidthHistory.slice(-30);
-    if (data.length < 2) return;
-    
-    // Находим макс/мин значения
-    const maxBw = Math.max(...data);
-    const minBw = Math.min(...data);
-    const range = maxBw - minBw || 1;
-    
-    // Размеры графика
-    const graphWidth = width - padding * 2;
-    const graphHeight = height - padding * 2;
-    const pointSpacing = graphWidth / (data.length - 1);
-    
-    // Рисуем фон градиента
-    const gradient = ctx.createLinearGradient(0, padding, 0, height - padding);
-    gradient.addColorStop(0, 'rgba(124, 92, 255, 0.2)');
-    gradient.addColorStop(1, 'rgba(124, 92, 255, 0.02)');
-    
-    // Рисуем линию
-    ctx.strokeStyle = 'rgb(124, 92, 255)';  // Твитч фиолетовый
-    ctx.fillStyle = gradient;
-    ctx.lineWidth = 2;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    
-    // Путь линии
-    ctx.beginPath();
-    data.forEach((value, i) => {
-      const x = padding + i * pointSpacing;
-      const normalizedValue = (value - minBw) / range;
-      const y = height - padding - normalizedValue * graphHeight;
-      
-      if (i === 0) {
-        ctx.moveTo(x, y);
-      } else {
-        ctx.lineTo(x, y);
-      }
-    });
-    
-    // Замыкаем область для заливки
-    const lastX = padding + (data.length - 1) * pointSpacing;
-    ctx.lineTo(lastX, height - padding);
-    ctx.lineTo(padding, height - padding);
-    ctx.closePath();
-    
-    ctx.fill();
-    
-    // Рисуем линию поверх
-    ctx.strokeStyle = 'rgb(124, 92, 255)';
-    ctx.beginPath();
-    data.forEach((value, i) => {
-      const x = padding + i * pointSpacing;
-      const normalizedValue = (value - minBw) / range;
-      const y = height - padding - normalizedValue * graphHeight;
-      
-      if (i === 0) {
-        ctx.moveTo(x, y);
-      } else {
-        ctx.lineTo(x, y);
-      }
-    });
-    ctx.stroke();
-    
-    // Рисуем точки
-    ctx.fillStyle = 'rgb(124, 92, 255)';
-    data.forEach((value, i) => {
-      const x = padding + i * pointSpacing;
-      const normalizedValue = (value - minBw) / range;
-      const y = height - padding - normalizedValue * graphHeight;
-      
-      ctx.beginPath();
-      ctx.arc(x, y, 2, 0, Math.PI * 2);
-      ctx.fill();
-    });
-  }
-
-  getCategoryIdFromName(name) {
+  getCategoryIdFromName(name, fallback = '509658') {
     // Мапинг популярных игр (можно расширить)
     const knownGames = {
       'League of Legends': '21779',
@@ -961,25 +924,30 @@ class StatisticsPage {
       'EA Sports FC 25': '512938',
       'Warframe': '66170'
     };
-    
+
     // Попытка найти игру по точному совпадению
     if (knownGames[name]) {
       return knownGames[name];
     }
-    
+
     // Попытка найти по частичному совпадению (для вариантов типа "Rainbow Six Siege X")
     for (const [gameName, gameId] of Object.entries(knownGames)) {
       if (name.includes(gameName) || gameName.includes(name)) {
         return gameId;
       }
     }
-    
-    return '509658'; // Fallback to Just Chatting
+
+    return fallback; // По умолчанию — Just Chatting
   }
-  
+
+  /**
+   * Обложка по названию, если сессия свою не записала. Только для
+   * известных игр: чужая обложка («Общение» у Mahjong Soul) хуже пустого
+   * места — она выдаёт себя за правду.
+   */
   getDefaultCoverUrl(categoryName) {
-    const gameId = this.getCategoryIdFromName(categoryName);
-    return `https://static-cdn.jtvnw.net/ttv-boxart/${gameId}-272x380.jpg`;
+    const gameId = this.getCategoryIdFromName(categoryName, null);
+    return gameId ? `https://static-cdn.jtvnw.net/ttv-boxart/${gameId}-52x72.jpg` : '';
   }
 
   /**

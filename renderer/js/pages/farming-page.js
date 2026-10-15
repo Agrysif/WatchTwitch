@@ -890,15 +890,12 @@ class FarmingPage {
       if (dropsFilterBtn) {
         on(dropsFilterBtn, 'click', () => {
           this.dropsFilterEnabled = !this.dropsFilterEnabled;
-          
-          if (this.dropsFilterEnabled) {
-            dropsFilterBtn.style.background = 'var(--accent-color)';
-            dropsFilterBtn.style.color = 'white';
-          } else {
-            dropsFilterBtn.style.background = '';
-            dropsFilterBtn.style.color = '';
-          }
-          
+
+          // Состояние — классом и aria-pressed, а не инлайновыми цветами:
+          // те не знали о светлой теме и перебивали оформление кнопки
+          dropsFilterBtn.classList.toggle('is-on', this.dropsFilterEnabled);
+          dropsFilterBtn.setAttribute('aria-pressed', String(this.dropsFilterEnabled));
+
           this.renderCategories();
         });
       } else {
@@ -1018,6 +1015,16 @@ class FarmingPage {
             }
           }
         }
+      });
+
+      // Карточка награды — кнопка (role="button"): с клавиатуры она
+      // открывается так же, как мышью
+      on(document, 'keydown', (e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        const card = e.target?.closest?.('.drop-card-clickable');
+        if (!card || card !== e.target) return;
+        e.preventDefault();
+        card.click();
       });
     }, 100);
   }
@@ -1371,34 +1378,33 @@ class FarmingPage {
         cat.hasDrops = dropsInfo ? dropsInfo.hasDrops : false;
       });
       
+      // Обычное окно приложения (.dialog): поиск сверху, список игр
+      // строками. Класс auth-modal больше не нужен — это не окно входа
+      const icon = (name, size) => window.Icons?.get(name, size) ?? '';
       const modal = document.createElement('div');
-      modal.className = 'auth-modal';
+      modal.className = 'dialog-backdrop category-picker';
       modal.innerHTML = `
-        <div class="auth-modal-overlay"></div>
-        <div class="auth-modal-content" style="width: 700px; max-height: 85vh; overflow-y: hidden; display: flex; flex-direction: column;">
-          <div class="auth-modal-header">
-            <h3>Выберите категорию</h3>
-            <button class="close-modal">
-              <svg width="20" height="20" viewBox="0 0 20 20">
-                <path d="M4 4L16 16M16 4L4 16" stroke="currentColor" stroke-width="2"/>
-              </svg>
+        <div class="dialog dialog-lg category-picker-dialog" role="dialog" aria-modal="true" aria-labelledby="category-picker-title">
+          <div class="dialog-head">
+            <div>
+              <h2 class="dialog-title" id="category-picker-title">Добавить категорию</h2>
+            </div>
+            <button class="dialog-close close-modal" type="button" title="Закрыть (Esc)" aria-label="Закрыть">
+              ${icon('close', 16)}
             </button>
           </div>
-          <div class="auth-modal-body" style="display: flex; flex-direction: column; gap: 15px; overflow: hidden;">
-            <div class="search-container" style="position: sticky; top: 0; z-index: 10; background: var(--bg-secondary); padding: 5px 0;">
-              <input 
-                type="text" 
-                id="category-search" 
-                placeholder="Поиск категории..." 
-              />
-            </div>
-            <div class="category-list" id="category-list" style="overflow-y: auto; max-height: calc(85vh - 180px);">
-              ${this.renderCategoryItems(categories, categories)}
-            </div>
+          <div class="category-picker-search">
+            <label class="search-field">
+              ${icon('search', 16)}
+              <input type="text" class="input-field" id="category-search" placeholder="Поиск по названию игры" autocomplete="off" aria-label="Поиск категории">
+            </label>
+          </div>
+          <div class="dialog-body category-list" id="category-list">
+            ${this.renderCategoryItems(categories, categories)}
           </div>
         </div>
       `;
-      
+
       document.body.appendChild(modal);
       this._categorySelectorModal = modal;
 
@@ -1440,13 +1446,25 @@ class FarmingPage {
         });
       });
 
-      // Обработчик закрытия
+      // Обработчик закрытия. Фон — сам контейнер окна: закрываем, только
+      // если нажали мимо окна, а не внутри него
       const closeBtn = modal.querySelector('.close-modal');
-      const overlay = modal.querySelector('.auth-modal-overlay');
 
       closeBtn.addEventListener('click', closeSelector);
 
-      overlay.addEventListener('click', closeSelector);
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) closeSelector();
+      });
+
+      // Строка игры — кнопка (role="button"): Enter и пробел добавляют её
+      // так же, как щелчок
+      modal.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        const item = e.target?.closest?.('.game-item-selector');
+        if (!item || item !== e.target) return;
+        e.preventDefault();
+        item.click();
+      });
 
       // Обработчик клика на игру
       modal.querySelectorAll('.game-item-selector').forEach(item => {
@@ -1468,39 +1486,31 @@ class FarmingPage {
   
   renderCategoryItems(categories, allCategories) {
     if (categories.length === 0) {
-      return `
-        <div style="text-align: center; padding: 40px; color: var(--text-secondary);">
-          <p>Ничего не найдено</p>
-        </div>
-      `;
+      return '<div class="picker-empty">Ничего не найдено — проверьте название</div>';
     }
-    
+
+    const icon = (name, size) => window.Icons?.get(name, size) ?? '';
+
     return categories.map(cat => {
       const isAdded = this.categories.some(c => c.id === cat.id);
-      
-      // Индикатор дропсов
-      const dropsIndicator = cat.hasDrops
-        ? `<span class="drops-badge" style="font-size: 11px; padding: 2px 6px; margin-left: 8px;">
-             <svg width="10" height="10" viewBox="0 0 12 12" fill="currentColor" style="margin-right: 3px;">
-               <circle cx="6" cy="6" r="6"/>
-             </svg>
-             Дропсы
-           </span>`
-        : '';
-      
+
+      // Подробности одной строкой: зрители · «Дропсы» зелёным, если идёт
+      // кампания (проверяются первые десять игр списка)
+      const meta = [
+        cat.viewersCount ? `<span>${this.esc(this.viewersLabel(cat.viewersCount))}</span>` : '',
+        cat.hasDrops ? '<span class="tone-ok">Дропсы</span>' : ''
+      ].filter(Boolean).join('');
+
       return `
-        <div class="game-item-selector ${isAdded ? 'added' : ''}" data-category-id="${this.esc(cat.id)}" style="cursor: pointer;">
-          <img src="${this.esc(this.boxArtSrc(cat.boxArtURL, '52x72', cat.id))}" alt="${this.esc(cat.name)}" onerror="this.onerror=null;this.src=window.DROP_PLACEHOLDER||'';">
+        <div class="game-item-selector ${isAdded ? 'added' : ''}" data-category-id="${this.esc(cat.id)}" role="button" tabindex="0">
+          <img src="${this.esc(this.boxArtSrc(cat.boxArtURL, '52x72', cat.id))}" alt="" onerror="this.onerror=null;this.src=window.DROP_PLACEHOLDER||'';">
           <div class="game-item-info">
             <div class="game-item-name">${this.esc(cat.name)}</div>
-            <div class="game-item-viewers" style="display: flex; align-items: center;">
-              <span style="color: var(--text-secondary); font-size: 13px;">
-                ${this.viewersLabel(cat.viewersCount)}
-              </span>
-              ${dropsIndicator}
-            </div>
+            <div class="game-item-viewers row-meta">${meta}</div>
           </div>
-          ${isAdded ? '<div class="game-item-added">✓ Добавлена</div>' : ''}
+          ${isAdded
+            ? '<div class="game-item-added">Уже в очереди</div>'
+            : `<span class="game-item-add" aria-hidden="true">${icon('plus', 16)}</span>`}
         </div>
       `;
     }).join('');
@@ -1565,28 +1575,12 @@ class FarmingPage {
     const btn = document.getElementById('add-all-drops-btn');
     if (!btn) return;
     const isAutoMode = this.autoDropsModeEnabled === true;
-    const btnText = btn.querySelector('span');
-    // Подпись берётся из ключа data-i18n: роутер при каждом возврате на
-    // вкладку зовёт i18n.updatePage(), и с неизменным ключом farmAllDrops
-    // включённый автофарм после перехода по вкладкам подписывался
-    // «Фарм всех дропсов», хотя кнопка оставалась фиолетовой
-    const labelKey = isAutoMode ? 'farming.disableAutofarming' : 'farming.farmAllDrops';
-    if (btnText) {
-      btnText.setAttribute('data-i18n', labelKey);
-      btnText.textContent = this.i18n.t(labelKey);
-    }
-
-    if (isAutoMode) {
-      btn.style.background = '#7c5cff';
-      btn.style.color = '#fff';
-      btn.style.border = 'none';
-      btn.style.opacity = '1';
-    } else {
-      btn.style.background = 'rgba(255,255,255,0.08)';
-      btn.style.color = 'var(--text-primary)';
-      btn.style.border = '1px solid var(--border-color)';
-      btn.style.opacity = '0.9';
-    }
+    // Подпись больше не меняется («Отключить автофарм» по подписи не
+    // говорил, включён ли режим): состояние показывает переключатель
+    // внутри кнопки, он рисуется по aria-pressed. Цвета — из оформления,
+    // а не инлайновые: те не знали о светлой теме
+    btn.classList.toggle('is-on', isAutoMode);
+    btn.setAttribute('aria-pressed', String(isAutoMode));
   }
 
   async toggleAutoDropsCategories() {
@@ -1603,7 +1597,9 @@ class FarmingPage {
           : 'авто-категорий';
         const ok = await window.utils.showConfirmation(
           'Отключить автофарм?',
-          `Будет убрано из списка: ${n} ${word}. Закреплённые останутся.`
+          `Будет убрано из списка: ${n} ${word}. Закреплённые останутся.`,
+          // Действие убирает категории из очереди — кнопка красная и с глаголом
+          { confirmText: 'Отключить', confirmClass: 'btn-danger' }
         );
         if (!ok || this._destroyed) return;
       }
@@ -1792,17 +1788,20 @@ class FarmingPage {
       return;
     }
 
+    // Счётчик в заголовке, пояснение на заглушке простоя и чек-лист
+    // первого запуска зависят от очереди — обновляем их здесь же
+    this.updateQueueSummary();
+
     if (this.categories.length === 0) {
-      container.innerHTML = `
-        <div class="no-categories" style="text-align: center; padding: 40px; color: var(--text-secondary);">
-          <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="opacity: 0.3; margin: 0 auto;">
-            <rect x="2" y="2" width="20" height="20" rx="2" stroke-width="2"/>
-            <path d="M2 8h20M8 2v20" stroke-width="2"/>
-          </svg>
-          <p style="margin-top: 16px;">Нет выбранных категорий</p>
-          <p style="font-size: 13px; margin-top: 8px;">Нажмите «Добавить категорию», чтобы начать</p>
-        </div>
-      `;
+      const empty = {
+        icon: 'list',
+        title: 'Очередь пуста',
+        text: 'Добавьте игру или включите «Автофарм всех дропсов» — приложение само соберёт игры с кампаниями.'
+      };
+      container.innerHTML = typeof window.DOMHelpers?.emptyState === 'function'
+        ? window.DOMHelpers.emptyState(empty).replace('class="empty-state"', 'class="empty-state no-categories"')
+        : `<div class="empty-state no-categories"><h3>${empty.title}</h3><p>${empty.text}</p></div>`;
+      this._categoryCardHtml = null;
       this.updateAutoDropsButtonState();
       return;
     }
@@ -1876,18 +1875,26 @@ class FarmingPage {
     const currentId = (this.currentStream && this.currentCategory) ? String(this.currentCategory.id) : null;
     this._renderedCurrentId = currentId;
 
+    const icon = (name, size) => window.Icons?.get(name, size) ?? '';
+    const DAY_MS = 24 * 60 * 60 * 1000;
+
     const html = categoriesToRender.map((cat, index) => {
+      // Подписи групп: «Закреплённые» над закреплёнными и прежний ключ
+      // «Остальные категории» над остальными
+      const pinnedHead = (pinnedCount > 0 && index === 0)
+        ? '<div class="pinned-divider pinned-head"><span>Закреплённые</span></div>'
+        : '';
       const divider = (pinnedCount > 0 && index === pinnedCount)
         ? `<div class="pinned-divider"><span>${this.i18n.t('farming.pinnedDivider')}</span></div>`
         : '';
-      const tagsHtml = cat.tags && cat.tags.length > 0 
-        ? `<span class="category-tag">${this.esc(cat.tags[0])}</span>` 
+      const tagsHtml = cat.tags && cat.tags.length > 0
+        ? `<span class="category-tag">${this.esc(cat.tags[0])}</span>`
         : '';
-      // Цвета бейджа — из темы: светлый #bda0ff на светлом фоне не читался
-      const autoBadge = cat.autoDrops ? `<span class="category-tag category-auto-tag">${this.i18n.t('farming.auto')}</span>` : '';
+      // «Авто» — тихий бейдж с рамкой, без заливки акцентом
+      const autoBadge = cat.autoDrops ? `<span class="category-tag category-auto-tag" title="Добавлена автофармом">${this.i18n.t('farming.auto')}</span>` : '';
       const isCurrentCard = currentId !== null && String(cat.id) === currentId;
       const currentBadge = isCurrentCard ? '<span class="category-current-badge">Сейчас</span>' : '';
-      
+
       // Безнадёжная кампания — это не «всё собрано», а «уже не успеть»:
       // награды есть, но времени до конца кампании на них не хватит
       const catValue = this.getCategoryValue(cat);
@@ -1896,87 +1903,59 @@ class FarmingPage {
         ? window.CampaignValue.describe(catValue)
         : (cat.skipReason || '');
 
+      // Срок кампании — янтарным, если осталось меньше суток
+      const endsAtMs = cat.dropsEndsAt ? new Date(cat.dropsEndsAt).getTime() : NaN;
+      const endingSoon = Number.isFinite(endsAtMs) && endsAtMs - Date.now() < DAY_MS;
+
+      // Статус дропсов — словами и цветом текста, без плашек: зелёный —
+      // собрано, янтарный — не успеть, обычный текст — кампания идёт.
+      // Оставшееся время — в своём span: оно меняется каждые полминуты,
+      // и applyCategoriesMarkup обновляет его текстом, не пересоздавая
+      // карточку.
       const dropsStatusHtml = cat.hasDrops ? (
         tooLate
-          ? `<span class="category-drops-status too-late" title="${this.esc(skipHint)}">
-               <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6">
-                 <circle cx="6" cy="6" r="5"/>
-                 <path d="M6 3.2V6l1.9 1.9"/>
-               </svg>
-               Не успеть
-             </span>`
-        : cat.dropsCompleted 
-          ? `<span class="category-drops-status completed">
-               <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
-                 <path d="M3.5 7L1 4.5L1.7 3.8L3.5 5.6L8.3 0.8L9 1.5L3.5 7Z"/>
-               </svg>
-               ${this.i18n.t('farming.dropsCompleted')}
-             </span>`
-          // Кампания ещё идёт — фиолетовая плашка, зелёная только у «Собрано».
-          // Оставшееся время — в своём span: оно меняется каждые полминуты,
-          // и applyCategoriesMarkup обновляет его текстом, не пересоздавая
-          // карточку.
-          : `<span class="category-drops-status active">
-               <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
-                 <circle cx="5" cy="5" r="5"/>
-               </svg>
-               Дропсы ${cat.dropsProgressPercent !== undefined ? this.esc(cat.dropsProgressPercent) + '%' : this.i18n.t('farming.enabled')}
-               <span class="category-time-left">${cat.dropsEndsAt ? this.formatTimeRemaining(cat.dropsEndsAt) : ''}</span>
-             </span>`
+          ? `<span class="category-drops-status too-late" title="${this.esc(skipHint)}">Не успеть</span>`
+          : cat.dropsCompleted
+            ? `<span class="category-drops-status completed"${skipHint ? ` title="${this.esc(skipHint)}"` : ''}>${this.i18n.t('farming.dropsCompleted')}</span>`
+            : `<span class="category-drops-status active">Дропсы ${cat.dropsProgressPercent !== undefined ? this.esc(cat.dropsProgressPercent) + '%' : 'идут'}<span class="category-time-left${endingSoon ? ' is-soon' : ''}">${cat.dropsEndsAt ? this.formatTimeRemaining(cat.dropsEndsAt) : ''}</span></span>`
       ) : '';
-      
+
       const isDisabled = cat.enabled === false;
       const isCompleted = cat.dropsCompleted && cat.hasDrops;
-      
-      return `
-      ${divider}
-      <div class="category-item ${isDisabled ? 'disabled' : ''} ${isCompleted ? 'drops-completed' : ''} ${cat.pinned ? 'pinned' : ''} ${isCurrentCard ? 'current' : ''}" draggable="true" data-category-id="${this.esc(cat.id)}">
+      const name = this.esc(cat.name);
 
-        <div class="category-drag-handle">
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
-            <circle cx="7" cy="5" r="1.5"/>
-            <circle cx="13" cy="5" r="1.5"/>
-            <circle cx="7" cy="10" r="1.5"/>
-            <circle cx="13" cy="10" r="1.5"/>
-            <circle cx="7" cy="15" r="1.5"/>
-            <circle cx="13" cy="15" r="1.5"/>
-          </svg>
-        </div>
-        <div class="category-image">
-          <img src="${this.esc(this.boxArtSrc(cat.boxArtURL, '52x72', cat.id))}" alt="${this.esc(cat.name)}" onerror="this.onerror=null;this.src=window.DROP_PLACEHOLDER||'';">
+      return `
+      ${pinnedHead}${divider}
+      <div class="category-item ${isDisabled ? 'disabled' : ''} ${isCompleted ? 'drops-completed' : ''} ${cat.pinned ? 'pinned' : ''} ${isCurrentCard ? 'current' : ''}" draggable="true" data-category-id="${this.esc(cat.id)}">
+        <div class="category-priority" aria-hidden="true">${index + 1}</div>
+        <div class="category-drag-handle" title="Перетащите, чтобы изменить порядок" aria-hidden="true">${icon('grip', 16)}</div>
+        <div class="category-image" title="Стримы категории">
+          <img src="${this.esc(this.boxArtSrc(cat.boxArtURL, '52x72', cat.id))}" alt="" onerror="this.onerror=null;this.src=window.DROP_PLACEHOLDER||'';">
         </div>
         <div class="category-info">
-          <div class="category-name">${this.esc(cat.name)}</div>
+          <div class="category-name" title="${name}">${name}</div>
           <div class="category-status">
             ${currentBadge}
-            <span class="category-viewers" style="color: var(--text-secondary); font-size: 13px;">${this.viewersLabel(cat.viewersCount)}</span>
-            ${tagsHtml}
-            ${autoBadge}
             ${dropsStatusHtml}
+            <span class="category-viewers">${this.viewersLabel(cat.viewersCount)}</span>
+            ${autoBadge}
+            ${tagsHtml}
           </div>
         </div>
-        <button class="category-play-btn" data-category-id="${this.esc(cat.id)}" title="Запустить эту категорию">
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
-            <path d="M3 1L10 6L3 11V1Z"/>
-          </svg>
-          ${this.esc(this.i18n.t('farming.play'))}
+        <button class="category-play-btn" data-category-id="${this.esc(cat.id)}" title="Смотреть эту категорию" aria-label="Смотреть ${name}">
+          ${icon('play', 16)}
         </button>
         <button class="category-pin-btn ${cat.pinned ? 'active' : ''}" data-category-id="${this.esc(cat.id)}"
-                title="${cat.pinned ? 'Открепить категорию' : 'Закрепить категорию'}">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M14 4V2H10v2H8v6l-2 2v2h5v6l1 2 1-2v-6h5v-2l-2-2V4h-2z"/>
-          </svg>
+                title="${cat.pinned ? 'Открепить' : 'Закрепить наверху очереди'}" aria-label="${cat.pinned ? 'Открепить' : 'Закрепить'} ${name}" aria-pressed="${cat.pinned ? 'true' : 'false'}">
+          ${icon('pin', 16)}
         </button>
-        <div class="category-priority">#${index + 1}</div>
-        <label class="category-toggle-switch ${!isDisabled ? 'checked' : ''}" data-category-id="${this.esc(cat.id)}">
-          <input type="checkbox" ${!isDisabled ? 'checked' : ''} data-category-id="${this.esc(cat.id)}">
+        <label class="category-toggle-switch ${!isDisabled ? 'checked' : ''}" data-category-id="${this.esc(cat.id)}" title="${isDisabled ? 'Выключена — приложение её пропускает' : 'Включена в очередь'}">
+          <input type="checkbox" ${!isDisabled ? 'checked' : ''} data-category-id="${this.esc(cat.id)}" aria-label="Фармить ${name}">
           <span class="toggle-track"></span>
           <span class="toggle-thumb"></span>
         </label>
-        <button class="category-remove" data-category-id="${this.esc(cat.id)}">
-          <svg width="20" height="20" viewBox="0 0 20 20">
-            <path d="M5 5L15 15M15 5L5 15" stroke="currentColor" stroke-width="2"/>
-          </svg>
+        <button class="category-remove" data-category-id="${this.esc(cat.id)}" title="Убрать из очереди" aria-label="Убрать ${name}">
+          ${icon('close', 16)}
         </button>
       </div>
       `;
@@ -1991,6 +1970,168 @@ class FarmingPage {
     this.setupPlayButtons();
     this.setupCategoryImageClick();
     this.updateAutoDropsButtonState();
+  }
+
+  /**
+   * Сводка очереди в разметке: счётчик в заголовке «Очередь категорий»,
+   * пояснение на заглушке простоя и чек-лист первого запуска. Только
+   * текст — очередь и фарминг отсюда не меняются.
+   */
+  updateQueueSummary() {
+    const total = this.categories.length;
+    const enabled = this.categories.filter(cat => cat.enabled !== false).length;
+
+    const count = document.getElementById('farm-queue-count');
+    if (count) {
+      count.textContent = total > 0 ? String(total) : '';
+      count.title = total > 0 ? `Включено ${enabled} из ${total}` : '';
+    }
+
+    this.updateWaitingSub();
+    this.renderOnboarding();
+  }
+
+  /**
+   * Пояснение под «Фарминг не запущен»: что будет, если нажать. Раньше
+   * заглушка молчала, и было непонятно, с чего фарминг начнёт.
+   */
+  updateWaitingSub() {
+    const sub = document.getElementById('current-stream-info')?.querySelector?.('.waiting-sub');
+    if (!sub) return;
+
+    const total = this.categories.length;
+    const enabled = this.categories.filter(cat => cat.enabled !== false);
+    const withDrops = enabled.filter(cat => cat.hasDrops && !cat.dropsCompleted).length;
+
+    let text;
+    if (total === 0) {
+      text = 'Очередь пуста — добавьте категорию или включите автофарм всех дропсов';
+    } else if (enabled.length === 0) {
+      text = 'Все категории очереди выключены — включите хотя бы одну';
+    } else {
+      text = `В очереди ${enabled.length} ${this.plural(enabled.length, 'категория', 'категории', 'категорий')}`;
+      if (withDrops === 1) text += ', у одной идёт кампания';
+      else if (withDrops > 1) text += `, у ${withDrops} идут кампании`;
+    }
+    if (sub.textContent !== text) sub.textContent = text;
+  }
+
+  /**
+   * Чек-лист первого запуска: войти, выбрать игры, начать. Показывается,
+   * пока шаги не выполнены и его не скрыли. Аккаунты и сессии читаются из
+   * хранилища не чаще раза в 30 секунд — перерисовка списка идёт часто.
+   */
+  renderOnboarding() {
+    const slot = document.getElementById('onboarding-slot');
+    if (!slot || this._destroyed) return;
+
+    let hidden = false;
+    try {
+      hidden = localStorage.getItem('wt.onboarding.hidden') === '1';
+    } catch (e) {
+      // Хранилище недоступно — показываем, скрыть можно и на этот запуск
+      hidden = !!this._onboardingHidden;
+    }
+    // Всё уже сделано — больше не спрашиваем хранилище на каждой перерисовке
+    if (hidden || this._onboardingHidden || this._onboardingComplete) {
+      if (slot.innerHTML) slot.innerHTML = '';
+      return;
+    }
+
+    const facts = this._onboardingFacts;
+    if ((!facts || Date.now() - facts.at > 30000) && !this._onboardingLoading) {
+      this._onboardingLoading = true;
+      Promise.all([
+        Promise.resolve().then(() => Storage.getAccounts()).catch(() => null),
+        Promise.resolve().then(() => Storage.getStatistics()).catch(() => null)
+      ]).then(([accounts, stats]) => {
+        this._onboardingFacts = {
+          at: Date.now(),
+          // Сбой чтения — не повод звать новичка «войти»
+          hasAccount: accounts === null || (Array.isArray(accounts) && accounts.length > 0),
+          hasSession: stats === null || (Array.isArray(stats?.sessions) && stats.sessions.length > 0)
+        };
+      }).finally(() => {
+        this._onboardingLoading = false;
+        this.renderOnboarding();
+      });
+    }
+    if (!facts) return;
+
+    const steps = [
+      {
+        done: facts.hasAccount,
+        title: 'Войдите в Twitch',
+        sub: 'Без входа Twitch не засчитывает минуты просмотра',
+        actions: '<button type="button" class="btn btn-secondary btn-sm" data-onboarding="login">Войти</button>'
+      },
+      {
+        done: this.categories.length > 0,
+        title: 'Выберите игры',
+        sub: 'Добавьте категорию вручную или включите автофарм всех игр с кампаниями',
+        actions: '<button type="button" class="btn btn-secondary btn-sm" data-onboarding="add">Добавить</button>'
+          + '<button type="button" class="btn btn-secondary btn-sm" data-onboarding="auto">Автофарм</button>'
+      },
+      {
+        done: facts.hasSession || !!this.sessionStartTime,
+        title: 'Начните фарминг',
+        sub: 'Дальше приложение само переключает стримы и категории',
+        // Вторичная: главная кнопка запуска уже есть на заглушке ниже
+        actions: '<button type="button" class="btn btn-secondary btn-sm" data-onboarding="start">Начать</button>'
+      }
+    ];
+
+    if (steps.every(step => step.done)) {
+      this._onboardingComplete = true;
+      if (slot.innerHTML) slot.innerHTML = '';
+      return;
+    }
+
+    // Та же разметка — не трогаем: иначе сбрасывался бы фокус на кнопке
+    const key = steps.map(step => step.done ? 1 : 0).join('');
+    if (slot.dataset.state === key && slot.firstElementChild) return;
+    slot.dataset.state = key;
+
+    const check = window.Icons?.get('check', 14) ?? '✓';
+    const close = window.Icons?.get('close', 16) ?? '✕';
+    slot.innerHTML = `
+      <section class="card farm-onboarding" aria-label="Начало работы">
+        <div class="card-header">
+          <div class="card-title">Начало работы</div>
+          <button type="button" class="btn btn-ghost btn-icon btn-sm" data-onboarding="hide" title="Скрыть подсказку" aria-label="Скрыть подсказку">${close}</button>
+        </div>
+        <ol class="onboarding-steps">
+          ${steps.map((step, index) => `
+            <li class="onboarding-step${step.done ? ' is-done' : ''}">
+              <span class="onboarding-mark" aria-hidden="true">${step.done ? check : index + 1}</span>
+              <div class="onboarding-text">
+                <div class="onboarding-title">${step.title}${step.done ? '<span class="visually-hidden"> — готово</span>' : ''}</div>
+                <div class="onboarding-sub">${step.sub}</div>
+              </div>
+              ${step.done ? '' : `<div class="onboarding-actions">${step.actions}</div>`}
+            </li>
+          `).join('')}
+        </ol>
+      </section>
+    `;
+
+    if (slot.dataset.bound) return;
+    slot.dataset.bound = '1';
+    slot.addEventListener('click', (event) => {
+      const action = event.target?.closest?.('[data-onboarding]')?.dataset.onboarding;
+      if (!action) return;
+      const page = window.farmingPage || this;
+      if (action === 'login') window.router?.navigate('accounts');
+      if (action === 'add') document.getElementById('add-category-btn')?.click();
+      if (action === 'auto' && !page.autoDropsModeEnabled) document.getElementById('add-all-drops-btn')?.click();
+      if (action === 'start') page.startFarming?.();
+      if (action === 'hide') {
+        page._onboardingHidden = true;
+        try { localStorage.setItem('wt.onboarding.hidden', '1'); } catch (e) { /* только на этот запуск */ }
+        slot.innerHTML = '';
+        delete slot.dataset.state;
+      }
+    });
   }
 
   /**
@@ -2336,6 +2477,8 @@ class FarmingPage {
    */
   getWaitingStateMarkup() {
     const action = this.esc(this.i18n?.t ? this.i18n.t('farming.startFarming') : 'Начать фарминг');
+    // Та же разметка, что в farming.html. Пояснение (.waiting-sub) дописывает
+    // updateWaitingSub сразу после вставки — см. stopFarming
     return `
       <div class="no-stream waiting-state" tabindex="0" role="button" aria-label="${action}">
         <div class="waiting-icon" aria-hidden="true">
@@ -2344,7 +2487,8 @@ class FarmingPage {
           <span class="waiting-dot"></span>
         </div>
         <p class="waiting-label">Фарминг не запущен</p>
-        <p class="waiting-hint">${action}</p>
+        <p class="waiting-sub"></p>
+        <p class="waiting-hint">${window.Icons?.get('play', 14) ?? ''}<span>${action}</span></p>
       </div>
     `;
   }
@@ -2380,6 +2524,10 @@ class FarmingPage {
       this.i18n.t('farming.completed'),
       'Все доступные дропсы собраны'
     );
+    // Журнал и звук: событие запоминается и тогда, когда уведомление
+    // молчит (тихие часы); тихие часы звук глушит сам chime.js
+    window.eventLog?.add({ type: 'all-done', title: 'Все награды собраны' });
+    window.chime?.play?.('allDone');
 
     window.shutdownManager?.onDropsCompleted();
   }
@@ -2703,6 +2851,7 @@ class FarmingPage {
     const newSession = !!window.sessionState && !window.sessionState.isActive();
     if (newSession) {
       window.sessionState.start({ categoryName: category.name, streamLogin: stream.login });
+      window.eventLog?.add({ type: 'start', title: 'Фарминг запущен', detail: category.name });
     }
 
     // Открываем стрим
@@ -3239,6 +3388,20 @@ class FarmingPage {
           ? `. Пропущено ${skippedOffline.length} ${this.plural(skippedOffline.length, 'категория', 'категории', 'категорий')}: никто не в эфире`
           : '';
         window.utils.showToast(`Переключено на ${nextCategory.name} — ${stream.displayName}${skippedNote}`, 'success');
+        // Утром в журнале должно быть видно, почему сменилась игра
+        window.eventLog?.add({
+          type: 'switch',
+          title: 'Переход к ' + nextCategory.name,
+          detail: ({
+            done: options.detail || 'награды прежней категории собраны',
+            noDrops: 'в прежней категории нет дропсов',
+            offline: 'стрим закончился',
+            gameChanged: 'стример сменил игру',
+            noCredit: 'канал не засчитывал минуты',
+            disabled: 'прежняя категория выключена'
+          })[reason] || stream.displayName,
+          game: nextCategory.name
+        });
         console.log('Stream switched successfully, currentCategory set to:', this.currentCategory);
         return true;
       } catch (error) {
@@ -3305,6 +3468,8 @@ class FarmingPage {
     console.warn('[Категории] Стримов с дропсами сейчас нет — останавливаюсь, повтор через', minutes, 'мин');
     window.utils?.showToast(`Фарминг остановлен. ${text}`, 'warning');
     window.notifyFarmingEvent?.('Фарминг остановлен', text);
+    window.eventLog?.add({ type: 'error', title: 'Фарминг остановлен', detail: text });
+    window.chime?.play?.('attention');
     this.stopFarming(false);
     this.scheduleAutoRestart();
   }
@@ -3419,7 +3584,7 @@ class FarmingPage {
     // обновляется на месте (applyCategoriesMarkup), так что следующая
     // перерисовка поправит его, если порядок в итоге не сохранится
     container.querySelectorAll('.category-item .category-priority').forEach((el, index) => {
-      el.textContent = `#${index + 1}`;
+      el.textContent = `${index + 1}`;
     });
   }
 
@@ -3522,9 +3687,11 @@ class FarmingPage {
     const bar = document.createElement('div');
     bar.className = 'category-undo';
     bar.setAttribute('role', 'status');
+    // Вид тоста: нейтральная плашка, действие — тихой кнопкой акцентным
+    // текстом (page-farming.css, .category-undo)
     bar.innerHTML = `
       <span class="category-undo-text"></span>
-      <button type="button" class="btn btn-secondary category-undo-btn">Вернуть</button>
+      <button type="button" class="btn btn-ghost btn-sm category-undo-btn">Вернуть</button>
     `;
     bar.querySelector('.category-undo-text').textContent = `«${category.name}» удалена`;
 
@@ -3681,26 +3848,26 @@ class FarmingPage {
       modal.className = 'auth-modal';
       modal.innerHTML = `
         <div class="auth-modal-overlay"></div>
-        <div class="auth-modal-content" style="width: 500px;">
+        <div class="auth-modal-content farm-login-dialog">
           <div class="auth-modal-header">
-            <h3>⚠️ Требуется OAuth авторизация</h3>
+            <h3>Нужен вход через Twitch</h3>
           </div>
           <div class="auth-modal-body">
-            <p style="color: var(--text-secondary); margin-bottom: 16px;">
+            <p class="farm-login-lead">
               Для корректной работы фарминга необходимо авторизоваться через Twitch OAuth.
             </p>
-            <div style="background: rgba(124, 92, 255, 0.1); border: 1px solid rgba(124, 92, 255, 0.3); border-radius: var(--radius-md); padding: 16px; margin-bottom: 16px;">
-              <div style="font-weight: 600; margin-bottom: 8px; color: var(--text-primary);">Что нужно сделать:</div>
-              <ol style="margin: 0; padding-left: 20px; color: var(--text-secondary); font-size: 14px;">
-                <li style="margin-bottom: 6px;">Перейдите на вкладку "Аккаунты"</li>
-                <li style="margin-bottom: 6px;">Нажмите "Войти через Twitch"</li>
-                <li style="margin-bottom: 6px;">Авторизуйтесь в браузере</li>
+            <div class="farm-login-steps">
+              <div class="section-label">Что нужно сделать</div>
+              <ol>
+                <li>Перейдите на вкладку "Аккаунты"</li>
+                <li>Нажмите "Войти через Twitch"</li>
+                <li>Авторизуйтесь в браузере</li>
                 <li>Вернитесь в приложение и запустите фарминг</li>
               </ol>
             </div>
-            <div style="display: flex; gap: 12px;">
-              <button class="btn btn-primary" id="go-to-accounts" style="flex: 1;">Перейти к аккаунтам</button>
-              <button class="btn btn-secondary" id="close-modal" style="flex: 1;">Закрыть</button>
+            <div class="farm-login-actions">
+              <button class="btn btn-secondary" id="close-modal">Закрыть</button>
+              <button class="btn btn-primary" id="go-to-accounts">Перейти к аккаунтам</button>
             </div>
           </div>
         </div>
@@ -3735,27 +3902,27 @@ class FarmingPage {
       modal.className = 'auth-modal';
       modal.innerHTML = `
         <div class="auth-modal-overlay"></div>
-        <div class="auth-modal-content" style="width: 500px;">
+        <div class="auth-modal-content farm-login-dialog">
           <div class="auth-modal-header">
-            <h3>🔐 Требуется вход в Twitch</h3>
+            <h3>Нужен вход в Twitch</h3>
           </div>
           <div class="auth-modal-body">
-            <p style="color: var(--text-secondary); margin-bottom: 16px;">
+            <p class="farm-login-lead">
               Для фарминга дропсов и баллов канала необходимо войти в Twitch через приложение.
             </p>
-            <div style="background: rgba(124, 92, 255, 0.1); border: 1px solid rgba(124, 92, 255, 0.3); border-radius: var(--radius-md); padding: 16px; margin-bottom: 16px;">
-              <div style="font-weight: 600; margin-bottom: 8px; color: var(--text-primary);">Что нужно сделать:</div>
-              <ol style="margin: 0; padding-left: 20px; color: var(--text-secondary); font-size: 14px;">
-                <li style="margin-bottom: 6px;">Перейдите на вкладку "Аккаунты"</li>
-                <li style="margin-bottom: 6px;">Найдите свой аккаунт</li>
-                <li style="margin-bottom: 6px;">Нажмите кнопку "Войти в Twitch" (иконка Twitch)</li>
-                <li style="margin-bottom: 6px;">Войдите в аккаунт в открывшемся окне</li>
+            <div class="farm-login-steps">
+              <div class="section-label">Что нужно сделать</div>
+              <ol>
+                <li>Перейдите на вкладку "Аккаунты"</li>
+                <li>Найдите свой аккаунт</li>
+                <li>Нажмите кнопку "Войти в Twitch" (иконка Twitch)</li>
+                <li>Войдите в аккаунт в открывшемся окне</li>
                 <li>Нажмите "Проверить авторизацию"</li>
               </ol>
             </div>
-            <div style="display: flex; gap: 12px;">
-              <button class="btn btn-primary" id="go-to-accounts" style="flex: 1;">Перейти к аккаунтам</button>
-              <button class="btn btn-secondary" id="close-modal" style="flex: 1;">Закрыть</button>
+            <div class="farm-login-actions">
+              <button class="btn btn-secondary" id="close-modal">Закрыть</button>
+              <button class="btn btn-primary" id="go-to-accounts">Перейти к аккаунтам</button>
             </div>
           </div>
         </div>
@@ -3905,6 +4072,7 @@ class FarmingPage {
     const newSession = !!window.sessionState && !window.sessionState.isActive();
     if (newSession) {
       window.sessionState.start({ categoryName: category.name, streamLogin: stream.login });
+      window.eventLog?.add({ type: 'start', title: 'Фарминг запущен', detail: category.name });
     }
 
     // Открываем стрим в фоновом окне с аккаунтом
@@ -4185,20 +4353,29 @@ class FarmingPage {
     const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
     const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
 
-    if (days > 0) return `${days}д ${hours}ч`;
-    if (hours > 0) return `${hours}ч ${minutes}м`;
-    return `${minutes}м`;
+    // Единицы через пробел: «3 д 4 ч», а не «3д 4ч»
+    if (days > 0) return hours > 0 ? `${days} д ${hours} ч` : `${days} д`;
+    if (hours > 0) return minutes > 0 ? `${hours} ч ${minutes} мин` : `${hours} ч`;
+    return `${minutes} мин`;
   }
 
-  /** Карточка одного дропа. */
+  /**
+   * Карточка одной награды: картинка 48, процент (или галочка), название
+   * в две строки, тонкая полоса и «95 / 120 мин · ещё 25 мин».
+   *
+   * Раньше карточка была 220px высотой, с фиолетовой заливкой, тенью при
+   * наведении и вечной пульсацией — четыре такие подряд перетягивали
+   * внимание со всего экрана. Классы drop-progress-card, drop-card-clickable
+   * и data-drop/data-campaign прежние: по ним открывается окно награды.
+   */
   renderDropCard(drop, campaign, gameName) {
-    const i18n = this.i18n;
     const isCompleted = this.isDropEarned(drop);
     const dropPercent = isCompleted
       ? 100
       : (drop.required > 0 ? Math.min(100, Math.floor((drop.progress / drop.required) * 100)) : 0);
-    const remaining = Math.max(0, drop.required - drop.progress);
+    const remaining = Math.max(0, (Number(drop.required) || 0) - (Number(drop.progress) || 0));
     const dropName = drop.benefitName || drop.name || 'Награда';
+    const icon = (name, size) => window.Icons?.get(name, size) ?? '';
 
     const dropData = encodeURIComponent(JSON.stringify({
       name: dropName,
@@ -4216,68 +4393,44 @@ class FarmingPage {
       endDate: campaign.endsAt || campaign.endAt || ''
     }));
 
-    const accent = isCompleted ? '53, 208, 138' : '124, 92, 255';
-    const accentSolid = isCompleted ? '#35d08a' : '#7c5cff';
+    const art = drop.imageURL
+      ? `<img class="drop-tile-art" src="${this.esc(drop.imageURL)}" alt="" onerror="this.onerror=null;this.src=window.DROP_PLACEHOLDER||'';">`
+      : `<div class="drop-tile-art is-empty" aria-hidden="true">${icon('gift', 22)}</div>`;
+
+    // Полученная и только набравшая время — разные состояния: вторую
+    // автосбор ещё забирает. У незаконченной — сколько осталось; точные
+    // минуты «95 из 120» — в подсказке карточки: в узкую плитку обе
+    // подписи не помещались и обрезались
+    const meta = isCompleted
+      ? `<span>${drop.claimed ? 'Получено' : 'Можно забрать'}</span>`
+      : (remaining > 0
+        ? `<span>ещё ${this.esc(this.formatMinutes(remaining))}</span>`
+        : `<span>${this.esc(drop.progress)} / ${this.esc(drop.required)} мин</span>`);
+    const tip = isCompleted
+      ? dropName
+      : `${dropName} — ${Number(drop.progress) || 0} из ${Number(drop.required) || 0} мин`;
 
     return `
-      <div class="drop-progress-card drop-card-clickable"
+      <div class="drop-progress-card drop-card-clickable${isCompleted ? ' is-earned' : ''}"
            data-drop="${dropData}"
            data-campaign="${campaignData}"
-           style="
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-        padding: 14px;
-        background: rgba(${accent}, 0.08);
-        border: 1px solid rgba(${accent}, 0.3);
-        border-radius: var(--radius-md);
-        transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-        min-height: 220px;
-        cursor: pointer;
-        ${!isCompleted ? 'animation: pulse-glow 3s ease-in-out infinite;' : ''}
-      "
-      onmouseenter="this.style.boxShadow='0 8px 24px rgba(${accent}, 0.3)'; this.style.borderColor='rgba(${accent}, 0.6)';"
-      onmouseleave="this.style.transform='translateY(0) scale(1)'; this.style.boxShadow='none'; this.style.borderColor='rgba(${accent}, 0.3)';"
-      >
-        <div style="display: flex; align-items: center; justify-content: center; margin-bottom: 10px;">
-          ${drop.imageURL ? `
-            <img src="${this.esc(drop.imageURL)}"
-                 alt="${this.esc(dropName)}"
-                 style="width: 64px; height: 64px; border-radius: var(--radius-md); object-fit: cover; opacity: ${isCompleted ? '0.7' : '1'}; transition: all 0.3s ease;">
-          ` : `
-            <div style="width: 64px; height: 64px; border-radius: var(--radius-md); background: rgba(124, 92, 255, 0.2); display: flex; align-items: center; justify-content: center;">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="${accentSolid}">
-                <path d="M12 2L15 8H21L16 13L18 19L12 15L6 19L8 13L3 8H9L12 2Z"/>
-              </svg>
-            </div>
-          `}
-        </div>
-        <div style="text-align: center; margin-bottom: 10px;">
-          <div style="display: flex; align-items: center; justify-content: center; gap: 6px; margin-bottom: 8px;">
-            <span style="font-size: 13px; font-weight: 600; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%;" title="${this.esc(dropName)}">${this.esc(dropName)}</span>
-            ${isCompleted ? `
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="#35d08a" style="flex-shrink: 0;">
-                <circle cx="8" cy="8" r="8" fill="rgba(53, 208, 138, 0.2)"/>
-                <path d="M5 8L7 10L11 6" stroke="#35d08a" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
-            ` : ''}
-          </div>
-          <div style="font-size: 18px; font-weight: 700; color: ${accentSolid}; margin-bottom: 8px;">${dropPercent}%</div>
-        </div>
-        <div style="height: 8px; background: rgba(255, 255, 255, 0.12); border-radius: var(--radius-sm); overflow: hidden; margin-bottom: 8px;">
-          <div style="height: 100%; width: ${dropPercent}%; background: ${accentSolid} !important; transition: width 0.5s ease;"></div>
-        </div>
-        <div style="font-size: 11px; color: var(--text-secondary); text-align: center;">
+           role="button" tabindex="0" title="${this.esc(tip)}">
+        <div class="drop-tile-top">
+          ${art}
           ${isCompleted
-            ? `<span style="color: #35d08a; font-weight: 600;">✓ ${i18n.t('farming.claimedOrAvailable')}</span>`
-            : `<div>${this.esc(drop.progress)} / ${this.esc(drop.required)} ${i18n.t('farming.min')}</div>${remaining > 0 ? `<div style="margin-top: 4px; color: var(--text-tertiary);">${i18n.t('farming.remaining')}: ${remaining} ${i18n.t('farming.min')}</div>` : ''}`
-          }
+            ? `<span class="drop-tile-check" aria-label="Получено">${icon('check-circle', 16)}</span>`
+            : `<span class="drop-tile-pct">${dropPercent}%</span>`}
         </div>
+        <div class="drop-tile-name">${this.esc(dropName)}</div>
+        <div class="progress progress-sm${isCompleted ? ' is-complete' : ''}" aria-hidden="true">
+          <div class="progress-fill" style="width: ${dropPercent}%"></div>
+        </div>
+        <div class="drop-tile-meta">${meta}</div>
       </div>
     `;
   }
 
-  /** Блок одной кампании: заголовок, свой прогресс и сетка дропсов. */
+  /** Блок одной кампании: заголовок (если кампаний несколько) и сетка наград. */
   renderCampaignSection(campaign, gameName, showHeader) {
     const drops = campaign.drops || [];
     const total = drops.length;
@@ -4291,23 +4444,17 @@ class FarmingPage {
     const percent = total > 0 ? Math.floor(sum / total) : 0;
     const completed = drops.filter(d => this.isDropEarned(d)).length;
     const timeLeft = this.formatCampaignTimeLeft(campaign.endsAt || campaign.endAt);
-    const accentSolid = percent === 100 ? '#35d08a' : '#7c5cff';
     const campaignTitle = campaign.name || gameName;
     const notStarted = campaign.inProgress === false;
 
     // Заголовок кампании показываем только когда кампаний несколько —
-    // иначе он дублировал бы общий заголовок блока.
+    // иначе он дублировал бы общий заголовок блока. Строка, а не плашка
     const header = showHeader ? `
-      <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; padding: 8px 12px; background: rgba(124, 92, 255, 0.06); border: 1px solid rgba(124, 92, 255, 0.18); border-radius: var(--radius-md);">
-        <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
-          ${campaign.game?.boxArtURL ? `<img src="${this.esc(campaign.game.boxArtURL)}" alt="" style="width: 24px; height: 32px; border-radius: var(--radius-sm); object-fit: cover; flex-shrink: 0;">` : ''}
-          <span style="font-size: 13px; font-weight: 700; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${this.esc(campaignTitle)}">${this.esc(campaignTitle)}</span>
-          ${notStarted ? `<span style="flex-shrink: 0; padding: 2px 6px; background: rgba(255, 152, 0, 0.15); color: #ff9800; border-radius: var(--radius-sm); font-size: 10px; font-weight: 700; text-transform: uppercase;">Не начата</span>` : ''}
-        </div>
-        <div style="display: flex; align-items: center; gap: 10px; flex-shrink: 0;">
-          ${timeLeft ? `<span style="font-size: 11px; color: var(--text-secondary);">${timeLeft}</span>` : ''}
-          <span style="font-size: 13px; font-weight: 700; color: ${accentSolid};">${completed}/${total} · ${percent}%</span>
-        </div>
+      <div class="drops-panel-campaign">
+        ${campaign.game?.boxArtURL ? `<img class="drops-panel-campaign-art" src="${this.esc(campaign.game.boxArtURL)}" alt="">` : ''}
+        <span class="drops-panel-campaign-name" title="${this.esc(campaignTitle)}">${this.esc(campaignTitle)}</span>
+        ${notStarted ? '<span class="badge badge-warning">Не начата</span>' : ''}
+        <span class="drops-panel-campaign-meta">${[timeLeft, `${completed} из ${total}`].filter(Boolean).map(part => this.esc(part)).join(' · ')}</span>
       </div>
     ` : '';
 
@@ -4316,14 +4463,125 @@ class FarmingPage {
       total,
       completed,
       html: `
-        <div class="drops-campaign-section" style="margin-bottom: 16px;">
+        <div class="drops-campaign-section">
           ${header}
-          <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; max-width: 100%;">
+          <div class="drop-tiles">
             ${drops.map(drop => this.renderDropCard(drop, campaign, gameName)).join('')}
           </div>
         </div>
       `
     };
+  }
+
+  /**
+   * Разметка панели «Награды кампании» — чистая функция от списка кампаний
+   * игры: ничего не пишет и ничего не решает. Её зовёт
+   * updateDropsHorizontalProgress (там же — все проверки и переключения),
+   * а снимки экрана получают тот же вид без сети.
+   *
+   * Вид нейтральный: заголовок с остатком срока и общим процентом, полоса,
+   * прогноз строкой, сетка карточек и подпись внизу. Цвет — только у
+   * заливки полосы и у слов «собрано/не успеть».
+   */
+  renderDropsPanel(matched, gameName) {
+    const campaigns = Array.isArray(matched) ? matched : [];
+    const icon = (name, size) => window.Icons?.get(name, size) ?? '';
+
+    const showCampaignHeaders = campaigns.length > 1;
+    const sections = campaigns.map(c => this.renderCampaignSection(c, gameName, showCampaignHeaders));
+    const totalDrops = sections.reduce((sum, s) => sum + s.total, 0);
+    const completedDrops = sections.reduce((sum, s) => sum + s.completed, 0);
+
+    // То же число, что в сайдбаре и в списке категорий (CampaignValue)
+    const overallPercent = window.CampaignValue?.progressPercent
+      ? window.CampaignValue.progressPercent(campaigns)
+      : (totalDrops > 0 ? Math.floor(completedDrops / totalDrops * 100) : 0);
+    const pendingClaim = overallPercent === 100 && this.hasPendingClaims(campaigns);
+    const allDone = overallPercent === 100 && !pendingClaim;
+
+    // Ближайшее окончание среди кампаний; меньше суток — янтарным
+    const soonestEnd = campaigns
+      .map(c => c.endsAt || c.endAt)
+      .filter(Boolean)
+      .sort((a, b) => new Date(a) - new Date(b))[0];
+    const timeRemaining = this.formatCampaignTimeLeft(soonestEnd);
+    const endingSoon = !!soonestEnd && new Date(soonestEnd).getTime() - Date.now() < 24 * 60 * 60 * 1000;
+
+    const countBadge = campaigns.length > 1
+      ? `<span class="badge">${campaigns.length} ${this.plural(campaigns.length, 'кампания', 'кампании', 'кампаний')}</span>`
+      : '';
+
+    const foot = allDone
+      ? `<div class="drops-done">
+           ${icon('check-circle', 16)}
+           <span class="drops-done-text">Все награды кампании получены</span>
+           <div class="drops-done-actions" id="drops-done-actions"></div>
+         </div>`
+      : pendingClaim
+        ? 'Награда готова — забираю'
+        // «1 из 4 наград получено» вместо «1/4 Дропсов получено»
+        : `${completedDrops} из ${totalDrops} ${this.plural(totalDrops, 'награды', 'наград', 'наград')} получено`;
+
+    return `
+      <div class="drops-panel">
+        <div class="drops-panel-head">
+          <div class="card-title">Награды кампании ${countBadge}</div>
+          <div class="drops-panel-meta">
+            ${timeRemaining ? `<span class="${endingSoon ? 'tone-warn' : ''}" title="До конца кампании">до конца ${this.esc(timeRemaining)}</span>` : ''}
+            <span class="drops-panel-pct">${overallPercent}%</span>
+          </div>
+        </div>
+        <div class="progress progress-lg${overallPercent === 100 ? ' is-complete' : ''}" role="progressbar" aria-label="Прогресс кампании" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${overallPercent}">
+          <div class="progress-fill" style="width: ${overallPercent}%"></div>
+        </div>
+        ${this.buildForecastMarkup(campaigns)}
+        ${sections.map(s => s.html).join('')}
+        <div id="drops-received-footer" class="drops-panel-foot${pendingClaim ? ' is-pending' : ''}">${foot}</div>
+      </div>
+    `;
+  }
+
+  /**
+   * «Следующая награда» в колонке рядом с плеером: картинка, название,
+   * «через 25 мин · к 03:40» и процент. Без кампании (null) блок прячется.
+   * Ответ на главный вопрос экрана — когда награда, — без прокрутки.
+   */
+  updateNextReward(matched) {
+    const box = document.getElementById('farm-next-reward');
+    if (!box) return;
+
+    const CV = window.CampaignValue;
+    const next = (Array.isArray(matched) && matched.length && CV) ? CV.nextDrop(matched) : null;
+    if (!next) {
+      box.hidden = true;
+      box.innerHTML = '';
+      return;
+    }
+
+    const drop = next.drop;
+    const name = drop.benefitName || drop.name || 'Награда';
+    const required = Number(drop.required) || 0;
+    const progress = Number(drop.progress) || 0;
+    const percent = required > 0 ? Math.min(100, Math.floor(progress / required * 100)) : 0;
+    const left = Math.max(0, Math.ceil(next.minutesNeeded));
+    const clock = new Date(Date.now() + left * 60000)
+      .toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+    const image = drop.imageURL || drop.image || '';
+    const icon = (n, size) => window.Icons?.get(n, size) ?? '';
+
+    box.innerHTML = `
+      ${image
+        ? `<img class="farm-next-art" src="${this.esc(image)}" alt="" onerror="this.onerror=null;this.src=window.DROP_PLACEHOLDER||'';">`
+        : `<div class="farm-next-art is-empty" aria-hidden="true">${icon('gift', 20)}</div>`}
+      <div class="farm-next-name" title="${this.esc(name)}">${this.esc(name)}</div>
+      <div class="farm-next-pct">${percent}%</div>
+      <div class="farm-next-when${left > 0 ? '' : ' is-ready'}">${left > 0
+        ? `Следующая награда через ${this.esc(this.formatMinutes(left))} · к ${this.esc(clock)}`
+        : 'Время набрано — награду забирает автосбор'}</div>
+      <div class="progress progress-sm" aria-hidden="true"><div class="progress-fill" style="width: ${percent}%"></div></div>
+    `;
+    box.setAttribute('aria-label', `Следующая награда: ${name}, ${percent}%`);
+    box.hidden = false;
   }
 
   async updateDropsHorizontalProgress() {
@@ -4399,6 +4657,7 @@ class FarmingPage {
           horizontal.style.display = 'none';
           // Блок в сайдбаре живёт, пока у категории есть кампания
           this.hideMiniDropsProgress();
+          this.updateNextReward(null);
         } else {
           console.log('[Дропсы] Пустой ответ', this._emptyDropsChecks,
             'из 3 — панель оставляю как есть');
@@ -4431,12 +4690,6 @@ class FarmingPage {
 
       horizontal.style.display = 'block';
 
-      const showCampaignHeaders = matched.length > 1;
-      const sections = matched.map(c => this.renderCampaignSection(c, currentGameName, showCampaignHeaders));
-
-      // Общий прогресс — по всем дропсам всех кампаний сразу
-      const totalDrops = sections.reduce((sum, s) => sum + s.total, 0);
-      const completedDrops = sections.reduce((sum, s) => sum + s.completed, 0);
       // Единое число для панели, сайдбара и списка категорий. Раньше здесь
       // считалось среднее по наградам, а сайдбар — по времени просмотра, и
       // под одним названием «дропсы» показывались разные проценты: 63
@@ -4453,72 +4706,18 @@ class FarmingPage {
         .map(c => c.endsAt || c.endAt)
         .filter(Boolean)
         .sort((a, b) => new Date(a) - new Date(b))[0];
-      const timeRemaining = this.formatCampaignTimeLeft(soonestEnd);
-
-      const accentSolid = overallPercent === 100 ? '#35d08a' : '#7c5cff';
-      const accentRgb = overallPercent === 100 ? '53, 208, 138' : '124, 92, 255';
 
       // Чей прогресс на панели — по этой отметке смена категории понимает,
       // что показанное устарело (resetDropsViewForCategory)
       if (this.currentCategory) horizontal.dataset.categoryId = String(this.currentCategory.id);
       else delete horizontal.dataset.categoryId;
 
-      horizontal.innerHTML = `
-        <style>
-          @keyframes pulse-glow {
-            0%, 100% { box-shadow: none; }
-            50% { box-shadow: none; }
-          }
-          .drop-progress-card {
-            transform: translateY(0) scale(1);
-            box-shadow: none;
-          }
-        </style>
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-          <div style="display: flex; align-items: center; gap: 12px;">
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <svg width="18" height="18" viewBox="0 0 16 16" fill="#7c5cff">
-                <path d="M8 2L10 6H14L11 9L12 13L8 10.5L4 13L5 9L2 6H6L8 2Z"/>
-              </svg>
-              <span style="font-size: 15px; font-weight: 700; color: var(--text-primary);">${i18n.t('farming.dropsProgress')}</span>
-            </div>
-            ${matched.length > 1 ? `
-              <span style="padding: 3px 8px; background: rgba(124, 92, 255, 0.15); border: 1px solid rgba(124, 92, 255, 0.3); border-radius: var(--radius-md); font-size: 11px; font-weight: 700; color: #7c5cff;">
-                ${matched.length} ${this.plural(matched.length, 'кампания', 'кампании', 'кампаний')}
-              </span>
-            ` : ''}
-            ${timeRemaining ? `
-              <div style="display: flex; align-items: center; gap: 6px; padding: 4px 10px; background: rgba(124, 92, 255, 0.15); border-radius: var(--radius-md); border: 1px solid rgba(124, 92, 255, 0.3);">
-                <svg width="14" height="14" viewBox="0 0 16 16" fill="#7c5cff">
-                  <circle cx="8" cy="8" r="7" stroke="#7c5cff" stroke-width="1.5" fill="none"/>
-                  <path d="M8 3.5V8L11 10" stroke="#7c5cff" stroke-width="1.5" stroke-linecap="round" fill="none"/>
-                </svg>
-                <span style="font-size: 12px; font-weight: 600; color: #7c5cff;">${timeRemaining}</span>
-              </div>
-            ` : ''}
-          </div>
-          <div style="font-size: 20px; font-weight: 800; color: ${accentSolid};">${overallPercent}%</div>
-        </div>
-        <div style="background: rgba(255, 255, 255, 0.12); height: 12px; border-radius: var(--radius-sm); overflow: hidden; margin-bottom: 12px;">
-          <div style="height: 100%; background: ${accentSolid} !important; width: ${overallPercent}%; transition: width 0.5s ease;"></div>
-        </div>
-        ${this.buildForecastMarkup(matched)}
-        ${sections.map(s => s.html).join('')}
-        <div id="drops-received-footer" style="margin-top: 12px; padding: 12px; background: rgba(${accentRgb}, 0.1); border-radius: var(--radius-sm); border: 1px solid rgba(${accentRgb}, 0.3); font-size: 13px; color: var(--text-secondary); text-align: center;">
-          ${allDone
-            ? `<div class="drops-done">
-                 <span class="drops-done-text">✓ ${i18n.t('farming.allDropsClaimed')}</span>
-                 <div class="drops-done-actions" id="drops-done-actions"></div>
-               </div>`
-            : pendingClaim
-              ? `<span style="color: var(--text-primary); font-weight: 600;">Награда готова — забираю</span>`
-              // «3 из 5 дропсов получено» вместо «3/5 Дропсов получено».
-              // Без курсора-руки: обычный клик по подвалу ничего не делает
-              // (тестовое уведомление — только Shift+клик в режиме разработчика)
-              : `<span style="color: var(--text-primary); font-weight: 600;">${completedDrops} из ${totalDrops} ${this.plural(totalDrops, 'дропса', 'дропсов', 'дропсов')} получено</span>`
-          }
-        </div>
-      `;
+      // Разметку собирает чистый renderDropsPanel: те же правила «получено /
+      // забираю / всё собрано», что считаются здесь. Тестовое уведомление
+      // по-прежнему только Shift+клик по подвалу в режиме разработчика
+      horizontal.innerHTML = this.renderDropsPanel(matched, currentGameName);
+      // Ближайшая награда — ещё и в колонке рядом с плеером, на первом экране
+      this.updateNextReward(matched);
 
       // Место под кнопку перехода теперь есть в разметке выше. Раньше его
       // не было, и кнопка «Перейти к …» не появлялась никогда
@@ -4702,21 +4901,23 @@ class FarmingPage {
     };
     const title = titles[reason] || `В ${name} сейчас брать нечего`;
 
+    // Нейтральная строка с одной главной кнопкой («Перейти»); значок
+    // предупреждения — единственный цветной элемент
     container.style.display = 'block';
     container.innerHTML = `
-      <div class="switch-offer">
+      <div class="switch-offer" role="status">
         <div class="switch-offer-text">
-          <div class="switch-offer-title">${this.esc(title)}</div>
+          <div class="switch-offer-title">${window.Icons?.get('info', 16) ?? ''}<span>${this.esc(title)}</span></div>
           <div class="switch-offer-sub">
             ${candidate
-              ? `Категория запущена вручную, поэтому переключать её сами не будем. Есть дропсы в «${this.esc(candidate.name)}».`
+              ? `Категория запущена вручную, поэтому сами её не переключаем. Дропсы есть в «${this.esc(candidate.name)}».`
               : 'Категория запущена вручную и останется активной. Других категорий с дропсами сейчас нет.'}
           </div>
         </div>
         <div class="switch-offer-actions">
-          <button class="btn btn-secondary" id="switch-offer-stay">${candidate ? 'Остаться' : 'Понятно'}</button>
+          <button class="btn btn-secondary btn-sm" id="switch-offer-stay">${candidate ? 'Остаться' : 'Понятно'}</button>
           ${candidate ? `
-            <button class="btn btn-primary" id="switch-offer-go" data-category-id="${this.esc(candidate.id)}">
+            <button class="btn btn-primary btn-sm" id="switch-offer-go" data-category-id="${this.esc(candidate.id)}">
               Перейти в «${this.esc(candidate.name)}»
             </button>
           ` : ''}
@@ -4861,6 +5062,9 @@ class FarmingPage {
 
     if (showToast) {
       window.utils.showToast('Фарминг остановлен', 'info');
+      // Тост показывается только при остановке кнопкой — это и есть
+      // «остановил пользователь»; остальные пути пишут в журнал сами
+      if (this.sessionStartTime) window.eventLog?.add({ type: 'stop', title: 'Фарминг остановлен' });
     }
     if (!preserveSession) {
       saves.push(Storage.delete('activeSession'));
@@ -5057,7 +5261,10 @@ class FarmingPage {
       playerContainer.style.display = 'none';
       streamInfo.style.display = 'block';
       streamInfo.innerHTML = this.getWaitingStateMarkup();
+      this.updateWaitingSub();
     }
+    // Следующая награда относилась к остановленной сессии
+    this.updateNextReward(null);
 
     // allSettled: сбой одной записи не должен ни бросать необработанную
     // ошибку у тех, кто промис не ждёт, ни задерживать ответ при выходе
@@ -5223,10 +5430,11 @@ class FarmingPage {
       .toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
 
     const reachable = CV.reachableCount(campaigns, now);
+    // Строка текста с часами вместо цветных плашек: «Все награды через
+    // 4 ч 25 мин · к 07:01 · до выключения успеется всё»
     const parts = [`
-      <span class="drops-forecast-main">
-        Все награды через ${this.formatMinutes(minutes)}
-      </span>
+      ${window.Icons?.get('clock', 14) ?? ''}
+      <span class="drops-forecast-main">Все награды через ${this.formatMinutes(minutes)}</span>
       <span class="drops-forecast-clock">к ${clock(minutes)}</span>
     `];
 
@@ -5268,12 +5476,12 @@ class FarmingPage {
     });
   }
 
-  /** Минуты в вид «2ч 15м». */
+  /** Минуты в вид «2 ч 15 мин»: единицы через пробел, как во всём интерфейсе. */
   formatMinutes(minutes) {
     const total = Math.max(0, Math.round(minutes));
     const hours = Math.floor(total / 60);
     const rest = total % 60;
-    if (hours > 0) return rest > 0 ? `${hours}ч ${rest}м` : `${hours}ч`;
+    if (hours > 0) return rest > 0 ? `${hours} ч ${rest} мин` : `${hours} ч`;
     return `${rest} мин`;
   }
 
@@ -5304,14 +5512,10 @@ class FarmingPage {
       sidebarPercent.textContent = `${Math.round(value)}%`;
       sidebarBar.style.width = `${value}%`;
 
-      // Меняем цвет в зависимости от прогресса
-      if (value === 100) {
-        sidebarProgress.style.borderColor = 'rgba(53, 208, 138, 0.4)';
-        sidebarBar.style.background = '#35d08a';
-      } else {
-        sidebarProgress.style.borderColor = 'var(--border-color)';
-        sidebarBar.style.background = '#7c5cff';
-      }
+      // Всё собрано — шкала зелёная. Цвет задаёт оформление по классу
+      // (#sidebar-drops-progress.is-complete), а не инлайновые цвета:
+      // те не знали ни о светлой теме, ни об оформлении iOS 27
+      sidebarProgress.classList.toggle('is-complete', value === 100);
     }
   }
 
@@ -5342,9 +5546,19 @@ class FarmingPage {
     if (!horizontal || !shown || !category || shown === String(category.id)) return;
 
     delete horizontal.dataset.categoryId;
-    horizontal.innerHTML = '<div style="font-size: 13px; color: var(--text-secondary); text-align: center;">Загрузка дропсов…</div>';
+    // Силуэт панели вместо надписи «Загрузка…»: место занято сразу, и
+    // экран не прыгает, когда приходят данные
+    const tile = '<div class="skeleton drops-panel-skeleton-tile"></div>';
+    horizontal.innerHTML = `
+      <div class="drops-panel is-loading" aria-busy="true" aria-label="Загрузка наград">
+        <div class="skeleton skeleton-title"></div>
+        <div class="skeleton drops-panel-skeleton-bar"></div>
+        <div class="drop-tiles">${tile.repeat(4)}</div>
+      </div>
+    `;
     horizontal.style.display = 'block';
     this.hideMiniDropsProgress();
+    this.updateNextReward(null);
   }
 
   async saveWatchTimeForCategory(categoryName, durationMs) {
@@ -5497,7 +5711,8 @@ class FarmingPage {
       
       // Обновляем информацию о стриме
       document.getElementById('stream-channel').textContent = stream.displayName;
-      document.getElementById('stream-game').textContent = `Игра: ${category.name}`;
+      // Просто название игры: подпись «Игра:» лишняя — рядом обложка
+      document.getElementById('stream-game').textContent = category.name;
       document.getElementById('stream-title').textContent = stream.title || 'Без названия';
       
       // Теги стрима. Видимостью управляет CSS через :not(:empty),
@@ -5597,6 +5812,18 @@ class FarmingPage {
       };
 
       streamDetails.addEventListener('click', this.streamInfoClickHandler);
+
+      // Карточка канала — кнопка (role="button" в разметке): Enter и пробел
+      // открывают подробности так же, как щелчок. Узел живёт всю жизнь
+      // страницы, поэтому обработчик клавиш вешаем один раз
+      if (!streamDetails.dataset.keysBound) {
+        streamDetails.dataset.keysBound = '1';
+        streamDetails.addEventListener('keydown', (e) => {
+          if (e.target !== streamDetails || (e.key !== 'Enter' && e.key !== ' ')) return;
+          e.preventDefault();
+          streamDetails.click();
+        });
+      }
     }
   }
 
@@ -5610,36 +5837,19 @@ class FarmingPage {
     const stream = this.currentStream;
     const category = this.currentCategory;
 
-    // Создаем модальное окно
+    // Обычное окно приложения (.dialog) вместо самодельного: тот же фон,
+    // рамка, Esc и закрытие по фону, что у остальных окон. Класс
+    // category-detail-modal остаётся — по нему проверяют, открыто ли окно
     const modal = document.createElement('div');
-    modal.className = 'category-detail-modal';
-    modal.style.cssText = `
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: rgba(0, 0, 0, 0.8);
-      backdrop-filter: blur(10px);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 10000;
-      animation: fadeIn 0.2s ease;
-    `;
+    modal.className = 'category-detail-modal dialog-backdrop stream-detail-backdrop';
 
     const modalContent = document.createElement('div');
-    modalContent.style.cssText = `
-      background: var(--bg-secondary);
-      border: 1px solid var(--border-color);
-      border-radius: var(--radius-md);
-      width: 90%;
-      max-width: 800px;
-      max-height: 85vh;
-      overflow-y: auto;
-      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-      animation: slideUp 0.3s ease;
-    `;
+    modalContent.className = 'dialog dialog-lg stream-detail-dialog';
+    modalContent.setAttribute('role', 'dialog');
+    modalContent.setAttribute('aria-modal', 'true');
+    modalContent.setAttribute('aria-labelledby', 'stream-detail-title');
+    modal.style.transition = 'opacity var(--dur-base) var(--ease-out)';
+    modalContent.style.transition = 'transform var(--dur-base) var(--ease-out)';
 
     let channelDetails = {
       profileImageUrl: '',
@@ -5689,130 +5899,72 @@ class FarmingPage {
     // а не «44.0K», как было здесь
     const formatViewers = (count) => this.formatViewersCount(count);
 
-    modalContent.innerHTML = `
-      <div style="position: relative;">
-        <button id="close-stream-modal" style="position: absolute; top: 16px; right: 16px; background: rgba(255, 255, 255, 0.1); border: none; width: 32px; height: 32px; border-radius: var(--radius-circle); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; z-index: 10;" onmouseover="this.style.background='rgba(255, 255, 255, 0.2)'" onmouseout="this.style.background='rgba(255, 255, 255, 0.1)'">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" style="color: var(--text-primary);">
-            <path d="M2 2L14 14M14 2L2 14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-          </svg>
-        </button>
+    const icon = (name, size) => window.Icons?.get(name, size) ?? '';
+    // Метрики — тихими числами в строку, без цветных плиток
+    const kpis = [
+      channelDetails.followers ? ['Подписчиков', this.esc(this.formatFollowers(channelDetails.followers))] : null,
+      streamStats.viewers ? ['Зрителей', this.esc(formatViewers(streamStats.viewers))] : null,
+      streamStats.uptime ? ['В эфире', this.esc(streamStats.uptime)] : null,
+      streamStats.points ? ['Баллы канала', this.esc(Number(streamStats.points).toLocaleString('ru-RU'))] : null
+    ].filter(Boolean);
 
-        <!-- Header with blur background -->
-        <div style="position: relative; height: 180px; overflow: hidden; border-radius: 16px 16px 0 0;">
-          <div style="position: absolute; inset: 0; background: url('${profileImageUrl}'); background-size: cover; background-position: center; filter: blur(40px) brightness(0.6); transform: scale(1.2);"></div>
-          <div style="position: absolute; inset: 0; background: rgba(0,0,0,0.3);"></div>
-          
-          <div style="position: relative; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px; text-align: center;">
-            <div style="position: relative; margin-bottom: 12px;">
-              <img src="${profileImageUrl}" 
-                   alt="${this.esc(stream.displayName)}"
-                   onerror="this.onerror=null; this.src='https://static-cdn.jtvnw.net/user-default-pictures-uv/cdd517fe-def4-11e9-948e-784f43822e80-profile_image-300x300.png';"
-                   style="width: 80px; height: 80px; border-radius: var(--radius-circle); border: 3px solid white; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);">
-              ${channelDetails.isLive ? '<div style="position: absolute; bottom: 0; right: 0; width: 24px; height: 24px; background: #ff0000; border: 3px solid white; border-radius: var(--radius-circle); box-shadow: 0 0 12px rgba(255, 0, 0, 0.8);"></div>' : ''}
-            </div>
-            <h2 style="color: white; font-size: 26px; font-weight: 700; margin: 0 0 4px; text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);">${this.esc(stream.displayName)}</h2>
-            <div style="color: rgba(255, 255, 255, 0.8); font-size: 14px; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);">@${this.esc(stream.login)}</div>
+    modalContent.innerHTML = `
+      <div class="dialog-head">
+        <img class="stream-detail-avatar" src="${this.esc(profileImageUrl)}" alt=""
+             onerror="this.onerror=null; this.src='https://static-cdn.jtvnw.net/user-default-pictures-uv/cdd517fe-def4-11e9-948e-784f43822e80-profile_image-300x300.png';">
+        <div>
+          <div class="dialog-eyebrow">Сейчас смотрим</div>
+          <h2 class="dialog-title" id="stream-detail-title">${this.esc(stream.displayName)}</h2>
+          <div class="row-meta">
+            <span>@${this.esc(stream.login)}</span>
+            ${channelDetails.isLive ? '<span class="tone-ok">в эфире</span>' : ''}
           </div>
         </div>
+        <button id="close-stream-modal" class="dialog-close" type="button" title="Закрыть (Esc)" aria-label="Закрыть">${icon('close', 16)}</button>
+      </div>
 
-        <!-- Content -->
-        <div style="padding: 24px;">
-          <!-- Stats Grid -->
-          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 24px;">
-            ${channelDetails.followers ? `
-            <div style="background: rgba(255, 215, 0, 0.1); border: 1px solid rgba(255, 215, 0, 0.2); border-radius: var(--radius-md); padding: 16px; text-align: center;">
-              <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; color: rgba(255, 215, 0, 0.8); margin-bottom: 6px; letter-spacing: 0.5px;">Подписчиков</div>
-              <div style="font-size: 20px; font-weight: 700; color: var(--text-primary);">${this.esc(this.formatFollowers(channelDetails.followers))}</div>
-            </div>` : ''}
-            ${streamStats.viewers ? `
-            <div style="background: rgba(124, 92, 255, 0.1); border: 1px solid rgba(124, 92, 255, 0.2); border-radius: var(--radius-md); padding: 16px; text-align: center;">
-              <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; color: rgba(124, 92, 255, 0.8); margin-bottom: 6px; letter-spacing: 0.5px;">Зрителей</div>
-              <div style="font-size: 20px; font-weight: 700; color: var(--text-primary);">${formatViewers(streamStats.viewers)}</div>
-            </div>` : ''}
-            ${streamStats.uptime ? `
-            <div style="background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: var(--radius-md); padding: 16px; text-align: center;">
-              <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; color: rgba(59, 130, 246, 0.8); margin-bottom: 6px; letter-spacing: 0.5px;">В эфире</div>
-              <div style="font-size: 20px; font-weight: 700; color: var(--text-primary);">${this.esc(streamStats.uptime)}</div>
-            </div>` : ''}
-            ${streamStats.points ? `
-            <div style="background: rgba(53, 208, 138, 0.1); border: 1px solid rgba(53, 208, 138, 0.2); border-radius: var(--radius-md); padding: 16px; text-align: center;">
-              <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; color: rgba(53, 208, 138, 0.8); margin-bottom: 6px; letter-spacing: 0.5px;">Баллы канала</div>
-              <div style="font-size: 20px; font-weight: 700; color: var(--text-primary);">${streamStats.points.toLocaleString()}</div>
-            </div>` : ''}
-          </div>
+      <div class="dialog-body">
+        ${kpis.length ? `
+          <div class="kpi-grid stream-detail-kpis">
+            ${kpis.map(([label, value]) => `
+              <div class="kpi kpi-inline">
+                <div class="kpi-label">${label}</div>
+                <div class="kpi-value">${value}</div>
+              </div>`).join('')}
+          </div>` : ''}
 
-          <!-- Stream Title -->
-          <div style="background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 16px; margin-bottom: 16px;">
-            <div style="font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="stroke-width: 2;">
-                <rect x="2" y="3" width="20" height="14" rx="2"/>
-                <path d="M8 21h8M12 17v4"/>
-              </svg>
-              Название стрима
-            </div>
-            <div id="stream-title-text" style="font-size: 15px; line-height: 1.5; color: var(--text-primary); font-weight: 500; cursor: pointer; padding: 8px; margin: -8px; border-radius: var(--radius-sm); transition: all 0.2s;" onmouseover="this.style.background='rgba(124, 92, 255, 0.1)'" onmouseout="this.style.background='transparent'">${this.esc(stream.title || 'Без названия')}</div>
-          </div>
+        <div class="stream-detail-section">
+          <div class="section-label">${icon('monitor', 14)} Название стрима</div>
+          <div id="stream-title-text" class="stream-detail-title" title="Нажмите, чтобы скопировать">${this.esc(stream.title || 'Без названия')}</div>
+        </div>
 
-          <!-- Category Info -->
-          <div style="background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 16px; margin-bottom: 16px;">
-            <div style="font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="stroke-width: 2;">
-                <rect x="6" y="2" width="12" height="20" rx="2"/>
-                <path d="M12 6h.01M10 10h4M10 14h4"/>
-              </svg>
-              Категория
-            </div>
-            <div style="display: flex; align-items: center; gap: 12px;">
-              <img src="${this.esc(this.boxArtSrc(category.boxArtURL, '60x84', category.id))}"
-                   alt="${this.esc(category.name)}"
-                   onerror="this.onerror=null;this.src=window.DROP_PLACEHOLDER||'';"
-                   style="width: 48px; height: 67px; border-radius: var(--radius-md); object-fit: cover; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);">
-              <div style="flex: 1;">
-                <div style="font-size: 15px; font-weight: 600; color: var(--text-primary); margin-bottom: 4px;">${this.esc(category.name)}</div>
-                <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                  ${category.viewersCount ? `
-                  <span style="color: var(--text-secondary); font-size: 12px; display: flex; align-items: center; gap: 4px;">
-                    <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" style="color: #7c5cff;">
-                      <path d="M8 2C4.5 2 1.5 4.5 0 8c1.5 3.5 4.5 6 8 6s6.5-2.5 8-6c-1.5-3.5-4.5-6-8-6zm0 10c-2.2 0-4-1.8-4-4s1.8-4 4-4 4 1.8 4 4-1.8 4-4 4zm0-6.5c-1.4 0-2.5 1.1-2.5 2.5s1.1 2.5 2.5 2.5 2.5-1.1 2.5-2.5-1.1-2.5-2.5-2.5z"/>
-                    </svg>
-                    ${this.viewersLabel(category.viewersCount)}
-                  </span>` : ''}
-                  ${category.hasDrops ? `
-                  <span style="display: flex; align-items: center; gap: 4px; padding: 3px 8px; background: rgba(124, 92, 255, 0.15); border: 1px solid rgba(124, 92, 255, 0.3); border-radius: var(--radius-md); font-size: 11px; font-weight: 600; color: #7c5cff;">
-                    <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor">
-                      <path d="M8 2L10 6H14L11 9L12 13L8 10.5L4 13L5 9L2 6H6L8 2Z"/>
-                    </svg>
-                    Дропсы
-                  </span>` : ''}
-                </div>
+        <div class="stream-detail-section">
+          <div class="section-label">${icon('gamepad', 14)} Категория</div>
+          <div class="stream-detail-category">
+            <img class="row-art" src="${this.esc(this.boxArtSrc(category.boxArtURL, '60x84', category.id))}" alt=""
+                 onerror="this.onerror=null;this.src=window.DROP_PLACEHOLDER||'';">
+            <div class="row-main">
+              <div class="row-title">${this.esc(category.name)}</div>
+              <div class="row-meta">
+                ${category.viewersCount ? `<span>${this.esc(this.viewersLabel(category.viewersCount))}</span>` : ''}
+                ${category.hasDrops ? '<span class="tone-ok">Дропсы доступны</span>' : ''}
               </div>
             </div>
           </div>
-
-          ${channelDetails.description ? `
-          <!-- Channel Description -->
-          <div style="background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 16px; margin-bottom: 16px;">
-            <div style="font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="stroke-width: 2;">
-                <circle cx="12" cy="12" r="10"/>
-                <path d="M12 16v-4M12 8h.01"/>
-              </svg>
-              О канале
-            </div>
-            <div style="font-size: 13px; line-height: 1.6; color: var(--text-primary);">${this.esc(channelDetails.description)}</div>
-          </div>` : ''}
-
-          <!-- Action Buttons -->
-          <div style="display: flex; gap: 12px; margin-top: 20px;">
-            <button id="open-stream-on-twitch" style="flex: 1; padding: 12px 20px; background: #7c5cff; color: white; border: none; border-radius: var(--radius-md); font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 8px;" onmouseover="this.style.boxShadow='0 4px 12px rgba(124, 92, 255, 0.4)'" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'">
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                <path d="M2 1h12l1 1v10l-1 1h-3v2l-2-2H6l-2 2v-2H2l-1-1V2l1-1z"/>
-                <path d="M5 4h1v4H5V4zm4 0h1v4H9V4z" fill="#7c5cff"/>
-              </svg>
-              Открыть на Twitch
-            </button>
-          </div>
         </div>
+
+        ${channelDetails.description ? `
+          <div class="stream-detail-section">
+            <div class="section-label">${icon('info', 14)} О канале</div>
+            <div class="stream-detail-about">${this.esc(channelDetails.description)}</div>
+          </div>` : ''}
+      </div>
+
+      <div class="dialog-foot">
+        <button id="open-stream-on-twitch" class="btn btn-secondary" type="button">
+          ${icon('external', 16)}
+          <span>Открыть на Twitch</span>
+        </button>
       </div>
     `;
 
@@ -5897,9 +6049,12 @@ class FarmingPage {
         if (!isCurrent() || !viewersEl) return;
 
         if (stats) {
-          // Обновляем зрителей
+          // Обновляем зрителей: «12,4 тыс.» и слово в нужной форме рядом
+          // («1 зритель», «3 зрителя») — подпись стоит прямо в строке
           const viewers = stats.viewers || 0;
-          viewersEl.textContent = viewers.toLocaleString();
+          viewersEl.textContent = viewers ? this.formatViewersCount(viewers) : '0';
+          const viewersLabel = document.getElementById('stream-viewers-label');
+          if (viewersLabel) viewersLabel.textContent = this.viewersWord(viewers);
           
           // Сохраняем в историю (максимум 100 значений)
           this.viewersHistory.push({
@@ -6174,22 +6329,24 @@ class FarmingPage {
     const ctx = canvas.getContext('2d');
     let isShowing = false;
     
-    // Расширяем область срабатывания - берём весь родительский контейнер со статистикой
-    const statsContainer = viewersEl.closest('[style*="text-align: center"]')?.parentElement;
-    const targetElement = statsContainer || viewersEl.parentElement || viewersEl;
-    
+    // Область срабатывания — подпись «N зрителей» целиком
+    const targetElement = viewersEl.closest('.stream-meta-viewers') || viewersEl.parentElement || viewersEl;
+
     const showChart = () => {
       if (isShowing) return;
       isShowing = true;
-      
-      const rect = viewersEl.getBoundingClientRect();
-      // Позиционируем СЛЕВА от элемента. Высоту узнаём, только когда
-      // подсказка уже видна (у скрытой она нулевая): раньше низ графика
-      // уходил за край окна, если «Зрители» были у нижней границы
-      canvas.style.left = Math.max(10, rect.left - 420) + 'px';
+
+      const rect = targetElement.getBoundingClientRect();
+      // Под подписью, правым краем к ней; не выходит за окно. Размер
+      // узнаём, только когда подсказка уже видна (у скрытой он нулевой)
       canvas.style.display = 'block';
-      const maxTop = window.innerHeight - canvas.offsetHeight - 10;
-      canvas.style.top = Math.max(10, Math.min(rect.top - 60, maxTop)) + 'px';
+      const width = canvas.offsetWidth;
+      const height = canvas.offsetHeight;
+      const left = Math.min(Math.max(10, rect.right - width), window.innerWidth - width - 10);
+      let top = rect.bottom + 8;
+      if (top + height > window.innerHeight - 10) top = Math.max(10, rect.top - height - 8);
+      canvas.style.left = Math.max(10, left) + 'px';
+      canvas.style.top = top + 'px';
       this.drawViewersChart(ctx);
     };
     
@@ -6487,6 +6644,8 @@ class FarmingPage {
       // Показываем чат с анимацией
       chatContainer.style.display = 'block';
       grid.style.gridTemplateColumns = '1fr 340px'; // Плеер + Чат
+      // Плеер с чатом — во всю ширину, колонка статуса уходит под них
+      document.getElementById('farm-hero')?.classList.add('has-chat');
 
       // Чат уже загружен в фоне ради автосбора сундуков — здесь его достаточно
       // показать. Перезагрузка сбросила бы сборщик и накопленное состояние.
@@ -6505,6 +6664,7 @@ class FarmingPage {
       chatContainer.style.opacity = '0';
       chatContainer.style.transform = 'translateX(20px)';
       grid.style.gridTemplateColumns = '1fr'; // Только плеер
+      document.getElementById('farm-hero')?.classList.remove('has-chat');
       
       setTimeout(() => {
         chatContainer.style.display = 'none';
@@ -6729,11 +6889,9 @@ class FarmingPage {
     }
 
     box.innerHTML = `
-      <button class="btn btn-primary" id="drops-next-category">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M5 3l14 9-14 9V3z"/>
-        </svg>
-        Перейти к «${this.esc(next.name)}»
+      <button class="btn btn-primary btn-sm" id="drops-next-category">
+        ${window.Icons?.get('play', 14) ?? ''}
+        <span>Перейти к «${this.esc(next.name)}»</span>
       </button>
     `;
 
@@ -6814,16 +6972,18 @@ class FarmingPage {
     // Общее экранирование страницы — одно на всё приложение
     const escape = (text) => this.esc(text);
 
+    // Тихая строка: в очереди главное — сама очередь. Одна вторичная
+    // кнопка «Добавить» и крестик «не предлагать»
     box.innerHTML = `
-      <div class="suggestion">
+      <div class="suggestion" role="status">
         <img class="suggestion-art" src="${escape(this.boxArtSrc(лучшая.game?.boxArtURL, '52x72', лучшая.game?.id))}"
              alt="" onerror="this.style.visibility='hidden'">
         <div class="suggestion-text">
           <div class="suggestion-title">${escape(game)} — ${value.perHour} ${this.plural(value.perHour, 'награда', 'награды', 'наград')} за час</div>
-          <div class="suggestion-sub">Этой категории нет в вашем списке · осталось ${window.CampaignCalendar.formatLeft(value.minutesLeft)}</div>
+          <div class="suggestion-sub">Игры нет в очереди · до конца кампании ${window.CampaignCalendar.formatLeft(value.minutesLeft)}</div>
         </div>
-        <button class="btn btn-primary suggestion-add" id="suggestion-add">Добавить</button>
-        <button class="suggestion-hide" id="suggestion-hide" title="Не предлагать эту игру">✕</button>
+        <button class="btn btn-secondary btn-sm suggestion-add" id="suggestion-add">${window.Icons?.get('plus', 14) ?? ''}<span>Добавить</span></button>
+        <button class="btn btn-ghost btn-icon btn-sm suggestion-hide" id="suggestion-hide" title="Не предлагать эту игру" aria-label="Не предлагать эту игру">${window.Icons?.get('close', 14) ?? '✕'}</button>
       </div>
     `;
 
@@ -7128,6 +7288,12 @@ class FarmingPage {
         `${name}: ${minutes} мин, не собрано наград — ${unclaimed.length}`
       );
       window.utils?.showToast(`${name}: осталось ${minutes} мин, наград не собрано ${unclaimed.length}`, 'warning');
+      window.eventLog?.add({
+        type: 'warning',
+        title: 'Кампания скоро закончится',
+        detail: `${name}: ${minutes} мин, не собрано наград — ${unclaimed.length}`,
+        game: campaign.game?.name || campaign.game?.displayName || ''
+      });
     }
   }
 
@@ -7178,7 +7344,14 @@ class FarmingPage {
             drop.claimed = true;
             this._claimRetry.delete(id);
             window.utils?.showToast(`Награда получена: ${name}`, 'success');
-            window.showDropNotification?.(name, campaign.game?.name || campaign.name || '', drop.imageURL);
+            const game = campaign.game?.name || campaign.name || '';
+            window.eventLog?.add({ type: 'drop', title: name, game, icon: drop.imageURL });
+            // «2 из 4» — сколько наград кампании уже получено, вместе с этой
+            const drops = campaign.drops || [];
+            const extra = drops.length > 1
+              ? { meta: `${drops.filter(d => this.isDropEarned(d)).length} из ${drops.length}` }
+              : undefined;
+            window.showDropNotification?.(name, game, drop.imageURL, extra);
           } else {
             failure = result?.error || 'нет ответа';
           }
@@ -7214,10 +7387,18 @@ class FarmingPage {
 
     if (attempts === 1) {
       window.utils?.showToast(`Не удалось забрать «${name}» — повторю через ${delay} мин`, 'warning');
+      // В журнал — первая неудача и окончательная; промежуточные повторы
+      // по одной и той же награде его бы только засорили. Повтор ещё
+      // впереди — это «внимание», а не ошибка: error зажигал бы точку журнала
+      // и попадал в «проблемы» сводки, хотя чаще всего второй заход удаётся
+      window.eventLog?.add({ type: 'warning', title: 'Награда не получена', detail: `${name} — повторю через ${delay} мин` });
     }
     if (attempts === FarmingPage.CLAIM_ATTEMPTS_BEFORE_GIVING_UP) {
       window.notifyFarmingEvent?.('Награда не получена', `${name}: забрать не удалось — заберите вручную`);
       window.utils?.showToast(`«${name}»: забрать не удалось — заберите вручную`, 'warning');
+      // Звук — только когда автосбор сдался: дальше нужен человек
+      window.eventLog?.add({ type: 'error', title: 'Награда не получена', detail: `${name}: заберите вручную на странице «Дропсы»` });
+      window.chime?.play?.('attention');
     }
   }
 
@@ -7366,30 +7547,34 @@ class FarmingPage {
     console.warn('[Плеер] Стрим закончился, переключиться некуда:', text);
     window.utils?.showToast(`${text}. Фарминг остановлен`, 'warning');
     window.notifyFarmingEvent?.('Фарминг остановлен', text);
+    window.eventLog?.add({ type: 'error', title: 'Фарминг остановлен', detail: text });
+    window.chime?.play?.('attention');
     this.stopFarming(false);
     window.shutdownManager?.onStreamEnded();
   }
 
-  // Форматирование оставшегося времени
+  // Остаток срока кампании для строки категории: «19 д 9 ч», «5 ч», «40 мин».
+  // Просто текст — вид задаёт .category-time-left (тихий цвет, точка перед
+  // ним), а не вложенный span с прозрачностью
   formatTimeRemaining(endsAt) {
     if (!endsAt) return '';
-    
+
     const now = new Date();
     const endDate = new Date(endsAt);
     const diff = endDate - now;
-    
-    if (diff <= 0) return ' <span style="opacity: 0.6;">(завершено)</span>';
-    
+
+    if (!(diff > 0)) return 'завершена';
+
     const days = Math.floor(diff / (1000 * 60 * 60 * 24));
     const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-    
+
     if (days > 0) {
-      return ` <span style="opacity: 0.6;">(${days}д ${hours}ч)</span>`;
+      return hours > 0 ? `${days} д ${hours} ч` : `${days} д`;
     } else if (hours > 0) {
-      return ` <span style="opacity: 0.6;">(${hours}ч)</span>`;
+      return `${hours} ч`;
     } else {
       const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-      return ` <span style="opacity: 0.6;">(${minutes}м)</span>`;
+      return `${minutes} мин`;
     }
   }
 
@@ -7502,7 +7687,10 @@ window.FarmingPage = FarmingPage;
  * проверялась: переключатель ни на что не влиял, уведомления приходили
  * всегда. Теперь он работает.
  */
-window.showDropNotification = function(dropName, gameName, dropIcon = null) {
+// extra — необязательный { kind, meta }: «2 из 4» под названием награды или
+// вид окна (сводка, проверка). Пробрасывается в main как есть; старые
+// вызовы без него работают по-прежнему
+window.showDropNotification = function(dropName, gameName, dropIcon = null, extra = undefined) {
   if (window.settings && window.settings.get('notifyOnDropClaimed') === false) return;
   // Окно о награде — тоже уведомление Windows: его глушат и общий
   // выключатель, и тихие часы. Раньше оно всплывало поверх всего даже
@@ -7515,7 +7703,11 @@ window.showDropNotification = function(dropName, gameName, dropIcon = null) {
   }
 
   if (window.electronAPI && window.electronAPI.showDropNotification) {
-    window.electronAPI.showDropNotification(dropName, gameName, dropIcon);
+    if (extra && typeof extra === 'object') {
+      window.electronAPI.showDropNotification(dropName, gameName, dropIcon, extra);
+    } else {
+      window.electronAPI.showDropNotification(dropName, gameName, dropIcon);
+    }
   } else {
     console.error('[DropNotification] electronAPI.showDropNotification not available');
   }

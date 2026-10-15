@@ -105,6 +105,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Игровой режим: main следит за процессами, здесь — плеер и значок
   const applyGameMode = (state, announce) => {
     if (!state) return;
+    // Звук (chime.js) во время игры молчит, кроме «нужно внимание»: ему
+    // нужно знать состояние, а спрашивать main на каждый сигнал незачем
+    window.gameModeState = { active: !!state.active, game: state.game || null };
     // Стрим проверяем до переключения: плеер на время перезагрузки
     // канала на миг остаётся без него
     const streaming = !!window.playerManager?.hasStream?.();
@@ -125,6 +128,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         ? 'Запущена ' + (state.game?.title || 'игра') + ': стрим на минимуме, чтобы не мешать'
         : 'Игра закрыта: качество и скорость стрима возвращены', 'info');
     }
+    // В журнал — каждое переключение: утром по нему видно, почему ночью
+    // стрим шёл на минимальном качестве
+    if (announce) {
+      window.eventLog?.add({
+        type: 'game-mode',
+        title: state.active ? 'Игровой режим включён' : 'Игровой режим выключен',
+        detail: state.active
+          ? (state.game?.title || 'Запущена игра') + ' — стрим на минимальном качестве'
+          : 'Качество стрима возвращено'
+      });
+    }
   };
   window.electronAPI?.getGameMode?.().then(state => applyGameMode(state, false)).catch(() => {});
   window.electronAPI?.onGameMode?.((state) => applyGameMode(state, true));
@@ -134,6 +148,31 @@ document.addEventListener('DOMContentLoaded', async () => {
     const points = Number(data?.points) || 0;
     window.utils?.showToast(points > 0 ? 'Сундук собран: +' + points + ' баллов' : 'Сундук собран', 'success');
     window.sessionState?.noteChest?.(points);
+    window.eventLog?.add({ type: 'chest', title: 'Сундук собран', detail: data?.channel || '', points });
+    window.chime?.play('chest');
+  });
+
+  // Системное уведомление при окне в фокусе: main его не показывает, а
+  // присылает сюда — человек и так смотрит в окно, и всплывашка Windows
+  // в углу экрана только дублировала бы то, что видно на странице
+  window.electronAPI?.onInAppNotice?.((notice) => {
+    const title = String(notice?.title || '').trim();
+    const body = String(notice?.body || '').trim();
+    if (!title && !body) return;
+    const noticeAt = Date.now();
+    // Небольшая пауза: страница, позвавшая уведомление, часто сразу
+    // показывает и свой тост — тогда второй, о том же, не нужен
+    setTimeout(() => {
+      if (window.utils.hasRecentToast(noticeAt - 2000, [title, body])) return;
+      const problem = /остановлен|не получен|не удалось|ошибк|нет входа|не засчит/i.test(title + ' ' + body);
+      window.utils.showToast(body || title, problem ? 'warning' : 'info', {
+        title: body ? title : undefined,
+        // Пользователь включил уведомления об этих событиях; выключенные
+        // всплывающие сообщения не должны их терять — системного
+        // уведомления вместо тоста уже не будет
+        force: true
+      });
+    }, 400);
   });
 
   // Горячие клавиши работают поверх других окон, поэтому обрабатываются
@@ -287,22 +326,59 @@ window.utils = {
     return Math.min(15000, Math.max(3000, 60 * String(text ?? '').length));
   },
 
+  /**
+   * Был ли тост с похожим текстом после момента since: в окне уже
+   * сказано то же самое, повторять незачем. Сравнение грубое, по
+   * вхождению: «Канал в эфире: Overwatch» содержит и «Overwatch».
+   */
+  hasRecentToast(since, texts = []) {
+    const registry = window._toastRegistry;
+    if (!registry) return false;
+    const wanted = texts.map(t => String(t || '').toLowerCase().trim()).filter(t => t.length >= 6);
+    for (const entry of registry.values()) {
+      if (entry.leaving || entry.createdAt < since) continue;
+      const shown = (entry.title + ' ' + entry.text).toLowerCase();
+      if (!wanted.length || wanted.some(t => shown.includes(t))) return true;
+      // Свой тост страница показала в тот же миг — значит, о событии уже
+      // сказано, пусть и другими словами
+      if (entry.createdAt >= since && entry.type !== 'info') return true;
+    }
+    return false;
+  },
+
+  /**
+   * Короткое сообщение в правом нижнем углу.
+   *
+   * @param {string} message
+   * @param {'info'|'success'|'warning'|'error'} [type]
+   * @param {object} [options]
+   *   title      — жирная первая строка;
+   *   action     — { label, onClick }: кнопка, после нажатия тост закрывается;
+   *   duration   — сколько держать, мс (иначе — по длине текста);
+   *   sticky     — не гаснуть самому (ошибки так ведут себя всегда);
+   *   userAction — ответ на действие пользователя (см. isUserActionToast);
+   *   force      — показать и при выключенных всплывающих сообщениях.
+   */
   showToast(message, type = 'info', options = {}) {
+    const opts = options && typeof options === 'object' ? options : {};
+    if (!['info', 'success', 'warning', 'error'].includes(type)) type = 'info';
+
     // Выключенная настройка всплывающих сообщений глушит только фоновые
     // новости. Ответ на клик гасить нельзя: с выключенной настройкой
     // «Начать фарминг» без категорий не давал никакой реакции.
     // Ошибки показываем всегда — молча терять их нельзя.
-    if (type !== 'error' && window.settings && window.settings.get('toastNotifications') === false &&
-        !window.utils.isUserActionToast(options)) {
+    if (type !== 'error' && !opts.force && window.settings && window.settings.get('toastNotifications') === false &&
+        !window.utils.isUserActionToast(opts)) {
       return;
     }
 
-    // Создаём контейнер для toast если его еще нет
     let toastContainer = document.getElementById('toast-container');
     if (!toastContainer) {
       toastContainer = document.createElement('div');
       toastContainer.id = 'toast-container';
       toastContainer.className = 'toast-container';
+      toastContainer.setAttribute('role', 'region');
+      toastContainer.setAttribute('aria-label', 'Уведомления');
       document.body.appendChild(toastContainer);
     }
 
@@ -313,7 +389,8 @@ window.utils = {
     if (!window._toastRegistry) window._toastRegistry = new Map();
     const registry = window._toastRegistry;
     const text = String(message ?? '');
-    const key = type + '|' + text;
+    const title = opts.title ? String(opts.title) : '';
+    const key = type + '|' + title + '|' + text;
 
     // Больше трёх тостов разом никто не читает: при переборе категорий их
     // высыпалось по дюжине за пару секунд, и они закрывали экран
@@ -336,7 +413,16 @@ window.utils = {
         if (container && container.children.length === 0 && container.parentNode) {
           container.parentNode.removeChild(container);
         }
-      }, 300);
+      }, 220);
+    };
+
+    // Часы тоста. Наведение ставит их на паузу вместе с полосой: тост с
+    // длинным текстом раньше исчезал прямо из-под курсора
+    const runTimer = (entry) => {
+      clearTimeout(entry.hideTimer);
+      if (entry.sticky || entry.paused || entry.leaving) return;
+      entry.startedAt = Date.now();
+      entry.hideTimer = setTimeout(() => dismiss(entry), entry.remaining);
     };
 
     const scheduleRemoval = (entry) => {
@@ -354,10 +440,28 @@ window.utils = {
       if (progress) {
         progress.style.animation = 'none';
         void progress.offsetWidth;
-        progress.style.animation = `toastProgress ${entry.duration}ms linear forwards`;
+        progress.style.animation = `toast-progress ${entry.duration}ms linear forwards`;
       }
 
-      entry.hideTimer = setTimeout(() => dismiss(entry), entry.duration);
+      entry.remaining = entry.duration;
+      runTimer(entry);
+    };
+
+    const pause = (entry) => {
+      if (entry.sticky || entry.paused || entry.leaving) return;
+      clearTimeout(entry.hideTimer);
+      entry.remaining = Math.max(0, entry.remaining - (Date.now() - entry.startedAt));
+      entry.paused = true;
+      entry.el.classList.add('is-paused');
+    };
+
+    const resume = (entry) => {
+      if (!entry.paused) return;
+      entry.paused = false;
+      entry.el.classList.remove('is-paused');
+      // Ушёл курсор — дочитать последнюю строчку ещё успеваем
+      entry.remaining = Math.max(entry.remaining, 1200);
+      runTimer(entry);
     };
 
     // Лишние сверх лимита уходят, начиная с самых старых. Ошибки держим
@@ -372,8 +476,8 @@ window.utils = {
       let extra = visible.length - MAX_VISIBLE;
       if (extra <= 0) return;
       const order = [
-        ...visible.filter(e => e !== keep && !e.el.classList.contains('toast-error')),
-        ...visible.filter(e => e !== keep && e.el.classList.contains('toast-error'))
+        ...visible.filter(e => e !== keep && e.type !== 'error'),
+        ...visible.filter(e => e !== keep && e.type === 'error')
       ];
       for (const old of order) {
         if (extra <= 0) break;
@@ -382,13 +486,16 @@ window.utils = {
       }
     };
 
+    window._lastToastAt = Date.now();
+
     const existing = registry.get(key);
     if (existing && existing.el.isConnected) {
       existing.count += 1;
+      existing.createdAt = Date.now();
       const counter = existing.el.querySelector('.toast-count');
       if (counter) {
         counter.textContent = '×' + existing.count;
-        counter.style.display = 'inline-block';
+        counter.hidden = false;
       }
       // Повтор мог прийти, когда плашка уже начала гаснуть, — возвращаем
       // её, иначе она висела бы невидимой ещё три секунды
@@ -400,41 +507,73 @@ window.utils = {
       return;
     }
 
-    // Иконки для разных типов
-    const icons = {
-      info: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>',
-      success: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
-      error: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>',
-      warning: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>'
+    const iconName = { info: 'info', success: 'check', warning: 'warning', error: 'error' }[type];
+    const fallbackIcons = {
+      info: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>',
+      success: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
+      warning: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>',
+      error: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>'
     };
+    const iconSvg = window.Icons?.get?.(iconName, 16) || fallbackIcons[type];
+    const closeSvg = window.Icons?.get?.('close', 14) ||
+      '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
 
-    const sticky = type === 'error';
+    const sticky = opts.sticky === true || (type === 'error' && opts.sticky !== false);
+    const action = opts.action && typeof opts.action.onClick === 'function' && opts.action.label
+      ? opts.action : null;
+    const duration = Number(opts.duration) > 0
+      ? Math.min(60000, Number(opts.duration))
+      : window.utils.toastDuration(title ? title + ' ' + text : text) + (action ? 3000 : 0);
+
     const toast = document.createElement('div');
     toast.className = `toast toast-${type}`;
-    toast.title = 'Нажмите, чтобы закрыть';
+    // Ошибки и предупреждения зачитываются сразу, остальное — в очередь
+    toast.setAttribute('role', type === 'error' || type === 'warning' ? 'alert' : 'status');
     toast.innerHTML = `
-      <div class="toast-icon">${icons[type] || icons.info}</div>
-      <div class="toast-message"></div>
-      <span class="toast-count" style="display: none;"></span>
-      ${sticky
-        ? `<button type="button" class="toast-close" aria-label="Закрыть"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button>`
-        : '<div class="toast-progress"></div>'}
+      <div class="toast-icon" aria-hidden="true">${iconSvg}</div>
+      <div class="toast-body">
+        ${title ? '<div class="toast-title"></div>' : ''}
+        <div class="toast-message"></div>
+        ${action ? '<button type="button" class="btn btn-ghost btn-sm toast-action"></button>' : ''}
+      </div>
+      <span class="badge toast-count" hidden></span>
+      <button type="button" class="btn btn-ghost btn-icon btn-sm toast-close" title="Закрыть" aria-label="Закрыть">${closeSvg}</button>
+      ${sticky ? '' : '<div class="toast-progress" aria-hidden="true"></div>'}
     `;
     // Текст — только как текст. В сообщения попадают названия категорий,
     // имена каналов и ответы Twitch; через innerHTML строка вида
     // <img onerror=…> исполнилась бы в окне с доступом к electronAPI
     toast.querySelector('.toast-message').textContent = text;
+    if (title) toast.querySelector('.toast-title').textContent = title;
+    if (action) toast.querySelector('.toast-action').textContent = String(action.label);
 
     toastContainer.appendChild(toast);
 
     const entry = {
-      el: toast, key, count: 1, hideTimer: null, removeTimer: null, leaving: false,
-      sticky, duration: window.utils.toastDuration(text)
+      el: toast, key, type, title, text, count: 1, hideTimer: null, removeTimer: null, leaving: false,
+      sticky, duration, remaining: duration, startedAt: Date.now(), paused: false, createdAt: Date.now()
     };
 
-    // Любой тост закрывается щелчком; для ошибки это единственный способ
-    toast.addEventListener('click', () => {
-      if (!entry.leaving) dismiss(entry, true);
+    // Любой тост закрывается щелчком; для ошибки это главный способ.
+    // Кнопка действия тоже закрывает, но сначала делает своё
+    toast.addEventListener('click', (e) => {
+      if (entry.leaving) return;
+      const actionBtn = e.target.closest?.('.toast-action');
+      if (actionBtn) {
+        e.stopPropagation();
+        try {
+          action.onClick();
+        } catch (err) {
+          console.warn('[Тост] Действие не выполнено:', err?.message);
+        }
+      }
+      dismiss(entry, true);
+    });
+    toast.addEventListener('mouseenter', () => pause(entry));
+    toast.addEventListener('mouseleave', () => resume(entry));
+    toast.addEventListener('focusin', () => pause(entry));
+    toast.addEventListener('focusout', (e) => {
+      if (!toast.contains(e.relatedTarget)) resume(entry);
     });
 
     setTimeout(() => {
@@ -447,110 +586,169 @@ window.utils = {
     enforceLimit(entry);
   },
 
-  showConfirmation(title, message = '') {
+  /**
+   * Окно подтверждения на общих классах .dialog*.
+   *
+   * Поведение одинаковое для всех окон: Esc — отмена, Enter — подтвердить,
+   * фокус сразу на кнопке подтверждения, после закрытия — обратно туда,
+   * откуда открыли. Щелчок по фону отменяет, только если и нажали на фоне:
+   * иначе выделение текста с отпусканием мыши снаружи закрывало окно.
+   *
+   * contentHtml — готовая разметка тела (её экранирует вызывающий).
+   */
+  openConfirmDialog({ titleText = '', messageText = '', contentHtml = '', confirmHtml, cancelHtml, confirmClass = 'btn-primary', size = 'sm' } = {}) {
     return new Promise((resolve) => {
+      const esc = window.escapeHtml;
+      // .btn-warning в наборе компонентов нет: «Выйти» и подобное — это
+      // необратимое действие, и красная кнопка честнее безликой
+      const cls = confirmClass === 'btn-warning' ? 'btn-danger' : (confirmClass || 'btn-primary');
+      const custom = !!contentHtml;
+      const returnFocus = document.activeElement;
+
       const modal = document.createElement('div');
       modal.id = 'confirmation-modal';
-      modal.style.cssText = `
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: rgba(0, 0, 0, 0.7);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        z-index: 10001;
-      `;
-
-      // Заголовок и текст — обычные строки, не разметка: экранируем, чтобы
-      // имя канала в вопросе не могло стать HTML
+      modal.className = 'dialog-backdrop';
       modal.innerHTML = `
-        <div style="background: var(--bg-primary); border-radius: var(--radius-md); padding: 24px; max-width: 400px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5); border: 1px solid var(--border-color);">
-          <h2 style="color: var(--text-primary); margin: 0 0 8px 0; font-size: 18px; font-weight: 600;">${window.escapeHtml(title)}</h2>
-          ${message ? `<p style="color: var(--text-secondary); margin: 0 0 20px 0; font-size: 14px;">${window.escapeHtml(message)}</p>` : ''}
-          <div style="display: flex; gap: 12px; justify-content: flex-end;">
-            <button class="btn btn-secondary" id="confirm-cancel" style="min-width: 100px;">Отмена</button>
-            <button class="btn btn-primary" id="confirm-ok" style="min-width: 100px;">Подтвердить</button>
+        <div class="dialog ${size === 'md' ? '' : 'dialog-' + size} confirm-dialog${custom ? ' is-custom' : ''}" role="alertdialog" aria-modal="true"
+             ${titleText ? 'aria-labelledby="confirm-title"' : ''} ${messageText ? 'aria-describedby="confirm-text"' : ''}>
+          ${titleText ? `
+            <div class="dialog-head">
+              <div><h2 class="dialog-title" id="confirm-title">${esc(titleText)}</h2></div>
+            </div>` : ''}
+          ${custom
+            ? `<div class="dialog-body">${contentHtml}</div>`
+            : (messageText ? `<div class="dialog-body"><p id="confirm-text">${esc(messageText)}</p></div>` : '')}
+          <div class="dialog-foot">
+            <button type="button" class="btn btn-secondary" id="confirm-cancel">${cancelHtml}</button>
+            <button type="button" class="btn ${cls}" id="confirm-ok">${confirmHtml}</button>
           </div>
         </div>
       `;
 
       document.body.appendChild(modal);
+      const okBtn = modal.querySelector('#confirm-ok');
+      const cancelBtn = modal.querySelector('#confirm-cancel');
 
-      document.getElementById('confirm-ok').addEventListener('click', () => {
-        document.body.removeChild(modal);
-        resolve(true);
-      });
-
-      document.getElementById('confirm-cancel').addEventListener('click', () => {
-        document.body.removeChild(modal);
-        resolve(false);
-      });
-
-      modal.addEventListener('click', (e) => {
-        if (e.target === modal) {
-          document.body.removeChild(modal);
-          resolve(false);
+      let settled = false;
+      const finish = (value) => {
+        if (settled) return;
+        settled = true;
+        document.removeEventListener('keydown', onKey, true);
+        modal.remove();
+        if (returnFocus && returnFocus.isConnected && typeof returnFocus.focus === 'function') {
+          try { returnFocus.focus({ preventScroll: true }); } catch (e) { /* элемент ушёл */ }
         }
+        resolve(value);
+      };
+
+      const onKey = (e) => {
+        if (!modal.isConnected) return;
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          e.stopPropagation();
+          finish(false);
+        } else if (e.key === 'Enter') {
+          // Enter на кнопке нажимает её саму; в поле ввода — не подтверждение
+          const t = e.target;
+          if (t instanceof Element && (t.closest('button') || t.matches('textarea, input[type="text"], input[type="search"]'))) return;
+          if (okBtn.disabled) return;
+          e.preventDefault();
+          finish(true);
+        } else if (e.key === 'Tab') {
+          // Фокус не уходит за пределы окна: под фоном — вся страница
+          const focusables = [...modal.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')]
+            .filter(el => !el.disabled && el.offsetParent !== null);
+          if (!focusables.length) return;
+          const first = focusables[0];
+          const last = focusables[focusables.length - 1];
+          if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+          else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+        }
+      };
+      // Фаза перехвата: окна ниже (журнал, «Что нового») не должны
+      // получить тот же Esc и закрыться вместе с подтверждением
+      document.addEventListener('keydown', onKey, true);
+
+      okBtn.addEventListener('click', () => finish(true));
+      cancelBtn.addEventListener('click', () => finish(false));
+
+      let pressedOnBackdrop = false;
+      modal.addEventListener('mousedown', (e) => { pressedOnBackdrop = e.target === modal; });
+      modal.addEventListener('click', (e) => {
+        if (pressedOnBackdrop && e.target === modal) finish(false);
+        pressedOnBackdrop = false;
       });
+
+      setTimeout(() => {
+        if (!settled) okBtn.focus({ preventScroll: true });
+      }, 0);
     });
   },
 
-  showCustomConfirmation(contentHtml, options = {}) {
-    return new Promise((resolve) => {
-      const {
-        confirmText = 'Подтвердить',
-        cancelText = 'Отмена',
-        confirmClass = 'btn-primary'
-      } = options;
-
-      const modal = document.createElement('div');
-      modal.id = 'confirmation-modal';
-      modal.style.cssText = `
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: rgba(0, 0, 0, 0.7);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        z-index: 10001;
-        backdrop-filter: blur(4px);
-      `;
-
-      modal.innerHTML = `
-        <div style="background: var(--bg-primary); border-radius: var(--radius-md); padding: 32px; max-width: 440px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6); border: 1px solid var(--border-color); animation: modalSlideIn 0.3s ease;">
-          ${contentHtml}
-          <div style="display: flex; gap: 12px; justify-content: center; margin-top: 24px;">
-            <button class="btn btn-secondary" id="confirm-cancel" style="flex: 1; max-width: 160px; padding: 12px 24px; font-size: 15px; font-weight: 600; border-radius: var(--radius-md); transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; text-align: center;">${cancelText}</button>
-            <button class="btn ${confirmClass}" id="confirm-ok" style="flex: 1; max-width: 160px; padding: 12px 24px; font-size: 15px; font-weight: 600; border-radius: var(--radius-md); transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; text-align: center;">${confirmText}</button>
-          </div>
-        </div>
-      `;
-
-      document.body.appendChild(modal);
-
-      document.getElementById('confirm-ok').addEventListener('click', () => {
-        document.body.removeChild(modal);
-        resolve(true);
-      });
-
-      document.getElementById('confirm-cancel').addEventListener('click', () => {
-        document.body.removeChild(modal);
-        resolve(false);
-      });
-
-      modal.addEventListener('click', (e) => {
-        if (e.target === modal) {
-          document.body.removeChild(modal);
-          resolve(false);
-        }
-      });
+  /**
+   * Вопрос с двумя кнопками. title и message — обычные строки (экранируются).
+   * options: confirmText, cancelText, confirmClass ('btn-danger' для
+   * опасного — тогда и подпись нужна глаголом: «Удалить», «Очистить»).
+   */
+  showConfirmation(title, message = '', options = {}) {
+    const esc = window.escapeHtml;
+    const {
+      confirmText = 'Подтвердить',
+      cancelText = 'Отмена',
+      confirmClass = 'btn-primary'
+    } = options || {};
+    return window.utils.openConfirmDialog({
+      titleText: title,
+      messageText: message,
+      confirmHtml: esc(confirmText),
+      cancelHtml: esc(cancelText),
+      confirmClass
     });
+  },
+
+  /**
+   * Подтверждение со своей разметкой. contentHtml и подписи кнопок —
+   * готовая разметка: их экранирует вызывающий (так было и раньше).
+   */
+  showCustomConfirmation(contentHtml, options = {}) {
+    const {
+      confirmText = 'Подтвердить',
+      cancelText = 'Отмена',
+      confirmClass = 'btn-primary'
+    } = options || {};
+    return window.utils.openConfirmDialog({
+      contentHtml: String(contentHtml ?? ''),
+      confirmHtml: confirmText,
+      cancelHtml: cancelText,
+      confirmClass,
+      size: 'md'
+    });
+  },
+
+  /**
+   * Проверка окна о награде из настроек. Показывает окно всегда — это
+   * явное действие, — и честно говорит, если настоящие уведомления сейчас
+   * не всплывут: иначе проверка выглядела бы работающей, а ночью окна не было.
+   */
+  testDropNotification() {
+    const api = window.electronAPI;
+    if (!api?.showDropNotification) {
+      window.utils.showToast('Окно уведомлений недоступно', 'error');
+      return false;
+    }
+    api.showDropNotification('Так будет выглядеть награда', 'WatchTwitch', null, { kind: 'test' });
+
+    const s = window.settings;
+    let note = '';
+    if (s && (s.get('systemNotifications') === false || s.get('notifications') === false)) {
+      note = 'Уведомления Windows сейчас выключены — окно показано только для проверки';
+    } else if (s && s.get('notifyOnDropClaimed') === false) {
+      note = 'Окна о полученных наградах сейчас выключены — это только проверка';
+    } else if (window.QuietHours?.active?.()) {
+      note = 'Сейчас тихие часы: до их конца окна о наградах не всплывают';
+    }
+    if (note) window.utils.showToast(note, 'info', { userAction: true });
+    return true;
   }
 };
 
@@ -560,336 +758,4 @@ window.utils = {
 window.addEventListener('pointerdown', () => window.utils.noteUserAction(), true);
 window.addEventListener('keydown', () => window.utils.noteUserAction(), true);
 
-// Add toast styles
-const style = document.createElement('style');
-style.textContent = `
-  .toast-container {
-    position: fixed;
-    top: 60px;
-    right: 20px;
-    z-index: 10000;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    pointer-events: none;
-  }
-
-  .toast {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 14px 18px;
-    padding-bottom: 10px;
-    border-radius: var(--radius-md);
-    color: white;
-    font-weight: 500;
-    font-size: 14px;
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    box-shadow: 
-      0 8px 32px rgba(0, 0, 0, 0.4),
-      0 2px 8px rgba(0, 0, 0, 0.2),
-      inset 0 1px 0 rgba(255, 255, 255, 0.1);
-    opacity: 0;
-    transform: translateX(400px) scale(0.95);
-    transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
-    pointer-events: auto;
-    cursor: pointer;
-    max-width: 380px;
-    min-width: 280px;
-    word-wrap: break-word;
-    position: relative;
-    overflow: hidden;
-    flex-wrap: wrap;
-  }
-
-  .toast::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 2px;
-    background: rgba(255,255,255,0.4);
-  }
-
-  .toast-progress {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    height: 3px;
-    width: 100%;
-    background: rgba(255, 255, 255, 0.3);
-    transform-origin: left;
-    animation: toastProgress 3s linear forwards;
-  }
-
-  @keyframes toastProgress {
-    from {
-      transform: scaleX(1);
-    }
-    to {
-      transform: scaleX(0);
-    }
-  }
-
-  .toast-show {
-    opacity: 1;
-    transform: translateX(0) scale(1);
-  }
-
-  .toast-icon {
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 32px;
-    height: 32px;
-    border-radius: var(--radius-md);
-    background: rgba(255, 255, 255, 0.15);
-  }
-
-  .toast-message {
-    flex: 1;
-    line-height: 1.4;
-  }
-
-  /* Счётчик повторов: показывается, когда одно и то же сообщение
-     пришло несколько раз подряд — вместо стопки одинаковых плашек */
-  .toast-count {
-    flex-shrink: 0;
-    font-size: 12px;
-    font-weight: 600;
-    font-variant-numeric: tabular-nums;
-    padding: 2px 7px;
-    border-radius: var(--radius-sm);
-    background: rgba(255, 255, 255, 0.22);
-  }
-
-  /* Крестик у ошибки: она не гаснет сама и ждёт щелчка */
-  .toast-close {
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 24px;
-    height: 24px;
-    padding: 0;
-    border: none;
-    border-radius: var(--radius-sm);
-    background: transparent;
-    color: inherit;
-    opacity: 0.8;
-    cursor: pointer;
-  }
-
-  .toast-close:hover {
-    opacity: 1;
-    background: rgba(255, 255, 255, 0.18);
-  }
-
-  .toast-info {
-    background: rgba(124, 92, 255, 0.95);
-    border-color: rgba(124, 92, 255, 0.4);
-  }
-
-  .toast-info .toast-icon {
-    background: rgba(255, 255, 255, 0.2);
-  }
-  
-  /* На светлом зелёном и оранжевом белый текст давал контраст около
-     2,2:1 и плохо читался. Тёмный текст на тех же цветах — около 9:1 */
-  .toast-success {
-    background: rgba(53, 208, 138, 0.95);
-    border-color: rgba(53, 208, 138, 0.4);
-    color: #0a0b0d;
-  }
-
-  .toast-success .toast-icon {
-    background: rgba(10, 11, 13, 0.12);
-  }
-  
-  .toast-error {
-    background: rgba(240, 85, 95, 0.95);
-    border-color: rgba(240, 85, 95, 0.4);
-  }
-
-  .toast-error .toast-icon {
-    background: rgba(255, 255, 255, 0.2);
-  }
-  
-  .toast-warning {
-    background: rgba(240, 168, 60, 0.95);
-    border-color: rgba(240, 168, 60, 0.4);
-    color: #0a0b0d;
-  }
-
-  .toast-warning .toast-icon {
-    background: rgba(10, 11, 13, 0.12);
-  }
-
-  /* Полоса и счётчик на светлом фоне — тёмные, белые там не видны */
-  .toast-success .toast-progress,
-  .toast-warning .toast-progress {
-    background: rgba(10, 11, 13, 0.25);
-  }
-
-  .toast-success .toast-count,
-  .toast-warning .toast-count {
-    background: rgba(10, 11, 13, 0.14);
-  }
-
-  .auth-modal {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    z-index: 10000;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 24px;
-    box-sizing: border-box;
-  }
-
-  .auth-modal-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.7);
-    backdrop-filter: blur(4px);
-    z-index: 9999;
-  }
-
-  .auth-modal-content {
-    position: relative;
-    z-index: 10001;
-    background: var(--card-bg);
-    border-radius: var(--radius-md);
-    border: 1px solid var(--border-color);
-    overflow: hidden;
-    max-width: 500px;
-    max-height: 85vh;
-    width: 100%;
-    display: flex;
-    flex-direction: column;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-  }
-
-  .auth-modal-header {
-    padding: 20px;
-    border-bottom: 1px solid var(--border-color);
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    flex-shrink: 0;
-  }
-
-  .auth-modal-header h3 {
-    margin: 0;
-    color: var(--text-primary);
-  }
-
-  .close-modal {
-    background: none;
-    border: none;
-    color: var(--text-secondary);
-    cursor: pointer;
-    padding: 8px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 40px;
-    height: 40px;
-    border-radius: var(--radius-md);
-    transition: all 0.2s ease;
-    flex-shrink: 0;
-  }
-
-  .close-modal:hover {
-    background: var(--input-bg);
-    color: var(--text-primary);
-  }
-
-  .auth-modal-body {
-    padding: 20px;
-    overflow-y: auto;
-    flex: 1;
-  }
-
-  .auth-modal-body::-webkit-scrollbar {
-    width: 6px;
-  }
-
-  .auth-modal-body::-webkit-scrollbar-track {
-    background: transparent;
-  }
-
-  .auth-modal-body::-webkit-scrollbar-thumb {
-    background: rgba(124, 92, 255, 0.3);
-    border-radius: var(--radius-sm);
-  }
-
-  .auth-modal-body::-webkit-scrollbar-thumb:hover {
-    background: rgba(124, 92, 255, 0.5);
-  }
-
-  .shutdown-modal {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    z-index: 10000;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .modal-overlay {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.8);
-  }
-
-  .modal-content {
-    position: relative;
-    background: var(--card-bg);
-    padding: 32px;
-    border-radius: var(--radius-md);
-    border: 1px solid var(--border-color);
-    text-align: center;
-    min-width: 400px;
-  }
-
-  .modal-content h3 {
-    color: var(--text-primary);
-    margin-bottom: 16px;
-    font-size: 24px;
-  }
-
-  .modal-content p {
-    color: var(--text-secondary);
-    margin-bottom: 24px;
-    font-size: 16px;
-  }
-
-  .modal-content #countdown {
-    color: var(--error-color);
-    font-weight: 700;
-    font-size: 20px;
-  }
-
-  .modal-actions {
-    display: flex;
-    gap: 12px;
-    justify-content: center;
-  }
-`;
-document.head.appendChild(style);
+// Стили тостов, подтверждений и окон входа — в styles/notifications.css

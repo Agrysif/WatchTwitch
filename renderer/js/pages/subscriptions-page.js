@@ -12,6 +12,11 @@ class SubscriptionsPage {
   // столько назад: по давно сохранённой дате отписывать нельзя — канал мог
   // с тех пор стримить
   static CLEANUP_CHECK_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+  // Где запомнить выбранный вид (список или плитка). Это удобство одного
+  // окна, а не данные: при пустом или недоступном хранилище будет список
+  static VIEW_STORAGE_KEY = 'subscriptionsView';
+  // Названия фильтров — для пустого состояния «ничего не нашлось среди …»
+  static FILTER_NAMES = { active: 'В эфире', inactive: 'Неактивные', favorites: 'Избранные', 'with-drops': 'С дропсами' };
 
   constructor() {
     this.i18n = window.i18n;
@@ -30,11 +35,20 @@ class SubscriptionsPage {
       active: 0,
       inactive: 0
     };
+    // Окно канала: для кого открыто и куда вернуть фокус после закрытия
+    this._modalSub = null;
+    this._modalReturnId = null;
+    this._onModalKeydown = (e) => this.handleModalKeydown(e);
+    this._stickyObserver = null;
     this.init();
   }
 
   async init() {
+    // Вид восстанавливаем до первой отрисовки, иначе список мелькнул бы
+    // строками и тут же перестроился в плитку
+    this.restoreViewMode();
     this.setupEventListeners();
+    this.setupStickyToolbar();
     // Переключатель приоритета читаем сразу, а не после ответа Twitch:
     // раньше при неудачной загрузке он так и оставался выключенным, хотя
     // настройка включена и фарминг её учитывает
@@ -48,9 +62,15 @@ class SubscriptionsPage {
    * Раньше метода не было: загрузка, начатая до перехода, доходила до
    * обращения к уже удалённым элементам и показывала на чужой странице
    * красное «Ошибка загрузки подписок».
+   *
+   * Слушатель Esc окна канала висит на document и пережил бы страницу,
+   * поэтому снимается здесь же, как и наблюдатель за панелью поиска.
    */
   destroy() {
     this._destroyed = true;
+    document.removeEventListener('keydown', this._onModalKeydown, true);
+    this._stickyObserver?.disconnect();
+    this._stickyObserver = null;
   }
 
   // Ответ пришёл, когда страница уже закрыта или запущена новая загрузка
@@ -77,17 +97,53 @@ class SubscriptionsPage {
     return `[data-channel-id="${CSS.escape(String(id))}"]`;
   }
 
+  // Иконка из общего набора (dom-helpers.js). Набор грузится раньше
+  // страниц, но без него страница не должна падать — тогда кнопка без значка
+  icon(name, size = 16) {
+    return window.Icons?.get(name, size) ?? '';
+  }
+
+  // Канал по data-channel-id строки. Ищем в полном списке: объекты в
+  // отфильтрованном — те же самые
+  findSub(id) {
+    if (id == null) return null;
+    const key = String(id);
+    return this.subscriptions.find(s => String(s.id) === key) || null;
+  }
+
+  // Этот канал сейчас смотрит фарминг — строка помечается «Смотрим сейчас»
+  isCurrentChannel(sub) {
+    const login = window.farmingPage?.currentStream?.login;
+    return !!login && !!sub?.login && String(login).toLowerCase() === String(sub.login).toLowerCase();
+  }
+
+  openOnTwitch(sub) {
+    if (!sub?.login) return;
+    window.electronAPI.openExternal(`https://www.twitch.tv/${encodeURIComponent(sub.login)}`);
+  }
+
+  /**
+   * Обработчики страницы.
+   *
+   * Строки списка перерисовываются целиком (поиск, фильтр, подробности
+   * каналов), поэтому клики, клавиши и перетаскивание слушает сам список,
+   * а не каждая строка. Раньше на каждую карточку вешалось по шесть
+   * обработчиков при каждой отрисовке, а обновление одной карточки
+   * теряло обработчики её кнопок.
+   */
   setupEventListeners() {
     // Фильтры
-    document.querySelectorAll('.filter-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        const btn = e.target.closest('.filter-btn');
-        if (!btn) return;
-        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        this.currentFilter = btn.dataset.filter;
-        this.applyFilter();
-      });
+    const filters = document.getElementById('subs-filters');
+    filters?.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-filter]');
+      if (btn && filters.contains(btn)) this.setFilter(btn.dataset.filter);
+    });
+
+    // Вид: список или плитка
+    const views = document.getElementById('subs-view');
+    views?.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-view]');
+      if (btn && views.contains(btn)) this.setView(btn.dataset.view);
     });
 
     // Кнопки управления
@@ -95,21 +151,40 @@ class SubscriptionsPage {
     document.getElementById('cleanup-subs-btn')?.addEventListener('click', () => this.cleanupInactive());
     document.getElementById('priority-subs-toggle')?.addEventListener('change', (e) => this.savePrioritySetting(e.target.checked));
 
-    // Поиск
-    document.getElementById('search-input')?.addEventListener('input', (e) => {
-      this.searchQuery = e.target.value.toLowerCase();
-      this.applyFilter();
+    // Поиск. Esc и крестик в поле очищают его — на длинном списке это
+    // быстрее, чем стирать запрос
+    const search = document.getElementById('search-input');
+    search?.addEventListener('input', () => this.onSearchInput());
+    search?.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && search.value) {
+        e.preventDefault();
+        e.stopPropagation();
+        this.clearSearch();
+      }
+    });
+    document.getElementById('subs-search-clear')?.addEventListener('click', () => {
+      this.clearSearch();
+      search?.focus();
     });
 
-    // Переключатель вида
-    document.querySelectorAll('.view-toggle-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        const btn = e.currentTarget;
-        document.querySelectorAll('.view-toggle-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        this.currentView = btn.dataset.view;
-        this.updateViewMode();
-      });
+    // Список: клики, клавиатура и перетаскивание избранных
+    const list = document.getElementById('subscriptions-list');
+    if (list) {
+      list.addEventListener('click', (e) => this.handleListClick(e));
+      list.addEventListener('keydown', (e) => this.handleListKeydown(e));
+      list.addEventListener('dragstart', (e) => this.handleDragStart(e));
+      list.addEventListener('dragend', (e) => this.handleDragEnd(e));
+      list.addEventListener('dragover', (e) => this.handleDragOver(e));
+      list.addEventListener('dragleave', (e) => this.handleDragLeave(e));
+      list.addEventListener('drop', (e) => this.handleDrop(e));
+    }
+
+    // Кнопка в пустом состоянии: сбросить поиск, показать всё, обновить
+    document.getElementById('subscriptions-empty')?.addEventListener('click', (e) => {
+      const action = e.target.closest('[data-empty-action]')?.dataset.emptyAction;
+      if (action === 'reset-search') this.clearSearch();
+      else if (action === 'show-all') this.setFilter('all');
+      else if (action === 'refresh') this.refreshSubscriptions();
     });
 
     // Авторизация
@@ -119,11 +194,99 @@ class SubscriptionsPage {
       window.router?.navigate('accounts');
     });
 
-    // Модальное окно
+    // Окно канала. По фону закрываем, только если и нажатие началось на
+    // фоне: иначе выделение текста описания, отпущенное за краем окна,
+    // закрывало бы его
     document.getElementById('close-modal-btn')?.addEventListener('click', () => this.closeModal());
-    document.getElementById('channel-detail-modal')?.addEventListener('click', (e) => {
-      if (e.target.id === 'channel-detail-modal') this.closeModal();
+    const modal = document.getElementById('channel-detail-modal');
+    modal?.addEventListener('pointerdown', (e) => {
+      this._backdropPressed = e.target === modal;
     });
+    modal?.addEventListener('click', (e) => {
+      if (e.target === modal && this._backdropPressed) this.closeModal();
+      this._backdropPressed = false;
+    });
+  }
+
+  /**
+   * Панель поиска прилипает к верху при прокрутке (position: sticky).
+   * Нижняя граница у неё нужна только в прилипшем виде — понять это CSS
+   * сам не может, поэтому за меткой перед панелью следит наблюдатель.
+   */
+  setupStickyToolbar() {
+    const toolbar = document.getElementById('subs-toolbar');
+    const sentinel = document.querySelector('.subscriptions-page .subs-toolbar-sentinel');
+    if (!toolbar || !sentinel || typeof IntersectionObserver === 'undefined') return;
+    const root = toolbar.closest('.content');
+    this._stickyObserver = new IntersectionObserver(([entry]) => {
+      if (!entry) return;
+      // Скрытая метка (раздел ещё не показан) — нулевой прямоугольник:
+      // её «выход» за верх ничего не значит
+      const visible = entry.boundingClientRect.width > 0;
+      const top = entry.rootBounds ? entry.rootBounds.top : 0;
+      toolbar.classList.toggle('is-stuck', visible && !entry.isIntersecting && entry.boundingClientRect.top < top);
+    }, { root: root || null, threshold: 0 });
+    this._stickyObserver.observe(sentinel);
+  }
+
+  setFilter(filter) {
+    if (!filter) return;
+    this.currentFilter = filter;
+    document.querySelectorAll('#subs-filters button[data-filter]').forEach(b => {
+      const on = b.dataset.filter === filter;
+      b.classList.toggle('active', on);
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+    this.applyFilter();
+  }
+
+  onSearchInput() {
+    const input = document.getElementById('search-input');
+    const value = input?.value || '';
+    // Пробелы по краям — не часть имени: запрос «xqc » раньше не находил xQc
+    this.searchQuery = value.trim().toLowerCase();
+    const clear = document.getElementById('subs-search-clear');
+    if (clear) clear.hidden = value.length === 0;
+    this.applyFilter();
+  }
+
+  clearSearch() {
+    const input = document.getElementById('search-input');
+    if (input) input.value = '';
+    this.onSearchInput();
+  }
+
+  // Клик по строке открывает окно канала, по кнопке строки — её действие
+  handleListClick(e) {
+    const list = e.currentTarget;
+    const card = e.target.closest('.subscription-card');
+    if (!card || !list.contains(card)) return;
+    const sub = this.findSub(card.dataset.channelId);
+    if (!sub) return;
+
+    const action = e.target.closest('.subscription-action-btn');
+    if (!action) {
+      this.showChannelDetails(sub);
+      return;
+    }
+
+    e.stopPropagation();
+    if (action.classList.contains('favorite-btn')) this.toggleFavorite(sub);
+    else if (action.classList.contains('farm-btn')) this.startFarmingChannel(sub);
+    else if (action.classList.contains('twitch-btn')) this.openOnTwitch(sub);
+    else if (action.classList.contains('unsub-btn')) this.unsubscribeChannel(sub);
+  }
+
+  // Строка в фокусе открывается Enter или пробелом, как кнопка. Кнопки
+  // внутри строки обрабатывают клавиши сами
+  handleListKeydown(e) {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const card = e.target;
+    if (!card.classList?.contains('subscription-card')) return;
+    const sub = this.findSub(card.dataset.channelId);
+    if (!sub) return;
+    e.preventDefault();
+    this.showChannelDetails(sub);
   }
 
   /**
@@ -529,8 +692,27 @@ class SubscriptionsPage {
       ? this.plural(n, 'подписка', 'подписки', 'подписок')
       : this.i18n.t('subscriptions.subsCount');
 
+    // В шапке — одно число рядом с названием, полная подпись — в подсказке.
+    // Пустой бейдж CSS прячет: «0» при пустом списке ничего не сообщает
     const counter = document.getElementById('subs-count');
-    if (counter) counter.textContent = `${n} ${слово}`;
+    if (counter) {
+      counter.textContent = n > 0 ? String(n) : '';
+      counter.title = `${n} ${слово}`;
+      counter.setAttribute('aria-label', `${n} ${слово}`);
+    }
+
+    // Число у каждого фильтра: видно заранее, есть ли кто-то в эфире и
+    // сколько каналов уйдёт при очистке
+    const counts = {
+      all: n,
+      active: this.subscriptionStats.active,
+      inactive: this.subscriptionStats.inactive,
+      favorites: this.subscriptions.filter(s => s.isFavorite).length
+    };
+    document.querySelectorAll('#subs-filters [data-count]').forEach(el => {
+      const value = counts[el.dataset.count];
+      el.textContent = Number.isFinite(value) ? String(value) : '';
+    });
   }
 
   /**
@@ -638,23 +820,31 @@ class SubscriptionsPage {
 
     if (this.filteredSubscriptions.length === 0) {
       list.style.display = 'none';
-      if (empty) empty.style.display = 'block';
+      if (empty) {
+        empty.innerHTML = this.renderEmptyState();
+        empty.style.display = 'block';
+      }
       return;
     }
 
-    list.style.display = 'grid';
+    // Вид (строки или плитка) задают классы списка, а не встроенный стиль
+    list.style.display = '';
     if (empty) empty.style.display = 'none';
 
-    // Разделяем на избранные и обычные
+    // Разделяем на избранные и обычные. Подписи групп нужны, только когда
+    // на экране есть обе: при фильтре «Избранные» подпись повторяла бы его
     const favorites = this.filteredSubscriptions.filter(s => s.isFavorite);
     const regular = this.filteredSubscriptions.filter(s => !s.isFavorite);
+    const grouped = favorites.length > 0 && regular.length > 0;
 
     let html = '';
-    if (favorites.length > 0) {
-      html += favorites.map(sub => this.renderSubscriptionItem(sub)).join('');
-      if (regular.length > 0) {
-        html += '<div class="subscriptions-divider"><span>Остальные каналы</span></div>';
-      }
+    if (grouped) {
+      html += this.renderSectionLabel('Избранные', favorites.length,
+        favorites.length > 1 ? 'порядок меняется перетаскиванием' : '');
+    }
+    html += favorites.map(sub => this.renderSubscriptionItem(sub)).join('');
+    if (grouped) {
+      html += this.renderSectionLabel(this.i18n?.t('subscriptions.otherChannels') || 'Остальные каналы', regular.length);
     }
     html += regular.map(sub => this.renderSubscriptionItem(sub)).join('');
 
@@ -663,310 +853,304 @@ class SubscriptionsPage {
     // Возвращаясь на вкладку, пользователь чаще всего видит ровно тот же
     // список: перезапись innerHTML пересоздала бы все элементы и заставила
     // браузер заново раскладывать картинки — отсюда и ощущение, что
-    // аватарки грузятся каждый раз. Обработчики при этом остаются на
-    // месте, потому что сами узлы не менялись.
+    // аватарки грузятся каждый раз. Обработчики висят на самом списке,
+    // поэтому перерисовка их не трогает.
     if (html === this._renderedHtml && list.children.length > 0) {
       return;
     }
     this._renderedHtml = html;
 
     list.innerHTML = html;
-
-    // Добавляем event listeners
-    this.filteredSubscriptions.forEach(sub => {
-      const item = list.querySelector(this.cardSelector(sub.id));
-      if (item) {
-        // Перетаскивание задаёт порядок только избранных. Остальные каналы
-        // всегда сортируются по рейтингу: их перестановка откатывалась,
-        // а приложение при этом писало «Порядок обновлен»
-        if (sub.isFavorite) {
-          item.draggable = true;
-          item.addEventListener('dragstart', (e) => this.handleDragStart(e, sub));
-          item.addEventListener('dragend', (e) => this.handleDragEnd(e));
-          item.addEventListener('dragover', (e) => this.handleDragOver(e));
-          item.addEventListener('drop', (e) => this.handleDrop(e, sub));
-          item.addEventListener('dragleave', (e) => this.handleDragLeave(e));
-        }
-
-        item.addEventListener('click', (e) => {
-          if (!e.target.closest('.subscription-action-btn')) {
-            this.showChannelDetails(sub);
-          }
-        });
-
-        // Кнопка отписки
-        const unsubBtn = item.querySelector('.unsub-btn');
-        if (unsubBtn) {
-          unsubBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            this.unsubscribeChannel(sub);
-          });
-        }
-
-        // Кнопка просмотра на Twitch
-        const twitchBtn = item.querySelector('.twitch-btn');
-        if (twitchBtn) {
-          twitchBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            window.electronAPI.openExternal(`https://www.twitch.tv/${sub.login}`);
-          });
-        }
-
-        // Кнопка старта фарминга
-        const farmBtn = item.querySelector('.farm-btn');
-        if (farmBtn) {
-          farmBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            this.startFarmingChannel(sub);
-          });
-        }
-
-        // Кнопка избранного
-        const favoriteBtn = item.querySelector('.favorite-btn');
-        if (favoriteBtn) {
-          favoriteBtn.addEventListener('click', async (e) => {
-            e.stopPropagation();
-            await this.toggleFavorite(sub);
-          });
-        }
-      }
-    });
   }
 
+  renderSectionLabel(title, count, hint = '') {
+    return `<div class="section-label subs-section-label">`
+      + `<span>${this.esc(title)}</span><span class="count num">${count}</span>`
+      + (hint ? `<span class="subs-section-hint">${this.esc(hint)}</span>` : '')
+      + `</div>`;
+  }
+
+  /**
+   * Пустое состояние под текущий фильтр и поиск.
+   *
+   * Раньше на всё было одно «Подписок не найдено» со звездой — и при
+   * пустом поиске, и когда никто не в эфире, и когда избранного ещё нет.
+   * Теперь сказано, почему пусто, и есть одна кнопка, которая это меняет.
+   */
+  renderEmptyState() {
+    const make = (opts) => {
+      if (window.DOMHelpers?.emptyState) return window.DOMHelpers.emptyState(opts);
+      return `<div class="empty-state"><h3>${this.esc(opts.title)}</h3>`
+        + (opts.text ? `<p>${this.esc(opts.text)}</p>` : '')
+        + (opts.actionHtml || '') + `</div>`;
+    };
+    const button = (action, label) =>
+      `<button type="button" class="btn btn-secondary btn-sm" data-empty-action="${action}">${this.esc(label)}</button>`;
+
+    if (this.subscriptions.length === 0) {
+      return make({
+        icon: 'users',
+        title: 'Подписок пока нет',
+        text: 'Каналы, на которые вы подписаны в Twitch, появятся здесь.',
+        actionHtml: button('refresh', 'Обновить список')
+      });
+    }
+
+    const filterName = SubscriptionsPage.FILTER_NAMES[this.currentFilter];
+    if (this.searchQuery) {
+      const raw = (document.getElementById('search-input')?.value || '').trim();
+      return make({
+        icon: 'search',
+        title: `Нет каналов по запросу «${raw}»`,
+        text: filterName ? `Поиск шёл только среди «${filterName}».` : '',
+        actionHtml: button('reset-search', 'Сбросить поиск')
+      });
+    }
+
+    switch (this.currentFilter) {
+      case 'active':
+        return make({
+          icon: 'eye',
+          title: 'Сейчас никто не в эфире',
+          text: 'Статусы каналов проверяются раз в полчаса. Обновите список, чтобы проверить сейчас.',
+          actionHtml: button('refresh', 'Проверить сейчас')
+        });
+      case 'inactive':
+        return make({
+          icon: 'check-circle',
+          title: 'Неактивных каналов нет',
+          text: 'Все каналы стримили за последние 30 дней.',
+          actionHtml: button('show-all', 'Показать все')
+        });
+      case 'favorites':
+        return make({
+          icon: 'heart',
+          title: 'Избранных пока нет',
+          text: 'Отметьте канал сердечком — приложение скажет, когда он выйдет в эфир, а с приоритетом подписок будет выбирать его первым.',
+          actionHtml: button('show-all', 'Показать все')
+        });
+      default:
+        return make({
+          icon: 'users',
+          title: this.i18n?.t('subscriptions.noSubscriptions') || 'Подписок не найдено',
+          actionHtml: button('show-all', 'Показать все')
+        });
+    }
+  }
+
+  /**
+   * Строка канала.
+   *
+   * Одна строка списка — 56 точек: аватар, имя с рейтингом, статус, справа
+   * число фолловеров. Кнопки (избранное, фарминг, Twitch, отписка) видны
+   * при наведении и фокусе и встают на место числа фолловеров. Раньше в
+   * каждой строке висели четыре кнопки с цветными рамками, а одни и те же
+   * цифры повторялись трижды (в аватаре, под именем и справа).
+   *
+   * Та же разметка — и для плитки: её перестраивает CSS.
+   */
   renderSubscriptionItem(sub) {
-    // Рейтинг может быть ещё не посчитан: подробности канала грузятся
-    // отдельными запросами уже после отрисовки списка
-    const hasRating = Number.isFinite(sub.rating);
-    const ratingValue = hasRating ? Math.round(sub.rating) : '—';
-    const ratingColor = !hasRating ? 'neutral' : sub.rating >= 70 ? 'good' : sub.rating >= 40 ? 'neutral' : 'bad';
-    const lastStreamText = this.getLastStreamText(sub.lastStreamDate);
-    const isLive = sub.isLive === true;
-    const ratingText = !hasRating
-      ? 'Оценка появится после загрузки данных канала'
-      : sub.rating >= 70 ? this.i18n.t('subscriptions.excellentRating')
-      : sub.rating >= 40 ? this.i18n.t('subscriptions.averageRating')
-      : this.i18n.t('subscriptions.lowRating');
     const isFavorite = sub.isFavorite || false;
-    // Всё, что пришло от Twitch, — только экранированным
-    const gameName = this.esc(sub.gameName || '');
-    const displayName = this.esc(sub.displayName || sub.login || '');
-    const avatarUrl = this.esc(this.safeImageUrl(sub.profileImageUrl));
+    const classes = ['subscription-card', 'list-row', 'subs-row'];
+    if (isFavorite) classes.push('is-favorite');
+    if (this.isCurrentChannel(sub)) classes.push('is-current');
+    if (this.isChannelInactive(sub)) classes.push('is-inactive');
 
     return `
-      <div class="subscription-card ${isFavorite ? 'favorite' : ''}" data-channel-id="${this.esc(sub.id)}">
-        <div class="subscription-card-main">
-          <div class="subscription-card-left">
-            <div class="subscription-card-avatar-wrapper" style="background-image: url('${avatarUrl}');">
-              <img src="${avatarUrl || 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 48 48%22%3E%3Crect fill=%22%234a3f9f%22 width=%2248%22 height=%2248%22/%3E%3Ctext x=%2224%22 y=%2235%22 font-size=%2230%22 fill=%22white%22 text-anchor=%22middle%22%3E?%3C/text%3E%3C/svg%3E'}"
-                   alt="${displayName}"
-                   class="subscription-card-avatar">
-              ${isLive ? '<div class="subscription-card-live-indicator"></div>' : ''}
-              
-              <div class="subscription-card-rating ${ratingColor}" title="${ratingText}${hasRating ? ': ' + ratingValue + '/100' : ''} (оценка канала для фарминга)">
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
-                  ${sub.rating >= 70 ? '<path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>' :
-        sub.rating >= 40 ? '<path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>' :
-          '<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>'}
-                </svg>
-                <span>${ratingValue}</span>
-              </div>
-              
-              <div class="subscription-card-status-overlay ${isLive ? 'live' : 'offline'}">
-                <span class="status-dot"></span>
-                <span class="status-text">${isLive ? 'В эфире' : 'Офлайн'}</span>
-              </div>
-              
-              <div class="subscription-card-stats-overlay">
-                <div class="subscription-stat">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-                    <circle cx="9" cy="7" r="4"/>
-                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-                    <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-                  </svg>
-                  <span>${this.formatFollowers(sub.followers)}</span>
-                </div>
-                <div class="subscription-stat">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="10"/>
-                    <polyline points="12 6 12 12 16 14"/>
-                  </svg>
-                  <span>${lastStreamText}</span>
-                </div>
-              </div>
-            </div>
-            
-            <div class="subscription-card-info">
-              <div class="subscription-card-name-line">
-                <span class="subscription-card-name">${displayName}</span>
-                <div class="subscription-card-rating-inline ${ratingColor}" title="${ratingText}${hasRating ? ': ' + ratingValue + '/100' : ''}">
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
-                    ${sub.rating >= 70 ? '<path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>' :
-        sub.rating >= 40 ? '<path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>' :
-          '<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>'}
-                  </svg>
-                  <span>${ratingValue}</span>
-                </div>
-              </div>
-              <div class="subscription-card-status ${isLive ? 'live' : 'offline'}">
-                <span class="status-dot"></span>
-                <span class="status-text">${isLive ? this.i18n.t('subscriptions.live') : this.i18n.t('subscriptions.offline')}</span>
-                ${isLive && gameName ? `<span class="game-name">${gameName}</span>` : ''}
-              </div>
-              <div class="subscription-card-mini-stats">
-                <div class="mini-stat">
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-                    <circle cx="9" cy="7" r="4"/>
-                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-                    <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-                  </svg>
-                  <span>${this.formatFollowers(sub.followers)}</span>
-                </div>
-                <span class="mini-stat-separator">•</span>
-                <div class="mini-stat">
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="10"/>
-                    <polyline points="12 6 12 12 16 14"/>
-                  </svg>
-                  <span>${lastStreamText}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="subscription-card-right">
-            <div class="subscription-card-stats">
-              <div class="subscription-stat">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-                  <circle cx="9" cy="7" r="4"/>
-                  <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-                  <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-                </svg>
-                <span>${this.formatFollowers(sub.followers)}</span>
-              </div>
-              
-              <div class="subscription-stat">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <circle cx="12" cy="12" r="10"/>
-                  <polyline points="12 6 12 12 16 14"/>
-                </svg>
-                <span>${lastStreamText}</span>
-              </div>
-            </div>
-            
-            <div class="subscription-card-actions">
-              <button class="subscription-action-btn favorite-btn ${isFavorite ? 'active' : ''}" title="${isFavorite ? this.i18n.t('subscriptions.removeFromFavorites') : this.i18n.t('subscriptions.addToFavorites')}">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="${isFavorite ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2">
-                  <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
-                </svg>
-              </button>
-              <button class="subscription-action-btn twitch-btn" title="${this.i18n.t('subscriptions.openOnTwitch')}">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M11.571 4.714h1.715v5.143H11.57zm4.715 0H18v5.143h-1.714zM6 0L1.714 4.286v15.428h5.143V24l4.286-4.286h3.428L22.286 12V0zm14.571 11.143l-3.428 3.428h-3.429l-3 3v-3H6.857V1.714h13.714z"/>
-                </svg>
-              </button>
-              <button class="subscription-action-btn farm-btn" title="${this.i18n.t('subscriptions.startFarm')}">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>
-                </svg>
-              </button>
-              <button class="subscription-action-btn unsub-btn" title="${this.i18n.t('subscriptions.unsubscribe')}">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
-                </svg>
-              </button>
-            </div>
+      <div class="${classes.join(' ')}" data-channel-id="${this.esc(sub.id)}" tabindex="0" aria-label="${this.esc(this.rowLabel(sub))}"${isFavorite ? ' draggable="true"' : ''}>
+        ${this.renderAvatar(sub)}
+        ${this.renderMain(sub)}
+        <div class="subs-side">
+          ${this.renderFollowers(sub)}
+          <div class="row-actions subs-actions subscription-card-actions">
+            ${this.renderActionButtons(sub)}
           </div>
         </div>
       </div>
     `;
   }
 
+  // Подпись строки для экранного диктора: имя и состояние
+  rowLabel(sub) {
+    const name = sub.displayName || sub.login || '';
+    if (this.isCurrentChannel(sub)) return `${name}, смотрим сейчас`;
+    if (sub.isLive === true) return `${name}, в эфире`;
+    return `${name}, ${this.lastStreamPhrase(sub).toLowerCase()}`;
+  }
+
+  // Аватар с точкой «в эфире». Без картинки — первая буква имени на
+  // нейтральном круге: прежняя заглушка была фиолетовым квадратом с «?»
+  renderAvatar(sub, imgClass = 'row-avatar subscription-card-avatar') {
+    const url = this.esc(this.safeImageUrl(sub.profileImageUrl));
+    const initial = this.esc(String(sub.displayName || sub.login || '?').trim().charAt(0).toUpperCase() || '?');
+    const image = url
+      ? `<img class="${imgClass}" src="${url}" alt="" decoding="async" draggable="false">`
+      : `<span class="${imgClass} subs-avatar-fallback" aria-hidden="true">${initial}</span>`;
+    const live = sub.isLive === true ? '<span class="subs-live-dot" title="В эфире"></span>' : '';
+    return `<div class="subs-avatar subscription-card-avatar-wrapper">${image}${live}</div>`;
+  }
+
+  renderMain(sub) {
+    const name = this.esc(sub.displayName || sub.login || '');
+    const favMark = sub.isFavorite
+      ? `<span class="subs-fav-mark" title="В избранном">${this.icon('heart', 12)}</span>`
+      : '';
+    return `
+          <div class="row-main subs-main subscription-card-info">
+            <div class="subs-name-line">
+              <span class="row-title subscription-card-name">${name}</span>${favMark}${this.renderRating(sub)}
+            </div>
+            <div class="row-meta subs-status subscription-card-status">${this.renderStatus(sub)}</div>
+          </div>`;
+  }
+
+  /**
+   * Оценка канала: нейтральный бейдж с цветной точкой.
+   *
+   * Раньше это была красная плашка «28» с восклицательным знаком у
+   * каждого второго канала — тревога там, где тревожиться не о чем.
+   * Цвет остался только в точке, объяснение — в подсказке.
+   */
+  ratingInfo(sub) {
+    const has = Number.isFinite(sub.rating);
+    const value = has ? Math.round(sub.rating) : null;
+    const tone = !has ? '' : sub.rating >= 70 ? 'is-good' : sub.rating >= 40 ? 'is-mid' : 'is-low';
+    const word = !has ? ''
+      : sub.rating >= 70 ? this.i18n.t('subscriptions.excellent')
+      : sub.rating >= 40 ? this.i18n.t('subscriptions.average')
+      : this.i18n.t('subscriptions.low');
+    const ratingText = !has ? ''
+      : sub.rating >= 70 ? this.i18n.t('subscriptions.excellentRating')
+      : sub.rating >= 40 ? this.i18n.t('subscriptions.averageRating')
+      : this.i18n.t('subscriptions.lowRating');
+    const title = has
+      ? `${ratingText}: ${value} из 100. Складывается из эфиров, аудитории и дропсов на канале`
+      : 'Рейтинг появится после загрузки данных канала';
+    return { has, value, tone, word, title };
+  }
+
+  renderRating(sub) {
+    const r = this.ratingInfo(sub);
+    return `<span class="badge subs-rating subscription-card-rating-inline" title="${this.esc(r.title)}">`
+      + (r.has ? `<span class="subs-rating-dot ${r.tone}"></span>` : '')
+      + `<span class="num">${r.has ? r.value : '—'}</span></span>`;
+  }
+
+  // Состояние канала фразой: «В эфире · 2 ч 15 мин», «Был в эфире вчера»
+  renderStatus(sub) {
+    const parts = [];
+    const isLive = sub.isLive === true;
+    if (this.isCurrentChannel(sub)) {
+      parts.push('<span class="subs-now">Смотрим сейчас</span>');
+    } else if (isLive) {
+      parts.push(`<span class="tone-ok">${this.esc(this.i18n.t('subscriptions.live'))}</span>`);
+    }
+
+    if (isLive || this.isCurrentChannel(sub)) {
+      const uptime = isLive ? this.formatUptime(sub.lastStreamDate) : '';
+      if (uptime) parts.push(`<span class="num" title="Эфир идёт">${uptime}</span>`);
+    } else {
+      // Неактивный канал и канал без данных — тише остальных: глазу проще
+      // отделить тех, кто стримит
+      const quiet = this.isChannelInactive(sub) || !Number.isFinite(Date.parse(sub.lastStreamDate));
+      parts.push(`<span${quiet ? ' class="tone-muted"' : ''}>${this.esc(this.lastStreamPhrase(sub))}</span>`);
+    }
+    return parts.join('');
+  }
+
+  /**
+   * «Был в эфире вчера» вместо отдельных «Офлайн» и «1 месяц назад».
+   * Без даты эфира различаем «данных ещё нет» и «Twitch проверен, эфиров
+   * не было»: раньше в обоих случаях стояло «Никогда».
+   */
+  lastStreamPhrase(sub) {
+    if (!Number.isFinite(Date.parse(sub?.lastStreamDate))) {
+      return sub?.detailsCheckedAt ? 'Эфиров не было' : 'Нет данных об эфирах';
+    }
+    const when = this.getLastStreamText(sub.lastStreamDate);
+    if ((this.i18n?.currentLang || 'ru') !== 'ru') return when;
+    return `Был в эфире ${when.charAt(0).toLowerCase()}${when.slice(1)}`;
+  }
+
+  // Сколько идёт эфир: у идущего эфира дата — его начало
+  formatUptime(start) {
+    const ts = Date.parse(start);
+    if (!Number.isFinite(ts)) return '';
+    const minutes = Math.max(0, Math.floor((Date.now() - ts) / 60000));
+    // Эфир дольше двух суток — скорее устаревшая дата, чем правда
+    if (minutes > 48 * 60) return '';
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    if (h === 0) return `${m} мин`;
+    return m ? `${h} ч ${m} мин` : `${h} ч`;
+  }
+
+  renderFollowers(sub) {
+    const n = sub.followers;
+    const known = typeof n === 'number' && Number.isFinite(n);
+    const title = known
+      ? `${n.toLocaleString('ru-RU')} ${this.plural(n, 'фолловер', 'фолловера', 'фолловеров')}`
+      : 'Число фолловеров ещё не загружено';
+    return `<span class="subs-followers num subscription-card-stats" title="${this.esc(title)}">${this.icon('users', 14)}<span>${this.formatFollowers(n)}</span></span>`;
+  }
+
+  // Кнопки строки. Классы favorite-btn/farm-btn/twitch-btn/unsub-btn —
+  // по ним список понимает, что нажато
+  renderActionButtons(sub) {
+    const fav = !!sub.isFavorite;
+    const favTitle = this.esc(fav ? this.i18n.t('subscriptions.removeFromFavorites') : this.i18n.t('subscriptions.addToFavorites'));
+    const twitchTitle = this.esc(this.i18n.t('subscriptions.openOnTwitch'));
+    const unsubTitle = this.esc(this.i18n.t('subscriptions.unsubscribe'));
+    const farmTitle = 'Фармить на этом канале';
+    return `
+              <button type="button" class="btn btn-ghost btn-icon btn-sm subscription-action-btn favorite-btn${fav ? ' active' : ''}" title="${favTitle}" aria-label="${favTitle}" aria-pressed="${fav}">${this.icon('heart', 14)}</button>
+              <button type="button" class="btn btn-ghost btn-icon btn-sm subscription-action-btn farm-btn" title="${farmTitle}" aria-label="${farmTitle}">${this.icon('play', 14)}</button>
+              <button type="button" class="btn btn-ghost btn-icon btn-sm subscription-action-btn twitch-btn" title="${twitchTitle}" aria-label="${twitchTitle}">${this.icon('external', 14)}</button>
+              <button type="button" class="btn btn-ghost btn-icon btn-sm subscription-action-btn unsub-btn" title="${unsubTitle}" aria-label="${unsubTitle}">${this.icon('close', 14)}</button>`;
+  }
+
   formatFollowers(count) {
     // Неизвестное число — прочерк, а не ноль: раньше до загрузки
     // подробностей (и при их сбое) у всех каналов стояло «0»
     if (typeof count !== 'number' || !Number.isFinite(count)) return '—';
-    if (count >= 1000000) return (count / 1000000).toFixed(1) + 'M';
-    if (count >= 1000) return (count / 1000).toFixed(1) + 'K';
+    // По-русски: «2,5 млн», «343 тыс.», а не «2.5M» и «343.3K»
+    const ru = (this.i18n?.currentLang || 'ru') === 'ru';
+    const short = (v) => {
+      const r = v >= 100 ? Math.round(v) : Math.round(v * 10) / 10;
+      return ru ? String(r).replace('.', ',') : String(r);
+    };
+    // 999 950 округлилось бы в «1000 тыс.» — такие уже миллион
+    if (count >= 999500) return short(count / 1e6) + (ru ? ' млн' : 'M');
+    if (count >= 1000) return short(count / 1e3) + (ru ? ' тыс.' : 'K');
     return count.toString();
   }
 
+  /**
+   * Пришли подробности канала — обновляем его строку на месте.
+   *
+   * Меняются аватар, имя со статусом и фолловеры; кнопки остаются теми же
+   * узлами, поэтому строка под курсором не мигает. Кеш разметки сбрасываем:
+   * DOM уже не совпадает с ним, и следующая отрисовка должна пройти.
+   */
   updateChannelCard(sub) {
-    const cardElement = document.querySelector(this.cardSelector(sub.id));
-    if (!cardElement) return;
+    const card = document.querySelector(`#subscriptions-list ${this.cardSelector(sub.id)}`);
+    if (!card) return;
+    this._renderedHtml = null;
 
-    // Обновляем аватарку
-    const img = cardElement.querySelector('.subscription-card-avatar');
-    const avatar = this.safeImageUrl(sub.profileImageUrl);
-    if (img && avatar) {
-      img.src = avatar;
-    }
+    const swap = (selector, html) => {
+      const el = card.querySelector(selector);
+      if (el) el.outerHTML = html;
+    };
+    swap('.subs-avatar', this.renderAvatar(sub));
+    swap('.subs-main', this.renderMain(sub));
+    swap('.subs-followers', this.renderFollowers(sub));
 
-    // Обновляем статус
-    const isLive = sub.isLive === true;
-    const statusEl = cardElement.querySelector('.subscription-card-status');
-    if (statusEl) {
-      statusEl.className = `subscription-card-status ${isLive ? 'live' : 'offline'}`;
-      const statusText = statusEl.querySelector('.status-text');
-      if (statusText) {
-        statusText.textContent = isLive ? this.i18n.t('subscriptions.live') : this.i18n.t('subscriptions.offline');
-      }
-    }
+    card.classList.toggle('is-inactive', this.isChannelInactive(sub));
+    card.classList.toggle('is-current', this.isCurrentChannel(sub));
+    card.setAttribute('aria-label', this.rowLabel(sub));
 
-    // Обновляем индикатор в эфире
-    const avatarWrapper = cardElement.querySelector('.subscription-card-avatar-wrapper');
-    const liveIndicator = avatarWrapper?.querySelector('.subscription-card-live-indicator');
-    if (isLive && !liveIndicator) {
-      avatarWrapper.insertAdjacentHTML('beforeend', '<div class="subscription-card-live-indicator"></div>');
-    } else if (!isLive && liveIndicator) {
-      liveIndicator.remove();
-    }
-
-    // Обновляем статистику
-    const statsEl = cardElement.querySelector('.subscription-card-stats');
-    if (statsEl) {
-      statsEl.innerHTML = `
-        <div class="subscription-stat">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-            <circle cx="9" cy="7" r="4"/>
-            <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-            <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-          </svg>
-          <span>${this.formatFollowers(sub.followers)}</span>
-        </div>
-        
-        <div class="subscription-stat">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="10"/>
-            <polyline points="12 6 12 12 16 14"/>
-          </svg>
-          <span>${this.getLastStreamText(sub.lastStreamDate)}</span>
-        </div>
-      `;
-    }
-
-    // Обновляем рейтинг
-    const ratingEl = cardElement.querySelector('.subscription-card-rating');
-    if (ratingEl) {
-      const hasRating = Number.isFinite(sub.rating);
-      const ratingColor = !hasRating ? 'neutral' : sub.rating >= 70 ? 'good' : sub.rating >= 40 ? 'neutral' : 'bad';
-      const ratingText = !hasRating
-        ? 'Оценка появится после загрузки данных канала'
-        : sub.rating >= 70 ? this.i18n.t('subscriptions.excellentRating')
-        : sub.rating >= 40 ? this.i18n.t('subscriptions.averageRating')
-        : this.i18n.t('subscriptions.lowRating');
-
-      ratingEl.className = `subscription-card-rating ${ratingColor}`;
-      ratingEl.title = ratingText + (hasRating ? `: ${Math.round(sub.rating)}/100` : '');
-
-      const valueEl = ratingEl.querySelector('span');
-      if (valueEl) {
-        valueEl.textContent = hasRating ? Math.round(sub.rating) : '—';
-      }
-    }
+    // Числа у фильтров («В эфире 3») растут по мере прихода данных
+    this.updateStats();
   }
 
   getLastStreamText(lastStreamDate) {
@@ -982,186 +1166,216 @@ class SubscriptionsPage {
     if (days === 0) return this.i18n.t('subscriptions.today');
     if (days === 1) return this.i18n.t('subscriptions.yesterday');
     // Падежи по числу: раньше выходило «2 дней назад», «1 недель назад»
-    // и «1 месяцев назад»
-    if (days < 7) return `${days} ${this.plural(days, 'день', 'дня', 'дней')} назад`;
-    if (days < 30) return `${Math.floor(days / 7)} ${this.plural(Math.floor(days / 7), 'неделю', 'недели', 'недель')} назад`;
-    if (days < 365) return `${Math.floor(days / 30)} ${this.plural(Math.floor(days / 30), 'месяц', 'месяца', 'месяцев')} назад`;
-    return `${Math.floor(days / 365)} ${this.plural(Math.floor(days / 365), 'год', 'года', 'лет')} назад`;
+    // и «1 месяцев назад». Единицу не пишем: говорят «месяц назад», а не
+    // «1 месяц назад»
+    const ago = (n, одна, две, много) => n === 1 ? `${одна} назад` : `${n} ${this.plural(n, одна, две, много)} назад`;
+    if (days < 7) return ago(days, 'день', 'дня', 'дней');
+    if (days < 30) return ago(Math.floor(days / 7), 'неделю', 'недели', 'недель');
+    if (days < 365) return ago(Math.floor(days / 30), 'месяц', 'месяца', 'месяцев');
+    return ago(Math.floor(days / 365), 'год', 'года', 'лет');
   }
 
+  /**
+   * Окно канала.
+   *
+   * Раньше это был цветной плакат: размытая аватарка фоном, три плитки
+   * разного цвета (зелёная, синяя, фиолетовая), эмодзи-кружки активности
+   * и красная пульсирующая точка. Теперь — обычное окно приложения: шапка
+   * с аватаром и статусом, три числа без подложек, кнопки внизу. Цвет —
+   * только в точках статуса и у главной кнопки.
+   */
   showChannelDetails(sub) {
     const modal = document.getElementById('channel-detail-modal');
     const content = document.getElementById('modal-content');
-    if (!modal || !content) return;
+    if (!modal || !content || !sub) return;
 
+    const wasOpen = this._modalSub != null;
+    this._modalSub = sub;
+    this._modalReturnId = sub.id;
+    content.innerHTML = this.renderChannelDetails(sub);
+
+    document.getElementById('farm-channel-detail-btn')?.addEventListener('click', () => {
+      this.closeModal();
+      this.startFarmingChannel(sub);
+    });
+
+    document.getElementById('view-twitch-btn')?.addEventListener('click', () => this.openOnTwitch(sub));
+
+    document.getElementById('fav-channel-detail-btn')?.addEventListener('click', async (e) => {
+      const btn = e.currentTarget;
+      await this.toggleFavorite(sub);
+      this.syncFavoriteButton(btn, sub);
+    });
+
+    document.getElementById('unsub-channel-detail-btn')?.addEventListener('click', () => {
+      this.closeModal();
+      this.unsubscribeChannel(sub);
+    });
+
+    modal.style.display = 'flex';
+
+    // Описание обрезано тремя строками; кнопка «Показать полностью» нужна,
+    // только если текст действительно не поместился. Мерить можно лишь
+    // после показа окна
+    const desc = document.getElementById('channel-description');
+    const more = document.getElementById('show-more-desc');
+    if (desc && more) {
+      requestAnimationFrame(() => {
+        if (desc.scrollHeight <= desc.clientHeight + 1) return;
+        more.hidden = false;
+        more.addEventListener('click', () => {
+          const open = desc.classList.toggle('is-expanded');
+          more.textContent = open ? 'Свернуть' : 'Показать полностью';
+          more.setAttribute('aria-expanded', open ? 'true' : 'false');
+        });
+      });
+    }
+
+    if (!wasOpen) document.addEventListener('keydown', this._onModalKeydown, true);
+
+    // Фокус — на само окно, а не на «Фармить»: окно открывается и с
+    // клавиатуры (Enter по строке), и повтор зажатой клавиши запустил бы
+    // фарминг. Tab дальше ведёт по кнопкам окна
+    modal.querySelector('.subs-channel-dialog')?.focus({ preventScroll: true });
+  }
+
+  renderChannelDetails(sub) {
     const isLive = sub.isLive === true;
+    const current = this.isCurrentChannel(sub);
+    const name = this.esc(sub.displayName || sub.login || '');
+    const rating = this.ratingInfo(sub);
+
     // Дата эфира неизвестна — так и пишем. Раньше она подменялась 1970 годом,
     // и любой канал без загруженных данных выглядел «неактивным»
     const lastStreamTs = Date.parse(sub.lastStreamDate);
     const activityKnown = isLive || Number.isFinite(lastStreamTs);
     const daysSinceStream = isLive ? 0 : (Date.now() - lastStreamTs) / (1000 * 60 * 60 * 24);
-    const ratingColor = sub.rating >= 70 ? '#35d08a' : sub.rating >= 40 ? '#7c5cff' : '#f0555f';
-    const activityStatus = !activityKnown ? 'Нет данных' : daysSinceStream > 30 ? this.i18n.t('subscriptions.inactive') : daysSinceStream > 7 ? this.i18n.t('subscriptions.rarely') : this.i18n.t('subscriptions.activeStatus');
-    const activityIcon = !activityKnown ? '⚪' : daysSinceStream > 30 ? '🔴' : daysSinceStream > 7 ? '🟡' : '🟢';
-    const activityColor = !activityKnown ? 'var(--text-secondary)' : daysSinceStream > 30 ? '#f0555f' : daysSinceStream > 7 ? '#ffaa00' : '#35d08a';
+    const activity = !activityKnown
+      ? { text: 'Нет данных', dot: '' }
+      : isLive ? { text: this.i18n.t('subscriptions.live'), dot: 'is-ok' }
+      : daysSinceStream > 30 ? { text: this.i18n.t('subscriptions.inactive'), dot: '' }
+      : daysSinceStream > 7 ? { text: this.i18n.t('subscriptions.rarely'), dot: 'is-wait' }
+      : { text: this.i18n.t('subscriptions.activeStatus'), dot: 'is-ok' };
+    const activitySub = isLive
+      ? (this.formatUptime(sub.lastStreamDate) ? `Эфир идёт ${this.formatUptime(sub.lastStreamDate)}` : 'Эфир идёт сейчас')
+      : this.lastStreamPhrase(sub);
 
-    // Всё, что пришло от Twitch, — только экранированным: описание канала
-    // пишет сам стример, и раньше оно вставлялось в окно как разметка
-    const avatarUrl = this.esc(this.safeImageUrl(sub.profileImageUrl));
-    const displayName = this.esc(sub.displayName || sub.login || '');
+    const followersKnown = typeof sub.followers === 'number' && Number.isFinite(sub.followers);
+    const fav = !!sub.isFavorite;
 
-    content.innerHTML = `
-      <div style="position: relative; margin-bottom: 20px;">
-        <div style="position: absolute; top: 0; left: 0; right: 0; height: 120px; background-image: url('${avatarUrl}'); background-size: cover; background-position: center; filter: blur(40px); opacity: 0.3; border-radius: var(--radius-md);"></div>
-        <div style="position: relative; text-align: center; padding: 20px 0;">
-          <div style="position: relative; display: inline-block;">
-            <img src="${avatarUrl}" alt="${displayName}" style="width: 100px; height: 100px; border-radius: var(--radius-circle); border: 4px solid var(--bg-primary); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);">
-            ${isLive ? '<div style="position: absolute; bottom: 5px; right: 5px; width: 20px; height: 20px; background: #ff0000; border: 3px solid var(--bg-primary); border-radius: var(--radius-circle); box-shadow: 0 0 10px rgba(255, 0, 0, 0.8);"></div>' : ''}
+    return `
+      <div class="dialog-head subs-channel-head">
+        ${this.renderAvatar(sub, 'subs-channel-img')}
+        <div class="subs-channel-id">
+          <h2 class="dialog-title" id="channel-dialog-title">${name}</h2>
+          <div class="row-meta subs-channel-meta">
+            <span>@${this.esc(sub.login)}</span>${current ? '<span class="subs-now">Смотрим сейчас</span>' : isLive ? `<span class="tone-ok">${this.esc(this.i18n.t('subscriptions.live'))}</span>` : ''}
           </div>
-          <h2 style="color: var(--text-primary); font-size: 24px; font-weight: 700; margin: 12px 0 4px;">${displayName}</h2>
-          <p style="color: var(--text-secondary); font-size: 14px; margin: 0 0 8px;">@${this.esc(sub.login)}</p>
-          ${sub.description ? `
-          <div style="max-width: 400px; margin: 0 auto 12px;">
-            <p id="channel-description" style="color: var(--text-secondary); font-size: 13px; line-height: 1.4; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${this.esc(sub.description)}</p>
-            <button id="show-more-desc" style="display: none; background: none; border: none; color: var(--accent-color); font-size: 12px; cursor: pointer; margin: 4px auto 0; padding: 0;"></button>
-          </div>` : ''}
-          ${isLive ? `<div style="display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; padding: 4px 12px; background: rgba(255, 0, 0, 0.15); border: 1px solid rgba(255, 0, 0, 0.3); border-radius: var(--radius-md); font-size: 12px; font-weight: 600; color: #ff4444;">
-            <span style="width: 8px; height: 8px; background: #ff0000; border-radius: var(--radius-circle); animation: pulse-live 2s ease-in-out infinite;"></span>
-            <span>В эфире</span>
-            ${sub.gameName ? `<span style="opacity: 0.7;">• ${this.esc(sub.gameName)}</span>` : ''}
-          </div>` : ''}
         </div>
       </div>
 
-      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px;">
-        <div style="padding: 16px; background: rgba(53, 208, 138, 0.1); border: 1px solid rgba(53, 208, 138, 0.2); border-radius: var(--radius-md); text-align: center;">
-          <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">${this.i18n.t('subscriptions.rating')}</div>
-          <div style="font-size: 24px; font-weight: 700; color: ${ratingColor};">
-            ${Number.isFinite(sub.rating) ? Math.round(sub.rating) : '—'}
+      <div class="dialog-body subs-channel-body">
+        ${sub.description ? `
+        <div class="subs-channel-desc-wrap">
+          <p class="subs-channel-desc" id="channel-description">${this.esc(sub.description)}</p>
+          <button type="button" class="subs-link-btn" id="show-more-desc" aria-controls="channel-description" aria-expanded="false" hidden>Показать полностью</button>
+        </div>` : ''}
+
+        <div class="subs-channel-stats">
+          <div class="kpi kpi-inline">
+            <div class="kpi-label">${this.esc(this.i18n.t('subscriptions.rating'))}</div>
+            <div class="kpi-value" title="${this.esc(rating.title)}">${rating.has ? `${rating.value}<span class="subs-kpi-of">из 100</span>` : '—'}</div>
+            <div class="kpi-sub">${rating.has ? `<span class="subs-rating-dot ${rating.tone}"></span>${this.esc(rating.word)}` : 'Появится после загрузки'}</div>
           </div>
-          <div style="font-size: 10px; color: var(--text-secondary); margin-top: 4px;">${sub.rating >= 70 ? this.i18n.t('subscriptions.excellent') : sub.rating >= 40 ? this.i18n.t('subscriptions.average') : this.i18n.t('subscriptions.low')}</div>
+          <div class="kpi kpi-inline">
+            <div class="kpi-label">Фолловеры</div>
+            <div class="kpi-value">${this.formatFollowers(sub.followers)}</div>
+            <div class="kpi-sub">${followersKnown ? sub.followers.toLocaleString('ru-RU') : 'Ещё не загружено'}</div>
+          </div>
+          <div class="kpi kpi-inline">
+            <div class="kpi-label">${this.esc(this.i18n.t('subscriptions.activity'))}</div>
+            <div class="kpi-value subs-kpi-state"><span class="status-dot ${activity.dot}"></span><span>${this.esc(activity.text)}</span></div>
+            <div class="kpi-sub">${this.esc(activitySub)}</div>
+          </div>
         </div>
-        
-        <div style="padding: 16px; background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: var(--radius-md); text-align: center;">
-          <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">${this.i18n.t('subscriptions.followers')}</div>
-          <div style="font-size: 24px; font-weight: 700; color: var(--accent-color);">${this.formatFollowers(sub.followers)}</div>
-          <div style="font-size: 10px; color: var(--text-secondary); margin-top: 4px;">${Number.isFinite(sub.followers) ? sub.followers.toLocaleString() : ''}</div>
-        </div>
-        
-        <div style="padding: 16px; background: rgba(168, 85, 247, 0.1); border: 1px solid rgba(168, 85, 247, 0.2); border-radius: var(--radius-md); text-align: center;">
-          <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">${this.i18n.t('subscriptions.activity')}</div>
-          <div style="font-size: 20px; margin-bottom: 2px;">${activityIcon}</div>
-          <div style="font-size: 13px; font-weight: 600; color: ${activityColor};">${activityStatus}</div>
-        </div>
+
+        ${sub.hasDrops ? `
+        <div class="subs-channel-perk">
+          ${this.icon('gift', 16)}
+          <span>${this.esc(this.i18n.t('subscriptions.canGetRewards'))}</span>
+        </div>` : ''}
+
+        <p class="subs-channel-note">
+          ${this.icon('info', 14)}
+          <span>Рейтинг упорядочивает список: эфиры дают до 45 баллов, аудитория — до 25, дропсы на канале — до 30.</span>
+        </p>
       </div>
 
-      <div style="padding: 16px; background: var(--bg-secondary); border-radius: var(--radius-md); margin-bottom: 16px;">
-        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--text-secondary);">
-            <circle cx="12" cy="12" r="10"/>
-            <polyline points="12 6 12 12 16 14"/>
-          </svg>
-          <div style="font-size: 11px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;">${this.i18n.t('subscriptions.lastStream')}</div>
-        </div>
-        <div style="font-size: 14px; font-weight: 600; color: var(--text-primary);">${this.getLastStreamText(sub.lastStreamDate)}</div>
-      </div>
-
-      ${sub.hasDrops ? `<div style="padding: 16px; background: rgba(124, 92, 255, 0.15); border: 1px solid rgba(124, 92, 255, 0.3); border-radius: var(--radius-md); display: flex; align-items: center; gap: 12px; margin-bottom: 16px;"><div style="font-size: 24px;">💎</div><div><div style="font-size: 13px; font-weight: 600; color: var(--text-primary);">${this.i18n.t('subscriptions.dropsAvailable')}</div><div style="font-size: 11px; color: var(--text-secondary); margin-top: 2px;">${this.i18n.t('subscriptions.canGetRewards')}</div></div></div>` : ''}
-
-      <div style="display: flex; gap: 10px;">
-        <button class="modal-btn modal-btn-primary" id="farm-channel-detail-btn" style="flex: 1; padding: 12px; background: var(--accent-color); border: none; border-radius: var(--radius-md); color: white; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s; box-shadow: none;">
-          <div style="display: flex; align-items: center; justify-content: center; gap: 8px;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 2L2 7v10c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-10-5z"/>
-            </svg>
-            <span>${this.i18n.t('subscriptions.startFarming')}</span>
-          </div>
-        </button>
-        <button class="modal-btn modal-btn-secondary" id="view-twitch-btn" style="padding: 12px 16px; background: rgba(124, 92, 255, 0.1); border: 1px solid rgba(124, 92, 255, 0.3); border-radius: var(--radius-md); color: var(--accent-color); font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s;">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M11.571 4.714h1.715v5.143H11.57zm4.715 0H18v5.143h-1.714zM6 0L1.714 4.286v15.428h5.143V24l4.286-4.286h3.428L22.286 12V0zm14.571 11.143l-3.428 3.428h-3.429l-3 3v-3H6.857V1.714h13.714z"/>
-          </svg>
-        </button>
-        <button class="modal-btn modal-btn-danger" id="unsub-channel-detail-btn" style="padding: 12px 16px; background: rgba(255, 107, 107, 0.1); border: 1px solid rgba(255, 107, 107, 0.3); border-radius: var(--radius-md); color: #f0555f; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s;">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
-          </svg>
-        </button>
+      <div class="dialog-foot subs-channel-foot">
+        <button type="button" class="btn btn-danger-ghost" id="unsub-channel-detail-btn">${this.esc(this.i18n.t('subscriptions.unsubscribe'))}</button>
+        <span class="subs-foot-spacer"></span>
+        <button type="button" class="btn btn-secondary btn-icon" id="view-twitch-btn" title="${this.esc(this.i18n.t('subscriptions.openOnTwitch'))}" aria-label="${this.esc(this.i18n.t('subscriptions.openOnTwitch'))}">${this.icon('external', 16)}</button>
+        <button type="button" class="btn btn-secondary subs-fav-toggle" id="fav-channel-detail-btn" aria-pressed="${fav}">${this.icon('heart', 16)}<span>${fav ? 'В избранном' : 'В избранное'}</span></button>
+        <button type="button" class="btn btn-primary" id="farm-channel-detail-btn">${this.icon('play', 16)}<span>Фармить на канале</span></button>
       </div>
     `;
+  }
 
-    document.getElementById('farm-channel-detail-btn')?.addEventListener('click', () => {
-      this.startFarmingChannel(sub);
+  // Кнопка «В избранное» в окне после переключения
+  syncFavoriteButton(btn, sub) {
+    if (!btn || !btn.isConnected) return;
+    const fav = !!sub.isFavorite;
+    btn.setAttribute('aria-pressed', fav ? 'true' : 'false');
+    const label = btn.querySelector('span');
+    if (label) label.textContent = fav ? 'В избранном' : 'В избранное';
+  }
+
+  // Esc закрывает окно, Tab не уходит за его пределы
+  handleModalKeydown(e) {
+    if (this._modalSub == null) return;
+    // Поверх окна канала может быть открыто подтверждение — клавиши его
+    if (document.getElementById('confirmation-modal')) return;
+
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
       this.closeModal();
-    });
-
-    document.getElementById('view-twitch-btn')?.addEventListener('click', () => {
-      window.electronAPI.openExternal(`https://www.twitch.tv/${sub.login}`);
-    });
-
-    document.getElementById('unsub-channel-detail-btn')?.addEventListener('click', () => {
-      this.unsubscribeChannel(sub);
-      this.closeModal();
-    });
-
-    // Добавляем стили для кнопок при наведении
-    const style = document.createElement('style');
-    style.textContent = `
-      .modal-btn:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-      }
-      .modal-btn-primary:hover {
-        box-shadow: none;
-      }
-      .modal-btn-secondary:hover {
-        background: rgba(124, 92, 255, 0.2);
-      }
-      .modal-btn-danger:hover {
-        background: rgba(255, 107, 107, 0.2);
-      }
-    `;
-    if (!document.getElementById('modal-btn-styles')) {
-      style.id = 'modal-btn-styles';
-      document.head.appendChild(style);
+      return;
     }
 
-    // Проверяем, нужна ли кнопка "Показать больше" для описания
-    if (sub.description) {
-      setTimeout(() => {
-        const descElement = document.getElementById('channel-description');
-        const btnElement = document.getElementById('show-more-desc');
-
-        if (descElement && btnElement) {
-          // Проверяем, переполнен ли текст (есть ли обрезка)
-          const isOverflowing = descElement.scrollWidth > descElement.clientWidth;
-
-          if (isOverflowing) {
-            btnElement.style.display = 'block';
-            btnElement.textContent = 'Показать больше';
-
-            btnElement.onclick = () => {
-              if (descElement.style.whiteSpace === 'nowrap') {
-                descElement.style.whiteSpace = 'normal';
-                descElement.style.overflow = 'visible';
-                btnElement.textContent = 'Скрыть';
-              } else {
-                descElement.style.whiteSpace = 'nowrap';
-                descElement.style.overflow = 'hidden';
-                btnElement.textContent = 'Показать больше';
-              }
-            };
-          }
-        }
-      }, 100);
+    if (e.key !== 'Tab') return;
+    const dialog = document.querySelector('#channel-detail-modal .subs-channel-dialog');
+    if (!dialog) return;
+    const focusable = [...dialog.querySelectorAll('button:not([disabled]):not([hidden]), [href], [tabindex]:not([tabindex="-1"])')]
+      .filter(el => el.offsetParent !== null);
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    const active = document.activeElement;
+    if (e.shiftKey && (active === first || active === dialog)) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && active === last) {
+      e.preventDefault();
+      first.focus();
     }
-
-    modal.style.display = 'flex';
   }
 
   closeModal() {
     const modal = document.getElementById('channel-detail-modal');
     if (modal) modal.style.display = 'none';
+    document.removeEventListener('keydown', this._onModalKeydown, true);
+    const returnId = this._modalReturnId;
+    this._modalSub = null;
+    this._modalReturnId = null;
+
+    // Фокус — обратно на строку канала. Список мог перерисоваться, пока
+    // окно было открыто (например, канал добавили в избранное), поэтому
+    // строку ищем заново по id
+    if (returnId != null && !this._destroyed) {
+      const row = document.querySelector(`#subscriptions-list ${this.cardSelector(returnId)}`);
+      row?.focus({ preventScroll: true });
+    }
   }
 
   // Элементы страницы к этому моменту могут быть уже удалены (со страницы
@@ -1174,28 +1388,37 @@ class SubscriptionsPage {
   showAuthSection() {
     this.setDisplay('subscriptions-auth-section', 'block');
     this.setDisplay('subscriptions-content', 'none');
+    // Обновлять и чистить без входа нечего
+    const actions = document.getElementById('subs-page-actions');
+    if (actions) actions.hidden = true;
   }
 
   showContentSection() {
     this.setDisplay('subscriptions-auth-section', 'none');
     this.setDisplay('subscriptions-content', 'block');
+    const actions = document.getElementById('subs-page-actions');
+    if (actions) actions.hidden = false;
   }
 
   /**
    * Ненавязчивая отметка «обновляю» поверх уже показанного списка.
    *
    * Прятать список ради спиннера незачем: старые данные полезнее пустого
-   * места, а обновление занимает секунду-другую.
+   * места, а обновление занимает секунду-другую. Пока идёт обновление,
+   * крутится значок «Обновить» в шапке (CSS по классу списка).
    */
   showRefreshingHint() {
     const list = document.getElementById('subscriptions-list');
     if (!list) return;
 
     list.classList.add('refreshing');
+    list.setAttribute('aria-busy', 'true');
   }
 
   hideRefreshingHint() {
-    document.getElementById('subscriptions-list')?.classList.remove('refreshing');
+    const list = document.getElementById('subscriptions-list');
+    list?.classList.remove('refreshing');
+    list?.removeAttribute('aria-busy');
   }
 
   showLoadingState() {
@@ -1212,7 +1435,11 @@ class SubscriptionsPage {
   showEmptyState() {
     this.setDisplay('subscriptions-loading', 'none');
     this.setDisplay('subscriptions-list', 'none');
-    this.setDisplay('subscriptions-empty', 'block');
+    const empty = document.getElementById('subscriptions-empty');
+    if (empty) {
+      empty.innerHTML = this.renderEmptyState();
+      empty.style.display = 'block';
+    }
   }
 
   async refreshSubscriptions() {
@@ -1220,15 +1447,12 @@ class SubscriptionsPage {
     this._refreshing = true;
 
     // Кнопка — одна иконка без текста. Раньше на время загрузки в неё
-    // ставился текст «Загрузка...», а после — другая разметка с подписью
-    // «Обновить»: панель прыгала, и кнопка навсегда меняла вид. Теперь
-    // исходная разметка запоминается и возвращается, а пока идёт загрузка,
-    // иконка просто крутится.
+    // ставился текст «Загрузка...»: панель прыгала. Теперь, пока идёт
+    // загрузка, иконка просто крутится (класс is-spinning)
     const btn = document.getElementById('refresh-subs-btn');
-    const originalHtml = btn?.innerHTML;
     if (btn) {
-      btn.disabled = true;
-      btn.querySelector('svg')?.style.setProperty('animation', 'spin 1s linear infinite');
+      btn.classList.add('is-spinning');
+      btn.setAttribute('aria-busy', 'true');
     }
 
     try {
@@ -1241,8 +1465,8 @@ class SubscriptionsPage {
     } finally {
       this._refreshing = false;
       if (btn) {
-        btn.disabled = false;
-        btn.innerHTML = originalHtml;
+        btn.classList.remove('is-spinning');
+        btn.removeAttribute('aria-busy');
       }
     }
   }
@@ -1283,19 +1507,29 @@ class SubscriptionsPage {
       return;
     }
 
-    const rows = candidates.map(s => `
-      <label style="display: flex; align-items: center; gap: 10px; padding: 6px 4px; cursor: pointer;">
-        <input type="checkbox" data-sub-id="${this.esc(s.id)}" checked>
-        <span style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); font-size: 14px;">${this.esc(s.displayName || s.login)}</span>
-        <span style="color: var(--text-secondary); font-size: 12px; white-space: nowrap;">${this.esc(this.getLastStreamText(s.lastStreamDate))}</span>
-      </label>
-    `).join('');
+    const rows = candidates.map(s => {
+      const url = this.esc(this.safeImageUrl(s.profileImageUrl));
+      const avatar = url
+        ? `<img class="subs-cleanup-avatar" src="${url}" alt="" decoding="async" draggable="false">`
+        : '<span class="subs-cleanup-avatar" aria-hidden="true"></span>';
+      return `
+        <label class="subs-cleanup-row">
+          <input type="checkbox" data-sub-id="${this.esc(s.id)}" checked>
+          ${avatar}
+          <span class="subs-cleanup-name">${this.esc(s.displayName || s.login)}</span>
+          <span class="subs-cleanup-when">${this.esc(this.getLastStreamText(s.lastStreamDate))}</span>
+        </label>`;
+    }).join('');
 
     const modalHtml = `
-      <div id="subs-cleanup-confirm">
-        <h3 style="font-size: 20px; font-weight: 600; color: var(--text-primary); margin: 0 0 8px; text-align: center;">Отписаться от неактивных каналов?</h3>
-        <p style="font-size: 14px; color: var(--text-secondary); line-height: 1.5; margin: 0 0 16px; text-align: center;">Эти каналы не стримили больше 30 дней. Снимите галочки с тех, кого хотите оставить. Отписка выполнится на Twitch.</p>
-        <div style="max-height: 260px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 4px 8px;">${rows}</div>
+      <div id="subs-cleanup-confirm" class="subs-confirm">
+        <h3 class="subs-confirm-title">Отписаться от неактивных каналов?</h3>
+        <p class="subs-confirm-text">Эти каналы не стримили больше 30 дней. Снимите галочки с тех, кого хотите оставить. Отписка выполнится на Twitch; избранные сюда не попадают.</p>
+        <div class="subs-cleanup-bar">
+          <span data-cleanup-count></span>
+          <button type="button" class="subs-link-btn" data-cleanup-all></button>
+        </div>
+        <div class="subs-cleanup-list">${rows}</div>
       </div>
     `;
 
@@ -1311,21 +1545,41 @@ class SubscriptionsPage {
     // Окно уже в документе: следим за галочками и держим число на кнопке
     // в соответствии с выбором
     const root = document.getElementById('subs-cleanup-confirm');
-    const okBtn = root?.closest('#confirmation-modal')?.querySelector('#confirm-ok');
+    const okBtn = root?.closest('#confirmation-modal')?.querySelector('#confirm-ok')
+      || document.getElementById('confirm-ok');
     if (okBtn) {
-      // «Отписаться от 12» не помещается в стандартную ширину кнопки
-      okBtn.style.maxWidth = '220px';
+      // «Отписаться от 12» не помещалось в прежнюю ширину кнопки окна
+      okBtn.style.maxWidth = 'none';
       okBtn.style.whiteSpace = 'nowrap';
     }
+    const countEl = root?.querySelector('[data-cleanup-count]');
+    const allBtn = root?.querySelector('[data-cleanup-all]');
+    const sync = () => {
+      const n = selected.size;
+      if (countEl) countEl.textContent = `Выбрано ${n} из ${candidates.length}`;
+      if (allBtn) allBtn.textContent = n === candidates.length ? 'Снять все' : 'Выбрать все';
+      if (okBtn) {
+        okBtn.textContent = confirmLabel(n);
+        okBtn.disabled = n === 0;
+      }
+    };
+    sync();
+
     root?.addEventListener('change', (e) => {
       const box = e.target.closest?.('input[data-sub-id]');
       if (!box) return;
       if (box.checked) selected.add(box.dataset.subId);
       else selected.delete(box.dataset.subId);
-      if (okBtn) {
-        okBtn.textContent = confirmLabel(selected.size);
-        okBtn.disabled = selected.size === 0;
-      }
+      sync();
+    });
+    allBtn?.addEventListener('click', () => {
+      const check = selected.size !== candidates.length;
+      root.querySelectorAll('input[data-sub-id]').forEach(box => {
+        box.checked = check;
+        if (check) selected.add(box.dataset.subId);
+        else selected.delete(box.dataset.subId);
+      });
+      sync();
     });
 
     if (!(await pending)) return;
@@ -1336,6 +1590,7 @@ class SubscriptionsPage {
     this._cleanupRunning = true;
     const btn = document.getElementById('cleanup-subs-btn');
     const originalHtml = btn?.innerHTML;
+    const label = btn?.querySelector('span');
     if (btn) btn.disabled = true;
 
     const done = [];
@@ -1347,7 +1602,9 @@ class SubscriptionsPage {
         const sub = targets[i];
         // Отписка занимает секунды на канал: без прогресса казалось, что
         // ничего не происходит, и кнопку нажимали ещё раз
-        if (btn) btn.textContent = `Отписываюсь… ${i + 1} из ${targets.length}`;
+        const progress = `Отписываюсь… ${i + 1} из ${targets.length}`;
+        if (label) label.textContent = progress;
+        else if (btn) btn.textContent = progress;
 
         let result = null;
         try {
@@ -1413,18 +1670,19 @@ class SubscriptionsPage {
   }
 
   async unsubscribeChannel(sub) {
+    // Аватар в вопросе — чтобы было видно, от кого именно отписываемся:
+    // имена каналов бывают похожими (ewc_…_en и ewc_…_ar)
+    const url = this.esc(this.safeImageUrl(sub.profileImageUrl));
+    const avatar = url
+      ? `<img class="subs-confirm-avatar" src="${url}" alt="" draggable="false">`
+      : '';
     const modalHtml = `
-      <div style="text-align: center;">
-        <div style="width: 80px; height: 80px; margin: 0 auto 20px; background: rgba(255, 107, 107, 0.2); border-radius: var(--radius-circle); display: flex; align-items: center; justify-content: center;">
-          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#f0555f" stroke-width="2">
-            <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>
-            <rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect>
-            <line x1="10" y1="11" x2="10" y2="17"></line>
-            <line x1="14" y1="11" x2="14" y2="17"></line>
-          </svg>
+      <div class="subs-confirm">
+        <div class="subs-confirm-head">
+          ${avatar}
+          <h3 class="subs-confirm-title">Отписаться от ${this.esc(sub.displayName || sub.login)}?</h3>
         </div>
-        <h3 style="font-size: 20px; font-weight: 600; color: var(--text-primary); margin-bottom: 12px;">Отписаться от ${this.esc(sub.displayName || sub.login)}?</h3>
-        <p style="font-size: 14px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 24px;">Отписка выполнится прямо здесь, переходить на Twitch не нужно.</p>
+        <p class="subs-confirm-text">Отписка выполнится прямо здесь, переходить на Twitch не нужно.${sub.isFavorite ? ' Канал уйдёт и из избранного.' : ''}</p>
       </div>
     `;
 
@@ -1563,18 +1821,53 @@ class SubscriptionsPage {
     }
   }
 
+  // Вид списка задают классы: .list — строки с разделителями,
+  // .subscriptions-grid-view — плитка. Класс refreshing при этом остаётся:
+  // раньше className перезаписывался целиком и стирал его
   updateViewMode() {
     const list = document.getElementById('subscriptions-list');
     if (!list) return;
 
-    list.className = this.currentView === 'grid' ? 'subscriptions-grid-view' : 'subscriptions-list-view';
+    const grid = this.currentView === 'grid';
+    list.classList.toggle('list', !grid);
+    list.classList.toggle('subscriptions-list-view', !grid);
+    list.classList.toggle('subscriptions-grid-view', grid);
+  }
+
+  setView(view, { remember = true } = {}) {
+    if (view !== 'list' && view !== 'grid') return;
+    this.currentView = view;
+    document.querySelectorAll('#subs-view button[data-view]').forEach(b => {
+      const on = b.dataset.view === view;
+      b.classList.toggle('active', on);
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+    this.updateViewMode();
+    if (!remember) return;
+    try {
+      localStorage.setItem(SubscriptionsPage.VIEW_STORAGE_KEY, view);
+    } catch (e) {
+      // Хранилище недоступно — вид просто не запомнится
+    }
+  }
+
+  // Плитку выбирают осознанно, и каждый раз переключать её заново
+  // неудобно — вид запоминается для этого окна
+  restoreViewMode() {
+    let saved = null;
+    try {
+      saved = localStorage.getItem(SubscriptionsPage.VIEW_STORAGE_KEY);
+    } catch (e) {
+      saved = null;
+    }
+    if (saved === 'grid') this.setView('grid', { remember: false });
   }
 
   async savePrioritySetting(enabled) {
     try {
       await Storage.setItem('subscriptions_priority_enabled', enabled);
       window.utils.showToast(
-        enabled ? 'Приоритет подписок включен' : 'Приоритет подписок отключен',
+        enabled ? 'Приоритет подписок включён' : 'Приоритет подписок отключён',
         'success'
       );
     } catch (error) {
@@ -1594,64 +1887,75 @@ class SubscriptionsPage {
     }
   }
 
-  // Drag and Drop methods
-  handleDragStart(e, sub) {
+  // Перетаскивание. Слушает сам список: строки перерисовываются, а
+  // обработчики на них терялись бы. Тащить можно только избранные — им
+  // разметка ставит draggable
+  handleDragStart(e) {
+    const card = e.target.closest?.('.subscription-card[draggable="true"]');
+    const sub = card && this.findSub(card.dataset.channelId);
+    if (!sub) return;
     e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/html', e.target.innerHTML);
-    e.target.classList.add('dragging');
+    e.dataTransfer.setData('text/plain', String(sub.id));
+    card.classList.add('dragging');
     this.draggedSub = sub;
+    // После броска список перерисовывается, и эта строка уже вне
+    // документа: её dragend до списка не всплывёт. Без своего слушателя
+    // перетаскивание «залипало», и файл, протащенный над окном позже,
+    // переставлял бы избранные
+    card.addEventListener('dragend', () => this.handleDragEnd(), { once: true });
   }
 
-  handleDragEnd(e) {
-    e.target.classList.remove('dragging');
+  handleDragEnd() {
     this.draggedSub = null;
-    document.querySelectorAll('.subscription-card').forEach(card => {
-      card.classList.remove('drag-over');
-    });
+    document.querySelectorAll('#subscriptions-list .subscription-card.dragging, #subscriptions-list .subscription-card.drag-over')
+      .forEach(card => card.classList.remove('dragging', 'drag-over'));
   }
 
+  // Бросить можно только на другое избранное: обычные каналы сортируются
+  // по рейтингу, и подсветка над ними обещала бы перестановку, которой не будет
   handleDragOver(e) {
-    if (e.preventDefault) {
-      e.preventDefault();
-    }
+    if (!this.draggedSub) return;
+    const card = e.target.closest?.('.subscription-card');
+    if (!card || card.getAttribute('draggable') !== 'true') return;
+    e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
-
-    const card = e.target.closest('.subscription-card');
-    if (card && !card.classList.contains('dragging')) {
-      card.classList.add('drag-over');
-    }
-
-    return false;
+    if (!card.classList.contains('dragging')) card.classList.add('drag-over');
   }
 
   handleDragLeave(e) {
-    const card = e.target.closest('.subscription-card');
-    if (card) {
+    const card = e.target.closest?.('.subscription-card');
+    // Переход курсора на дочерний элемент строки — не уход со строки
+    if (card && !card.contains(e.relatedTarget)) {
       card.classList.remove('drag-over');
     }
   }
 
-  async handleDrop(e, targetSub) {
-    if (e.stopPropagation) {
-      e.stopPropagation();
-    }
-
-    const card = e.target.closest('.subscription-card');
+  async handleDrop(e) {
+    const card = e.target.closest?.('.subscription-card');
     if (card) {
       card.classList.remove('drag-over');
     }
+    const targetSub = card && this.findSub(card.dataset.channelId);
+    if (!targetSub) return false;
+    e.preventDefault();
+    e.stopPropagation();
 
-    if (!this.draggedSub || this.draggedSub.id === targetSub.id) {
+    // Бросок завершает перетаскивание при любом исходе: перерисовка ниже
+    // убирает исходную строку вместе с отметками
+    const draggedSub = this.draggedSub;
+    this.handleDragEnd();
+
+    if (!draggedSub || draggedSub.id === targetSub.id) {
       return false;
     }
 
     // Порядок задаётся только между избранными
-    if (!this.draggedSub.isFavorite || !targetSub.isFavorite) {
+    if (!draggedSub.isFavorite || !targetSub.isFavorite) {
       return false;
     }
 
     // Получаем индексы
-    const draggedIndex = this.filteredSubscriptions.findIndex(s => s.id === this.draggedSub.id);
+    const draggedIndex = this.filteredSubscriptions.findIndex(s => s.id === draggedSub.id);
     const targetIndex = this.filteredSubscriptions.findIndex(s => s.id === targetSub.id);
 
     if (draggedIndex === -1 || targetIndex === -1) {
@@ -1692,7 +1996,7 @@ class SubscriptionsPage {
     // Перерисовываем
     this.renderSubscriptions();
 
-    window.utils.showToast('Порядок обновлен', 'success');
+    window.utils.showToast('Порядок избранных сохранён', 'success');
 
     return false;
   }

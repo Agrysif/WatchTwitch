@@ -1,2524 +1,619 @@
 /* ===== ОФОРМЛЕНИЕ «iOS 27» =====
  *
- * Необязательный слой поверх классики: «жидкое стекло» Apple в редакции
- * WWDC 2026 — полупрозрачные поверхности, которые размывают то, что за
- * ними, отчётливые слои и регулируемая прозрачность.
+ * Необязательный слой поверх классики: «жидкое стекло» — полупрозрачные
+ * нейтральные поверхности, блик по верхней кромке, глубина тенями,
+ * капсулы вместо прямоугольных кнопок, крупные скругления.
  *
  * Включается классом body.ui-ios27 (settings-manager.js, настройка
- * uiStyle). Каждое правило файла начинается с body.ui-ios27, поэтому без
- * класса ни один селектор не совпадает и классика остаётся ровно такой,
- * какой была: при выборе «Классика» этот файл можно было бы и не грузить.
- * Единственное исключение — @keyframes с префиксом ios27-: сами по себе
- * они ничего не рисуют, пока на них не сошлётся правило отсюда же.
+ * uiStyle). Каждое правило файла начинается с body.ui-ios27: без класса
+ * ни один селектор не совпадает, и классика остаётся ровно такой, какой её
+ * рисуют themes.css, main.css и page-*.css.
  *
- * Почему так много !important. Две трети оформления приложения — инлайновые
- * style="" в разметке и шаблонных строках JS. Перебить их по-другому
- * нельзя, поэтому !important стоит только там, где спорим с инлайном или с
- * чужим !important (светлая тема и экономный режим в main.css).
+ * Как устроено. Классика целиком построена на токенах themes.css
+ * (--surface-0…3, --surface-overlay, --text-*, --radius-* …), поэтому
+ * основную работу делает переопределение токенов: карточки становятся
+ * стеклом, вложенные плитки — полупрозрачными «колодцами», всплывающие
+ * слои — плотным стеклом с размытием. Ниже — только то, чего токенами не
+ * сказать: капсулы, блик и тени, «линза» выбранного, iOS-переключатели.
  *
- * Прозрачность стекла — переменная --glass-alpha на <html>, её ставит
- * settings-manager.js из настройки glassOpacity (0.25–0.9).
+ * Цвет. Фон — чистый нейтральный почти чёрный (светлая — серый iOS), без
+ * цветных пятен и свечений: прежняя редакция заливала фон фиолетовыми и
+ * синими кругами, и на тёмной теме это смотрелось грязно. Цвет — только у
+ * акцента там, где он что-то значит: главная кнопка, включённое, прогресс,
+ * фокус; зелёный/янтарный/красный — статусы.
+ *
+ * Размытие. Только у слоёв, под которыми действительно что-то есть: окна,
+ * тосты, журнал, всплывающие списки и подсказки, прилипшие панели. У
+ * карточек в потоке под стеклом лишь ровный фон — размытие там ничего не
+ * меняет на экране, а видеокарту занимает всю ночь фарминга. К тому же
+ * backdrop-filter на предке делает его опорой для position: fixed, и
+ * плеер, график зрителей и подсказки съехали бы.
+ *
+ * Прозрачность — переменная --glass-alpha на <html> (0.25–0.9), её ставит
+ * settings-manager.js из настройки glassOpacity: чем меньше, тем прозрачнее
+ * карточки и тем сильнее размытие всплывающих слоёв (чтобы текст поверх
+ * страницы оставался читаемым).
+ *
+ * Экономный режим (body.low-graphics): main.css снимает размытие и все
+ * тени; здесь стекло становится плотнее, всплывающие слои — сплошными.
  */
 
-/* ───────────────────────── Токены ───────────────────────── */
+/* ───────────────────────── 1. Токены ───────────────────────── */
 
 body.ui-ios27 {
-  /* Скругления «непрерывные» и щедрые: карточки ~22px, кнопки — капсулы.
-     Почти всё в приложении берёт радиусы из этих токенов, в том числе
-     инлайновые стили, поэтому одной заменой меняется весь интерфейс */
+  /* Скругления щедрее классики: карточки 20, окна 26, кнопки — капсулы
+     (ниже). Почти всё берёт радиусы из токенов, и одна замена меняет
+     весь интерфейс */
+  --radius-xs: 6px;
   --radius-sm: 8px;
   --radius-ctl: 12px;
-  --radius-md: 18px;
-  --radius-card: 22px;
-  --radius-float: 26px;
-  --radius-capsule: 999px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-xl: 26px;
 
-  --pad-card: 18px 20px;
-  --pad-control: 9px 16px;
+  /* SF Pro, если установлен; на Windows его обычно нет, и ближе всего к
+     нему Segoe UI Variable — тот же оптический размер Text/Display */
+  --font-ui: "SF Pro Text", -apple-system, "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  --font-display: "SF Pro Display", -apple-system, "Segoe UI Variable Display", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
 
-  /* Пружинистое движение: нажатие чуть «проседает» и отыгрывает назад */
-  --ease-spring: cubic-bezier(0.34, 1.42, 0.64, 1);
-  --ease-smooth: cubic-bezier(0.25, 0.8, 0.25, 1);
-  --transition-fast: 0.22s var(--ease-smooth);
-  --transition-base: 0.3s var(--ease-smooth);
+  /* Заголовки крупнее и плотнее — как «большие заголовки» iOS */
+  --fs-h1: 24px;     --lh-h1: 30px;
+  --fs-h2: 19px;     --lh-h2: 24px;
+  --fs-title: 16px;  --lh-title: 22px;
+  --ls-tight: -0.02em;
+
+  /* Пружина: нажатие чуть проседает и отыгрывает назад */
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
 
   --ga: var(--glass-alpha, 0.55);
-  --glass-blur: blur(34px) saturate(175%);
-  --glass-blur-float: blur(40px) saturate(185%);
-  --scrim-blur: blur(14px) saturate(140%);
-
-  /* На Windows SF Pro обычно нет — ближе всего к нему Segoe UI Variable:
-     тот же «оптический» размер Display для заголовков и Text для текста */
-  --font-text: "SF Pro Text", "SF Pro Display", -apple-system, "Segoe UI Variable Text", "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
-  --font-display: "SF Pro Display", "SF Pro Text", -apple-system, "Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
-
-  font-family: var(--font-text);
-  letter-spacing: -0.003em;
+  /* Чем прозрачнее стекло, тем сильнее размытие под всплывающим слоем:
+     иначе на 0.25 текст окна спорил бы с текстом страницы под ним */
+  --glass-blur-float: blur(calc(38px - 16px * var(--ga))) saturate(160%);
+  --scrim-blur: blur(6px);
 }
 
 body.ui-ios27.theme-dark {
-  /* Цвета классики переопределены так, что фон блоков становится
-     полупрозрачным: стекло пропускает свечение фона, а вложенные
-     «колодцы» (--bg-primary) чуть темнее поверхности */
-  --bg-primary: rgba(0, 0, 0, 0.24);
-  --bg-secondary: rgba(255, 255, 255, 0.055);
-  --bg-tertiary: rgba(255, 255, 255, 0.09);
-  --card-bg: rgba(255, 255, 255, 0.055);
-  --sidebar-bg: transparent;
-  --titlebar-bg: transparent;
+  /* Фон окна — сплошной: им же вырезаются кольца вокруг значков */
+  --surface-0: #0e0e10;
+
+  /* Стекло. fill — карточки, float — всплывающие слои (плотнее: под ними
+     текст страницы), solid — его видимый цвет на фоне при обычной
+     прозрачности: кольца и вырезы, которым нужен непрозрачный цвет */
+  --glass-fill: rgba(40, 40, 44, var(--ga));
+  --glass-fill-float: rgba(32, 32, 35, calc(var(--ga) * 0.32 + 0.62));
+  --glass-solid: #1b1b1e;
+  --glass-solid-float: #222225;
+  --glass-stroke: rgba(255, 255, 255, 0.075);
+  --glass-stroke-float: rgba(255, 255, 255, 0.11);
+  /* Блик — светлая линия по верхней кромке; скругление само сводит её на
+     нет к углам, как отражение на краю толстого стекла */
+  --glass-edge: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  --glass-shadow: var(--glass-edge), 0 1px 2px rgba(0, 0, 0, 0.28), 0 18px 40px -22px rgba(0, 0, 0, 0.8);
+  --glass-shadow-float: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 28px 70px -12px rgba(0, 0, 0, 0.62), 0 4px 14px rgba(0, 0, 0, 0.3);
+
+  /* «Линза» — выбранное: пункт меню, сегмент. Светлее поверхности, без
+     акцентной заливки */
+  --lens-fill: rgba(255, 255, 255, 0.11);
+  --lens-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 1px 3px rgba(0, 0, 0, 0.35);
+  --seg-track: rgba(118, 118, 128, 0.2);
+  --thumb-shadow: 0 2px 6px rgba(0, 0, 0, 0.3), 0 0 0 0.5px rgba(0, 0, 0, 0.1);
+  /* Деления шкалы дропсов — вырез цветом подложки карточки */
+  --mark-cut: rgba(14, 14, 16, 0.85);
+
+  --surface-1: var(--glass-fill);
+  --surface-2: rgba(255, 255, 255, 0.055);
+  --surface-3: rgba(255, 255, 255, 0.1);
+  --surface-overlay: var(--glass-fill-float);
 
   --text-primary: #f5f5f7;
-  --text-secondary: rgba(235, 235, 245, 0.62);
-  --text-tertiary: rgba(235, 235, 245, 0.4);
+  --text-secondary: #a9a9b2;   /* 7:1 на карточке */
+  --text-tertiary: #8b8b94;    /* 5:1 на карточке */
 
-  --accent-color: #8466ff;
-  --accent-hover: #9479ff;
-  --accent-quiet: rgba(132, 102, 255, 0.2);
-  --accent-shadow: rgba(132, 102, 255, 0.35);
-  --accent-rgb: 132, 102, 255;
+  /* Системные цвета iOS (тёмные) — только для статусов */
+  --success: #30d158;  --success-soft: rgba(48, 209, 88, 0.14);
+  --warning: #ff9f0a;  --warning-soft: rgba(255, 159, 10, 0.14);
+  --danger: #ff453a;   --danger-soft: rgba(255, 69, 58, 0.14);
+  --danger-strong: #d9302b; --danger-hover: #e3382f;   /* белый текст 4.8:1 */
 
-  --border-color: rgba(255, 255, 255, 0.08);
-  --border-strong: rgba(255, 255, 255, 0.16);
-  --hover-bg: rgba(255, 255, 255, 0.07);
-
-  --button-secondary-bg: rgba(255, 255, 255, 0.08);
-  --button-secondary-hover: rgba(255, 255, 255, 0.14);
-
-  --input-bg: rgba(0, 0, 0, 0.26);
+  --border-color: rgba(255, 255, 255, 0.075);
+  --border-strong: rgba(255, 255, 255, 0.13);
+  --hover-bg: rgba(255, 255, 255, 0.055);
+  --press-bg: rgba(255, 255, 255, 0.09);
   --progress-bg: rgba(255, 255, 255, 0.1);
   --toggle-bg: rgba(120, 120, 128, 0.36);
-  --toggle-on: #30d158;
+  --scrim: rgba(0, 0, 0, 0.42);
 
-  --scrollbar-thumb: rgba(255, 255, 255, 0.16);
-  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.3);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.35);
+  --shadow-pop: var(--glass-shadow-float);
+  --shadow-modal: var(--glass-shadow-float);
 
-  --success-color: #30d158;
-  --warning-color: #ff9f0a;
-  --error-color: #ff453a;
+  --scrollbar-thumb: rgba(255, 255, 255, 0.14);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.26);
 
-  /* Стекло. fill — основная панель, float — всплывающие окна (плотнее,
-     иначе текст поверх размытой страницы не читается), tile — плитки
-     внутри панелей: без собственного размытия, чтобы стекло не лежало на
-     стекле мутной кашей и сотня строк не нагружала видеокарту */
-  --glass-fill: rgba(30, 30, 42, var(--ga));
-  --glass-fill-float: rgba(30, 30, 42, calc(var(--ga) * 0.45 + 0.46));
-  --glass-tile: rgba(255, 255, 255, 0.05);
-  --glass-tile-hover: rgba(255, 255, 255, 0.085);
-  --glass-tile-stroke: rgba(255, 255, 255, 0.07);
-  --glass-stroke: rgba(255, 255, 255, 0.09);
-  --glass-spec: rgba(255, 255, 255, 0.24);
-  /* Свет падает сверху слева: мягкое пятно в углу и спад сверху вниз —
-     так толстое стекло преломляет свет у кромки */
-  /* no-repeat у каждого слоя: картинка фона отсчитывается от внутренней
-     части блока, а рисуется и под рамкой, и без запрета повтора её
-     начало повторялось в нижней рамке светлой полоской */
-  --glass-sheen: radial-gradient(140% 90% at 0% 0%, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0) 42%) no-repeat, linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0) 46%) no-repeat;
-  /* Блик по верхней кромке плитки: линия в 1px, которую скругление само
-     сводит на нет к углам — так выглядит отражение на краю стекла */
-  --spec-line: linear-gradient(180deg, rgba(255, 255, 255, 0.11) 0, rgba(255, 255, 255, 0.11) 1px, rgba(255, 255, 255, 0) 1px) no-repeat;
-  --glass-shadow: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 18px 40px -18px rgba(0, 0, 0, 0.65), 0 2px 8px rgba(0, 0, 0, 0.22);
-  --glass-shadow-float: 0 1px 0 rgba(255, 255, 255, 0.1) inset, 0 40px 90px -24px rgba(0, 0, 0, 0.75), 0 10px 30px rgba(0, 0, 0, 0.35);
+  /* Алиасы, которые в классике смотрят на сплошные поверхности */
+  --input-bg: rgba(118, 118, 128, 0.18);
+  --button-secondary-bg: rgba(255, 255, 255, 0.08);
+  --button-secondary-hover: rgba(255, 255, 255, 0.13);
+  --titlebar-bg: #121215;
+  --sidebar-bg: var(--glass-fill);
 
-  /* «Линза» — выделенный элемент: пункт меню, сегмент, активная капсула */
-  /* border-box у заливок: градиент на всю кнопку вместе с рамкой, иначе
-     его верхний цвет повторялся полоской в нижней рамке */
-  --lens-fill: linear-gradient(180deg, rgba(255, 255, 255, 0.17), rgba(255, 255, 255, 0.08)) border-box;
-  --lens-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), inset 0 0 0 1px rgba(255, 255, 255, 0.06), 0 6px 16px -6px rgba(0, 0, 0, 0.55);
-  --seg-track: rgba(118, 118, 128, 0.2);
-
-  --accent-fill: linear-gradient(180deg, #9a82ff 0%, #7a58ff 100%) border-box;
-  --accent-glow: 0 8px 22px -8px rgba(124, 92, 255, 0.85), inset 0 1px 0 rgba(255, 255, 255, 0.3);
-  --danger-fill: linear-gradient(180deg, #ff6961 0%, #ff3b30 100%) border-box;
-  --danger-glow: 0 8px 22px -8px rgba(255, 59, 48, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.28);
-
-  --scrim: rgba(4, 4, 10, 0.42);
-
-  /* Глубокий почти чёрный фон с крупными мягкими свечениями: стеклу
-     нужно что-то, что оно преломляет. Узоров нет намеренно */
+  /* Нейтральный графит; единственное пятно — почти незаметный серый свет
+     сверху, чтобы фон не был мёртвой заливкой. Никаких цветных свечений */
   background:
-    radial-gradient(1100px 720px at 6% -6%, rgba(124, 92, 255, 0.30), rgba(124, 92, 255, 0) 62%),
-    radial-gradient(900px 640px at 104% 14%, rgba(64, 120, 255, 0.22), rgba(64, 120, 255, 0) 64%),
-    radial-gradient(1100px 760px at 62% 112%, rgba(98, 66, 230, 0.24), rgba(98, 66, 230, 0) 62%),
-    radial-gradient(700px 520px at 38% 52%, rgba(48, 160, 255, 0.07), rgba(48, 160, 255, 0) 70%),
-    #07070c;
-  color: var(--text-primary);
+    radial-gradient(1200px 600px at 50% -10%, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0) 60%),
+    linear-gradient(180deg, #131316 0%, #0b0b0d 100%);
 }
 
 body.ui-ios27.theme-light {
-  --bg-primary: rgba(118, 118, 140, 0.08);
-  --bg-secondary: rgba(255, 255, 255, 0.55);
-  --bg-tertiary: rgba(255, 255, 255, 0.7);
-  --card-bg: rgba(255, 255, 255, 0.55);
-  --sidebar-bg: transparent;
-  --titlebar-bg: transparent;
+  --surface-0: #f2f2f7;
 
-  --text-primary: #1c1c1e;
-  --text-secondary: rgba(60, 60, 67, 0.68);
-  --text-tertiary: rgba(60, 60, 67, 0.45);
+  /* Белое стекло на сером iOS-фоне. Нижняя граница плотности выше, чем в
+     тёмной: белое на почти белом при 0.25 исчезало бы совсем */
+  --glass-fill: rgba(255, 255, 255, calc(var(--ga) * 0.6 + 0.35));
+  --glass-fill-float: rgba(250, 250, 252, calc(var(--ga) * 0.28 + 0.66));
+  --glass-solid: #ffffff;
+  --glass-solid-float: #fafafc;
+  --glass-stroke: rgba(0, 0, 0, 0.05);
+  --glass-stroke-float: rgba(0, 0, 0, 0.08);
+  --glass-edge: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  --glass-shadow: var(--glass-edge), 0 1px 2px rgba(0, 0, 0, 0.04), 0 14px 34px -18px rgba(0, 0, 0, 0.18);
+  --glass-shadow-float: inset 0 1px 0 rgba(255, 255, 255, 0.95), 0 28px 70px -14px rgba(0, 0, 0, 0.22), 0 4px 14px rgba(0, 0, 0, 0.07);
 
-  --accent-color: #6b49f0;
-  --accent-hover: #5a37e0;
-  --accent-quiet: rgba(107, 73, 240, 0.12);
-  --accent-shadow: rgba(107, 73, 240, 0.24);
-  --accent-rgb: 107, 73, 240;
-
-  --border-color: rgba(0, 0, 0, 0.08);
-  --border-strong: rgba(0, 0, 0, 0.14);
-  --hover-bg: rgba(0, 0, 0, 0.045);
-
-  --button-secondary-bg: rgba(255, 255, 255, 0.7);
-  --button-secondary-hover: rgba(255, 255, 255, 0.92);
-
-  --input-bg: rgba(255, 255, 255, 0.7);
-  --progress-bg: rgba(0, 0, 0, 0.08);
-  --toggle-bg: rgba(120, 120, 128, 0.2);
-  --toggle-on: #34c759;
-
-  --scrollbar-thumb: rgba(0, 0, 0, 0.18);
-  --scrollbar-thumb-hover: rgba(0, 0, 0, 0.3);
-
-  --success-color: #248a3d;
-  --warning-color: #c97a00;
-  --error-color: #e0362c;
-
-  --glass-fill: rgba(255, 255, 255, var(--ga));
-  --glass-fill-float: rgba(250, 250, 253, calc(var(--ga) * 0.4 + 0.52));
-  --glass-tile: rgba(255, 255, 255, 0.55);
-  --glass-tile-hover: rgba(255, 255, 255, 0.8);
-  --glass-tile-stroke: rgba(0, 0, 0, 0.06);
-  --glass-stroke: rgba(255, 255, 255, 0.7);
-  --glass-spec: rgba(255, 255, 255, 1);
-  --glass-sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0) 50%) no-repeat;
-  --spec-line: linear-gradient(180deg, rgba(255, 255, 255, 0.95) 0, rgba(255, 255, 255, 0.95) 1px, rgba(255, 255, 255, 0) 1px) no-repeat;
-  --glass-shadow: 0 1px 0 rgba(255, 255, 255, 0.8) inset, 0 18px 40px -20px rgba(40, 30, 90, 0.28), 0 2px 8px rgba(40, 30, 90, 0.06);
-  --glass-shadow-float: 0 1px 0 rgba(255, 255, 255, 0.9) inset, 0 40px 90px -24px rgba(40, 30, 90, 0.35), 0 10px 30px rgba(40, 30, 90, 0.12);
-
-  --lens-fill: linear-gradient(180deg, rgba(255, 255, 255, 1), rgba(255, 255, 255, 0.86)) border-box;
-  --lens-shadow: inset 0 1px 0 rgba(255, 255, 255, 1), inset 0 0 0 1px rgba(0, 0, 0, 0.04), 0 4px 12px -4px rgba(40, 30, 90, 0.25);
+  --lens-fill: #ffffff;
+  --lens-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 0 0 0.5px rgba(0, 0, 0, 0.05);
   --seg-track: rgba(118, 118, 128, 0.12);
+  --thumb-shadow: 0 2px 6px rgba(0, 0, 0, 0.16), 0 0 0 0.5px rgba(0, 0, 0, 0.06);
+  --mark-cut: rgba(255, 255, 255, 0.95);
 
-  --accent-fill: linear-gradient(180deg, #8467ff 0%, #6741f0 100%) border-box;
-  --accent-glow: 0 8px 20px -8px rgba(107, 73, 240, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.35);
-  --danger-fill: linear-gradient(180deg, #ff6259 0%, #f2392f 100%) border-box;
-  --danger-glow: 0 8px 20px -8px rgba(242, 57, 47, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  --surface-1: var(--glass-fill);
+  --surface-2: rgba(118, 118, 128, 0.09);
+  --surface-3: rgba(118, 118, 128, 0.15);
+  --surface-overlay: var(--glass-fill-float);
 
-  --scrim: rgba(30, 28, 50, 0.22);
+  --text-primary: #1d1d1f;
+  --text-secondary: #5c5c63;   /* 6.5:1 */
+  --text-tertiary: #6e6e75;    /* 4.6:1 на фоне окна */
 
-  background:
-    radial-gradient(1100px 720px at 6% -6%, rgba(140, 110, 255, 0.26), rgba(140, 110, 255, 0) 62%),
-    radial-gradient(900px 640px at 104% 14%, rgba(90, 160, 255, 0.22), rgba(90, 160, 255, 0) 64%),
-    radial-gradient(1100px 760px at 62% 112%, rgba(170, 140, 255, 0.22), rgba(170, 140, 255, 0) 62%),
-    #eef0f7;
-  color: var(--text-primary);
+  /* Системные цвета iOS (светлые, доступные варианты) */
+  --success: #248a3d;  --success-soft: rgba(52, 199, 89, 0.14);
+  --warning: #b25000;  --warning-soft: rgba(255, 149, 0, 0.14);
+  --danger: #d70015;   --danger-soft: rgba(255, 59, 48, 0.1);
+  --danger-strong: #d70015; --danger-hover: #c00013;
+
+  --border-color: rgba(0, 0, 0, 0.07);
+  --border-strong: rgba(0, 0, 0, 0.12);
+  --hover-bg: rgba(0, 0, 0, 0.04);
+  --press-bg: rgba(0, 0, 0, 0.07);
+  --progress-bg: rgba(118, 118, 128, 0.18);
+  --toggle-bg: rgba(120, 120, 128, 0.24);
+  --scrim: rgba(0, 0, 0, 0.2);
+
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1);
+  --shadow-pop: var(--glass-shadow-float);
+  --shadow-modal: var(--glass-shadow-float);
+
+  --scrollbar-thumb: rgba(0, 0, 0, 0.16);
+  --scrollbar-thumb-hover: rgba(0, 0, 0, 0.28);
+
+  --input-bg: rgba(118, 118, 128, 0.1);
+  --button-secondary-bg: rgba(118, 118, 128, 0.12);
+  --button-secondary-hover: rgba(118, 118, 128, 0.18);
+  --titlebar-bg: #f4f4f8;
+  --sidebar-bg: var(--glass-fill);
+
+  background: linear-gradient(180deg, #f5f5f9 0%, #eeeef3 100%);
 }
 
-/* Экономный режим графики: размытие и тени main.css снимает целиком
-   (их рисует процессор). Стекло без размытия держится на плотной подложке
-   с мягким градиентом сверху вниз и бликом по верхней кромке — так
-   поверхность всё ещё читается как стекло, а не как плоская плашка */
+/* Экономный режим: размытия и теней нет (их снимает main.css) — стекло
+   держится на плотной заливке и рамке. Всплывающие слои сплошные: без
+   размытия даже малая прозрачность оставляла под окном призрак страницы */
 body.ui-ios27.theme-dark.low-graphics {
-  --glass-fill: rgba(34, 34, 48, calc(var(--ga) * 0.35 + 0.55));
-  /* Всплывающим слоям — сплошная заливка: без размытия даже 3% прозрачности
-     оставляли под выпадающим списком призрак стрелки соседнего списка */
-  --glass-fill-float: rgb(30, 30, 42);
-  --glass-sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.015) 60%, rgba(0, 0, 0, 0.06)) no-repeat;
-  --scrim: rgba(3, 3, 8, 0.66);
+  --glass-fill: rgba(38, 38, 42, calc(var(--ga) * 0.2 + 0.74));
+  --glass-fill-float: #202023;
+  --glass-stroke: rgba(255, 255, 255, 0.09);
+  --glass-stroke-float: rgba(255, 255, 255, 0.13);
+  --lens-fill: rgba(255, 255, 255, 0.12);
+  --scrim: rgba(0, 0, 0, 0.62);
 }
 
 body.ui-ios27.theme-light.low-graphics {
-  --glass-fill: rgba(255, 255, 255, calc(var(--ga) * 0.3 + 0.62));
-  --glass-fill-float: rgb(252, 252, 255);
-  --glass-sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0) 55%, rgba(0, 0, 0, 0.02)) no-repeat;
-  --scrim: rgba(30, 28, 50, 0.4);
+  --glass-fill: rgba(255, 255, 255, calc(var(--ga) * 0.15 + 0.85));
+  --glass-fill-float: #fbfbfd;
+  --glass-stroke: rgba(0, 0, 0, 0.08);
+  --glass-stroke-float: rgba(0, 0, 0, 0.12);
+  --scrim: rgba(0, 0, 0, 0.32);
 }
 
-/* ───────────────────────── Основа ───────────────────────── */
+/* ───────────────────────── 2. Оболочка ───────────────────────── */
 
-body.ui-ios27 button,
-body.ui-ios27 input,
-body.ui-ios27 select,
-body.ui-ios27 textarea {
-  font-family: inherit;
-}
-
-body.ui-ios27 input[type="checkbox"],
-body.ui-ios27 input[type="radio"] {
-  accent-color: var(--accent-color);
-}
-
-body.ui-ios27 ::selection {
-  background: rgba(var(--accent-rgb), 0.35);
-}
-
-/* Полосы прокрутки — тонкие капсулы, как у системного оверлея */
-body.ui-ios27 ::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-
-body.ui-ios27 ::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-body.ui-ios27 ::-webkit-scrollbar-thumb {
-  background: var(--scrollbar-thumb);
-  background-clip: padding-box;
-  border: 3px solid transparent;
-  border-radius: var(--radius-capsule);
-}
-
-body.ui-ios27 ::-webkit-scrollbar-thumb:hover {
-  background: var(--scrollbar-thumb-hover);
-  background-clip: padding-box;
-}
-
-body.ui-ios27 .sidebar-top::-webkit-scrollbar {
-  width: 6px;
-}
-
-body.ui-ios27 .sidebar-top::-webkit-scrollbar-thumb {
-  border-width: 1px;
-}
-
-/* ───────────────────────── Заголовок окна ───────────────────────── */
-
+/* Заголовок окна сливается с фоном: панели «парят» под ним */
 body.ui-ios27 .titlebar {
   background: transparent;
   border-bottom-color: transparent;
 }
 
 body.ui-ios27 .titlebar-drag {
-  padding-left: 16px;
-}
-
-body.ui-ios27 .titlebar-logo {
-  border-radius: 6px;
+  padding-left: 18px;
 }
 
 body.ui-ios27 .titlebar-title {
   font-family: var(--font-display);
-  font-weight: 600;
   letter-spacing: -0.01em;
 }
 
-body.ui-ios27 .titlebar-controls {
-  align-items: center;
-  gap: 2px;
-  padding-right: 6px;
+body.ui-ios27 .titlebar-tools .titlebar-button {
+  border-radius: var(--radius-pill);
 }
 
-body.ui-ios27 .titlebar-button {
-  width: 40px;
-  height: 26px;
-  border-radius: 9px;
-  color: var(--text-secondary);
-  transition: background var(--transition-fast), color var(--transition-fast);
-}
-
-body.ui-ios27 .titlebar-button:hover {
-  background: var(--hover-bg);
-  color: var(--text-primary);
-}
-
-body.ui-ios27 .titlebar-button.close:hover {
-  background: #ff453a;
-  color: #fff;
-}
-
-/* ───────────────────────── Стекло: общий рецепт ─────────────────────────
-   Размытие живёт в псевдоэлементе позади панели, а не на ней самой.
-   backdrop-filter на самом блоке сделал бы его новым контекстом наложения
-   и опорой для position: fixed: график зрителей (fixed внутри карточки
-   стрима) уехал бы, выпадающий список темы прятался бы под следующую
-   секцию, а подсказка шкалы дропсов — под слой плеера. Псевдоэлемент
-   с z-index: -1 размывает фон окна, не трогая поведение содержимого. */
-
-body.ui-ios27 .sidebar,
-body.ui-ios27 .card,
-body.ui-ios27 .settings-section {
-  position: relative;
-}
-
-body.ui-ios27 .sidebar::before,
-body.ui-ios27 .card:not(.drops-user-card)::before,
-body.ui-ios27 .settings-section::before {
-  content: '';
-  position: absolute;
-  inset: -1px;
-  z-index: -1;
-  border-radius: inherit;
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
-  pointer-events: none;
-}
-
-/* ───────────────────────── Боковая панель ───────────────────────── */
-
-/* Панель «парит» над фоном. Ширина подобрана так, чтобы содержимое было
-   той же ширины, что в классике: от неё зависит высота мини-плеера 16:9,
-   а на ней держатся медиазапросы высоты окна в main.css */
+/* Боковая панель — отдельный стеклянный лист с отступом от краёв окна.
+   Внутренняя ширина та же, что в классике (191px): от неё зависят высота
+   мини-плеера 16:9, медиазапросы высоты окна в main.css и то, влезает ли
+   имя канала рядом с таймером */
 body.ui-ios27 .sidebar {
-  width: 213px;
-  margin: 0 0 8px 10px;
-  padding: 8px 8px;
-  background: var(--glass-sheen), var(--glass-fill);
+  width: calc(var(--sidebar-w) + 1px);
+  margin: 0 0 8px 8px;
   border: 1px solid var(--glass-stroke);
-  border-top-color: var(--glass-spec);
-  border-radius: 24px;
+  border-radius: 22px;
   box-shadow: var(--glass-shadow);
 }
 
-body.ui-ios27 .sidebar-farming {
-  border-top-color: var(--border-color);
-}
-
 body.ui-ios27 .nav-item {
-  border-radius: 12px;
-  color: var(--text-secondary);
-  font-weight: 500;
-  margin-bottom: 3px;
-  transition: background var(--transition-fast), color var(--transition-fast), box-shadow var(--transition-fast), scale 0.35s var(--ease-spring);
-}
-
-body.ui-ios27 .nav-item svg {
-  transition: color var(--transition-fast);
-}
-
-body.ui-ios27 .nav-item:hover {
-  background: var(--hover-bg);
-  color: var(--text-primary);
+  transition: background var(--transition-fast), color var(--transition-fast), scale var(--dur-slow) var(--ease-spring);
 }
 
 body.ui-ios27 .nav-item:active {
-  scale: 0.97;
+  scale: 0.98;
 }
 
-/* Выделение — стеклянная «линза», а не заливка акцентом: так выглядит
-   выбранный пункт боковой панели и панели вкладок в iOS */
-body.ui-ios27 .nav-item.active {
-  background: var(--spec-line), var(--lens-fill);
+/* Выбранный пункт — светлая «линза» и значок цветом акцента, без полоски
+   и заливки: так выделяется пункт боковой панели в iOS */
+body.ui-ios27 .nav-item.active,
+body.ui-ios27.theme-light .nav-item.active {
+  background: var(--lens-fill);
   box-shadow: var(--lens-shadow);
+  outline: none;
   color: var(--text-primary);
-  font-weight: 600;
+}
+
+body.ui-ios27 .nav-item.active::before {
+  content: none;
 }
 
 body.ui-ios27 .nav-item.active svg {
-  color: var(--accent-color);
+  color: var(--accent-text);
 }
 
-/* Светлая тема: белая линза на почти белой панели сливалась с ней —
-   выбранный пункт был виден только по тонкой тени. Здесь линза
-   подкрашена акцентом, как выделение строки в боковой панели iPadOS */
-body.ui-ios27.theme-light .nav-item.active {
-  background: var(--spec-line), linear-gradient(180deg, rgba(var(--accent-rgb), 0.15), rgba(var(--accent-rgb), 0.1)) border-box;
-  box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), 0.1), 0 4px 12px -6px rgba(var(--accent-rgb), 0.35);
+body.ui-ios27 .nav-item.active:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
-body.ui-ios27 .update-notification-badge {
-  background: var(--accent-fill);
-  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.2);
+/* Окно ниже 720px. Классика здесь укладывает меню, мини-плеер и
+   «Остановить» без единого лишнего пикселя, а отступы листа и его рамка
+   отнимают ~12px — меню уезжало под прокрутку. Возвращаем их за счёт
+   воздуха внутри панели */
+@media (max-height: 719px) {
+  body.ui-ios27 .sidebar {
+    padding-top: 6px;
+    padding-bottom: 6px;
+  }
+
+  body.ui-ios27 .nav-divider {
+    margin: 4px 10px;
+  }
+
+  body.ui-ios27 .sidebar-farming {
+    padding-top: 8px;
+  }
 }
 
-/* Блоки фарминга в сайдбаре: отступы прежние (на них рассчитаны
-   медиазапросы высоты), меняется только поверхность */
-body.ui-ios27 #sidebar-drops-progress,
-body.ui-ios27 #farming-session-info {
-  background: var(--spec-line), var(--glass-tile) !important;
-  border-color: var(--glass-tile-stroke) !important;
-  border-radius: 16px !important;
+/* Карточка фарминга — плитка на стекле панели, без своей рамки.
+   Скругление концентрично листу: 22 − 8 (отступ) = 14 */
+body.ui-ios27 .farm-card {
+  background: var(--surface-2);
+  border-color: transparent;
+  border-radius: var(--radius-md);
 }
 
-/* Поля по бокам чуть уже, чем в классике, а подпись зачёта плотнее:
-   «Зачёт идёт: 72 из 120 мин» шрифтом Segoe UI Variable еле влезала в
-   строку и на длинных числах переносилась — блок вырастал на строку.
-   Перенос не запрещаем: обрезанная подпись хуже лишней строки.
-   Вертикальные отступы не трогаем — на них рассчитаны медиазапросы высоты */
-body.ui-ios27 #sidebar-drops-progress {
-  padding-left: 12px;
-  padding-right: 12px;
-}
-
-body.ui-ios27 #sidebar-drops-progress .drops-credit {
-  gap: 5px;
-  font-size: 10.5px;
-  letter-spacing: -0.01em;
+body.ui-ios27 .drops-mark {
+  background: var(--mark-cut);
 }
 
 body.ui-ios27 #sidebar-mini-player-container {
-  border-color: var(--glass-tile-stroke) !important;
-  border-radius: 16px !important;
+  border-color: var(--glass-stroke);
 }
 
-body.ui-ios27 .drops-track {
-  height: 6px;
-  border-radius: var(--radius-capsule);
-  background: var(--progress-bg);
-}
-
-body.ui-ios27 #sidebar-drops-bar {
-  border-radius: var(--radius-capsule);
-  background: var(--accent-fill) !important;
-}
-
-body.ui-ios27 .drops-tip {
-  background: var(--glass-sheen), var(--glass-fill-float);
-  border: 1px solid var(--glass-stroke);
-  border-top-color: var(--glass-spec);
-  border-radius: 16px;
-  box-shadow: var(--glass-shadow-float);
-  backdrop-filter: var(--glass-blur-float);
-  -webkit-backdrop-filter: var(--glass-blur-float);
-}
-
-body.ui-ios27 .drops-tip img {
-  border-radius: 9px;
-}
-
-body.ui-ios27 .game-mode-badge {
-  border-radius: 14px;
-  border-width: 1px;
-}
-
-body.ui-ios27 #session-duration {
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -0.01em;
-}
-
-/* Мини-плеер и плеер на странице фарминга — один webview, прикреплённый
-   к body поверх слота. Размыть видео нельзя, поэтому слот остаётся
-   скруглённым прямоугольником, и тем же радиусом скругляется сам слой */
-body.ui-ios27 #persistent-player-host,
-body.ui-ios27 #persistent-chat-host {
-  border-radius: 16px;
-}
-
-/* ───────────────────────── Область страниц ───────────────────────── */
-
+/* Страницы лежат прямо на фоне окна */
 body.ui-ios27 .content {
   background: transparent;
 }
 
-body.ui-ios27 #page-container {
-  padding: 14px 22px 28px;
-}
-
-body.ui-ios27 .page-header {
-  margin-bottom: 20px;
-  align-items: flex-end;
-}
-
 body.ui-ios27 .page-title {
-  font-family: var(--font-display);
-  font-size: 28px;
   font-weight: 700;
-  letter-spacing: -0.028em;
-  line-height: 1.15;
 }
 
-body.ui-ios27 .page-subtitle {
-  font-size: 13px;
-  color: var(--text-secondary);
-  letter-spacing: -0.005em;
-}
+/* ───────────────────────── 3. Поверхности ─────────────────────────
+   Фон им дают токены (--surface-1 = стекло); здесь рамка-кромка, блик
+   и мягкая тень, отделяющая лист от фона */
 
-body.ui-ios27 .card-title,
-body.ui-ios27 .settings-section-title,
-body.ui-ios27 .calendar-group-title,
-body.ui-ios27 .missed-title {
-  font-family: var(--font-display);
-  letter-spacing: -0.018em;
-}
-
-body.ui-ios27 .card-title {
-  font-size: 17px;
-  font-weight: 650;
-}
-
-/* ───────────────────────── Панели ───────────────────────── */
-
-/* !important у фона и рамки: светлая тема main.css задаёт .card их
-   с !important, а без перебивки стекло там стало бы белой плашкой */
 body.ui-ios27 .card,
-body.ui-ios27 .settings-section {
-  background: var(--glass-sheen), var(--glass-fill) !important;
-  border: 1px solid var(--glass-stroke) !important;
-  border-top-color: var(--glass-spec) !important;
-  border-radius: var(--radius-card);
-  box-shadow: var(--glass-shadow);
-  padding: 18px 20px;
-  margin-bottom: 16px;
-}
-
-body.ui-ios27 .settings-section {
-  padding: 20px 22px 8px;
-}
-
-/* Панель внутри панели (баллы канала в карточке стрима) — плитка, а не
-   второй слой стекла: стекло на стекле темнело и спорило с соседями */
-body.ui-ios27 .card .card {
-  background: var(--spec-line), var(--glass-tile) !important;
-  border: 1px solid var(--glass-tile-stroke) !important;
-  border-radius: 18px;
-  box-shadow: none;
-  margin-bottom: 0;
-}
-
-body.ui-ios27 .card .card::before {
-  display: none;
-}
-
-body.ui-ios27 .settings-section-title {
-  font-size: 18px;
-  font-weight: 700;
-  margin-bottom: 8px;
-  gap: 12px;
-}
-
-/* Значки разделов — как в «Настройках» iOS: белый знак на цветной
-   скруглённой плитке. Цвет плитки — тот же, что был у значка (он задан
-   инлайном через color, отсюда currentColor), белым красится только сам
-   знак: свойство fill из CSS сильнее атрибута fill="currentColor" */
-body.ui-ios27 .settings-section-title > svg {
-  box-sizing: content-box;
-  flex-shrink: 0;
-  width: 17px;
-  height: 17px;
-  padding: 6px;
-  margin-right: 0 !important;
-  border-radius: 9px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0)) border-box, currentColor;
-  box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.18), 0 4px 10px -4px currentColor;
-}
-
-body.ui-ios27 .settings-section-title > svg path {
-  fill: #ffffff;
-}
-
-body.ui-ios27 .settings-item {
-  padding: 15px 0;
-  border-bottom-color: var(--border-color);
-}
-
-body.ui-ios27 .settings-item-label {
-  font-size: 14.5px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-}
-
-body.ui-ios27 .settings-item-description {
-  color: var(--text-secondary);
-}
-
-/* ───────────────────────── Кнопки ───────────────────────── */
-
-body.ui-ios27 .btn {
-  border-radius: var(--radius-capsule);
-  padding: var(--pad-control);
-  font-weight: 600;
-  letter-spacing: -0.006em;
-  transition: background var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast), filter var(--transition-fast), color var(--transition-fast), scale 0.38s var(--ease-spring);
-}
-
-body.ui-ios27 .btn:active:not(:disabled),
-body.ui-ios27 .accounts-btn:active,
-body.ui-ios27 .update-btn:active:not(:disabled),
-body.ui-ios27 .category-play-btn:active,
-body.ui-ios27 .filter-btn:active,
-body.ui-ios27 .drops-tab-button:active,
-body.ui-ios27 .subscription-action-btn:active,
-body.ui-ios27 .account-btn:active,
-body.ui-ios27 .whats-new-close:active {
-  scale: 0.97;
-}
-
-/* Основная кнопка — насыщенная заливка акцентом с мягким свечением.
-   !important: у половины основных кнопок фон, рамка и тень прописаны
-   инлайном (#7c5cff, border: none, box-shadow: none) */
-body.ui-ios27 .btn-primary {
-  background: var(--accent-fill) !important;
-  border-color: rgba(255, 255, 255, 0.14) !important;
-  color: #fff !important;
-  box-shadow: var(--accent-glow) !important;
-}
-
-body.ui-ios27 .btn-primary:hover:not(:disabled),
-body.ui-ios27 #next-stream-btn:hover {
-  background: var(--accent-fill) !important;
-  filter: brightness(1.08) saturate(1.05);
-  box-shadow: 0 10px 28px -8px rgba(var(--accent-rgb), 0.95), inset 0 1px 0 rgba(255, 255, 255, 0.34) !important;
-}
-
-/* Вторичная — стеклянная капсула */
-body.ui-ios27 .btn-secondary {
-  background: var(--spec-line), var(--button-secondary-bg) !important;
-  border-color: var(--glass-tile-stroke) !important;
-  color: var(--text-primary);
-}
-
-body.ui-ios27 .btn-secondary:hover:not(:disabled),
-body.ui-ios27 #prev-category-btn:hover,
-body.ui-ios27 #next-category-btn:hover {
-  background: var(--spec-line), var(--button-secondary-hover) !important;
-  border-color: var(--border-strong) !important;
-}
-
-body.ui-ios27 .btn-danger {
-  background: var(--danger-fill) !important;
-  border-color: rgba(255, 255, 255, 0.14) !important;
-  color: #fff;
-  box-shadow: var(--danger-glow);
-}
-
-body.ui-ios27 .btn-danger:hover:not(:disabled) {
-  filter: brightness(1.08);
-}
-
-body.ui-ios27 .btn:disabled {
-  opacity: 0.5;
-  filter: saturate(0.6);
-}
-
-/* Кнопки на месте основных действий в сайдбаре — крупнее и мягче.
-   Вертикальные отступы прежние: на них рассчитана высота блока */
-body.ui-ios27 #sidebar-start-farming-btn,
-body.ui-ios27 #sidebar-stop-farming-btn,
-body.ui-ios27 #sidebar-to-autofarm-btn {
-  font-size: 13.5px;
-  letter-spacing: -0.01em;
-}
-
-/* Кнопки настроек (экспорт, сброс…) — стеклянные капсулы */
-body.ui-ios27 .settings-actions button {
-  border-radius: var(--radius-capsule);
-  background: var(--spec-line), var(--button-secondary-bg);
-  border: 1px solid var(--glass-tile-stroke);
-  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast), scale 0.38s var(--ease-spring);
-}
-
-body.ui-ios27 .settings-actions button:hover {
-  background: var(--spec-line), var(--button-secondary-hover);
-  border-color: var(--border-strong);
-}
-
-body.ui-ios27 .settings-actions button:active {
-  scale: 0.97;
-}
-
-body.ui-ios27 #reset-settings-btn:hover,
-body.ui-ios27 #clear-statistics-btn:hover {
-  color: var(--error-color);
-  border-color: rgba(255, 69, 58, 0.45);
-  background: var(--spec-line), rgba(255, 69, 58, 0.1);
-}
-
-body.ui-ios27 #export-settings-btn:hover {
-  color: #64a8ff;
-  border-color: rgba(100, 168, 255, 0.45);
-  background: var(--spec-line), rgba(100, 168, 255, 0.1);
-}
-
-/* ───────────────────────── Сегменты ─────────────────────────
-   Период статистики, фильтры и период ленты календаря — соседние кнопки
-   без общей обёртки. Отрицательный отступ смыкает их в одну дорожку,
-   а выбранный сегмент рисует «линза» в псевдоэлементе поверх дорожки. */
-
-body.ui-ios27 .period-btn,
-body.ui-ios27 .calendar-filter,
-body.ui-ios27 .calendar-days {
-  position: relative;
-  isolation: isolate;
-  border: 1px solid transparent !important;
-  border-radius: 0;
-  background: var(--seg-track) !important;
-  box-shadow: none !important;
-  color: var(--text-secondary);
-  padding: 8px 16px;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-/* Фильтры календаря компактнее: при 16px полей дорожка с кнопкой
-   «Обновить» не помещалась в строку на окне 1000px, и кнопка одна
-   повисала на второй строке */
-body.ui-ios27 .calendar-filter {
-  padding-left: 13px;
-  padding-right: 13px;
-}
-
-body.ui-ios27 .calendar-filter.calendar-filter:not(.calendar-filter + .calendar-filter) {
-  padding-left: 16px;
-}
-
-body.ui-ios27 .calendar-filter.calendar-filter:not(:has(+ .calendar-filter)) {
-  padding-right: 16px;
-}
-
-body.ui-ios27 .period-btn + .period-btn,
-body.ui-ios27 .calendar-filter + .calendar-filter {
-  margin-left: -12px;
-}
-
-body.ui-ios27 .calendar-days + .calendar-days {
-  margin-left: -6px;
-}
-
-body.ui-ios27 .period-btn:not(.period-btn + .period-btn),
-body.ui-ios27 .calendar-filter:not(.calendar-filter + .calendar-filter),
-body.ui-ios27 .calendar-days:not(.calendar-days + .calendar-days) {
-  border-radius: var(--radius-capsule) 0 0 var(--radius-capsule);
-  padding-left: 18px;
-}
-
-body.ui-ios27 .period-btn:not(:has(+ .period-btn)),
-body.ui-ios27 .calendar-filter:not(:has(+ .calendar-filter)),
-body.ui-ios27 .calendar-days:not(:has(+ .calendar-days)) {
-  border-radius: 0 var(--radius-capsule) var(--radius-capsule) 0;
-  padding-right: 18px;
-}
-
-/* Та же специфичность, что у наведения на .btn-secondary выше: иначе
-   сегмент под курсором вываливался бы из дорожки отдельной капсулой */
-body.ui-ios27 .period-btn:hover:not(:disabled),
-body.ui-ios27 .calendar-filter:hover:not(:disabled),
-body.ui-ios27 .calendar-days:hover:not(:disabled) {
-  color: var(--text-primary);
-  background: var(--seg-track) !important;
-  border-color: transparent !important;
-}
-
-body.ui-ios27 .period-btn.active,
-body.ui-ios27 .calendar-filter.active,
-body.ui-ios27 .calendar-days.active,
-body.ui-ios27 .period-btn.active:hover,
-body.ui-ios27 .calendar-filter.active:hover,
-body.ui-ios27 .calendar-days.active:hover {
-  color: var(--text-primary);
-  background: var(--seg-track) !important;
-}
-
-body.ui-ios27 .period-btn::before,
-body.ui-ios27 .calendar-filter::before,
-body.ui-ios27 .calendar-days::before {
-  content: '';
-  position: absolute;
-  inset: 2px;
-  z-index: -1;
-  border-radius: var(--radius-capsule);
-  background: var(--spec-line), var(--lens-fill);
-  box-shadow: var(--lens-shadow);
-  opacity: 0;
-  scale: 0.92;
-  transition: opacity var(--transition-fast), scale 0.38s var(--ease-spring);
-}
-
-body.ui-ios27 .period-btn.active::before,
-body.ui-ios27 .calendar-filter.active::before,
-body.ui-ios27 .calendar-days.active::before {
-  opacity: 1;
-  scale: 1;
-}
-
-/* Вкладки страницы дропсов — та же дорожка, у неё есть своя обёртка */
-body.ui-ios27 .drops-tabs-wrapper {
-  gap: 4px;
-  padding: 4px;
-  background: var(--seg-track);
-  border: none;
-  border-radius: var(--radius-capsule);
-}
-
-body.ui-ios27 .drops-tab-button {
-  padding: 9px 18px;
-  border-radius: var(--radius-capsule);
-  font-size: 14px;
-  transition: background var(--transition-fast), color var(--transition-fast), scale 0.38s var(--ease-spring);
-}
-
-body.ui-ios27 .drops-tab-button:hover:not(.active) {
-  background: var(--hover-bg);
-}
-
-body.ui-ios27 .drops-tab-button.active {
-  background: var(--spec-line), var(--lens-fill);
-  box-shadow: var(--lens-shadow);
-  color: var(--text-primary);
-}
-
-body.ui-ios27 .drops-tab-button.active .drops-tab-icon {
-  color: var(--accent-color);
-}
-
-/* Переключатель «список/плитка» подписок */
-body.ui-ios27 .view-toggle {
-  gap: 2px;
-  padding: 3px;
-  background: var(--seg-track);
-  border: none;
-  border-radius: var(--radius-capsule);
-}
-
-body.ui-ios27 .view-toggle-btn {
-  padding: 6px 10px;
-  border-radius: var(--radius-capsule);
-}
-
-body.ui-ios27 .view-toggle-btn.active {
-  background: var(--spec-line), var(--lens-fill);
-  box-shadow: var(--lens-shadow);
-  color: var(--accent-color);
-}
-
-body.ui-ios27 .view-toggle-btn:not(.active):hover {
-  background: var(--hover-bg);
-  color: var(--text-primary);
-}
-
-/* Фильтры подписок — капсулы; выбранная залита акцентом */
-body.ui-ios27 .filter-btn {
-  padding: 8px 15px;
-  border-radius: var(--radius-capsule);
-  background: var(--spec-line), var(--button-secondary-bg);
-  border-color: var(--glass-tile-stroke);
-  color: var(--text-secondary);
-  font-weight: 600;
-  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast), scale 0.38s var(--ease-spring);
-}
-
-body.ui-ios27 .filter-btn:hover {
-  background: var(--spec-line), var(--button-secondary-hover);
-  border-color: var(--border-strong);
-  color: var(--text-primary);
-}
-
-body.ui-ios27 .filter-btn.active {
-  background: var(--accent-fill);
-  border-color: rgba(255, 255, 255, 0.14);
-  color: #fff;
-  box-shadow: var(--accent-glow);
-}
-
-body.ui-ios27 .filter-icon-btn {
-  width: 36px;
-  height: 36px;
-  border-radius: var(--radius-capsule);
-  background: var(--spec-line), var(--button-secondary-bg);
-  border-color: var(--glass-tile-stroke);
-}
-
-/* ───────────────────────── Поля ввода ───────────────────────── */
-
-body.ui-ios27 .input-field,
-body.ui-ios27 .settings-input,
-body.ui-ios27 .search-input,
-body.ui-ios27 .search-container input,
-body.ui-ios27 .quiet-range input[type="time"] {
-  background: var(--input-bg);
-  border: 1px solid var(--border-color);
-  border-radius: 12px;
-  color: var(--text-primary);
-  transition: border-color var(--transition-fast), box-shadow var(--transition-fast), background var(--transition-fast);
-}
-
-body.ui-ios27 .input-field {
-  height: 36px;
-  padding: 8px 12px;
-}
-
-body.ui-ios27 .search-input {
-  padding-top: 9px;
-  padding-bottom: 9px;
-}
-
-body.ui-ios27 .input-field:focus,
-body.ui-ios27 .settings-input:focus,
-body.ui-ios27 .search-input:focus,
-body.ui-ios27 .search-container input:focus {
-  outline: none;
-  border-color: rgba(var(--accent-rgb), 0.7);
-  box-shadow: 0 0 0 4px rgba(var(--accent-rgb), 0.22);
-}
-
-body.ui-ios27 select.input-field {
-  cursor: pointer;
-}
-
-body.ui-ios27 select.input-field option,
-body.ui-ios27 .settings-select option {
-  background: #1d1d28;
-  color: #f5f5f7;
-}
-
-body.ui-ios27.theme-light select.input-field option,
-body.ui-ios27.theme-light .settings-select option {
-  background: #ffffff;
-  color: #1c1c1e;
-}
-
-/* ───────────────────────── Выпадающий список ───────────────────────── */
-
-body.ui-ios27 .custom-select-trigger {
-  background: var(--spec-line), var(--button-secondary-bg);
-  border: 1px solid var(--glass-tile-stroke);
-  border-radius: 12px;
-  padding: 9px 14px;
-  transition: background var(--transition-fast), border-color var(--transition-fast);
-}
-
-body.ui-ios27 .custom-select-trigger:hover {
-  background: var(--spec-line), var(--button-secondary-hover);
-  border-color: var(--border-strong);
-}
-
-body.ui-ios27 .custom-select.open .custom-select-trigger {
-  border-color: rgba(var(--accent-rgb), 0.55);
-  background: var(--spec-line), var(--button-secondary-hover);
-  border-radius: 12px;
-}
-
-body.ui-ios27 .custom-select-arrow {
-  color: var(--text-secondary);
-}
-
-body.ui-ios27 .custom-select-options {
-  top: calc(100% + 6px);
-  padding: 5px;
-  background: var(--glass-sheen), var(--glass-fill-float);
-  border: 1px solid var(--glass-stroke);
-  border-top-color: var(--glass-spec);
-  border-radius: 16px;
-  box-shadow: var(--glass-shadow-float);
-  backdrop-filter: var(--glass-blur-float);
-  -webkit-backdrop-filter: var(--glass-blur-float);
-  transform: translateY(-6px) scale(0.97);
-  transform-origin: top center;
-  transition: opacity 0.2s var(--ease-smooth), transform 0.32s var(--ease-spring), visibility 0.2s;
-}
-
-body.ui-ios27 .custom-select.open .custom-select-options {
-  transform: none;
-}
-
-body.ui-ios27 .custom-select-option {
-  border-radius: 11px;
-  padding: 10px 12px;
-  color: var(--text-primary);
-}
-
-body.ui-ios27 .custom-select-option:not(:last-child) {
-  border-bottom: none;
-}
-
-body.ui-ios27 .custom-select-option:hover {
-  background: var(--hover-bg);
-  color: var(--text-primary);
-}
-
-body.ui-ios27 .custom-select-option.selected {
-  background: rgba(var(--accent-rgb), 0.22);
-  color: var(--text-primary);
-}
-
-body.ui-ios27 .custom-select-option .check-icon,
-body.ui-ios27 .custom-select-option svg:first-child,
-body.ui-ios27 .custom-select-option.selected svg:first-child {
-  color: var(--accent-color);
-}
-
-/* ───────────────────────── Переключатели ─────────────────────────
-   Как в iOS: капсула, белая ручка с тенью, включённое состояние зелёное */
-
-body.ui-ios27 .settings-toggle {
-  width: 50px;
-  height: 30px;
-  overflow: visible;
-}
-
-body.ui-ios27 .settings-slider,
-body.ui-ios27 .priority-toggle .toggle-slider,
-body.ui-ios27 .toggle-track {
-  background: var(--toggle-bg);
-  border: none;
-  border-radius: var(--radius-capsule);
-  transition: background-color 0.3s var(--ease-smooth);
-}
-
-body.ui-ios27 .settings-slider::before,
-body.ui-ios27 .priority-toggle .toggle-slider::before,
-body.ui-ios27 .toggle-thumb {
-  width: 26px;
-  height: 26px;
-  left: 2px;
-  top: 2px;
-  bottom: auto;
-  background: #ffffff;
-  border-radius: var(--radius-circle);
-  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.18), 0 1px 1px rgba(0, 0, 0, 0.16), 0 0 0 0.5px rgba(0, 0, 0, 0.04);
-  transition: transform 0.36s var(--ease-spring), width 0.2s var(--ease-smooth);
-}
-
-body.ui-ios27 .settings-toggle input:checked + .settings-slider,
-body.ui-ios27 .priority-toggle input:checked + .toggle-slider,
-body.ui-ios27 .category-toggle-switch.checked .toggle-track {
-  background: var(--toggle-on);
-  border-color: transparent;
-}
-
-body.ui-ios27 .settings-toggle input:checked + .settings-slider::before,
-body.ui-ios27 .priority-toggle input:checked + .toggle-slider::before,
-body.ui-ios27 .category-toggle-switch.checked .toggle-thumb {
-  transform: translateX(20px);
-}
-
-body.ui-ios27 .settings-toggle:active .settings-slider::before {
-  width: 30px;
-}
-
-body.ui-ios27 .settings-toggle:active input:checked + .settings-slider::before {
-  transform: translateX(16px);
-}
-
-body.ui-ios27 .settings-toggle input:focus-visible + .settings-slider {
-  box-shadow: 0 0 0 4px rgba(var(--accent-rgb), 0.3);
-}
-
-body.ui-ios27 .priority-toggle {
-  width: 50px;
-  height: 30px;
-  overflow: visible;
-}
-
-body.ui-ios27 .priority-toggle .toggle-slider {
-  overflow: visible;
-}
-
-body.ui-ios27 .category-toggle-switch {
-  width: 50px;
-  height: 30px;
-}
-
-/* Неиспользуемый в разметке .toggle-switch — на случай, если вернётся */
-body.ui-ios27 .toggle-switch {
-  width: 50px;
-  height: 30px;
-  border-radius: var(--radius-capsule);
-  background: var(--toggle-bg) !important;
-}
-
-body.ui-ios27 .toggle-switch.active {
-  background: var(--toggle-on) !important;
-}
-
-body.ui-ios27 .toggle-switch::after {
-  width: 26px;
-  height: 26px;
-  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.18), 0 1px 1px rgba(0, 0, 0, 0.16);
-}
-
-body.ui-ios27 .toggle-switch.active::after {
-  left: 22px;
-}
-
-/* ───────────────────────── Ползунок ───────────────────────── */
-
-body.ui-ios27 input[type="range"].ios-range {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 100%;
-  height: 28px;
-  margin: 0;
-  background: transparent;
-  cursor: pointer;
-  --fill: 50%;
-}
-
-body.ui-ios27 input[type="range"].ios-range:focus {
-  outline: none;
-}
-
-/* Дорожка залита акцентом до ручки: --fill ставит settings-page.js */
-body.ui-ios27 input[type="range"].ios-range::-webkit-slider-runnable-track {
-  height: 6px;
-  border-radius: var(--radius-capsule);
-  background: linear-gradient(90deg, var(--accent-color) 0, var(--accent-color) var(--fill), var(--progress-bg) var(--fill), var(--progress-bg) 100%);
-}
-
-body.ui-ios27 input[type="range"].ios-range::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 26px;
-  height: 26px;
-  margin-top: -10px;
-  border: none;
-  border-radius: var(--radius-circle);
-  background: #ffffff;
-  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.22), 0 1px 1px rgba(0, 0, 0, 0.18), 0 0 0 0.5px rgba(0, 0, 0, 0.06);
-  transition: scale 0.3s var(--ease-spring);
-}
-
-body.ui-ios27 input[type="range"].ios-range:active::-webkit-slider-thumb {
-  scale: 1.12;
-}
-
-body.ui-ios27 input[type="range"].ios-range:focus-visible::-webkit-slider-thumb {
-  box-shadow: 0 0 0 4px rgba(var(--accent-rgb), 0.3), 0 3px 8px rgba(0, 0, 0, 0.22);
-}
-
-/* Подписи краёв ползунка прозрачности в настройках */
-body.ui-ios27 .glass-opacity-scale {
-  display: flex;
-  justify-content: space-between;
-  margin-top: 2px;
-  font-size: 11px;
-  color: var(--text-tertiary);
-}
-
-/* ───────────────────────── Метки и прогресс ───────────────────────── */
-
-body.ui-ios27 .badge,
-body.ui-ios27 .category-tag,
-body.ui-ios27 .drops-badge,
-body.ui-ios27 .category-drops-status,
-body.ui-ios27 .time-badge,
-body.ui-ios27 .category-current-badge,
-body.ui-ios27 .calendar-tag,
-body.ui-ios27 .calendar-group-count,
-body.ui-ios27 .calendar-warn,
-body.ui-ios27 .drops-forecast-clock,
-body.ui-ios27 .drops-forecast-note,
-body.ui-ios27 .game-item-added,
-body.ui-ios27 .category-percentage,
-body.ui-ios27 .whats-new-version,
-body.ui-ios27 .stream-category-tag {
-  border-radius: var(--radius-capsule);
-}
-
-body.ui-ios27 .category-tag.category-auto-tag {
-  border-color: rgba(var(--accent-rgb), 0.5);
-}
-
-body.ui-ios27 .progress-bar,
-body.ui-ios27 .drops-progress-bar,
-body.ui-ios27 .campaign-progress-bar,
-body.ui-ios27 .update-progress-bar,
-body.ui-ios27 .drop-progress-bar {
-  border-radius: var(--radius-capsule) !important;
-  background: var(--progress-bg) !important;
-  box-shadow: none !important;
-}
-
-body.ui-ios27 .progress-fill,
-body.ui-ios27 .drops-progress-fill,
-body.ui-ios27 .update-progress-fill,
-body.ui-ios27 .drop-progress-fill {
-  border-radius: var(--radius-capsule);
-  background: var(--accent-fill);
-}
-
-/* ───────────────────────── Плитки внутри панелей ─────────────────────────
-   Без собственного размытия: стекло на стекле мутнеет, а строк категорий
-   бывает под сотню. Плитку отделяет светлая подложка и блик сверху. */
-
-body.ui-ios27 .category-item,
-body.ui-ios27 .stream-info-card,
-body.ui-ios27 .waiting-state,
-body.ui-ios27 .stat-card,
-body.ui-ios27 .analytics-item,
-body.ui-ios27 .session-item,
-body.ui-ios27 .missed-item,
-body.ui-ios27 .calendar-item,
-body.ui-ios27 .account-card,
-body.ui-ios27 .subscription-card,
-body.ui-ios27 .priority-toggle-card,
-body.ui-ios27 .game-item-selector,
-body.ui-ios27 .drop-progress-item,
-body.ui-ios27 .drops-drop-item,
-body.ui-ios27 .inventory-item,
-body.ui-ios27 .switch-offer,
-body.ui-ios27 .suggestion,
-body.ui-ios27 .accounts-notice,
-body.ui-ios27 .external-login-hint,
-body.ui-ios27 .drops-filters,
-body.ui-ios27 .drops-current-card {
-  background: var(--spec-line), var(--glass-tile);
-  border-color: var(--glass-tile-stroke);
-  border-radius: 18px;
-}
-
-body.ui-ios27 .category-item:hover,
-body.ui-ios27 .session-item:hover,
-body.ui-ios27 .account-card:hover,
-body.ui-ios27 .subscription-card:hover,
-body.ui-ios27 .game-item-selector:hover,
-body.ui-ios27 .calendar-item:hover {
-  background: var(--spec-line), var(--glass-tile-hover);
-  box-shadow: none;
-}
-
-/* Состояния строк категории — цветом рамки, как в классике */
-body.ui-ios27 .category-item.current {
-  border-color: rgba(var(--accent-rgb), 0.75);
-  background: var(--spec-line), rgba(var(--accent-rgb), 0.1);
-  box-shadow: 0 0 0 1px rgba(var(--accent-rgb), 0.35) inset, 0 10px 28px -14px rgba(var(--accent-rgb), 0.8);
-}
-
-body.ui-ios27 .category-item.drops-completed {
-  border-color: rgba(48, 209, 88, 0.32);
-  background: var(--spec-line), rgba(48, 209, 88, 0.06);
-}
-
-body.ui-ios27 .category-item.ending-soon {
-  border-color: rgba(255, 159, 10, 0.5);
-  background: var(--spec-line), rgba(255, 159, 10, 0.06);
-}
-
-/* Метка закреплённой — мягкий отсвет акцента от левого края и рамка
-   в тон. Прямая полоска в 3px на скруглённой плитке обрывалась у углов
-   и выглядела сколом. Рисует фон, а не тень: тени экономный режим
-   снимает, а метка должна остаться */
-body.ui-ios27 .category-item.pinned {
-  border-left-width: 1px;
-  border-color: rgba(var(--accent-rgb), 0.3);
-  background: linear-gradient(90deg, rgba(var(--accent-rgb), 0.16), rgba(var(--accent-rgb), 0) 38%) border-box, var(--spec-line), var(--glass-tile);
-}
-
-body.ui-ios27 .category-item.pinned:hover {
-  background: linear-gradient(90deg, rgba(var(--accent-rgb), 0.2), rgba(var(--accent-rgb), 0) 42%) border-box, var(--spec-line), var(--glass-tile-hover);
-}
-
-body.ui-ios27 .category-item.pinned.drops-completed {
-  border-color: rgba(48, 209, 88, 0.32);
-}
-
-body.ui-ios27 .category-item.pinned.ending-soon {
-  border-color: rgba(255, 159, 10, 0.5);
-}
-
-body.ui-ios27 .category-item.pinned.current {
-  border-color: rgba(var(--accent-rgb), 0.75);
-  background: linear-gradient(90deg, rgba(var(--accent-rgb), 0.16), rgba(var(--accent-rgb), 0) 38%) border-box, var(--spec-line), rgba(var(--accent-rgb), 0.1);
-}
-
-body.ui-ios27 .farming-page .category-item {
-  padding: 14px 16px;
-  margin-bottom: 10px;
-}
-
-/* Шапка списка категорий. На узком окне (1000px) заголовок и три
-   капсулы не помещались в строку, и подписи кнопок ломались на две
-   строки внутри капсул. Подписи держим в одну строку, а кнопки действий
-   при нехватке места уходят на вторую строку, к правому краю */
-body.ui-ios27 .farming-page .card-header {
-  flex-wrap: wrap;
-  row-gap: 12px;
-  column-gap: 12px;
-}
-
-body.ui-ios27 .farming-page .card-header .card-title,
-body.ui-ios27 .farming-page .card-header .btn {
-  white-space: nowrap;
-}
-
-body.ui-ios27 .farming-page .card-header > div:last-child {
-  margin-left: auto;
-}
-
-body.ui-ios27 .category-image,
-body.ui-ios27 .category-image img {
-  border-radius: 10px;
-}
-
-body.ui-ios27 .category-name {
-  font-family: var(--font-display);
-  letter-spacing: -0.015em;
-}
-
-body.ui-ios27 .category-drag-handle {
-  color: var(--text-tertiary);
-}
-
-/* Play, булавка и номер — капсулы одной высоты */
-body.ui-ios27 .category-play-btn {
-  height: 32px;
-  padding: 0 14px;
-  border-radius: var(--radius-capsule);
-  background: rgba(var(--accent-rgb), 0.16);
-  border-color: rgba(var(--accent-rgb), 0.32);
-  color: var(--accent-color);
-  transition: background var(--transition-fast), border-color var(--transition-fast), scale 0.38s var(--ease-spring);
-}
-
-body.ui-ios27 .category-play-btn:hover {
-  background: rgba(var(--accent-rgb), 0.26);
-  border-color: rgba(var(--accent-rgb), 0.55);
-  transform: none;
-}
-
-body.ui-ios27.theme-dark .category-play-btn {
-  color: #b9a8ff;
-}
-
-body.ui-ios27 .category-pin-btn {
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius-capsule);
-  background: var(--button-secondary-bg);
-  border-color: var(--glass-tile-stroke);
-}
-
-body.ui-ios27 .category-pin-btn.active {
-  background: rgba(var(--accent-rgb), 0.18);
-  border-color: rgba(var(--accent-rgb), 0.55);
-}
-
-body.ui-ios27 .category-priority {
-  height: 32px;
-  border-radius: var(--radius-capsule);
-  background: var(--accent-fill);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28);
-  font-variant-numeric: tabular-nums;
-}
-
-body.ui-ios27 .category-remove {
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  border-radius: var(--radius-capsule);
-  color: var(--text-tertiary);
-}
-
-body.ui-ios27 .category-remove:hover {
-  background: rgba(255, 69, 58, 0.16);
-  color: var(--error-color);
-}
-
-body.ui-ios27 .category-remove svg {
-  width: 16px;
-  height: 16px;
-}
-
-body.ui-ios27 .pinned-divider {
-  color: var(--text-tertiary);
-  letter-spacing: 0.06em;
-}
-
-/* ───────────────────────── Страница фарминга ───────────────────────── */
-
-body.ui-ios27 .waiting-state {
-  border: 1px solid var(--glass-tile-stroke);
-  transition: border-color var(--transition-fast), background var(--transition-fast);
-}
-
-body.ui-ios27 .waiting-state:hover,
-body.ui-ios27 .waiting-state:focus-visible {
-  border-color: rgba(var(--accent-rgb), 0.55);
-  background: var(--spec-line), var(--glass-tile-hover);
-}
-
-body.ui-ios27 .waiting-ring {
-  border-color: rgba(var(--accent-rgb), 0.9);
-}
-
-body.ui-ios27 .waiting-dot {
-  background: var(--accent-fill);
-  box-shadow: 0 0 14px rgba(var(--accent-rgb), 0.8);
-}
-
-body.ui-ios27 .waiting-label {
-  font-family: var(--font-display);
-  font-size: 15px;
-  letter-spacing: -0.012em;
-}
-
-body.ui-ios27 #farming-player-slot {
-  border-radius: 18px !important;
-}
-
-body.ui-ios27 .stream-info-card {
-  border-width: 1px;
-}
-
-body.ui-ios27 .stream-game-cover {
-  border-radius: 10px;
-}
-
-body.ui-ios27 .stream-channel-name {
-  font-family: var(--font-display);
-  letter-spacing: -0.012em;
-}
-
-body.ui-ios27 .stream-stat-value {
-  font-variant-numeric: tabular-nums;
-}
-
-body.ui-ios27 .stream-live-indicator {
-  background: var(--success-color);
-  box-shadow: 0 0 8px var(--success-color);
-}
-
-/* Панель прогресса дропсов: разметка целиком инлайновая (шаблон в
-   farming-page.js) — перекрашиваем контейнер и узнаваемые куски */
-body.ui-ios27 #drops-progress-horizontal {
-  background: var(--spec-line), linear-gradient(180deg, rgba(var(--accent-rgb), 0.14), rgba(var(--accent-rgb), 0.05)) border-box !important;
-  border: 1px solid rgba(var(--accent-rgb), 0.28) !important;
-  border-radius: 18px !important;
-  padding: 18px !important;
-}
-
-body.ui-ios27 #drops-progress-horizontal [style*="height: 12px"] {
-  border-radius: var(--radius-capsule) !important;
-  background: rgba(255, 255, 255, 0.1) !important;
-}
-
-body.ui-ios27.theme-light #drops-progress-horizontal [style*="height: 12px"] {
-  background: rgba(0, 0, 0, 0.08) !important;
-}
-
-body.ui-ios27 #drops-progress-horizontal [style*="height: 12px"] > div {
-  border-radius: var(--radius-capsule);
-}
-
-body.ui-ios27 #drops-received-footer {
-  border-radius: 14px !important;
-}
-
-body.ui-ios27 #drops-progress-container,
-body.ui-ios27 #drops-time-remaining {
-  border-radius: 18px !important;
-}
-
-body.ui-ios27 .points-value {
-  font-family: var(--font-display);
-}
-
-body.ui-ios27 .switch-offer {
-  border-color: rgba(255, 159, 10, 0.55);
-}
-
-body.ui-ios27 .suggestion {
-  background: var(--spec-line), rgba(var(--accent-rgb), 0.1);
-  border-color: rgba(var(--accent-rgb), 0.35);
-}
-
-body.ui-ios27 .suggestion-art,
-body.ui-ios27 .calendar-art {
-  border-radius: 8px;
-}
-
-body.ui-ios27 .suggestion-hide {
-  border-radius: var(--radius-capsule);
-}
-
-/* Панель управления плеером — плавающая стеклянная капсула */
-body.ui-ios27 .player-bar {
-  padding: 5px;
-  gap: 4px;
-  border-radius: var(--radius-capsule);
-  background: rgba(20, 20, 28, 0.62);
-  border-color: rgba(255, 255, 255, 0.16);
-  backdrop-filter: blur(20px) saturate(170%);
-  -webkit-backdrop-filter: blur(20px) saturate(170%);
-}
-
-body.ui-ios27 .player-bar-btn {
-  border-radius: var(--radius-capsule);
-  background: rgba(255, 255, 255, 0.1);
-}
-
-body.ui-ios27 .player-bar-btn.active {
-  background: var(--accent-fill);
-  border-color: transparent;
-}
-
-body.ui-ios27 .player-menu {
-  padding: 5px;
-  border-radius: 14px;
-  background: rgba(24, 24, 34, 0.86);
-  border-color: rgba(255, 255, 255, 0.14);
-  backdrop-filter: var(--glass-blur-float);
-  -webkit-backdrop-filter: var(--glass-blur-float);
-}
-
-body.ui-ios27 .player-menu-item {
-  border-radius: 9px;
-}
-
-/* Плашка «Категория удалена — Вернуть» */
-body.ui-ios27 .category-undo {
-  padding: 7px 7px 7px 18px;
-  border-radius: var(--radius-capsule);
-  background: var(--glass-sheen), var(--glass-fill-float);
+body.ui-ios27 .kpi:not(.kpi-inline),
+body.ui-ios27 .settings-page .settings-section,
+body.ui-ios27 .settings-empty {
   border-color: var(--glass-stroke);
-  border-top-color: var(--glass-spec);
+  box-shadow: var(--glass-shadow);
+}
+
+/* Всплывающие слои: плотное стекло, размытие страницы под ним, глубокая
+   тень. Окнам размывает страницу подложка (ниже), а не само окно: иначе
+   подложка стала бы «корнем» размытия, и окно видело бы под собой только
+   затемнение */
+body.ui-ios27 .dialog,
+body.ui-ios27 .whats-new,
+body.ui-ios27 .auth-modal-content,
+body.ui-ios27 .shutdown-dialog {
+  border-color: var(--glass-stroke-float);
+  box-shadow: var(--glass-shadow-float);
+}
+
+body.ui-ios27 .dialog-backdrop,
+body.ui-ios27 .whats-new-overlay,
+body.ui-ios27 .auth-modal-overlay,
+body.ui-ios27 .shutdown-overlay {
+  backdrop-filter: var(--scrim-blur);
+  -webkit-backdrop-filter: var(--scrim-blur);
+}
+
+body.ui-ios27 .toast,
+body.ui-ios27 .tooltip,
+body.ui-ios27 .viewers-chart-popover,
+body.ui-ios27 .category-undo {
+  border-color: var(--glass-stroke-float);
   box-shadow: var(--glass-shadow-float);
   backdrop-filter: var(--glass-blur-float);
   -webkit-backdrop-filter: var(--glass-blur-float);
-}
-
-/* Выбор категорий в окне добавления */
-body.ui-ios27 .game-item-selector img {
-  border-radius: 10px;
-}
-
-body.ui-ios27 .search-container input {
-  border-radius: 14px;
-}
-
-/* ───────────────────────── Статистика ───────────────────────── */
-
-body.ui-ios27 .stats-grid {
-  gap: 14px;
-}
-
-body.ui-ios27 .stat-card {
-  border-radius: 20px;
-  border: 1px solid var(--glass-tile-stroke);
-  transition: background var(--transition-fast), border-color var(--transition-fast), transform 0.4s var(--ease-spring);
-}
-
-body.ui-ios27 .stat-card:hover {
-  background: var(--spec-line), var(--glass-tile-hover);
-  border-color: var(--border-strong);
-}
-
-body.ui-ios27 .stat-icon {
-  border-radius: 18px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
-}
-
-body.ui-ios27 .stat-value,
-body.ui-ios27 .analytics-value,
-body.ui-ios27 .session-stat-value {
-  font-family: var(--font-display);
-  letter-spacing: -0.025em;
-  font-variant-numeric: tabular-nums;
-}
-
-body.ui-ios27 .analytics-item {
-  border-width: 1px;
-  border-style: solid;
-}
-
-/* Панель уже, чем в классике (сайдбар отстоит от края окна), и пять
-   показателей по 190px переставали помещаться в ряд: пятый оставался
-   один во второй строке */
-/* Гибкая строка вместо сетки: на окне 1000px показатели шли 3 + 2, и в
-   сетке на месте шестого оставалась пустая ячейка. Во флексе вторая
-   строка растягивается на всю ширину */
-body.ui-ios27 .analytics-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-body.ui-ios27 .analytics-item {
-  flex: 1 1 165px;
-}
-
-body.ui-ios27 .stack-cover-wrapper,
-body.ui-ios27 .stack-cover {
-  border-radius: 14px;
-}
-
-body.ui-ios27 .category-rank {
-  font-family: var(--font-display);
-}
-
-body.ui-ios27 .session-item img,
-body.ui-ios27 .session-cover {
-  border-radius: 10px;
-}
-
-body.ui-ios27 .missed-item {
-  border-radius: 14px;
-}
-
-body.ui-ios27 .missed-item.close {
-  border-color: rgba(255, 159, 10, 0.24);
-  background: var(--spec-line), rgba(255, 159, 10, 0.07);
-}
-
-/* Светлая тема: цвета состояний из main.css (#f0ad4e, #35d08a, #bda0ff)
-   рассчитаны на тёмный фон — на белом стекле их почти не видно. Берём
-   более глубокие оттенки тех же цветов, как в светлом iOS */
-body.ui-ios27.theme-light .missed-sum,
-body.ui-ios27.theme-light .missed-short,
-body.ui-ios27.theme-light .calendar-warn,
-body.ui-ios27.theme-light .calendar-tag.late,
-body.ui-ios27.theme-light .drops-forecast-note.short,
-body.ui-ios27.theme-light .category-drops-status.too-late,
-body.ui-ios27.theme-light .drops-drop-status.ready {
-  color: #a65d00;
-}
-
-body.ui-ios27.theme-light .calendar-tag,
-body.ui-ios27.theme-light .drops-badge,
-body.ui-ios27.theme-light .calendar-when.upcoming,
-body.ui-ios27.theme-light .drops-forecast-note.ok,
-body.ui-ios27.theme-light .drops-drop-status.claimed {
-  color: #248a3d;
-}
-
-body.ui-ios27.theme-light .calendar-when,
-body.ui-ios27.theme-light .drops-forecast-clock,
-body.ui-ios27.theme-light .calendar-group-count,
-body.ui-ios27.theme-light .drops-tip-left {
-  color: var(--accent-color);
-}
-
-/* ───────────────────────── Календарь ───────────────────────── */
-
-body.ui-ios27 .calendar-item {
-  border-radius: 16px;
-}
-
-body.ui-ios27 .tl-track {
-  border-radius: var(--radius-capsule);
-  background: rgba(255, 255, 255, 0.04);
-}
-
-body.ui-ios27.theme-light .tl-track {
-  background: rgba(0, 0, 0, 0.035);
-}
-
-body.ui-ios27 .tl-tick {
-  background: rgba(255, 255, 255, 0.05);
-}
-
-body.ui-ios27 .tl-tick.weekend {
-  background: rgba(255, 255, 255, 0.1);
-}
-
-body.ui-ios27.theme-light .tl-tick {
-  background: rgba(0, 0, 0, 0.05);
-}
-
-body.ui-ios27.theme-light .tl-tick.weekend {
-  background: rgba(0, 0, 0, 0.1);
-}
-
-body.ui-ios27 .tl-bar {
-  border-radius: var(--radius-capsule);
-  background: linear-gradient(180deg, rgba(var(--accent-rgb), 0.5), rgba(var(--accent-rgb), 0.36));
-  border-color: rgba(var(--accent-rgb), 0.55);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
-}
-
-body.ui-ios27 .tl-bar.mine {
-  background: linear-gradient(180deg, #9a82ff, #7a58ff);
-  border-color: rgba(255, 255, 255, 0.18);
-}
-
-body.ui-ios27 .tl-bar.upcoming {
-  background: linear-gradient(180deg, rgba(48, 209, 88, 0.42), rgba(48, 209, 88, 0.28));
-  border-color: rgba(48, 209, 88, 0.55);
-}
-
-body.ui-ios27 .tl-bar.late {
-  background: linear-gradient(180deg, rgba(255, 159, 10, 0.4), rgba(255, 159, 10, 0.26));
-  border-color: rgba(255, 159, 10, 0.5);
-}
-
-body.ui-ios27 .tl-bar.clipped-end {
-  border-top-right-radius: 0;
-  border-bottom-right-radius: 0;
-}
-
-body.ui-ios27 .tl-now {
-  background: #ff453a;
-  border-radius: 2px;
-}
-
-/* ───────────────────────── Аккаунты ───────────────────────── */
-
-body.ui-ios27 .accounts-btn {
-  border-radius: var(--radius-capsule);
-  transition: background var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast), filter var(--transition-fast), scale 0.38s var(--ease-spring);
-}
-
-body.ui-ios27 .accounts-btn-primary {
-  background: var(--accent-fill);
-  border-color: rgba(255, 255, 255, 0.14);
-  box-shadow: var(--accent-glow);
-}
-
-body.ui-ios27 .accounts-btn-primary:hover {
-  background: var(--accent-fill);
-  filter: brightness(1.08);
-  transform: none;
-}
-
-body.ui-ios27 .accounts-btn-secondary,
-body.ui-ios27 .accounts-btn-outline {
-  background: var(--spec-line), var(--button-secondary-bg);
-  border: 1px solid var(--glass-tile-stroke);
-}
-
-body.ui-ios27 .accounts-btn-secondary:hover,
-body.ui-ios27 .accounts-btn-outline:hover {
-  background: var(--spec-line), var(--button-secondary-hover);
-  border-color: var(--border-strong);
-  transform: none;
-}
-
-body.ui-ios27 .external-login-hint {
-  border-style: solid;
-  border-width: 1px;
-}
-
-/* Предупреждение — тёплый отсвет слева вместо прямой полоски, которая
-   на скруглённой плитке обрывалась у углов */
-body.ui-ios27 .accounts-notice {
-  border: 1px solid rgba(255, 159, 10, 0.3);
-  background: linear-gradient(90deg, rgba(255, 159, 10, 0.14), rgba(255, 159, 10, 0) 45%) border-box, var(--spec-line), var(--glass-tile);
-}
-
-body.ui-ios27 .accounts-notice svg {
-  color: var(--warning-color);
-}
-
-body.ui-ios27 .account-avatar {
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12);
-}
-
-body.ui-ios27 .account-btn {
-  border-radius: var(--radius-capsule);
-}
-
-/* ───────────────────────── Дропсы ───────────────────────── */
-
-/* Карточка кампании собрана инлайновыми стилями (drops-page.js) */
-body.ui-ios27 .campaign-card {
-  background: var(--spec-line), var(--glass-tile) !important;
-  border: 1px solid var(--glass-tile-stroke) !important;
-  border-radius: 22px !important;
-}
-
-body.ui-ios27 .campaign-card:hover {
-  border-color: rgba(var(--accent-rgb), 0.55) !important;
-}
-
-body.ui-ios27 .campaign-card > div:first-child {
-  border-radius: 21px 21px 0 0;
-}
-
-body.ui-ios27 .drops-page-drop-card {
-  border-radius: 16px !important;
-  background: rgba(0, 0, 0, 0.22) !important;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
-}
-
-body.ui-ios27 .campaign-progress-tooltip {
-  background: var(--glass-fill-float) !important;
-  border: 1px solid var(--glass-stroke) !important;
-  border-radius: 14px !important;
-}
-
-/* Шапка кампании — текст на затемнённой обложке. Светлая тема main.css
-   перекрашивает любой инлайновый белый текст в тёмный, и на обложке он
-   пропадал; на стекле возвращаем белый */
-body.ui-ios27.theme-light .campaign-card > div:first-child [style*="color: #fff"],
-body.ui-ios27.theme-light .campaign-card > div:first-child [style*="color: rgba(255,255,255"] {
-  color: #ffffff !important;
-}
-
-/* Полоса акцента по верху карточки — блик, который гаснет к краям, а не
-   линейка во всю ширину, срезанная скруглением */
-body.ui-ios27 .drops-user-card::before {
-  left: 18%;
-  right: 18%;
-  height: 2px;
-  border-radius: var(--radius-capsule);
-  background: linear-gradient(90deg, rgba(var(--accent-rgb), 0), var(--accent-color) 30%, var(--accent-color) 70%, rgba(var(--accent-rgb), 0));
-}
-
-/* Поля между блоками карточки плотнее: на окне 1000px имя и почта
-   обрезались до «demo_…» */
-body.ui-ios27 .drops-user-container {
-  gap: 22px;
-}
-
-body.ui-ios27 .drops-stats-container {
-  gap: 22px;
-  padding: 0 22px;
-  border-left: 1px solid var(--border-color);
-}
-
-body.ui-ios27 .drops-stat-value {
-  font-family: var(--font-display);
-  letter-spacing: -0.02em;
-}
-
-body.ui-ios27 .drops-logout-btn {
-  border-radius: var(--radius-capsule);
-}
-
-/* ───────────────────────── Подписки ───────────────────────── */
-
-body.ui-ios27 .subscription-card {
-  border-radius: 18px;
-}
-
-body.ui-ios27 .subscription-card.favorite {
-  background: var(--spec-line), rgba(255, 107, 157, 0.07);
-  border-color: rgba(255, 107, 157, 0.22);
-}
-
-body.ui-ios27 .subscription-action-btn {
-  border-radius: var(--radius-capsule);
-  background: var(--spec-line), var(--button-secondary-bg);
-  border-color: var(--glass-tile-stroke);
-  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast), scale 0.38s var(--ease-spring);
-}
-
-body.ui-ios27 .subscription-action-btn:hover {
-  transform: none;
-}
-
-body.ui-ios27 .subscription-card-rating,
-body.ui-ios27 .subscription-card-rating-inline,
-body.ui-ios27 .subscription-card-status-overlay {
-  border-radius: var(--radius-capsule);
-}
-
-/* Подпись разделителя закрывала линию заливкой фона страницы — на стекле
-   это тёмный прямоугольник. Делаем её капсулой */
-body.ui-ios27 .subscriptions-divider span {
-  padding: 2px 12px;
-  border-radius: var(--radius-capsule);
-  background: var(--seg-track);
-}
-
-/* ───────────────────────── Всплывающие окна ─────────────────────────
-   Подложка затемняет и размывает страницу, само окно — плотное стекло.
-   Фон, рамка и радиус у большинства окон заданы инлайном, поэтому
-   здесь !important. */
-
-body.ui-ios27 .whats-new-overlay,
-body.ui-ios27 #update-overlay,
-body.ui-ios27 #confirmation-modal,
-body.ui-ios27 .category-detail-modal,
-body.ui-ios27 #drop-detail-modal,
-body.ui-ios27 #channel-detail-modal,
-body.ui-ios27 .shutdown-overlay,
-body.ui-ios27 .auth-modal::before,
-body.ui-ios27 .auth-modal-overlay,
-body.ui-ios27 .modal-overlay {
-  background: var(--scrim) !important;
-  backdrop-filter: var(--scrim-blur) !important;
-  -webkit-backdrop-filter: var(--scrim-blur) !important;
-}
-
-/* Экономный режим: размытие подложки снимаем и здесь. Правило выше
-   перебивает запрет из main.css своим !important, поэтому повторяем
-   запрет с более точными селекторами */
-body.ui-ios27.low-graphics .whats-new-overlay,
-body.ui-ios27.low-graphics #update-overlay,
-body.ui-ios27.low-graphics #confirmation-modal,
-body.ui-ios27.low-graphics .category-detail-modal,
-body.ui-ios27.low-graphics #drop-detail-modal,
-body.ui-ios27.low-graphics #channel-detail-modal,
-body.ui-ios27.low-graphics .shutdown-overlay,
-body.ui-ios27.low-graphics .auth-modal::before,
-body.ui-ios27.low-graphics .auth-modal-overlay,
-body.ui-ios27.low-graphics .modal-overlay {
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-}
-
-body.ui-ios27 .whats-new,
-body.ui-ios27 #update-overlay .update-window,
-body.ui-ios27 #confirmation-modal > div,
-body.ui-ios27 .category-detail-modal > div,
-body.ui-ios27 #channel-detail-modal > div,
-body.ui-ios27 .shutdown-dialog,
-body.ui-ios27 .auth-modal-content,
-body.ui-ios27 .modal-content,
-body.ui-ios27 .drop-notification {
-  background: var(--glass-sheen), var(--glass-fill-float) !important;
-  border-radius: var(--radius-float) !important;
-  box-shadow: var(--glass-shadow-float) !important;
-  backdrop-filter: var(--glass-blur-float);
-  -webkit-backdrop-filter: var(--glass-blur-float);
-}
-
-/* Окно награды: свечение и рамка цвета редкости — часть смысла, их
-   оставляем, меняем только подложку и скругление */
-body.ui-ios27 #drop-detail-modal > div {
-  background: var(--glass-sheen), var(--glass-fill-float) !important;
-  border-radius: var(--radius-float) !important;
-  backdrop-filter: var(--glass-blur-float);
-  -webkit-backdrop-filter: var(--glass-blur-float);
-}
-
-/* Появление с пружинкой. Окну награды не даём: оно въезжает сбоку
-   переходом transform, и анимация с заполнением держала бы его на месте */
-body.ui-ios27 .whats-new,
-body.ui-ios27 #update-overlay .update-window,
-body.ui-ios27 #confirmation-modal > div,
-body.ui-ios27 .category-detail-modal > div,
-body.ui-ios27 #drop-detail-modal > div,
-body.ui-ios27 #channel-detail-modal > div,
-body.ui-ios27 .shutdown-dialog,
-body.ui-ios27 .auth-modal-content,
-body.ui-ios27 .modal-content {
-  animation: ios27-pop 0.46s var(--ease-spring) both;
-}
-
-/* У окна награды рамка цвета редкости — её не трогаем */
-body.ui-ios27 .whats-new,
-body.ui-ios27 #update-overlay .update-window,
-body.ui-ios27 #confirmation-modal > div,
-body.ui-ios27 .category-detail-modal > div,
-body.ui-ios27 #channel-detail-modal > div,
-body.ui-ios27 .shutdown-dialog,
-body.ui-ios27 .auth-modal-content,
-body.ui-ios27 .modal-content,
-body.ui-ios27 .drop-notification {
-  border: 1px solid var(--glass-stroke) !important;
-  border-top-color: var(--glass-spec) !important;
-}
-
-/* Вложенные «колодцы» окна категории — плитки */
-body.ui-ios27 .category-detail-modal [style*="background: var(--bg-primary)"] {
-  background: var(--spec-line), var(--glass-tile) !important;
-  border-color: var(--glass-tile-stroke) !important;
-  border-radius: 20px !important;
-}
-
-/* Окно обрезает содержимое по своему скруглению: полоса прокрутки
-   внутренней части торчала из-под закруглённого угла прямой линией */
-body.ui-ios27 .category-detail-modal > div {
-  overflow: hidden;
-}
-
-/* «Запустить» у стримов — та же капсула с заливкой акцентом, что и
-   основные кнопки, а не плоская плашка классики (стиль инлайновый) */
-body.ui-ios27 .category-detail-modal .stream-card-clickable > button {
-  border-radius: var(--radius-capsule) !important;
-  background: var(--accent-fill) !important;
-  border: 1px solid rgba(255, 255, 255, 0.14) !important;
-  box-shadow: var(--accent-glow) !important;
-  padding: 10px 18px !important;
-  font-size: 13.5px !important;
-  transition: filter var(--transition-fast), scale 0.38s var(--ease-spring) !important;
-}
-
-body.ui-ios27 .category-detail-modal .stream-card-clickable:hover > button {
-  filter: brightness(1.08);
-}
-
-body.ui-ios27 .category-detail-modal .stream-card-clickable > button:active {
-  scale: 0.97;
-}
-
-body.ui-ios27 .category-detail-modal .stream-card-clickable {
-  transition: background var(--transition-fast), border-color var(--transition-fast) !important;
-}
-
-body.ui-ios27 .category-detail-modal .stream-card-clickable:hover {
-  border-color: rgba(var(--accent-rgb), 0.45) !important;
-}
-
-/* Полоса прокрутки списка стримов — тонкая капсула, как везде, а не
-   толстая фиолетовая планка с дорожкой (стиль приходит из шаблона окна) */
-body.ui-ios27 #streams-scroll-container::-webkit-scrollbar {
-  width: 10px;
-}
-
-body.ui-ios27 #streams-scroll-container::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-body.ui-ios27 #streams-scroll-container::-webkit-scrollbar-thumb {
-  background: var(--scrollbar-thumb);
-  background-clip: padding-box;
-  border: 3px solid transparent;
-  border-radius: var(--radius-capsule);
-}
-
-body.ui-ios27 #streams-scroll-container::-webkit-scrollbar-thumb:hover {
-  background: var(--scrollbar-thumb-hover);
-  background-clip: padding-box;
-}
-
-/* Окно канала в подписках: кнопки — капсулы, основная залита акцентом,
-   крестик — круглая стеклянная кнопка, как у остальных окон */
-body.ui-ios27 #channel-detail-modal .modal-btn {
-  border-radius: var(--radius-capsule) !important;
-  transition: background var(--transition-fast), filter var(--transition-fast), scale 0.38s var(--ease-spring) !important;
-}
-
-body.ui-ios27 #channel-detail-modal .modal-btn:active {
-  scale: 0.97;
-}
-
-body.ui-ios27 #channel-detail-modal .modal-btn-primary {
-  background: var(--accent-fill) !important;
-  border: 1px solid rgba(255, 255, 255, 0.14) !important;
-  box-shadow: var(--accent-glow) !important;
-}
-
-body.ui-ios27 #channel-detail-modal .modal-btn-primary:hover {
-  filter: brightness(1.08);
-}
-
-body.ui-ios27 #channel-detail-modal .modal-btn-secondary,
-body.ui-ios27 #channel-detail-modal .modal-btn-danger {
-  width: 46px;
-  padding: 0 !important;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-body.ui-ios27 #close-drop-modal {
-  width: 32px !important;
-  height: 32px !important;
-  border: none !important;
-  background: var(--spec-line), rgba(120, 120, 128, 0.36) !important;
-  transition: background var(--transition-fast), scale 0.38s var(--ease-spring) !important;
-}
-
-body.ui-ios27 #close-drop-modal:hover {
-  background: var(--spec-line), rgba(120, 120, 128, 0.5) !important;
-}
-
-body.ui-ios27 #close-drop-modal:active {
-  scale: 0.94;
-}
-
-body.ui-ios27 #close-drop-modal svg {
-  width: 14px;
-  height: 14px;
-}
-
-body.ui-ios27 #close-modal-btn {
-  top: 14px !important;
-  right: 14px !important;
-  z-index: 2;
-  width: 30px;
-  height: 30px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-circle) !important;
-  background: var(--spec-line), var(--button-secondary-bg) !important;
-  color: var(--text-secondary) !important;
-  font-size: 20px !important;
-  transition: background var(--transition-fast), color var(--transition-fast), scale 0.38s var(--ease-spring);
-}
-
-body.ui-ios27 #close-modal-btn:hover {
-  background: var(--spec-line), var(--button-secondary-hover) !important;
-  color: var(--text-primary) !important;
-}
-
-body.ui-ios27 #close-modal-btn:active {
-  scale: 0.94;
-}
-
-/* Полоса прокрутки у самого края окна: дорожка шла во всю высоту и
-   срезала скругление углов прямой линией. Отступ держит её на прямом
-   участке кромки */
-body.ui-ios27 #drop-detail-modal > div::-webkit-scrollbar-track,
-body.ui-ios27 #channel-detail-modal > div::-webkit-scrollbar-track,
-body.ui-ios27 .category-detail-modal > div > div::-webkit-scrollbar-track,
-body.ui-ios27 .auth-modal-content::-webkit-scrollbar-track {
-  margin: 22px 0;
-}
-
-/* Плитки окна награды и окна аккаунта — светлые плитки на стекле, как
-   в окне категории, а не тёмные «колодцы» классики (фон инлайновый) */
-body.ui-ios27 #drop-detail-modal [style*="background: rgba(0,0,0,0.3)"],
-body.ui-ios27 .account-details-modal .detail-row,
-body.ui-ios27 .account-details-modal .detail-row:hover {
-  background: var(--spec-line), var(--glass-tile) !important;
-  border-color: var(--glass-tile-stroke) !important;
-  border-radius: 16px !important;
-  box-shadow: none !important;
-}
-
-body.ui-ios27 .account-details-modal .detail-row.clickable:hover {
-  background: var(--spec-line), rgba(var(--accent-rgb), 0.12) !important;
-}
-
-/* Окно аккаунта: заголовок без собственных полей — вровень с плитками
-   ниже (раньше он стоял на 20px правее них), шрифт чуть меньше, чтобы
-   крестик не прилипал к последнему слову */
-body.ui-ios27 .account-details-modal .auth-modal-header {
-  padding-left: 0;
-  padding-right: 0;
-  padding-top: 4px;
-  gap: 12px;
-}
-
-body.ui-ios27 .account-details-modal .auth-modal-header h2 {
-  font-family: var(--font-display);
-  font-size: 20px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-}
-
-/* Окно выбора категории: полоса под поиском была заливкой поверх
-   стекла — прямоугольник с острыми углами вокруг скруглённого поля */
-body.ui-ios27 .auth-modal .search-container {
-  background: transparent !important;
-}
-
-body.ui-ios27 .auth-modal-header h3 {
-  font-family: var(--font-display);
-  font-size: 18px;
-  font-weight: 700;
-  letter-spacing: -0.018em;
-}
-
-@keyframes ios27-pop {
-  from {
-    opacity: 0;
-    transform: translateY(10px) scale(0.96);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-/* Низ окна аккаунта. Прокручивается не всё окно, а только его середина,
-   так что под низом ничего не проезжает — своя заливка ему не нужна.
-   С заливкой он был отдельной плашкой с острыми углами поверх стекла
-   (в светлой теме — белым прямоугольником) */
-body.ui-ios27 .auth-modal-footer {
-  background: transparent;
-  border-top-color: var(--border-color);
-  padding-bottom: 0;
-}
-
-body.ui-ios27 .footer-close-text {
-  padding: 7px 16px;
-  border-radius: var(--radius-capsule);
-  opacity: 1;
-  color: var(--text-secondary);
-  font-weight: 600;
-  transition: background var(--transition-fast), color var(--transition-fast);
-}
-
-body.ui-ios27 .footer-close-text:hover {
-  background: var(--hover-bg);
-  color: var(--text-primary);
-}
-
-body.ui-ios27 .whats-new-head {
-  padding: 20px 22px 14px;
-  border-bottom-color: var(--border-color);
-}
-
-body.ui-ios27 .whats-new-title {
-  font-family: var(--font-display);
-  font-size: 22px;
-  font-weight: 700;
-  letter-spacing: -0.024em;
-}
-
-body.ui-ios27 .whats-new-body {
-  padding: 6px 22px 20px;
-}
-
-body.ui-ios27 .whats-new-eyebrow {
-  letter-spacing: 0.06em;
-}
-
-/* Номер версии — капсула системным шрифтом с моноширинными цифрами,
-   а не машинописный моноширинный шрифт */
-body.ui-ios27 .whats-new-version {
-  font-family: var(--font-display);
-  font-size: 12.5px;
-  font-weight: 650;
-  font-variant-numeric: tabular-nums;
-  padding: 3px 10px;
-}
-
-body.ui-ios27.theme-dark .whats-new-version {
-  color: #b9a8ff;
-}
-
-/* Крестики закрытия — круглые стеклянные кнопки */
-body.ui-ios27 .whats-new-close,
-body.ui-ios27 .close-modal,
-body.ui-ios27 .modal-close-btn {
-  width: 30px;
-  height: 30px;
-  border-radius: var(--radius-circle);
-  border: none;
-  background: var(--spec-line), var(--button-secondary-bg);
-  color: var(--text-secondary);
-  transition: background var(--transition-fast), color var(--transition-fast), scale 0.38s var(--ease-spring);
-}
-
-body.ui-ios27 .whats-new-close:hover,
-body.ui-ios27 .close-modal:hover,
-body.ui-ios27 .modal-close-btn:hover {
-  background: var(--spec-line), var(--button-secondary-hover);
-  color: var(--text-primary);
-}
-
-/* Окно обновления (стили строит updater.js и добавляет после этого файла,
-   отсюда более длинные селекторы) */
-body.ui-ios27 #update-overlay .update-window {
-  padding: 30px 30px 26px;
-}
-
-body.ui-ios27 #update-overlay .update-logo {
-  border-radius: 22px;
-  background: var(--accent-fill);
-  box-shadow: 0 14px 34px -12px rgba(var(--accent-rgb), 0.9), inset 0 1px 0 rgba(255, 255, 255, 0.35);
-}
-
-body.ui-ios27 #update-overlay .update-title {
-  font-family: var(--font-display);
-  letter-spacing: -0.025em;
-}
-
-/* Версия — компактная капсула по центру, а не полоса во всю ширину окна */
-body.ui-ios27 #update-overlay .update-version {
-  display: table;
-  width: auto;
-  margin: 0 auto 24px;
-  padding: 6px 14px;
-  border-radius: var(--radius-capsule);
-  background: rgba(var(--accent-rgb), 0.14);
-  color: var(--accent-color);
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-
-body.ui-ios27.theme-dark #update-overlay .update-version {
-  color: #b9a8ff;
-}
-
-body.ui-ios27 #update-overlay .update-notes {
-  border-radius: 16px;
-  background: var(--spec-line), var(--glass-tile);
-  border-color: var(--glass-tile-stroke);
-}
-
-body.ui-ios27 #update-overlay .update-btn {
-  border-radius: var(--radius-capsule);
-  transition: background var(--transition-fast), filter var(--transition-fast), scale 0.38s var(--ease-spring);
-}
-
-body.ui-ios27 #update-overlay .update-btn::before {
-  display: none;
-}
-
-body.ui-ios27 #update-overlay .update-btn-primary {
-  background: var(--accent-fill);
-  box-shadow: var(--accent-glow);
-}
-
-body.ui-ios27 #update-overlay .update-btn-primary:hover:not(:disabled) {
-  transform: none;
-  filter: brightness(1.08);
-}
-
-body.ui-ios27 #update-overlay .update-btn-secondary {
-  background: var(--spec-line), var(--button-secondary-bg);
-  border: 1px solid var(--glass-tile-stroke);
-  color: var(--text-primary);
-}
-
-body.ui-ios27 #update-overlay .update-btn-secondary:hover:not(:disabled) {
-  background: var(--spec-line), var(--button-secondary-hover);
-  border-color: var(--border-strong);
-}
-
-/* ───────────────────────── Уведомления в окне ───────────────────────── */
-
-/* Цветные плашки заменены стеклянным баннером в духе уведомлений iOS:
-   тип сообщения говорит цветной значок, текст остаётся читаемым */
-body.ui-ios27 .toast-container {
-  top: 46px;
-  right: 18px;
-  gap: 10px;
 }
 
 body.ui-ios27 .toast {
-  gap: 12px;
-  min-width: 300px;
-  padding: 12px 16px 12px 12px;
-  border-radius: 20px;
-  color: var(--text-primary);
-  font-size: 13.5px;
-  font-weight: 500;
-  letter-spacing: -0.006em;
-  background: var(--glass-sheen), var(--glass-fill-float);
-  border: 1px solid var(--glass-stroke);
-  border-top-color: var(--glass-spec);
-  box-shadow: var(--glass-shadow-float);
-  backdrop-filter: var(--glass-blur-float);
-  -webkit-backdrop-filter: var(--glass-blur-float);
+  border-radius: 18px;
 }
 
-body.ui-ios27 .toast::before {
-  display: none;
-}
-
-body.ui-ios27 .toast-icon {
-  width: 32px;
-  height: 32px;
-  border-radius: 10px;
-  color: #fff;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3);
-}
-
-body.ui-ios27 .toast-info .toast-icon {
-  background: var(--accent-fill);
-}
-
-body.ui-ios27 .toast-success .toast-icon {
-  background: linear-gradient(180deg, #4cdf74, #28c04f);
-}
-
-body.ui-ios27 .toast-error .toast-icon {
-  background: var(--danger-fill);
-}
-
-body.ui-ios27 .toast-warning .toast-icon {
-  background: linear-gradient(180deg, #ffb340, #ff9500);
-}
-
-body.ui-ios27 .toast-progress {
-  left: 14px;
-  right: 14px;
-  bottom: 5px;
-  width: auto;
-  height: 2px;
-  border-radius: var(--radius-capsule);
-  background: rgba(var(--accent-rgb), 0.7);
-}
-
-body.ui-ios27 .toast-success .toast-progress {
-  background: rgba(48, 209, 88, 0.7);
-}
-
-body.ui-ios27 .toast-warning .toast-progress {
-  background: rgba(255, 159, 10, 0.7);
-}
-
-body.ui-ios27 .toast-count {
-  border-radius: var(--radius-capsule);
-  background: var(--button-secondary-bg);
-}
-
-body.ui-ios27 .toast-close {
-  border-radius: var(--radius-circle);
-  color: var(--text-secondary);
-}
-
-body.ui-ios27 .toast-close:hover {
-  background: var(--hover-bg);
-  color: var(--text-primary);
-}
-
-/* Окно награды в углу главного окна */
-body.ui-ios27 .drop-notification-title,
-body.ui-ios27 .drop-notification-drop-name {
-  color: var(--text-primary);
-}
-
-body.ui-ios27 .drop-notification-game {
-  color: var(--text-secondary);
-}
-
-body.ui-ios27 .drop-notification-icon {
-  border-radius: 14px;
-}
-
-/* ───────────────────────── Подсказки ───────────────────────── */
-
-/* Подсказку создаёт tooltip-service.js с инлайновым оформлением */
 body.ui-ios27 .tooltip {
-  padding: 8px 12px !important;
-  border-radius: 12px !important;
-  background: var(--glass-fill-float) !important;
-  color: var(--text-primary) !important;
-  border: 1px solid var(--glass-stroke);
-  border-top-color: var(--glass-spec);
-  box-shadow: var(--glass-shadow-float) !important;
+  border-radius: var(--radius-ctl);
+}
+
+/* «Категория удалена — Вернуть» — капсула, как плашки iOS */
+body.ui-ios27 .category-undo {
+  border-radius: var(--radius-pill);
+}
+
+/* Журнал — лист, который выезжает справа и не прилипает к краям окна */
+body.ui-ios27 .journal-drawer {
+  top: 40px;
+  right: 10px;
+  bottom: 10px;
+  background: var(--glass-fill-float);
+  border: 1px solid var(--glass-stroke-float);
+  border-radius: 24px;
+  box-shadow: var(--glass-shadow-float);
+  overflow: hidden;
   backdrop-filter: var(--glass-blur-float);
   -webkit-backdrop-filter: var(--glass-blur-float);
+  transform: translateX(calc(100% + 24px));
 }
 
-body.ui-ios27 #viewers-chart {
-  border-radius: 18px !important;
+body.ui-ios27 .journal-drawer.open {
+  transform: none;
 }
 
-/* ───────────────────────── Прочее ───────────────────────── */
-
-body.ui-ios27 .shutdown-summary {
-  border-radius: 14px;
-  border-color: rgba(255, 159, 10, 0.5);
+/* Прилипший заголовок дня внутри листа: размывает строки под собой
+   (лист — корень размытия, страница сюда не попадает) */
+body.ui-ios27 .journal-day {
+  background: transparent;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
 }
 
-body.ui-ios27 .empty-state svg,
-body.ui-ios27 .no-accounts svg {
-  opacity: 0.4;
+/* Кольца и галочки, которым нужен непрозрачный цвет карточки: на стекле
+   полупрозрачное кольцо окрашивалось цветом значка под ним */
+body.ui-ios27 .camp-tile-check,
+body.ui-ios27 .subs-live-dot {
+  border-color: var(--glass-solid);
 }
 
-body.ui-ios27 .spinner,
-body.ui-ios27 .loading-state .spinner {
-  border-color: rgba(var(--accent-rgb), 0.2);
-  border-top-color: var(--accent-color);
+body.ui-ios27 .subs-channel-head .subs-live-dot {
+  border-color: var(--glass-solid-float);
 }
 
-/* Компактный режим: свои отступы панелей, иначе их перебил бы этот файл */
-body.ui-ios27.compact-mode .card {
-  padding: 12px 16px;
-  margin-bottom: 10px;
+body.ui-ios27 .onboarding-step.is-done .onboarding-mark {
+  color: var(--glass-solid);
 }
 
-body.ui-ios27.compact-mode .farming-page .category-item {
-  padding: 6px 12px;
-  margin-bottom: 8px;
+/* ───────────────────────── 4. Элементы управления ─────────────────────────
+   :where() держит специфичность на уровне компонента: правила страниц
+   (.farming-page .category-play-btn …) по-прежнему сильнее и сохраняют
+   свои размеры и плавное появление */
+
+/* Кнопки — капсулы; иконочные — круги. Нажатие — короткое проседание */
+body.ui-ios27 :where(.btn) {
+  border-radius: var(--radius-pill);
+  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast), scale var(--dur-slow) var(--ease-spring);
 }
 
-body.ui-ios27.compact-mode .settings-section {
-  padding: 14px 18px 4px;
+body.ui-ios27 :where(.btn):active:not(:disabled) {
+  scale: 0.97;
 }
 
-/* Экономный режим: всплывающим слоям нужна плотная заливка — размытия,
-   которое прятало бы страницу под ними, нет. Блик по кромке и градиент
-   остаются: их рисуют рамка и фон, а не тень */
-body.ui-ios27.low-graphics .toast,
-body.ui-ios27.low-graphics .custom-select-options,
-body.ui-ios27.low-graphics .drops-tip,
-body.ui-ios27.low-graphics .category-undo,
-body.ui-ios27.low-graphics .tooltip {
-  background: var(--glass-sheen), var(--glass-fill-float) !important;
+body.ui-ios27 :where(.btn-icon) {
+  border-radius: var(--radius-circle);
 }
 
-/* Тени, которые выше пришлось ставить с !important (спор с инлайном),
-   перебивали запрет теней экономного режима — возвращаем запрет */
-body.ui-ios27.low-graphics .btn-primary,
-body.ui-ios27.low-graphics .btn-primary:hover:not(:disabled),
-body.ui-ios27.low-graphics #next-stream-btn:hover,
-body.ui-ios27.low-graphics .tooltip,
-body.ui-ios27.low-graphics .whats-new,
-body.ui-ios27.low-graphics #update-overlay .update-window,
-body.ui-ios27.low-graphics #confirmation-modal > div,
-body.ui-ios27.low-graphics .category-detail-modal > div,
-body.ui-ios27.low-graphics #drop-detail-modal > div,
-body.ui-ios27.low-graphics #channel-detail-modal > div,
-body.ui-ios27.low-graphics .shutdown-dialog,
-body.ui-ios27.low-graphics .auth-modal-content,
-body.ui-ios27.low-graphics .modal-content,
-body.ui-ios27.low-graphics .drop-notification {
-  box-shadow: none !important;
+/* Цветные кнопки — ровная заливка и блик сверху, без цветного свечения */
+body.ui-ios27 :where(.btn-primary, .btn-danger) {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16);
 }
 
-body.ui-ios27.low-graphics .player-bar {
-  background: rgba(20, 20, 28, 0.9);
+body.ui-ios27 :where(.btn-secondary) {
+  border-color: var(--glass-stroke);
+  box-shadow: var(--glass-edge);
 }
 
-body.ui-ios27.low-graphics .player-menu {
-  background: rgba(24, 24, 34, 0.98);
+/* У кнопок блока фарминга появление и уход рисует JS (opacity и
+   transform) — переход перечислен заново, иначе он пропал бы */
+body.ui-ios27 .sidebar-farming > .btn {
+  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast),
+              opacity var(--dur-base) var(--ease-out), transform var(--dur-base) var(--ease-out), scale var(--dur-slow) var(--ease-spring);
+}
+
+body.ui-ios27 .dialog-close,
+body.ui-ios27 .whats-new-close {
+  border-radius: var(--radius-circle);
+}
+
+/* Поля — мягкая заливка без рамки, как текстовые поля iOS; рамка
+   появляется при наведении, кольцо акцента — при фокусе (main.css) */
+body.ui-ios27 :where(.input-field, .settings-input) {
+  border-color: transparent;
+}
+
+body.ui-ios27 .search-field > .input-field {
+  border-radius: var(--radius-pill);
+}
+
+/* Список системного select рисует Windows: полупрозрачный фон он
+   смешал бы с белым — пунктам нужен сплошной цвет */
+body.ui-ios27 select.input-field option {
+  background: var(--glass-solid-float);
+}
+
+/* Переключатели — пропорции iOS: дорожка 40×24, ручка 20 с тенью.
+   Ход ручки у большого тот же, что в классике (16px), у малого — свой */
+body.ui-ios27 .switch,
+body.ui-ios27 .settings-toggle {
+  width: 40px;
+  height: 24px;
+}
+
+body.ui-ios27 .switch::after,
+body.ui-ios27 .settings-slider::before {
+  width: 20px;
+  height: 20px;
+  box-shadow: var(--thumb-shadow);
+  transition: transform var(--dur-slow) var(--ease-spring), width var(--dur-base) var(--ease-out);
+}
+
+body.ui-ios27 .switch-sm,
+body.ui-ios27 .category-toggle-switch {
+  width: 34px;
+  height: 20px;
+}
+
+body.ui-ios27 .switch-sm::after,
+body.ui-ios27 .toggle-thumb {
+  width: 16px;
+  height: 16px;
+  box-shadow: var(--thumb-shadow);
+  transition: transform var(--dur-slow) var(--ease-spring);
+}
+
+body.ui-ios27 .switch-sm.is-on::after,
+body.ui-ios27 .switch-sm:checked::after,
+body.ui-ios27 .switch-sm[aria-checked="true"]::after,
+body.ui-ios27 [aria-pressed="true"] > .switch-sm::after,
+body.ui-ios27 .category-toggle-switch.checked .toggle-thumb {
+  transform: translateX(14px);
+}
+
+/* Нажатая ручка вытягивается, как в iOS. Включённая растёт влево —
+   сдвиг меньше на ту же величину */
+body.ui-ios27 .settings-toggle:active .settings-slider::before,
+body.ui-ios27 input.switch:not(.switch-sm):active::after {
+  width: 24px;
+}
+
+body.ui-ios27 .settings-toggle:active input:checked + .settings-slider::before,
+body.ui-ios27 input.switch:not(.switch-sm):checked:active::after {
+  transform: translateX(12px);
+}
+
+/* Сегменты — капсула-дорожка и светлая «линза» выбранного */
+body.ui-ios27 .segmented {
+  background: var(--seg-track);
+  border-color: transparent;
+  border-radius: var(--radius-pill);
+}
+
+body.ui-ios27 .segmented > button {
+  border-radius: var(--radius-pill);
+}
+
+body.ui-ios27 .segmented > button.active,
+body.ui-ios27 .segmented > button.is-active,
+body.ui-ios27 .segmented > button[aria-pressed="true"],
+body.ui-ios27 .segmented > button[aria-selected="true"],
+body.ui-ios27.theme-light .segmented > button.active,
+body.ui-ios27.theme-light .segmented > button.is-active,
+body.ui-ios27.theme-light .segmented > button[aria-pressed="true"],
+body.ui-ios27.theme-light .segmented > button[aria-selected="true"] {
+  background: var(--lens-fill);
+  box-shadow: var(--lens-shadow);
+  color: var(--text-primary);
+}
+
+/* Навигация настроек — та же линза, что у меню */
+body.ui-ios27 .settings-nav a,
+body.ui-ios27 .settings-nav a.active {
+  border-radius: var(--radius-ctl);
+}
+
+body.ui-ios27 .settings-nav a.active,
+body.ui-ios27.theme-light .settings-nav a.active {
+  background: var(--lens-fill);
+  box-shadow: var(--lens-shadow);
+}
+
+/* Ползунок: дорожка-капсула потолще и крупная белая ручка без рамки */
+body.ui-ios27 .settings-range {
+  height: 24px;
+}
+
+body.ui-ios27 .settings-range::-webkit-slider-runnable-track {
+  height: 6px;
+}
+
+body.ui-ios27 .settings-range::-webkit-slider-thumb {
+  width: 22px;
+  height: 22px;
+  margin-top: -8px;
+  border: 0;
+  box-shadow: var(--thumb-shadow);
+  transition: scale var(--dur-slow) var(--ease-spring);
+}
+
+body.ui-ios27 .settings-range:active::-webkit-slider-thumb {
+  transform: none;
+  scale: 1.1;
+}
+
+/* Метки — капсулы */
+body.ui-ios27 :where(.badge, .whats-new-version) {
+  border-radius: var(--radius-pill);
+}
+
+/* ───────────────────────── 5. Экономный режим ─────────────────────────
+   Без теней белые ручки и линзы на светлой теме теряют край — рамка */
+
+/* Белая линза на белой панели держится на тени; без неё пункт меню
+   выделяется серой подложкой (сегменты лежат на серой дорожке — им
+   белая линза подходит и так) */
+body.ui-ios27.theme-light.low-graphics .nav-item.active {
+  background: var(--surface-3);
+}
+
+body.ui-ios27.theme-light.low-graphics .switch::after,
+body.ui-ios27.theme-light.low-graphics .settings-slider::before,
+body.ui-ios27.theme-light.low-graphics .toggle-thumb,
+body.ui-ios27.theme-light.low-graphics .settings-range::-webkit-slider-thumb {
+  outline: 1px solid rgba(0, 0, 0, 0.1);
+  outline-offset: -1px;
 }
