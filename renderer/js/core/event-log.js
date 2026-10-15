@@ -15,7 +15,9 @@
  * история, а не настройки.
  *
  * API (контракт 2 спецификации):
- *   eventLog.add({ type, title, detail?, game?, icon? }) — синхронно, не бросает
+ *   eventLog.add({ type, title, detail?, game?, icon?, key? }) — синхронно, не бросает
+ *     key — постоянный id события (у награды — её id у Twitch): запись с
+ *     уже известным ключом не добавляется
  *   eventLog.list({ since?, limit?, types? }) → Promise<Entry[]>, новые первыми
  *   eventLog.markSeen()            — всё до этого момента просмотрено
  *   eventLog.onChange(cb) → отписка
@@ -99,6 +101,8 @@ class EventLog {
     if (game) entry.game = game;
     const icon = typeof input.icon === 'string' ? input.icon.trim() : '';
     if (/^https:\/\//i.test(icon) && icon.length <= 600) entry.icon = icon;
+    const key = EventLog.text(input.key, 200);
+    if (key) entry.key = key;
 
     const count = Math.floor(Number(input.count));
     if (count > 1) entry.count = Math.min(count, 9999);
@@ -130,6 +134,15 @@ class EventLog {
   static insert(entries, entry, now = Date.now()) {
     const list = Array.isArray(entries) ? entries : [];
     const head = list[0];
+
+    // Одна и та же награда выдаётся один раз. Запись с тем же ключом (id
+    // награды у Twitch) уже есть — это эхо, а не новое событие: раньше при
+    // устаревшем ответе Twitch журнал заполнялся одинаковыми строками, и
+    // склейка с одной лишь верхней записью не спасала — две награды
+    // чередовались. По названию сравнивать нельзя: у игры бывают разные
+    // награды с одним именем (ящик за каждый час), и настоящие пропадали
+    // бы из журнала и из сводки «Пока вас не было»
+    if (entry.key && list.some(e => e.key === entry.key)) return EventLog.trim(list, now);
 
     if (head && head.type === 'chest' && entry.type === 'chest' && entry.at - head.at < EventLog.CHEST_MERGE_MS) {
       const merged = {
@@ -256,6 +269,16 @@ class EventLog {
       if (out.length >= limit) break;
     }
     return out;
+  }
+
+  /**
+   * Есть ли в журнале запись с этим постоянным id (например, id награды).
+   * Журнал хранится 14 дней и переживает перезапуск — в отличие от памяти
+   * страницы фарминга
+   */
+  hasKey(key) {
+    if (!key) return false;
+    return this.state.entries.some(e => e.key === String(key));
   }
 
   get lastSeenAt() {

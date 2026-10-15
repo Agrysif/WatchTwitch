@@ -71,6 +71,26 @@ const flush = () => new Promise(resolve => setImmediate(resolve));
     check('Campaign channel restriction survives subscription priority', chosen.login === 'allowed', `selected=${chosen.login}, allowed=allowed`);
   }
   {
+    // Before the first stream Twitch returns only in-progress campaigns
+    // (dashboardComplete false): a restriction from that partial list must
+    // not block the whole game, but a live allowed channel is still preferred.
+    const { sandbox: s, page: p } = environment();
+    s.Storage.getItem = async () => false;
+    const inventory = { dashboardComplete: false, campaigns: [{ game: { name: 'Overwatch' }, drops: [], allowedChannels: ['off_a', 'off_b'] }] };
+    s.window.electronAPI = { fetchDropsInventory: async () => inventory, getStreamStats: async () => null };
+    const toasts = [];
+    s.window.utils = { showToast: message => toasts.push(message) };
+    const soft = await p.pickPreferredStream([{ login: 'live_one' }], 'Overwatch');
+    check('Incomplete campaign list does not block a game with offline allowed channels', soft?.login === 'live_one' && toasts.length === 0, `selected=${soft?.login}, toasts=${toasts.length}`);
+    s.window.electronAPI.getStreamStats = async login => (login === 'off_b' ? { gameName: 'Overwatch', viewers: 5 } : null);
+    const preferred = await p.pickPreferredStream([{ login: 'live_one' }], 'Overwatch');
+    check('Incomplete campaign list still prefers a live allowed channel', preferred?.login === 'off_b', `selected=${preferred?.login}`);
+    inventory.dashboardComplete = true;
+    s.window.electronAPI.getStreamStats = async () => null;
+    const strict = await p.pickPreferredStream([{ login: 'live_one' }], 'Overwatch');
+    check('Complete campaign list keeps the channel restriction', strict === null && toasts.length === 1, `selected=${strict?.login}, toasts=${toasts.length}`);
+  }
+  {
     const { sandbox: s, page: p } = environment();
     let finishRequest;
     s.window.electronAPI = { getStreamsWithDrops: () => new Promise(r => { finishRequest = r; }) };
