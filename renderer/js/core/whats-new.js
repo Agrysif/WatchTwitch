@@ -64,14 +64,12 @@ class WhatsNew {
             <div class="whats-new-eyebrow">${options.since ? 'Приложение обновлено' : 'Сведения об обновлениях'}</div>
             <h2 class="whats-new-title">Что нового</h2>
           </div>
-          <button class="whats-new-close" id="whats-new-close" aria-label="Закрыть">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M18 6L6 18M6 6l12 12"/>
-            </svg>
+          <button class="whats-new-close" id="whats-new-close" title="Закрыть" aria-label="Закрыть">
+            ${window.Icons?.get?.('close', 16) || '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>'}
           </button>
         </div>
         <div class="whats-new-body" id="whats-new-body">
-          <div class="whats-new-loading">Загружаю сведения с GitHub…</div>
+          <div class="loading-state"><div class="spinner" aria-hidden="true"></div><span>Загружаю сведения с GitHub…</span></div>
         </div>
       </div>
     `;
@@ -141,6 +139,8 @@ class WhatsNew {
       : installed;
 
     const highlight = options.highlight || current;
+    // Какая из версий стоит сейчас — отмечается в заголовке релиза
+    this.currentVersion = current;
     const own = installed.find(r => r.version === highlight);
     const list = relevant.length > 0 ? relevant : [own || installed[0]];
 
@@ -177,10 +177,11 @@ class WhatsNew {
     return `
       <div class="whats-new-release ${expanded ? 'open' : ''}">
         <div class="whats-new-release-head">
-          <span class="whats-new-version">${this.escape(release.version)}</span>
+          <span class="whats-new-version badge">${this.escape(release.version)}</span>
+          ${release.version === this.currentVersion ? '<span class="badge badge-success">установлена</span>' : ''}
           ${date ? `<span class="whats-new-date">${date}</span>` : ''}
-          <svg class="whats-new-chevron" width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M12 15l-6-6h12z"/>
+          <svg class="whats-new-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="m6 9 6 6 6-6"/>
           </svg>
         </div>
         <div class="whats-new-release-body">

@@ -1,4 +1,11 @@
-// Settings Page with i18n support
+// Страница настроек.
+//
+// Раньше это была одна колонка из шести карточек, где «Автоматизация»
+// смешивала двадцать пунктов: награды, автовыключение, качество, автозапуск.
+// Теперь — восемь разделов по смыслу, навигация слева, поиск и зависимые
+// пункты, которые появляются только тогда, когда включён их «родитель».
+// Все id переключателей и полей прежние: на них завязаны обработчики ниже
+// и чужой код (например, сводка автовыключения).
 class SettingsPage {
   constructor() {
     // Обработчики на document не исчезают вместе со страницей —
@@ -14,12 +21,35 @@ class SettingsPage {
     if (this._abort) {
       this._abort.abort();
     }
+    this._renderAbort?.abort();
+    clearTimeout(this._navLockTimer);
   }
 
   async init() {
     await this.render();
     this.setupEventListeners();
     this.loadAppVersion();
+  }
+
+  /**
+   * События звука. Список ведёт chime.js (Chime.EVENTS); пока его там нет,
+   * берём запасной с теми же ключами настроек — переключатели работают и
+   * без него, звук просто сыграет по-старому.
+   */
+  static soundEvents() {
+    const events = window.Chime?.EVENTS;
+    if (Array.isArray(events) && events.length > 0) return events;
+    return SettingsPage.FALLBACK_SOUND_EVENTS;
+  }
+
+  static get FALLBACK_SOUND_EVENTS() {
+    return [
+      { id: 'drop', label: 'Награда получена', hint: 'Восходящий аккорд из трёх нот', setting: 'soundDrop', defaultOn: true },
+      { id: 'chest', label: 'Сундук собран', hint: 'Короткая «монетка». Сундуки бывают каждые 15 минут', setting: 'soundChest', defaultOn: false },
+      { id: 'allDone', label: 'Все награды собраны', hint: 'Фарминг закончил всё, что было в списке', setting: 'soundAllDone', defaultOn: true },
+      { id: 'attention', label: 'Нужно вмешаться', hint: 'Фарминг остановился, нет входа в Twitch или награда не забрана', setting: 'soundAttention', defaultOn: true },
+      { id: 'favourite', label: 'Избранный канал в эфире', hint: 'Стример из избранного начал трансляцию', setting: 'soundFavourite', defaultOn: true }
+    ];
   }
 
   async render() {
@@ -32,618 +62,597 @@ class SettingsPage {
       return;
     }
 
+    // Обработчики на document и прокрутке .content привязаны к разметке:
+    // перерисовка (смена языка, сброс, восстановление копии) снимает старые
+    this._renderAbort?.abort();
+    this._renderAbort = new AbortController();
+
     const i18n = window.i18n;
-    const currentLang = i18n?.currentLang || 'ru';
+    const en = i18n?.currentLang === 'en';
+    // Тексты пишутся здесь же по-русски, короче прежних; для английского
+    // берём готовую строку перевода, если она есть
+    const T = (ru, enText) => (en && enText ? enText : ru);
+    const esc = window.escapeHtml;
+    const I = (name, size = 16) => window.Icons?.get(name, size) ?? '';
+    // Значки меню разделов, которых нет в общем наборе: «монитор» там уже
+    // означает фарминг (главное меню), а у окна, питания и оформления своих
+    // рисунков нет. Тот же стиль — контур 1.75 на сетке 24
+    const navIcon = (name) => {
+      const own = {
+        window: '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 9h20"/><path d="M6 6.5h.01M9 6.5h.01"/>',
+        power: '<path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.77.04"/>',
+        palette: '<path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.93 0 1.65-.75 1.65-1.69 0-.44-.18-.84-.44-1.13-.29-.29-.44-.65-.44-1.13a1.64 1.64 0 0 1 1.67-1.67h2c3.05 0 5.55-2.5 5.55-5.55C21.97 6.01 17.46 2 12 2z"/><path d="M13.5 6.5h.01M17.5 10.5h.01M8.5 7.5h.01M6.5 12.5h.01"/>'
+      }[name];
+      return own
+        ? `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${own}</svg>`
+        : I(name, 16);
+    };
+    const get = (key) => settings.get(key);
 
-    // Свой класс заголовку: .settings-container ограничен 800px и стоит по
-    // центру, а общий .page-header растянут на всю ширину и висел отдельно
-    // от колонки с карточками. Ширину и отступы задаёт .settings-header в CSS
+    const toggle = (id, checked, attrs = '', describedBy = `${id}-desc`) => `
+      <label class="settings-toggle">
+        <input type="checkbox" id="${id}" ${checked ? 'checked' : ''} aria-describedby="${describedBy}" ${attrs}>
+        <span class="settings-slider"></span>
+      </label>`;
+
+    // Строка настройки. id — элемент управления: подпись становится его
+    // <label>, и щелчок по тексту переключает так же, как по самому
+    // переключателю. parent / parentValue — от чего строка зависит:
+    // скрывается (или приглушается при mode: 'dim'), пока родитель выключен
+    const item = ({ id = '', labelId = '', label, desc = '', control = '', sub = false, stacked = false,
+                    parent = '', parentValue = '', mode = '', cls = '', extra = '', live = false,
+                    descId = '', descAttrs = '', keywords = '' }) => {
+      const classes = ['settings-item', sub && 'is-sub', stacked && 'is-stacked', cls].filter(Boolean).join(' ');
+      const labelHtml = id
+        ? `<label class="settings-item-label" for="${id}">${label}</label>`
+        : `<div class="settings-item-label"${labelId ? ` id="${labelId}"` : ''}>${label}</div>`;
+      const dId = descId || (id ? `${id}-desc` : '');
+      const attrs = [
+        parent && `data-parent="${parent}"`,
+        parentValue && `data-parent-value="${parentValue}"`,
+        mode && `data-mode="${mode}"`,
+        keywords && `data-keywords="${esc(keywords)}"`
+      ].filter(Boolean).join(' ');
+      return `
+        <div class="${classes}" ${attrs}>
+          <div class="settings-item-info">
+            ${labelHtml}
+            ${desc || live ? `<div class="settings-item-description"${dId ? ` id="${dId}"` : ''}${live ? ' data-live' : ''} ${descAttrs}>${desc}</div>` : ''}
+            ${extra}
+          </div>
+          ${control ? `<div class="settings-item-control">${control}</div>` : ''}
+        </div>`;
+    };
+
+    const segmented = (id, current, options, labelledBy) => `
+      <div class="segmented" id="${id}" role="group" aria-labelledby="${labelledBy}" data-value="${current}">
+        ${options.map(o => `
+          <button type="button" data-value="${o.value}" class="${o.value === current ? 'active' : ''}" aria-pressed="${o.value === current}">
+            ${o.icon ? I(o.icon, 14) : ''}<span>${o.label}</span>
+          </button>`).join('')}
+      </div>`;
+
+    const section = (id, title, body) => `
+      <section class="settings-section" id="${id}" aria-labelledby="${id}-title">
+        <h2 class="settings-section-title" id="${id}-title" tabindex="-1">${title}</h2>
+        ${body}
+      </section>`;
+
+    const sections = [
+      { id: 'set-farming', icon: 'play', title: T('Фарминг', i18n.t('settings.farming')) },
+      { id: 'set-notify', icon: 'bell', title: T('Уведомления и звук', 'Notifications & sound') },
+      { id: 'set-perf', icon: 'gamepad', title: T('Игры и нагрузка', 'Games & performance') },
+      { id: 'set-window', icon: 'window', title: T('Окно и запуск', 'Window & startup') },
+      { id: 'set-shutdown', icon: 'power', title: T('Автовыключение', 'Auto shutdown') },
+      { id: 'set-look', icon: 'palette', title: T('Оформление', 'Appearance') },
+      { id: 'set-data', icon: 'folder', title: T('Данные', 'Data') },
+      { id: 'set-about', icon: 'info', title: T('О программе', 'About') }
+    ];
+    const titleOf = (id) => sections.find(s => s.id === id).title;
+
+    // ── 1. Фарминг ──
+    const quality = get('preferredStreamQuality');
+    const farmingHtml = [
+      item({
+        id: 'setting-auto-claim',
+        label: T('Автоматически забирать награды', i18n.t('settings.autoClaimDrops')),
+        desc: T('Награда забирается сама, как только Twitch её выдал', i18n.t('settings.autoClaimDropsDesc')),
+        control: toggle('setting-auto-claim', get('autoClaimDrops'))
+      }),
+      item({
+        id: 'setting-auto-switch',
+        label: T('Автопереключение стримов', i18n.t('settings.autoSwitchStreams')),
+        desc: T('Эфир закончился, канал не засчитывает минуты или стример сменил игру — перейти на другой стрим',
+          i18n.t('settings.autoSwitchStreamsDesc')),
+        control: toggle('setting-auto-switch', get('autoSwitchStreams'))
+      }),
+      item({
+        id: 'setting-smart-switch',
+        label: T('Выбирать категорию по выгоде', i18n.t('settings.smartCategorySwitch')),
+        desc: T('Пропускать кампании, которые уже не успеть, и идти туда, где за час больше наград',
+          i18n.t('settings.smartCategorySwitchDesc')),
+        control: toggle('setting-smart-switch', get('smartCategorySwitch') !== false)
+      }),
+      item({
+        id: 'setting-suggest',
+        label: T('Подсказывать выгодные категории', i18n.t('settings.suggestCategories')),
+        desc: T('Показывать на «Фарминге» игры с дропсами, которых нет в вашем списке', i18n.t('settings.suggestCategoriesDesc')),
+        control: toggle('setting-suggest', get('suggestCategories') !== false)
+      }),
+      item({
+        id: 'setting-quality',
+        label: T('Качество стрима', i18n.t('settings.streamQuality')),
+        desc: T('Для зачёта минут хватает 160p. Выше качество — больше трафика', i18n.t('settings.streamQualityDesc')),
+        control: `
+          <select class="input-field" id="setting-quality" aria-describedby="setting-quality-desc">
+            <option value="160p30" ${quality === '160p30' ? 'selected' : ''}>${i18n.t('settings.lowest')} (160p)</option>
+            <option value="360p30" ${quality === '360p30' ? 'selected' : ''}>360p</option>
+            <option value="480p30" ${quality === '480p30' ? 'selected' : ''}>480p</option>
+          </select>`
+      }),
+      item({
+        id: 'setting-background-chat',
+        label: T('Фоновый чат Twitch', 'Background Twitch chat'),
+        desc: T('Включите, только если сундуки перестали собираться. Без чата — на 190 МБ памяти меньше',
+          'Turn on only if bonus chests stopped being collected. Without chat the app uses about 190 MB less memory'),
+        control: toggle('setting-background-chat', get('backgroundChat') === true),
+        keywords: 'сундук баллы память chat'
+      })
+    ].join('');
+
+    // ── 2. Уведомления и звук ──
+    const soundVolume = settings.constructor.clampVolume
+      ? settings.constructor.clampVolume(get('soundVolume'))
+      : (Number(get('soundVolume')) || 0.5);
+    const systemOn = get('systemNotifications') !== false && get('notifications') !== false;
+
+    const soundEvents = SettingsPage.soundEvents();
+    // Название сигнала «нужно вмешаться» — из того же списка событий, что и
+    // строка выше: подпись про игру не должна называть его иначе
+    const attentionLabel = soundEvents.find(ev => ev.id === 'attention')?.label || T('Нужно вмешаться', 'Needs attention');
+    const soundEventsHtml = soundEvents.map(ev => {
+      const id = `setting-sound-${String(ev.id).replace(/[^a-zA-Z0-9_-]/g, '')}`;
+      const enabled = ev.defaultOn ? get(ev.setting) !== false : get(ev.setting) === true;
+      return item({
+        id,
+        label: esc(ev.label || ev.id),
+        desc: esc(ev.hint || ''),
+        sub: true,
+        parent: 'setting-sound',
+        control: `
+          <button type="button" class="btn btn-ghost btn-icon btn-sm settings-preview" data-preview="${esc(ev.id)}"
+                  title="${T('Прослушать', 'Play')}" aria-label="${T('Прослушать', 'Play')}: ${esc(ev.label || ev.id)}">${I('play', 14)}</button>
+          ${toggle(id, enabled, `data-sound-key="${esc(ev.setting)}" data-default-on="${ev.defaultOn ? '1' : '0'}"`)}`
+      });
+    }).join('');
+
+    const notifyHtml = [
+      item({
+        id: 'setting-toast',
+        label: T('Всплывающие сообщения в окне', i18n.t('settings.toastNotifications')),
+        desc: T('Короткие сообщения в углу окна. Ошибки и ответы на нажатия видны всегда', i18n.t('settings.toastNotificationsDesc')),
+        control: toggle('setting-toast', get('toastNotifications'))
+      }),
+      item({
+        id: 'setting-system-notifications',
+        label: T('Уведомления Windows', i18n.t('settings.systemNotifications')),
+        desc: T('Сообщения в углу экрана, пока окно свёрнуто или в трее: фарминг остановился, нужен вход, кампания заканчивается',
+          i18n.t('settings.systemNotificationsDesc')),
+        control: toggle('setting-system-notifications', systemOn)
+      }),
+      item({
+        id: 'setting-notify-drop',
+        label: T('О полученных наградах', i18n.t('settings.notifyOnDropClaimed')),
+        desc: T('Карточка с картинкой награды. Во время игры — одна сводка после неё', i18n.t('settings.notifyOnDropClaimedDesc')),
+        control: toggle('setting-notify-drop', get('notifyOnDropClaimed')),
+        sub: true, parent: 'setting-system-notifications', mode: 'dim'
+      }),
+      item({
+        id: 'setting-favourite-live',
+        label: T('О выходе избранных каналов', i18n.t('settings.notifyFavouriteLive')),
+        desc: T('Избранный стример начал эфир — и есть ли по его игре дропсы', i18n.t('settings.notifyFavouriteLiveDesc')),
+        control: toggle('setting-favourite-live', get('notifyFavouriteLive') !== false),
+        sub: true, parent: 'setting-system-notifications', mode: 'dim'
+      }),
+      item({
+        labelId: 'test-notification-label', descId: 'test-notification-desc',
+        label: T('Пробное уведомление', 'Test notification'),
+        desc: T('Покажет, как выглядит окно о награде', 'Shows what a reward notification looks like'),
+        control: `<button type="button" class="btn btn-secondary btn-sm" id="test-notification-btn" aria-describedby="test-notification-label test-notification-desc">${I('bell', 14)}<span>${T('Показать', 'Show')}</span></button>`,
+        sub: true, keywords: 'проверить тест'
+      }),
+      item({
+        id: 'setting-sound',
+        label: T('Звуки', 'Sounds'),
+        desc: T('Короткие сигналы о наградах и о том, что нужно вмешаться', 'Short chimes for rewards and for problems that need you'),
+        control: toggle('setting-sound', get('soundEnabled')),
+        keywords: 'звук сигнал громкость колокольчик sound'
+      }),
+      item({
+        id: 'setting-sound-volume',
+        label: T('Громкость', 'Volume'),
+        sub: true, parent: 'setting-sound',
+        control: `
+          <input type="range" class="ios-range settings-range" id="setting-sound-volume" min="0" max="1" step="0.05" value="${soundVolume}">
+          <output class="settings-range-value num" id="setting-sound-volume-value" for="setting-sound-volume">${Math.round(soundVolume * 100)}%</output>`
+      }),
+      soundEventsHtml,
+      item({
+        id: 'setting-sound-in-game',
+        label: T('Звуки во время игры', 'Sounds while gaming'),
+        desc: T(`Обычно в игре приложение молчит. Сигнал «${esc(attentionLabel)}» звучит всегда`,
+          `Normally the app stays silent while you play. The “${esc(attentionLabel)}” chime always plays`),
+        control: toggle('setting-sound-in-game', get('soundInGame') === true),
+        sub: true, parent: 'setting-sound'
+      }),
+      item({
+        id: 'setting-quiet',
+        label: T('Тихие часы', i18n.t('settings.quietHours')),
+        desc: T('Ночью без звуков и уведомлений — фарминг идёт сам, будить незачем', i18n.t('settings.quietHoursDesc')),
+        control: toggle('setting-quiet', get('quietHours') !== false),
+        keywords: 'ночь тишина'
+      }),
+      item({
+        labelId: 'quiet-range-label',
+        label: T('Промежуток', 'Time range'),
+        desc: '', live: true, descId: 'quiet-note',
+        control: `
+          <div class="quiet-range" role="group" aria-labelledby="quiet-range-label">
+            <input type="time" id="setting-quiet-from" value="${esc(get('quietFrom') || '23:00')}" aria-label="${T('С', 'From')}">
+            <span aria-hidden="true">—</span>
+            <input type="time" id="setting-quiet-to" value="${esc(get('quietTo') || '09:00')}" aria-label="${T('До', 'To')}">
+          </div>`,
+        sub: true, parent: 'setting-quiet'
+      })
+    ].join('');
+
+    // ── 3. Игры и нагрузка ──
+    const perfHtml = [
+      item({
+        id: 'setting-game-mode',
+        label: T('Игровой режим', 'Game mode'),
+        desc: T('Пока запущена игра, стрим уходит в 160p с потолком скорости — пинг не прыгает. Overwatch, CS2, VALORANT, Dota 2 и десятки других узнаются сами',
+          'While a game is running the stream drops to 160p with a speed cap so your ping stays flat. Overwatch, CS2, VALORANT, Dota 2 and dozens more are detected automatically'),
+        control: toggle('setting-game-mode', get('gameMode') !== false),
+        keywords: 'игра пинг процесс exe'
+      }),
+      item({
+        id: 'setting-game-processes',
+        label: T('Свои игры', 'Your games'),
+        desc: T('Имена файлов .exe через запятую — их видно в Диспетчере задач на вкладке «Подробности»',
+          'Comma-separated .exe names — see Task Manager, “Details” tab'),
+        control: `
+          <input type="text" id="setting-game-processes" class="settings-input" spellcheck="false" autocomplete="off"
+                 placeholder="${T('например, mygame.exe, other.exe', 'e.g. mygame.exe, other.exe')}"
+                 aria-describedby="setting-game-processes-desc game-processes-note"
+                 value="${esc(String(get('gameModeProcesses') || ''))}">
+          <div class="settings-note" id="game-processes-note" data-live></div>`,
+        sub: true, stacked: true, parent: 'setting-game-mode'
+      }),
+      item({
+        id: 'setting-limit-speed',
+        label: T('Не мешать играм и связи', i18n.t('settings.limitStreamSpeed')),
+        desc: T('Растягивать загрузку стрима: рывки видео не забивают канал и не подбрасывают пинг', i18n.t('settings.limitStreamSpeedDesc')),
+        control: toggle('setting-limit-speed', get('limitStreamSpeed') !== false),
+        extra: '<div class="settings-note" id="limit-note" data-live></div>',
+        keywords: 'скорость пинг сеть интернет'
+      }),
+      item({
+        id: 'setting-low-graphics',
+        label: T('Экономный режим графики', i18n.t('settings.lowGraphics')),
+        desc: T('Не занимать видеокарту ради видео в 160p. Сработает после перезапуска', i18n.t('settings.lowGraphicsDesc')),
+        control: toggle('setting-low-graphics', get('lowGraphics') !== false),
+        keywords: 'видеокарта gpu ускорение память'
+      })
+    ].join('');
+
+    // ── 4. Окно и запуск ──
+    const combo = (...keys) => `<span class="kbd-combo">${keys.map(k => `<kbd>${k}</kbd>`).join('')}</span>`;
+    const windowHtml = [
+      item({
+        id: 'setting-autostart',
+        label: T('Запускать вместе с Windows', i18n.t('settings.autostart')),
+        desc: T('Приложение откроется само после включения компьютера', i18n.t('settings.autostartDesc')),
+        control: toggle('setting-autostart', get('autostart')),
+        keywords: 'автозапуск'
+      }),
+      item({
+        id: 'setting-minimize-tray',
+        label: T('Сворачивать в трей', i18n.t('settings.minimizeToTray')),
+        desc: T('Крестик прячет окно в трей, фарминг продолжается', i18n.t('settings.minimizeToTrayDesc')),
+        control: toggle('setting-minimize-tray', get('minimizeToTray')),
+        keywords: 'закрыть крестик'
+      }),
+      item({
+        id: 'setting-shortcuts',
+        label: T('Горячие клавиши', i18n.t('settings.globalShortcuts')),
+        desc: T('Работают поверх других окон, даже в игре', 'Work on top of other windows, even in games'),
+        control: toggle('setting-shortcuts', get('globalShortcuts') !== false),
+        cls: 'is-top',
+        extra: `
+          <div class="settings-keys">
+            ${combo('Ctrl', 'Alt', 'F')}<span>${T('запустить или остановить фарминг', 'start or stop farming')}</span>
+            ${combo('Ctrl', 'Alt', 'N')}<span>${T('другой стрим', 'next stream')}</span>
+            ${combo('Ctrl', 'Alt', 'W')}<span>${T('показать или скрыть окно', 'show or hide the window')}</span>
+          </div>
+          <div class="settings-note tone-warn" id="shortcuts-note" data-live></div>`,
+        keywords: 'ctrl alt клавиатура сочетание'
+      })
+    ].join('');
+
+    // ── 5. Автовыключение ──
+    const shutdownOn = !!get('enableShutdown');
+    // Подпись под переключателем: пока он выключен — что он делает вообще,
+    // включён — что и когда произойдёт (сводку пишет shutdownManager)
+    const shutdownIdle = T('Выключить или усыпить компьютер, когда фарминг закончит работу', i18n.t('settings.enableShutdownDesc'));
+    const sel = (key, value) => String(get(key)) === String(value) ? 'selected' : '';
+    const shutdownHtml = [
+      item({
+        id: 'setting-shutdown',
+        label: T('Выключать компьютер после фарминга', i18n.t('settings.enableShutdown')),
+        desc: shutdownOn && window.shutdownManager ? esc(window.shutdownManager.describeSchedule()) : shutdownIdle,
+        live: true, descId: 'shutdown-summary', descAttrs: `data-idle="${esc(shutdownIdle)}"`,
+        control: toggle('setting-shutdown', shutdownOn, '', 'shutdown-summary'),
+        keywords: 'выключение сон гибернация таймер'
+      }),
+      item({
+        id: 'setting-shutdown-action',
+        label: T('Что сделать', i18n.t('settings.shutdownAction')),
+        control: `
+          <select class="input-field" id="setting-shutdown-action">
+            <option value="shutdown" ${sel('shutdownAction', 'shutdown')}>${i18n.t('settings.shutdownPC')}</option>
+            <option value="sleep" ${sel('shutdownAction', 'sleep')}>${i18n.t('settings.sleep')}</option>
+            <option value="hibernate" ${sel('shutdownAction', 'hibernate')}>${i18n.t('settings.hibernate')}</option>
+          </select>`,
+        sub: true, parent: 'setting-shutdown', cls: 'shutdown-option'
+      }),
+      item({
+        id: 'setting-shutdown-trigger',
+        label: T('Когда', i18n.t('settings.shutdownTrigger')),
+        control: `
+          <select class="input-field" id="setting-shutdown-trigger">
+            <option value="drops" ${sel('shutdownTrigger', 'drops')}>${i18n.t('settings.triggerDrops')}</option>
+            <option value="streamEnd" ${sel('shutdownTrigger', 'streamEnd')}>${i18n.t('settings.triggerStreamEnd')}</option>
+            <option value="any" ${sel('shutdownTrigger', 'any')}>${i18n.t('settings.triggerAny')}</option>
+            <option value="timer" ${sel('shutdownTrigger', 'timer')}>${i18n.t('settings.triggerTimer')}</option>
+          </select>`,
+        sub: true, parent: 'setting-shutdown', cls: 'shutdown-option'
+      }),
+      // Часы нужны только таймеру: при других условиях строка ничего не
+      // меняла, но стояла и сбивала с толку
+      item({
+        id: 'setting-shutdown-timer',
+        label: T('Через сколько часов', i18n.t('settings.shutdownTimer')),
+        desc: T('Отсчёт идёт от начала фарминга', i18n.t('settings.shutdownTimerDesc')),
+        control: `
+          <select class="input-field" id="setting-shutdown-timer" aria-describedby="setting-shutdown-timer-desc">
+            ${[1, 2, 3, 4, 6, 8, 12].map(h => `<option value="${h}" ${sel('shutdownTimerHours', h)}>${h} ${i18n.t('settings.hoursShort')}</option>`).join('')}
+          </select>`,
+        sub: true, parent: 'setting-shutdown', parentValue: 'setting-shutdown-trigger:timer', cls: 'shutdown-option'
+      }),
+      item({
+        id: 'setting-shutdown-delay',
+        label: T('Задержка', i18n.t('settings.shutdownDelay')),
+        desc: T('Сколько ждать перед выключением — отсчёт можно отменить', i18n.t('settings.shutdownDelayDesc')),
+        control: `
+          <select class="input-field" id="setting-shutdown-delay" aria-describedby="setting-shutdown-delay-desc">
+            <option value="0" ${sel('shutdownDelayMinutes', 0)}>${i18n.t('settings.delayNow')}</option>
+            ${[5, 15, 30, 60].map(m => `<option value="${m}" ${sel('shutdownDelayMinutes', m)}>${m} ${i18n.t('farming.min')}</option>`).join('')}
+          </select>`,
+        sub: true, parent: 'setting-shutdown', cls: 'shutdown-option'
+      })
+    ].join('');
+
+    // ── 6. Оформление ──
+    const theme = get('theme') === 'light' ? 'light' : 'dark';
+    const uiStyle = get('uiStyle') === 'ios27' ? 'ios27' : 'classic';
+    const lang = en ? 'en' : 'ru';
+    const glass = settings.constructor.clampGlassOpacity(get('glassOpacity'));
+    const lookHtml = [
+      item({
+        labelId: 'theme-label',
+        label: T('Тема', i18n.t('settings.theme')),
+        control: segmented('theme-select', theme, [
+          { value: 'dark', label: i18n.t('settings.dark'), icon: 'moon' },
+          { value: 'light', label: i18n.t('settings.light'), icon: 'sun' }
+        ], 'theme-label'),
+        keywords: 'тёмная светлая dark light'
+      }),
+      item({
+        labelId: 'ui-style-label',
+        label: T('Оформление', 'Style'),
+        desc: T('iOS 27 — полупрозрачное стекло. Размытие работает при выключенном экономном режиме графики',
+          'iOS 27 is translucent glass. Blur needs the low graphics mode turned off'),
+        control: segmented('ui-style-select', uiStyle, [
+          { value: 'classic', label: T('Классика', 'Classic') },
+          { value: 'ios27', label: 'iOS 27' }
+        ], 'ui-style-label'),
+        keywords: 'ios стекло классика вид'
+      }),
+      `<div class="settings-item is-sub" id="glass-opacity-item" data-parent-value="ui-style-select:ios27">
+        <div class="settings-item-info">
+          <label class="settings-item-label" for="setting-glass-opacity">${T('Прозрачность стекла', 'Glass opacity')}</label>
+          <div class="settings-item-description">${T('Левее — прозрачнее, правее — плотнее', 'Left is clearer, right is denser')}</div>
+        </div>
+        <div class="settings-item-control glass-opacity-control">
+          <div class="glass-opacity-stack">
+            <input type="range" class="ios-range settings-range" id="setting-glass-opacity" min="0.25" max="0.9" step="0.05" value="${glass}">
+            <div class="glass-opacity-scale" aria-hidden="true">
+              <span>${T('Прозрачнее', 'Clearer')}</span>
+              <span>${T('Плотнее', 'Denser')}</span>
+            </div>
+          </div>
+        </div>
+      </div>`,
+      item({
+        id: 'setting-compact',
+        label: T('Компактный режим', i18n.t('settings.compactMode')),
+        desc: T('Плотнее строки и карточки — больше помещается на экран', i18n.t('settings.compactModeDesc')),
+        control: toggle('setting-compact', get('compactMode'))
+      }),
+      item({
+        id: 'setting-animations',
+        label: T('Анимации', i18n.t('settings.animations')),
+        desc: T('Плавные появления и переходы', i18n.t('settings.animationsDesc')),
+        control: toggle('setting-animations', get('animationsEnabled'))
+      }),
+      item({
+        labelId: 'language-label',
+        label: T('Язык', i18n.t('settings.language')),
+        control: segmented('language-select', lang, [
+          { value: 'ru', label: 'Русский' },
+          { value: 'en', label: 'English' }
+        ], 'language-label'),
+        keywords: 'language english русский'
+      })
+    ].join('');
+
+    // ── 7. Данные ──
+    const dataHtml = [
+      item({
+        labelId: 'backup-label',
+        label: T('Резервная копия', 'Backup'),
+        desc: T('Категории с порядком и закреплениями, подписки, статистика и настройки. Аккаунты не сохраняются — после переноса войдите заново',
+          'Categories with order and pins, subscriptions, statistics and settings. Accounts are not saved — sign in again after moving'),
+        stacked: true,
+        control: `
+          <button type="button" class="btn btn-secondary btn-sm" id="backup-export-btn">${I('download', 14)}<span>${T('Сохранить копию', 'Save backup')}</span></button>
+          <button type="button" class="btn btn-secondary btn-sm" id="backup-import-btn">${I('upload', 14)}<span>${T('Восстановить', 'Restore')}</span></button>
+          <button type="button" class="btn btn-ghost btn-sm" id="export-settings-btn">${I('copy', 14)}<span>${T('Копировать настройки', i18n.t('settings.exportSettings'))}</span></button>
+          <input type="file" id="backup-file-input" accept="application/json,.json" hidden>`,
+        keywords: 'перенос экспорт импорт буфер обмена'
+      }),
+      item({
+        labelId: 'journal-label',
+        label: T('Журнал событий', 'Event log'),
+        desc: T('Награды, сундуки, смены категорий и ошибки за последние две недели',
+          'Rewards, chests, category switches and errors from the last two weeks'),
+        control: `<button type="button" class="btn btn-secondary btn-sm" id="journal-open-btn">${I('journal', 14)}<span>${T('Открыть', i18n.t('settings.open'))}</span></button>`,
+        keywords: 'история лог'
+      }),
+      item({
+        labelId: 'ics-label',
+        label: T('Сроки кампаний в календарь', 'Campaign dates to calendar'),
+        desc: T('Файл .ics для телефона или почты: когда заканчиваются кампании ваших игр, с напоминанием за час',
+          'An .ics file for your phone or mail: when campaigns of your games end, with a reminder an hour before'),
+        control: `<button type="button" class="btn btn-secondary btn-sm" id="ics-export-btn">${I('calendar', 14)}<span>${T('Сохранить .ics', 'Save .ics')}</span></button>`,
+        keywords: 'ics календарь напоминание'
+      }),
+      item({
+        labelId: 'logs-label',
+        label: T('Логи приложения', 'App logs'),
+        desc: T('Пригодятся, если ночью что-то пошло не так', 'Useful if something went wrong overnight'),
+        control: `<button type="button" class="btn btn-secondary btn-sm" id="open-logs-btn">${I('folder', 14)}<span>${T('Открыть папку', 'Open folder')}</span></button>`,
+        keywords: 'журнал работы log'
+      }),
+      `<div class="settings-danger" role="group" aria-labelledby="danger-title">
+        <div class="settings-danger-title" id="danger-title">${T('Опасная зона', 'Danger zone')}</div>
+        ${item({
+          labelId: 'clear-stats-label',
+          label: T('Очистить статистику', i18n.t('settings.clearStatistics')),
+          desc: T('Удалит все сессии и итоги. Вернуть нельзя', 'Deletes all sessions and totals. This cannot be undone'),
+          control: `<button type="button" class="btn btn-danger-ghost btn-sm" id="clear-statistics-btn">${I('trash', 14)}<span>${T('Очистить…', 'Clear…')}</span></button>`
+        })}
+        ${item({
+          labelId: 'reset-label',
+          label: T('Сбросить настройки', i18n.t('settings.resetSettings')),
+          desc: T('Все настройки вернутся к стандартным. Категории, аккаунты и статистика останутся', i18n.t('settings.resetSettingsConfirmDesc')),
+          control: `<button type="button" class="btn btn-danger-ghost btn-sm" id="reset-settings-btn">${I('refresh', 14)}<span>${T('Сбросить…', 'Reset…')}</span></button>`
+        })}
+      </div>`
+    ].join('');
+
+    // ── 8. О программе ──
+    const ext = I('external', 14);
+    const aboutHtml = [
+      item({
+        labelId: 'version-label',
+        label: T('Версия', i18n.t('settings.appVersion')),
+        desc: '—', live: true, descId: 'setting-app-version',
+        control: `
+          <button type="button" class="btn btn-ghost btn-sm" id="whats-new-btn">${I('sparkles', 14)}<span>${T('Что нового', i18n.t('settings.whatsNew'))}</span></button>
+          <button type="button" class="btn btn-secondary btn-sm" id="check-updates-btn">${I('refresh', 14)}<span>${T('Проверить обновления', i18n.t('settings.checkUpdates'))}</span></button>`,
+        keywords: 'обновление update'
+      }),
+      item({
+        labelId: 'links-label',
+        label: T('Проект', 'Project'),
+        desc: T('Исходный код, новости и поддержка разработки', 'Source code, news and supporting development'),
+        control: `
+          <button type="button" class="btn btn-ghost btn-sm" id="github-link-btn" title="${T('Исходный код и документация', i18n.t('settings.githubDesc'))}">GitHub ${ext}</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="telegram-link-btn" title="${T('Новости и поддержка', i18n.t('settings.telegramDesc'))}">Telegram ${ext}</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="boosty-link-btn" title="Boosty">${T('Поддержать', 'Support')} ${ext}</button>`,
+        keywords: 'github telegram boosty донат поддержать'
+      }),
+      // Процессы свёрнуты: список нужен раз в сто лет, а опрашивать его при
+      // каждом открытии настроек незачем
+      `<div class="settings-block settings-details-wrap" data-keywords="${T('процессы диагностика память cpu диспетчер', 'processes diagnostics memory cpu')}">
+        <details class="settings-details" id="processes-details">
+          <summary class="settings-details-summary">
+            <span class="settings-item-info">
+              <span class="settings-item-label">${T('Процессы приложения', 'App processes')}</span>
+              <span class="settings-item-description" id="processes-summary" data-live>${T('Сколько памяти и процессора занимает каждая часть', 'Memory and CPU used by each part')}</span>
+            </span>
+            <span class="settings-details-chevron" aria-hidden="true">${I('chevron-down', 16)}</span>
+          </summary>
+          <div class="settings-details-body">
+            <div id="processes-list" class="process-list"></div>
+            <button type="button" class="btn btn-ghost btn-sm" id="refresh-processes-btn">${I('refresh', 14)}<span>${T('Обновить', 'Refresh')}</span></button>
+          </div>
+        </details>
+      </div>`,
+      item({
+        id: 'setting-developer-mode',
+        label: T('Режим разработчика', i18n.t('settings.developerMode')),
+        desc: T('Тест уведомлений: Shift + клик по «Дропсов получено»', i18n.t('settings.developerModeDesc')),
+        control: toggle('setting-developer-mode', get('developerMode'))
+      })
+    ].join('');
+
+    const bodies = {
+      'set-farming': farmingHtml,
+      'set-notify': notifyHtml,
+      'set-perf': perfHtml,
+      'set-window': windowHtml,
+      'set-shutdown': shutdownHtml,
+      'set-look': lookHtml,
+      'set-data': dataHtml,
+      'set-about': aboutHtml
+    };
+
+    // Заголовок без значка и подзаголовка: где ты, говорит меню слева
     container.innerHTML = `
-      <div class="page-header settings-header">
-        <h1 class="page-title">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" style="margin-right: 10px; vertical-align: -5px; color: var(--accent-color);">
-            <path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
-          </svg>
-          ${i18n.t('settings.title')}
-        </h1>
-        <p class="page-subtitle">${i18n.t('settings.subtitle')}</p>
-      </div>
-
-      <div class="settings-container">
-        <!-- Уведомления -->
-        <div class="settings-section">
-          <h2 class="settings-section-title">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style="margin-right: 8px; vertical-align: -4px; color: #FFB020;">
-              <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.89 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/>
-            </svg>
-            ${i18n.t('settings.notifications')}
-          </h2>
-          
-          <div class="settings-item">
-            <div class="settings-item-info">
-              <div class="settings-item-label">${i18n.t('settings.soundNotifications')}</div>
-              <div class="settings-item-description">${i18n.t('settings.soundNotificationsDesc')}</div>
-            </div>
-            <label class="settings-toggle">
-              <input type="checkbox" id="setting-sound" ${settings.get('soundEnabled') ? 'checked' : ''}>
-              <span class="settings-slider"></span>
-            </label>
-          </div>
-
-          <div class="settings-item">
-            <div class="settings-item-info">
-              <div class="settings-item-label">${i18n.t('settings.toastNotifications')}</div>
-              <div class="settings-item-description">${i18n.t('settings.toastNotificationsDesc')}</div>
-            </div>
-            <label class="settings-toggle">
-              <input type="checkbox" id="setting-toast" ${settings.get('toastNotifications') ? 'checked' : ''}>
-              <span class="settings-slider"></span>
-            </label>
-          </div>
-
-          <div class="settings-item">
-            <div class="settings-item-info">
-              <div class="settings-item-label">${i18n.t('settings.systemNotifications')}</div>
-              <div class="settings-item-description">${i18n.t('settings.systemNotificationsDesc')}</div>
-            </div>
-            <label class="settings-toggle">
-              <input type="checkbox" id="setting-system-notifications" ${settings.get('systemNotifications') !== false && settings.get('notifications') !== false ? 'checked' : ''}>
-              <span class="settings-slider"></span>
-            </label>
-          </div>
-        </div>
-
-        <!-- Автоматизация -->
-        <div class="settings-section">
-          <h2 class="settings-section-title">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style="margin-right: 8px; vertical-align: -4px; color: #35d08a;">
-              <path d="M12 2L2 7v10c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-10-5z"/>
-            </svg>
-            ${i18n.t('settings.automation')}
-          </h2>
-          
-          <div class="settings-item">
-            <div class="settings-item-info">
-              <div class="settings-item-label">${i18n.t('settings.autoClaimDrops')}</div>
-              <div class="settings-item-description">${i18n.t('settings.autoClaimDropsDesc')}</div>
-            </div>
-            <label class="settings-toggle">
-              <input type="checkbox" id="setting-auto-claim" ${settings.get('autoClaimDrops') ? 'checked' : ''}>
-              <span class="settings-slider"></span>
-            </label>
-          </div>
-
-          <div class="settings-item">
-            <div class="settings-item-info">
-              <div class="settings-item-label">${i18n.t('settings.lowGraphics')}</div>
-              <div class="settings-item-description">${i18n.t('settings.lowGraphicsDesc')}</div>
-            </div>
-            <label class="settings-toggle">
-              <input type="checkbox" id="setting-low-graphics" ${settings.get('lowGraphics') !== false ? 'checked' : ''}>
-              <span class="settings-slider"></span>
-            </label>
-          </div>
-
-          <div class="settings-item">
-            <div class="settings-item-info">
-              <div class="settings-item-label">Фоновый чат Twitch</div>
-              <div class="settings-item-description">Выключено: сундуки собираются запросом к Twitch без чата — около 190 МБ памяти и заметно меньше процессора. Включите, если сундуки перестали собираться</div>
-            </div>
-            <label class="settings-toggle">
-              <input type="checkbox" id="setting-background-chat" ${settings.get('backgroundChat') === true ? 'checked' : ''}>
-              <span class="settings-slider"></span>
-            </label>
-          </div>
-
-          <div class="settings-item">
-            <div class="settings-item-info">
-              <div class="settings-item-label">${i18n.t('settings.limitStreamSpeed')}</div>
-              <div class="settings-item-description">${i18n.t('settings.limitStreamSpeedDesc')}</div>
-              <div class="quiet-note" id="limit-note" style="margin-top: 8px;"></div>
-            </div>
-            <label class="settings-toggle">
-              <input type="checkbox" id="setting-limit-speed" ${settings.get('limitStreamSpeed') !== false ? 'checked' : ''}>
-              <span class="settings-slider"></span>
-            </label>
-          </div>
-
-          <div class="settings-item">
-            <div class="settings-item-info">
-              <div class="settings-item-label">Игровой режим</div>
-              <div class="settings-item-description">Пока запущена игра, стрим переходит на 160p с потолком скорости впритык к битрейту — куски видео не подбрасывают пинг. Игра закрыта — всё возвращается. Известны Overwatch, Apex, CS2, VALORANT, Dota 2, Fortnite и десятки других; свои процессы добавьте ниже</div>
-              <input type="text" id="setting-game-processes" class="settings-input" placeholder="Имена процессов (.exe) через запятую, например mygame.exe"
-                     value="${window.escapeHtml(String(settings.get('gameModeProcesses') || ''))}"
-                     style="margin-top: 8px; width: 100%;">
-              <div class="quiet-note" id="game-processes-note" style="margin-top: 6px;"></div>
-            </div>
-            <label class="settings-toggle">
-              <input type="checkbox" id="setting-game-mode" ${settings.get('gameMode') !== false ? 'checked' : ''}>
-              <span class="settings-slider"></span>
-            </label>
-          </div>
-
-          <div class="settings-item">
-            <div class="settings-item-info">
-              <div class="settings-item-label">${i18n.t('settings.quietHours')}</div>
-              <div class="settings-item-description">${i18n.t('settings.quietHoursDesc')}</div>
-              <div class="quiet-range">
-                <input type="time" id="setting-quiet-from" value="${settings.get('quietFrom') || '23:00'}">
-                <span>—</span>
-                <input type="time" id="setting-quiet-to" value="${settings.get('quietTo') || '09:00'}">
-                <span class="quiet-note" id="quiet-note"></span>
-              </div>
-            </div>
-            <label class="settings-toggle">
-              <input type="checkbox" id="setting-quiet" ${settings.get('quietHours') !== false ? 'checked' : ''}>
-              <span class="settings-slider"></span>
-            </label>
-          </div>
-
-          <div class="settings-item">
-            <div class="settings-item-info">
-              <div class="settings-item-label">${i18n.t('settings.suggestCategories')}</div>
-              <div class="settings-item-description">${i18n.t('settings.suggestCategoriesDesc')}</div>
-            </div>
-            <label class="settings-toggle">
-              <input type="checkbox" id="setting-suggest" ${settings.get('suggestCategories') !== false ? 'checked' : ''}>
-              <span class="settings-slider"></span>
-            </label>
-          </div>
-
-          <div class="settings-item">
-            <div class="settings-item-info">
-              <div class="settings-item-label">${i18n.t('settings.globalShortcuts')}</div>
-              <div class="settings-item-description">${i18n.t('settings.globalShortcutsDesc')}</div>
-              <div class="quiet-note" id="shortcuts-note" style="margin-top: 8px;"></div>
-            </div>
-            <label class="settings-toggle">
-              <input type="checkbox" id="setting-shortcuts" ${settings.get('globalShortcuts') !== false ? 'checked' : ''}>
-              <span class="settings-slider"></span>
-            </label>
-          </div>
-
-          <div class="settings-item">
-            <div class="settings-item-info">
-              <div class="settings-item-label">${i18n.t('settings.notifyFavouriteLive')}</div>
-              <div class="settings-item-description">${i18n.t('settings.notifyFavouriteLiveDesc')}</div>
-            </div>
-            <label class="settings-toggle">
-              <input type="checkbox" id="setting-favourite-live" ${settings.get('notifyFavouriteLive') !== false ? 'checked' : ''}>
-              <span class="settings-slider"></span>
-            </label>
-          </div>
-
-          <div class="settings-item">
-            <div class="settings-item-info">
-              <div class="settings-item-label">${i18n.t('settings.smartCategorySwitch')}</div>
-              <div class="settings-item-description">${i18n.t('settings.smartCategorySwitchDesc')}</div>
-            </div>
-            <label class="settings-toggle">
-              <input type="checkbox" id="setting-smart-switch" ${settings.get('smartCategorySwitch') !== false ? 'checked' : ''}>
-              <span class="settings-slider"></span>
-            </label>
-          </div>
-
-          <div class="settings-item">
-            <div class="settings-item-info">
-              <div class="settings-item-label">${i18n.t('settings.notifyOnDropClaimed')}</div>
-              <div class="settings-item-description">${i18n.t('settings.notifyOnDropClaimedDesc')}</div>
-            </div>
-            <label class="settings-toggle">
-              <input type="checkbox" id="setting-notify-drop" ${settings.get('notifyOnDropClaimed') ? 'checked' : ''}>
-              <span class="settings-slider"></span>
-            </label>
-          </div>
-
-          <div class="settings-item">
-            <div class="settings-item-info">
-              <div class="settings-item-label">${i18n.t('settings.autoSwitchStreams')}</div>
-              <div class="settings-item-description">${i18n.t('settings.autoSwitchStreamsDesc')}</div>
-            </div>
-            <label class="settings-toggle">
-              <input type="checkbox" id="setting-auto-switch" ${settings.get('autoSwitchStreams') ? 'checked' : ''}>
-              <span class="settings-slider"></span>
-            </label>
-          </div>
-
-          <div class="settings-item">
-            <div class="settings-item-info">
-              <div class="settings-item-label">${i18n.t('settings.autostart')}</div>
-              <div class="settings-item-description">${i18n.t('settings.autostartDesc')}</div>
-            </div>
-            <label class="settings-toggle">
-              <input type="checkbox" id="setting-autostart" ${settings.get('autostart') ? 'checked' : ''}>
-              <span class="settings-slider"></span>
-            </label>
-          </div>
-
-          <div class="settings-item">
-            <div class="settings-item-info">
-              <div class="settings-item-label">${i18n.t('settings.minimizeToTray')}</div>
-              <div class="settings-item-description">${i18n.t('settings.minimizeToTrayDesc')}</div>
-            </div>
-            <label class="settings-toggle">
-              <input type="checkbox" id="setting-minimize-tray" ${settings.get('minimizeToTray') ? 'checked' : ''}>
-              <span class="settings-slider"></span>
-            </label>
-          </div>
-
-          <div class="settings-item">
-            <div class="settings-item-info">
-              <div class="settings-item-label">${i18n.t('settings.streamQuality')}</div>
-              <div class="settings-item-description">${i18n.t('settings.streamQualityDesc')}</div>
-            </div>
-            <select class="input-field" id="setting-quality" style="width: 190px; flex-shrink: 0;">
-              <option value="160p30" ${settings.get('preferredStreamQuality') === '160p30' ? 'selected' : ''}>${i18n.t('settings.lowest')} (160p)</option>
-              <option value="360p30" ${settings.get('preferredStreamQuality') === '360p30' ? 'selected' : ''}>360p</option>
-              <option value="480p30" ${settings.get('preferredStreamQuality') === '480p30' ? 'selected' : ''}>480p</option>
-            </select>
-          </div>
-
-          <div class="settings-item">
-            <div class="settings-item-info">
-              <div class="settings-item-label">${i18n.t('settings.enableShutdown')}</div>
-              <div class="settings-item-description">${i18n.t('settings.enableShutdownDesc')}</div>
-            </div>
-            <label class="settings-toggle">
-              <input type="checkbox" id="setting-shutdown" ${settings.get('enableShutdown') ? 'checked' : ''}>
-              <span class="settings-slider"></span>
-            </label>
-          </div>
-
-          <div class="settings-item shutdown-option" style="${settings.get('enableShutdown') ? '' : 'display: none;'}">
-            <div class="settings-item-info">
-              <div class="settings-item-label">${i18n.t('settings.shutdownAction')}</div>
-              <div class="settings-item-description">${i18n.t('settings.shutdownActionDesc')}</div>
-            </div>
-            <select class="input-field" id="setting-shutdown-action" style="width: 190px; flex-shrink: 0;">
-              <option value="shutdown" ${settings.get('shutdownAction') === 'shutdown' ? 'selected' : ''}>${i18n.t('settings.shutdownPC')}</option>
-              <option value="sleep" ${settings.get('shutdownAction') === 'sleep' ? 'selected' : ''}>${i18n.t('settings.sleep')}</option>
-              <option value="hibernate" ${settings.get('shutdownAction') === 'hibernate' ? 'selected' : ''}>${i18n.t('settings.hibernate')}</option>
-            </select>
-          </div>
-
-          <div class="settings-item shutdown-option" style="${settings.get('enableShutdown') ? '' : 'display: none;'}">
-            <div class="settings-item-info">
-              <div class="settings-item-label">${i18n.t('settings.shutdownTrigger')}</div>
-              <div class="settings-item-description">${i18n.t('settings.shutdownTriggerDesc')}</div>
-            </div>
-            <select class="input-field" id="setting-shutdown-trigger" style="width: 190px; flex-shrink: 0;">
-              <option value="drops" ${settings.get('shutdownTrigger') === 'drops' ? 'selected' : ''}>${i18n.t('settings.triggerDrops')}</option>
-              <option value="streamEnd" ${settings.get('shutdownTrigger') === 'streamEnd' ? 'selected' : ''}>${i18n.t('settings.triggerStreamEnd')}</option>
-              <option value="any" ${settings.get('shutdownTrigger') === 'any' ? 'selected' : ''}>${i18n.t('settings.triggerAny')}</option>
-              <option value="timer" ${settings.get('shutdownTrigger') === 'timer' ? 'selected' : ''}>${i18n.t('settings.triggerTimer')}</option>
-            </select>
-          </div>
-
-          <div class="settings-item shutdown-option" style="${settings.get('enableShutdown') ? '' : 'display: none;'}">
-            <div class="settings-item-info">
-              <div class="settings-item-label">${i18n.t('settings.shutdownTimer')}</div>
-              <div class="settings-item-description">${i18n.t('settings.shutdownTimerDesc')}</div>
-            </div>
-            <select class="input-field" id="setting-shutdown-timer" style="width: 190px; flex-shrink: 0;">
-              ${[1, 2, 3, 4, 6, 8, 12].map(h => `
-                <option value="${h}" ${String(settings.get('shutdownTimerHours')) === String(h) ? 'selected' : ''}>${h} ${i18n.t('settings.hoursShort')}</option>
-              `).join('')}
-            </select>
-          </div>
-
-          <div class="settings-item shutdown-option" style="${settings.get('enableShutdown') ? '' : 'display: none;'}">
-            <div class="settings-item-info">
-              <div class="settings-item-label">${i18n.t('settings.shutdownDelay')}</div>
-              <div class="settings-item-description">${i18n.t('settings.shutdownDelayDesc')}</div>
-            </div>
-            <select class="input-field" id="setting-shutdown-delay" style="width: 190px; flex-shrink: 0;">
-              <option value="0" ${String(settings.get('shutdownDelayMinutes')) === '0' ? 'selected' : ''}>${i18n.t('settings.delayNow')}</option>
-              <option value="5" ${String(settings.get('shutdownDelayMinutes')) === '5' ? 'selected' : ''}>5 ${i18n.t('farming.min')}</option>
-              <option value="15" ${String(settings.get('shutdownDelayMinutes')) === '15' ? 'selected' : ''}>15 ${i18n.t('farming.min')}</option>
-              <option value="30" ${String(settings.get('shutdownDelayMinutes')) === '30' ? 'selected' : ''}>30 ${i18n.t('farming.min')}</option>
-              <option value="60" ${String(settings.get('shutdownDelayMinutes')) === '60' ? 'selected' : ''}>60 ${i18n.t('farming.min')}</option>
-            </select>
-          </div>
-
-          <div class="shutdown-summary shutdown-option" id="shutdown-summary"
-               style="${settings.get('enableShutdown') ? '' : 'display: none;'}">
-            ${window.shutdownManager ? window.shutdownManager.describeSchedule() : ''}
-          </div>
-        </div>
-
-        <!-- Отображение -->
-        <div class="settings-section">
-          <h2 class="settings-section-title">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style="margin-right: 8px; vertical-align: -4px; color: #A855F7;">
-              <path d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9c.83 0 1.5-.67 1.5-1.5 0-.39-.15-.74-.39-1.01-.23-.26-.38-.61-.38-.99 0-.83.67-1.5 1.5-1.5H16c2.76 0 5-2.24 5-5 0-4.42-4.03-8-9-8zm-5.5 9c-.83 0-1.5-.67-1.5-1.5S5.67 9 6.5 9 8 9.67 8 10.5 7.33 12 6.5 12zm3-4C8.67 8 8 7.33 8 6.5S8.67 5 9.5 5s1.5.67 1.5 1.5S10.33 8 9.5 8zm5 0c-.83 0-1.5-.67-1.5-1.5S13.67 5 14.5 5s1.5.67 1.5 1.5S15.33 8 14.5 8zm3 4c-.83 0-1.5-.67-1.5-1.5S16.67 9 17.5 9s1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/>
-            </svg>
-            ${i18n.t('settings.display')}
-          </h2>
-          
-          <div class="settings-item">
-            <div class="settings-item-info">
-              <div class="settings-item-label">${i18n.t('settings.compactMode')}</div>
-              <div class="settings-item-description">${i18n.t('settings.compactModeDesc')}</div>
-            </div>
-            <label class="settings-toggle">
-              <input type="checkbox" id="setting-compact" ${settings.get('compactMode') ? 'checked' : ''}>
-              <span class="settings-slider"></span>
-            </label>
-          </div>
-
-          <div class="settings-item">
-            <div class="settings-item-info">
-              <div class="settings-item-label">${i18n.t('settings.showExpiredCampaigns')}</div>
-              <div class="settings-item-description">${i18n.t('settings.showExpiredCampaignsDesc')}</div>
-            </div>
-            <label class="settings-toggle">
-              <input type="checkbox" id="setting-show-expired" ${settings.get('showExpiredCampaigns') ? 'checked' : ''}>
-              <span class="settings-slider"></span>
-            </label>
-          </div>
-
-          <div class="settings-item">
-            <div class="settings-item-info">
-              <div class="settings-item-label">${i18n.t('settings.animations')}</div>
-              <div class="settings-item-description">${i18n.t('settings.animationsDesc')}</div>
-            </div>
-            <label class="settings-toggle">
-              <input type="checkbox" id="setting-animations" ${settings.get('animationsEnabled') ? 'checked' : ''}>
-              <span class="settings-slider"></span>
-            </label>
-          </div>
-
-          <div class="settings-item">
-            <div class="settings-item-info">
-              <div class="settings-item-label">${i18n.t('settings.developerMode')}</div>
-              <div class="settings-item-description">${i18n.t('settings.developerModeDesc')}</div>
-            </div>
-            <label class="settings-toggle">
-              <input type="checkbox" id="setting-developer-mode" ${settings.get('developerMode') ? 'checked' : ''}>
-              <span class="settings-slider"></span>
-            </label>
-          </div>
-
-          <div class="settings-item">
-            <div class="settings-item-info">
-              <div class="settings-item-label">${i18n.t('settings.languageSelect')}</div>
-              <div class="settings-item-description">${i18n.t('settings.languageSelectDesc')}</div>
-            </div>
-            <div class="custom-select" id="language-select">
-              <div class="custom-select-trigger">
-                <span class="custom-select-value">${currentLang === 'ru' ? 'Русский' : 'English'}</span>
-                <svg class="custom-select-arrow" width="14" height="8" viewBox="0 0 14 8" fill="none">
-                  <path d="M1 1L7 7L13 1" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-              </div>
-              <div class="custom-select-options">
-                <div class="custom-select-option ${currentLang === 'ru' ? 'selected' : ''}" data-value="ru">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <rect x="3" y="3" width="18" height="18" rx="2"/>
-                    <path d="M3 9h18"/>
-                    <path d="M3 15h18"/>
-                  </svg>
-                  <span>Русский</span>
-                  <svg class="check-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="20 6 9 17 4 12"/>
-                  </svg>
-                </div>
-                <div class="custom-select-option ${currentLang === 'en' ? 'selected' : ''}" data-value="en">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M3 3h18v18H3z"/>
-                    <path d="M3 3l18 18M21 3L3 21"/>
-                  </svg>
-                  <span>English</span>
-                  <svg class="check-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="20 6 9 17 4 12"/>
-                  </svg>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="settings-item">
-            <div class="settings-item-info">
-              <div class="settings-item-label">${i18n.t('settings.themeSelect')}</div>
-              <div class="settings-item-description">${i18n.t('settings.themeSelectDesc')}</div>
-            </div>
-            <div class="custom-select" id="theme-select">
-              <div class="custom-select-trigger">
-                <span class="custom-select-value">${settings.get('theme') === 'dark' ? i18n.t('settings.dark') : i18n.t('settings.light')}</span>
-                <svg class="custom-select-arrow" width="14" height="8" viewBox="0 0 14 8" fill="none">
-                  <path d="M1 1L7 7L13 1" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-              </div>
-              <div class="custom-select-options">
-                <div class="custom-select-option ${settings.get('theme') === 'dark' ? 'selected' : ''}" data-value="dark">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
-                  </svg>
-                  <span>${i18n.t('settings.dark')}</span>
-                  <svg class="check-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="20 6 9 17 4 12"/>
-                  </svg>
-                </div>
-                <div class="custom-select-option ${settings.get('theme') === 'light' ? 'selected' : ''}" data-value="light">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="12" cy="12" r="5"/>
-                    <line x1="12" y1="1" x2="12" y2="3"/>
-                    <line x1="12" y1="21" x2="12" y2="23"/>
-                    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
-                    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
-                    <line x1="1" y1="12" x2="3" y2="12"/>
-                    <line x1="21" y1="12" x2="23" y2="12"/>
-                    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
-                    <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
-                  </svg>
-                  <span>${i18n.t('settings.light')}</span>
-                  <svg class="check-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="20 6 9 17 4 12"/>
-                  </svg>
-                </div>
-              </div>
+      <div class="settings-page">
+        <div class="page-header settings-header">
+          <h1 class="page-title">${i18n.t('settings.title')}</h1>
+          <div class="page-actions">
+            <div class="search-field settings-search" role="search">
+              ${I('search', 16)}
+              <input type="search" class="input-field" id="settings-search" autocomplete="off" spellcheck="false"
+                     placeholder="${T('Поиск по настройкам', 'Search settings')}" aria-label="${T('Поиск по настройкам', 'Search settings')}"
+                     title="Ctrl+F">
+              <button type="button" class="btn btn-ghost btn-icon btn-sm settings-search-clear" id="settings-search-clear"
+                      hidden title="${T('Очистить', 'Clear')}" aria-label="${T('Очистить поиск', 'Clear search')}">${I('close', 14)}</button>
             </div>
           </div>
         </div>
 
-        <!-- Диагностика -->
-        <div class="settings-section">
-          <h2 class="settings-section-title">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style="margin-right: 8px; vertical-align: -4px; color: #22C55E;">
-              <path d="M3 3h18v4H3V3zm0 7h10v4H3v-4zm0 7h18v4H3v-4zm12-7h6v4h-6v-4z"/>
-            </svg>
-            Диагностика
-          </h2>
-          
-          <div class="settings-item">
-            <div class="settings-item-info">
-              <div class="settings-item-label">Процессы</div>
-              <div class="settings-item-description">Показывает, что именно грузит память и CPU</div>
+        <div class="settings-layout">
+          <nav class="settings-nav" aria-label="${T('Разделы настроек', 'Settings sections')}">
+            ${sections.map((s, index) => `
+              <a href="#${s.id}" data-section="${s.id}" class="${index === 0 ? 'active' : ''}"${index === 0 ? ' aria-current="true"' : ''}>
+                ${navIcon(s.icon)}<span>${s.title}</span>
+              </a>`).join('')}
+          </nav>
+
+          <div class="settings-container">
+            ${sections.map(s => section(s.id, titleOf(s.id), bodies[s.id])).join('')}
+
+            <div class="empty-state settings-empty" id="settings-empty" hidden>
+              ${I('search', 40)}
+              <h3>${T('Ничего не нашлось', 'Nothing found')}</h3>
+              <p>${T('Попробуйте другое слово — например, «звук», «трей» или «качество»', 'Try another word — for example “sound”, “tray” or “quality”')}</p>
             </div>
-            <button class="btn btn-secondary" id="refresh-processes-btn">Обновить</button>
-          </div>
-
-          <div id="processes-list" style="display: grid; gap: 8px;"></div>
-        </div>
-
-        <!-- Действия -->
-        <div class="settings-section">
-          <h2 class="settings-section-title">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style="margin-right: 8px; vertical-align: -4px; color: #3B82F6;">
-              <path d="M22.7 19l-9.1-9.1c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.4 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1.1.1-1.4z"/>
-            </svg>
-            ${i18n.t('settings.actions')}
-          </h2>
-          
-          <div class="settings-actions">
-            <button class="btn btn-secondary" id="reset-settings-btn">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
-                <path d="M3 3v5h5"></path>
-              </svg>
-              ${i18n.t('settings.resetSettings')}
-            </button>
-            
-            <button class="btn btn-secondary" id="whats-new-btn">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="10"></circle>
-                <line x1="12" y1="16" x2="12" y2="12"></line>
-                <line x1="12" y1="8" x2="12.01" y2="8"></line>
-              </svg>
-              ${i18n.t('settings.whatsNew')}
-            </button>
-
-            <button class="btn btn-secondary" id="clear-statistics-btn">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M3 6h18"></path>
-                <path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"></path>
-                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
-              </svg>
-              ${i18n.t('settings.clearStatistics')}
-            </button>
-
-            <button class="btn btn-secondary" id="export-settings-btn">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                <polyline points="7 10 12 15 17 10"></polyline>
-                <line x1="12" y1="15" x2="12" y2="3"></line>
-              </svg>
-              ${i18n.t('settings.exportSettings')}
-            </button>
-
-            <button class="btn btn-secondary" id="backup-export-btn">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                <path d="M7 10l5 5 5-5M12 15V3"/>
-              </svg>
-              Сохранить копию всего
-            </button>
-
-            <button class="btn btn-secondary" id="ics-export-btn" title="Файл .ics для календаря на телефоне или в почте: когда заканчиваются кампании игр из ваших категорий, с напоминанием за час">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                <rect x="3" y="5" width="18" height="16" rx="2"/>
-                <path d="M3 10h18M8 3v4M16 3v4"/>
-              </svg>
-              Сроки кампаний в календарь
-            </button>
-
-            <button class="btn btn-secondary" id="backup-import-btn">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                <path d="M7 9l5-5 5 5M12 4v12"/>
-              </svg>
-              Восстановить из копии
-            </button>
-            <input type="file" id="backup-file-input" accept="application/json,.json" style="display: none;">
-
-            <button class="btn btn-secondary" id="open-logs-btn" title="Журнал работы приложения — пригодится, если что-то пошло не так ночью">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                <path d="M14 2v6h6M8 13h8M8 17h8"/>
-              </svg>
-              Папка логов
-            </button>
-
-            <div class="settings-item-description" style="width: 100%; margin-top: 10px;">
-              В копию попадают категории с порядком и закреплениями, подписки, статистика и настройки.
-              Аккаунты и токены не сохраняются — после переноса нужно войти заново.
-            </div>
-          </div>
-        </div>
-
-        <!-- Обновления -->
-        <div class="settings-section">
-          <h2 class="settings-section-title">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style="margin-right: 8px; vertical-align: -4px; color: #f0555f;">
-              <path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/>
-            </svg>
-            ${i18n.t('settings.updates')}
-          </h2>
-          
-          <div class="settings-item">
-            <div class="settings-item-info">
-              <div class="settings-item-label">${i18n.t('settings.appVersion')}</div>
-              <div class="settings-item-description" id="setting-app-version">—</div>
-            </div>
-            <button class="btn btn-secondary" id="check-updates-btn">
-              ${i18n.t('settings.checkUpdates')}
-            </button>
-          </div>
-
-          <div class="settings-item">
-            <div class="settings-item-info">
-              <div class="settings-item-label">${i18n.t('settings.github')}</div>
-              <div class="settings-item-description">${i18n.t('settings.githubDesc')}</div>
-            </div>
-            <button class="btn btn-secondary" id="github-link-btn" style="display: flex; align-items: center; gap: 6px;">
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
-              </svg>
-              ${i18n.t('settings.open')}
-            </button>
-          </div>
-
-          <div class="settings-item">
-            <div class="settings-item-info">
-              <div class="settings-item-label">${i18n.t('settings.telegram')}</div>
-              <div class="settings-item-description">${i18n.t('settings.telegramDesc')}</div>
-            </div>
-            <button class="btn btn-secondary" id="telegram-link-btn" style="display: flex; align-items: center; gap: 6px;">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.161c-.18 1.897-.962 6.502-1.359 8.627-.168.9-.5 1.201-.82 1.23-.697.064-1.226-.461-1.901-.903-1.056-.693-1.653-1.124-2.678-1.8-1.185-.781-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.139-5.062 3.345-.479.329-.913.489-1.302.481-.428-.009-1.252-.241-1.865-.44-.752-.244-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.831-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635.099-.002.321.023.465.14.121.099.155.232.171.326.016.095.036.312.02.482z"/>
-              </svg>
-              ${i18n.t('settings.open')}
-            </button>
-          </div>
-
-          <div class="settings-item">
-            <div class="settings-item-info">
-              <div class="settings-item-label">${i18n.t('settings.supportProject')}</div>
-              <div class="settings-item-description">${i18n.t('settings.supportProjectDesc')}</div>
-            </div>
-            <button class="btn btn-secondary" id="boosty-link-btn" style="display: flex; align-items: center; gap: 6px;">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm.31-8.86c-1.77-.45-2.34-.94-2.34-1.67 0-.84.79-1.43 2.1-1.43 1.38 0 1.9.66 1.94 1.64h1.71c-.05-1.34-.87-2.57-2.49-2.97V5H10.9v1.69c-1.51.32-2.72 1.3-2.72 2.81 0 1.79 1.49 2.69 3.66 3.21 1.95.46 2.34 1.15 2.34 1.87 0 .53-.39 1.39-2.1 1.39-1.6 0-2.23-.72-2.32-1.64H8.04c.1 1.7 1.36 2.66 2.86 2.97V19h2.34v-1.67c1.52-.29 2.72-1.16 2.73-2.77-.01-2.2-1.9-2.96-3.66-3.42z"/>
-              </svg>
-              ${i18n.t('settings.open')}
-            </button>
           </div>
         </div>
       </div>
@@ -653,36 +662,60 @@ class SettingsPage {
   setupEventListeners() {
     const settings = window.settings;
     const i18n = window.i18n;
+    if (!settings || !document.querySelector('.settings-page')) return;
 
-    // По тосту должно быть видно, что стало с настройкой. Раньше на
-    // включение и выключение показывался один и тот же текст (название
-    // настройки или голое «Включено»), и при быстром повторном клике было
-    // не понять, в каком она теперь положении
-    const сообщитьСостояние = (название, включено) => {
-      const состояние = (включено ? i18n.t('settings.enabled') : i18n.t('settings.disabled')).toLowerCase();
-      window.utils.showToast(`${название}: ${состояние}`, 'info');
-    };
-
-    // Звук
+    // Звук. Сразу проигрываем тот самый сигнал: понять, что включаешь,
+    // проще на слух, чем по названию
     const soundToggle = document.getElementById('setting-sound');
     if (soundToggle) {
       soundToggle.addEventListener('change', (e) => {
         settings.set('soundEnabled', e.target.checked);
-        // Сразу проигрываем тот самый сигнал: понять, что включаешь,
-        // проще на слух, чем по названию
-        if (e.target.checked) window.chime?.dropClaimed();
-        сообщитьСостояние(i18n.t('settings.soundNotifications'), e.target.checked);
+        if (e.target.checked) this.previewSound('drop');
       });
     }
 
-    // Всплывающие сообщения в окне. Выключение тоже подтверждаем: настройка
-    // глушит только фоновые сообщения, а это ответ на клик. Если showToast
-    // всё же его подавит, положение видно по самому переключателю
+    // Громкость: число рядом меняется сразу, в настройки значение уходит по
+    // отпусканию (set() пишет на диск и в main), там же — пробный сигнал
+    const volumeRange = document.getElementById('setting-sound-volume');
+    const volumeValue = document.getElementById('setting-sound-volume-value');
+    if (volumeRange) {
+      const paintVolume = () => {
+        const value = Math.min(1, Math.max(0, Number(volumeRange.value) || 0));
+        volumeRange.style.setProperty('--fill', (value * 100).toFixed(1) + '%');
+        if (volumeValue) volumeValue.textContent = `${Math.round(value * 100)}%`;
+        return value;
+      };
+      paintVolume();
+      volumeRange.addEventListener('input', paintVolume);
+      volumeRange.addEventListener('change', () => {
+        settings.set('soundVolume', paintVolume());
+        this.previewSound('drop');
+      });
+    }
+
+    // События звука: у каждого свой ключ (soundDrop, soundChest…) и своя
+    // кнопка «прослушать». Прослушивание играет всегда — это явное действие
+    document.querySelectorAll('.settings-page input[data-sound-key]').forEach(input => {
+      input.addEventListener('change', () => {
+        settings.set(input.dataset.soundKey, input.checked);
+      });
+    });
+    document.querySelectorAll('.settings-page [data-preview]').forEach(btn => {
+      btn.addEventListener('click', () => this.previewSound(btn.dataset.preview));
+    });
+
+    const soundInGame = document.getElementById('setting-sound-in-game');
+    if (soundInGame) {
+      soundInGame.addEventListener('change', (e) => {
+        settings.set('soundInGame', e.target.checked);
+      });
+    }
+
+    // Всплывающие сообщения в окне
     const toastToggle = document.getElementById('setting-toast');
     if (toastToggle) {
       toastToggle.addEventListener('change', (e) => {
         settings.set('toastNotifications', e.target.checked);
-        сообщитьСостояние(i18n.t('settings.toastNotifications'), e.target.checked);
       });
     }
 
@@ -696,7 +729,24 @@ class SettingsPage {
           systemNotifications: e.target.checked,
           notifications: e.target.checked
         });
-        сообщитьСостояние(i18n.t('settings.systemNotifications'), e.target.checked);
+      }, { signal: this._abort.signal });
+    }
+
+    // Пробное уведомление показывается и при выключенных уведомлениях:
+    // это проверка, а не событие. Пока в app.js нет готовой проверки
+    // (window.utils.testDropNotification), зовём окно награды напрямую
+    const testNotificationBtn = document.getElementById('test-notification-btn');
+    if (testNotificationBtn) {
+      testNotificationBtn.addEventListener('click', () => {
+        if (typeof window.utils?.testDropNotification === 'function') {
+          window.utils.testDropNotification();
+          return;
+        }
+        window.electronAPI?.showDropNotification?.(
+          en() ? 'Test notification' : 'Проверка уведомления', 'WatchTwitch', '', { kind: 'test' });
+        if (settings.get('notifications') === false) {
+          window.utils.showToast('Уведомления Windows сейчас выключены — окно не появится', 'info');
+        }
       }, { signal: this._abort.signal });
     }
 
@@ -718,7 +768,6 @@ class SettingsPage {
     if (autoClaimToggle) {
       autoClaimToggle.addEventListener('change', (e) => {
         settings.set('autoClaimDrops', e.target.checked);
-        сообщитьСостояние(i18n.t('settings.autoClaimDrops'), e.target.checked);
       });
     }
 
@@ -754,7 +803,7 @@ class SettingsPage {
       });
     }
 
-    // Потолок скорости загрузки стрима
+    // Игровой режим
     const gameToggle = document.getElementById('setting-game-mode');
     if (gameToggle) {
       gameToggle.addEventListener('change', (e) => {
@@ -812,6 +861,7 @@ class SettingsPage {
       });
     }
 
+    // Потолок скорости загрузки стрима
     const limitToggle = document.getElementById('setting-limit-speed');
     const limitNote = document.getElementById('limit-note');
 
@@ -819,8 +869,8 @@ class SettingsPage {
       if (!limitNote) return;
       limitNote.textContent = settings.get('limitStreamSpeed') === false
         ? 'Выключено — стрим качается на полной скорости'
-        : window.NetworkLimit.describe(
-            settings.get('preferredStreamQuality'), settings.get('streamSpeedHeadroom'));
+        : (window.NetworkLimit?.describe(
+            settings.get('preferredStreamQuality'), settings.get('streamSpeedHeadroom')) || '');
     };
     обновитьПотолок();
 
@@ -831,7 +881,6 @@ class SettingsPage {
         // Настройка зеркалится в главный процесс не мгновенно, поэтому
         // просим переприменить потолок явно
         setTimeout(() => window.electronAPI?.refreshStreamLimit?.(), 300);
-        сообщитьСостояние(i18n.t('settings.limitStreamSpeed'), e.target.checked);
       });
     }
 
@@ -854,7 +903,6 @@ class SettingsPage {
       quietToggle.addEventListener('change', (e) => {
         settings.set('quietHours', e.target.checked);
         обновитьПодпись();
-        сообщитьСостояние(i18n.t('settings.quietHours'), e.target.checked);
       });
     }
 
@@ -880,7 +928,6 @@ class SettingsPage {
     if (suggestToggle) {
       suggestToggle.addEventListener('change', (e) => {
         settings.set('suggestCategories', e.target.checked);
-        сообщитьСостояние(i18n.t('settings.suggestCategories'), e.target.checked);
       });
     }
 
@@ -919,7 +966,6 @@ class SettingsPage {
         // Команда в главный процесс уходит без ответа — даём ему время
         // перерегистрировать сочетания и только потом спрашиваем итог
         setTimeout(обновитьКлавиши, 300);
-        сообщитьСостояние(i18n.t('settings.globalShortcuts'), e.target.checked);
       });
     }
 
@@ -930,7 +976,6 @@ class SettingsPage {
         settings.set('notifyFavouriteLive', e.target.checked);
         if (e.target.checked) window.favouritesWatch?.start();
         else window.favouritesWatch?.stop();
-        сообщитьСостояние(i18n.t('settings.notifyFavouriteLive'), e.target.checked);
       });
     }
 
@@ -939,12 +984,6 @@ class SettingsPage {
     if (smartSwitchToggle) {
       smartSwitchToggle.addEventListener('change', (e) => {
         settings.set('smartCategorySwitch', e.target.checked);
-        window.utils.showToast(
-          e.target.checked
-            ? 'Категории выбираются по выгоде'
-            : 'Категории выбираются по прежним правилам',
-          'info'
-        );
       });
     }
 
@@ -953,7 +992,6 @@ class SettingsPage {
     if (notifyDropToggle) {
       notifyDropToggle.addEventListener('change', (e) => {
         settings.set('notifyOnDropClaimed', e.target.checked);
-        сообщитьСостояние(i18n.t('settings.notifyOnDropClaimed'), e.target.checked);
       });
     }
 
@@ -988,15 +1026,20 @@ class SettingsPage {
       }, { signal: this._abort.signal });
     }
 
-    // Автовыключение после сбора всех дропсов
+    // Автовыключение. Сводка «что и когда произойдёт» стоит подписью под
+    // самим переключателем: пока он выключен — что он делает вообще
     const shutdownToggle = document.getElementById('setting-shutdown');
+    const refreshSummary = () => {
+      const box = document.getElementById('shutdown-summary');
+      if (!box) return;
+      box.textContent = settings.get('enableShutdown') && window.shutdownManager
+        ? window.shutdownManager.describeSchedule()
+        : (box.dataset.idle || '');
+    };
+
     if (shutdownToggle) {
       shutdownToggle.addEventListener('change', (e) => {
         settings.set('enableShutdown', e.target.checked);
-
-        document.querySelectorAll('.shutdown-option').forEach(row => {
-          row.style.display = e.target.checked ? '' : 'none';
-        });
         refreshSummary();
 
         window.utils.showToast(
@@ -1005,13 +1048,6 @@ class SettingsPage {
         );
       }, { signal: this._abort.signal });
     }
-
-    const refreshSummary = () => {
-      const box = document.getElementById('shutdown-summary');
-      if (box && window.shutdownManager) {
-        box.textContent = window.shutdownManager.describeSchedule();
-      }
-    };
 
     const shutdownSelects = [
       ['setting-shutdown-action', 'shutdownAction'],
@@ -1034,7 +1070,6 @@ class SettingsPage {
     if (autoSwitchToggle) {
       autoSwitchToggle.addEventListener('change', (e) => {
         settings.set('autoSwitchStreams', e.target.checked);
-        сообщитьСостояние(i18n.t('settings.autoSwitchStreams'), e.target.checked);
       });
     }
 
@@ -1044,20 +1079,11 @@ class SettingsPage {
       compactToggle.addEventListener('change', (e) => {
         settings.set('compactMode', e.target.checked);
         document.body.classList.toggle('compact-mode', e.target.checked);
-        сообщитьСостояние(i18n.t('settings.compactMode'), e.target.checked);
       });
     }
 
-    // Показывать завершённые
-    const showExpiredToggle = document.getElementById('setting-show-expired');
-    if (showExpiredToggle) {
-      showExpiredToggle.addEventListener('change', (e) => {
-        settings.set('showExpiredCampaigns', e.target.checked);
-        // Календарь может быть уже открыт — показываем изменение сразу
-        window.calendarPage?.render?.();
-        сообщитьСостояние(i18n.t('settings.showExpiredCampaigns'), e.target.checked);
-      });
-    }
+    // «Показывать завершённые кампании» переехала в календарь: там она
+    // видна рядом со списком, который меняет. Ключ остался прежним
 
     // Анимации
     const animationsToggle = document.getElementById('setting-animations');
@@ -1065,7 +1091,6 @@ class SettingsPage {
       animationsToggle.addEventListener('change', (e) => {
         settings.set('animationsEnabled', e.target.checked);
         document.body.classList.toggle('no-animations', !e.target.checked);
-        сообщитьСостояние(i18n.t('settings.animations'), e.target.checked);
       });
     }
 
@@ -1074,105 +1099,73 @@ class SettingsPage {
     if (developerModeToggle) {
       developerModeToggle.addEventListener('change', (e) => {
         settings.set('developerMode', e.target.checked);
-        сообщитьСостояние(i18n.t('settings.developerMode'), e.target.checked);
       });
     }
 
-    // Выбор языка (кастомный select)
-    const languageSelect = document.getElementById('language-select');
-    if (languageSelect) {
-      const trigger = languageSelect.querySelector('.custom-select-trigger');
-      const options = languageSelect.querySelectorAll('.custom-select-option');
-      
-      // Открытие/закрытие dropdown
-      trigger.addEventListener('click', (e) => {
-        e.stopPropagation();
-        languageSelect.classList.toggle('open');
+    // Тема, оформление и язык — сегменты: два варианта видны сразу, и выбор
+    // делается одним нажатием вместо раскрытия списка
+    this.bindSegmented('theme-select', (value) => {
+      // set() сам меняет класс темы через applyAll; присваивание className
+      // здесь стирало компактный и экономный режимы до перезапуска
+      settings.set('theme', value);
+    });
+
+    // Оформление применяется сразу через set(), без тоста: смену вида и так
+    // видно, а сообщение поверх перестроившегося интерфейса ничего не добавляет
+    this.bindSegmented('ui-style-select', (value) => {
+      settings.set('uiStyle', value === 'ios27' ? 'ios27' : 'classic');
+    });
+
+    this.bindSegmented('language-select', (value, button) => {
+      if (value === (i18n.currentLang || 'ru')) return;
+      const label = button.textContent.trim();
+      // Сохраняем и применяем язык, затем перерисовываем страницу
+      i18n.setLanguage(value);
+      this.render();
+      this.setupEventListeners();
+      this.loadAppVersion();
+      window.utils.showToast(`${i18n.t('settings.language')}: ${label}`, 'success');
+    });
+
+    // Прозрачность стекла. Пока ползунок тянут, меняется только переменная
+    // на <html> — стекло откликается мгновенно. В настройки значение
+    // уходит через set() по отпусканию: set() пишет на диск и в
+    // main-процесс, а событие input приходит десятки раз в секунду
+    const glassRange = document.getElementById('setting-glass-opacity');
+    if (glassRange) {
+      const clamp = settings.constructor.clampGlassOpacity;
+      // Дорожка залита акцентом до ручки — как у ползунков iOS
+      const paint = () => {
+        const min = Number(glassRange.min);
+        const max = Number(glassRange.max);
+        const value = clamp(glassRange.value);
+        glassRange.style.setProperty('--fill', ((value - min) / (max - min) * 100).toFixed(1) + '%');
+        return value;
+      };
+      paint();
+
+      glassRange.addEventListener('input', () => {
+        document.documentElement.style.setProperty('--glass-alpha', String(paint()));
       });
-      
-      // Выбор опции
-      options.forEach(option => {
-        option.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const value = option.dataset.value;
-          const label = option.querySelector('span').textContent;
-          
-          // Обновляем выбранную опцию
-          options.forEach(opt => opt.classList.remove('selected'));
-          option.classList.add('selected');
-          
-          // Обновляем отображаемое значение
-          trigger.querySelector('.custom-select-value').textContent = label;
-          
-          // Сохраняем и применяем язык
-          i18n.setLanguage(value);
-          
-          // Перерендериваем страницу с новым языком
-          this.render();
-          this.setupEventListeners();
-          this.loadAppVersion();
-          
-          window.utils.showToast(`${i18n.t('settings.language')}: ${label}`, 'success');
-          
-          // Закрываем dropdown
-          languageSelect.classList.remove('open');
-        });
+      glassRange.addEventListener('change', () => {
+        settings.set('glassOpacity', paint());
       });
-      
-      // Закрытие при клике вне dropdown
-      document.addEventListener('click', () => {
-        languageSelect.classList.remove('open');
-      }, { signal: this._abort.signal });
     }
 
-    // Тема (кастомный select)
-    const themeSelect = document.getElementById('theme-select');
-    if (themeSelect) {
-      const trigger = themeSelect.querySelector('.custom-select-trigger');
-      const options = themeSelect.querySelectorAll('.custom-select-option');
-      
-      // Открытие/закрытие dropdown
-      trigger.addEventListener('click', (e) => {
-        e.stopPropagation();
-        themeSelect.classList.toggle('open');
-      });
-      
-      // Выбор опции
-      options.forEach(option => {
-        option.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const value = option.dataset.value;
-          const label = option.querySelector('span').textContent;
-          
-          // Обновляем выбранную опцию
-          options.forEach(opt => opt.classList.remove('selected'));
-          option.classList.add('selected');
-          
-          // Обновляем отображаемое значение
-          trigger.querySelector('.custom-select-value').textContent = label;
-          
-          // Сохраняем и применяем тему. set() сам меняет класс темы через
-          // applyAll; присваивание className здесь стирало компактный и
-          // экономный режимы до перезапуска
-          settings.set('theme', value);
-          window.utils.showToast(`${i18n.t('settings.theme')}: ${label}`, 'info');
-          
-          // Закрываем dropdown
-          themeSelect.classList.remove('open');
-        });
-      });
-      
-      // Закрытие при клике вне dropdown
-      document.addEventListener('click', () => {
-        themeSelect.classList.remove('open');
-      }, { signal: this._abort.signal });
-    }
-
-    // Сброс настроек
+    // Что нового
     const whatsNewBtn = document.getElementById('whats-new-btn');
     if (whatsNewBtn) {
       whatsNewBtn.addEventListener('click', () => {
         window.whatsNew?.show();
+      }, { signal: this._abort.signal });
+    }
+
+    // Журнал событий живёт в панели из заголовка окна; отсюда — короткий путь к нему
+    const journalBtn = document.getElementById('journal-open-btn');
+    if (journalBtn) {
+      journalBtn.addEventListener('click', () => {
+        if (typeof window.eventLogUI?.open === 'function') window.eventLogUI.open('all');
+        else document.getElementById('journal-btn')?.click();
       }, { signal: this._abort.signal });
     }
 
@@ -1197,6 +1190,7 @@ class SettingsPage {
       }, { signal: this._abort.signal });
     }
 
+    // Сброс настроек
     const resetBtn = document.getElementById('reset-settings-btn');
     if (resetBtn) {
       resetBtn.addEventListener('click', async () => {
@@ -1247,7 +1241,6 @@ class SettingsPage {
       setTimeout(() => URL.revokeObjectURL(url), 60000);
     };
 
-    // Экспорт
     // Полная копия: категории, подписки, статистика, настройки
     const backupExportBtn = document.getElementById('backup-export-btn');
     if (backupExportBtn) {
@@ -1444,43 +1437,317 @@ class SettingsPage {
       }, { signal: this._abort.signal });
     }
 
-    // GitHub link
-    const githubBtn = document.getElementById('github-link-btn');
-    if (githubBtn) {
-      githubBtn.addEventListener('click', () => {
-        if (window.electronAPI?.openExternal) {
-          window.electronAPI.openExternal('https://github.com/Agrysif/WatchTwitch');
-        } else {
-          window.open('https://github.com/Agrysif/WatchTwitch', '_blank');
-        }
-      });
-    }
+    // Внешние ссылки
+    const openLink = (url) => {
+      if (window.electronAPI?.openExternal) window.electronAPI.openExternal(url);
+      else window.open(url, '_blank');
+    };
+    document.getElementById('github-link-btn')?.addEventListener('click', () => openLink('https://github.com/Agrysif/WatchTwitch'));
+    document.getElementById('telegram-link-btn')?.addEventListener('click', () => openLink('https://t.me/ebalashovv'));
+    document.getElementById('boosty-link-btn')?.addEventListener('click', () => openLink('https://boosty.to/agrysif'));
 
-    // Telegram link
-    const telegramBtn = document.getElementById('telegram-link-btn');
-    if (telegramBtn) {
-      telegramBtn.addEventListener('click', () => {
-        if (window.electronAPI?.openExternal) {
-          window.electronAPI.openExternal('https://t.me/ebalashovv');
-        } else {
-          window.open('https://t.me/ebalashovv', '_blank');
-        }
-      });
-    }
-
-    // Boosty link
-    const boostyBtn = document.getElementById('boosty-link-btn');
-    if (boostyBtn) {
-      boostyBtn.addEventListener('click', () => {
-        if (window.electronAPI?.openExternal) {
-          window.electronAPI.openExternal('https://boosty.to/agrysif');
-        } else {
-          window.open('https://boosty.to/agrysif', '_blank');
-        }
-      });
-    }
-
+    this.setupDependents();
+    this.setupNavigation();
+    this.setupSearch();
     this.setupDiagnostics();
+
+    // Тексты внутри обработчиков: для английского интерфейса
+    function en() {
+      return i18n?.currentLang === 'en';
+    }
+  }
+
+  /** Пробный сигнал: chime.preview играет всегда, это явное действие. */
+  previewSound(id) {
+    const chime = window.chime;
+    if (typeof chime?.preview === 'function') {
+      chime.preview(id);
+      return;
+    }
+    // Старый chime.js без событий: умеет только два сигнала
+    if (id === 'attention') chime?.failed?.();
+    else chime?.dropClaimed?.();
+  }
+
+  /**
+   * Сегменты (тема, оформление, язык). Значение хранится в data-value
+   * группы — по нему зависимые строки (прозрачность стекла) узнают, видны ли.
+   */
+  bindSegmented(id, onSelect) {
+    const group = document.getElementById(id);
+    if (!group) return;
+    group.querySelectorAll('button[data-value]').forEach(button => {
+      button.addEventListener('click', () => {
+        const value = button.dataset.value;
+        if (group.dataset.value === value) return;
+        group.dataset.value = value;
+        group.querySelectorAll('button[data-value]').forEach(b => {
+          const on = b === button;
+          b.classList.toggle('active', on);
+          b.setAttribute('aria-pressed', String(on));
+        });
+        onSelect(value, button);
+        this.syncDependents();
+      });
+    });
+  }
+
+  /**
+   * Зависимые строки: «О полученных наградах» зависит от «Уведомлений
+   * Windows», громкость — от «Звуков», часы таймера — от условия
+   * «По таймеру». Скрытые строки не мешают читать раздел, приглушённые
+   * (data-mode="dim") остаются под рукой, но видно, что сейчас не действуют.
+   */
+  setupDependents() {
+    const root = document.querySelector('.settings-page');
+    if (!root) return;
+    root.addEventListener('change', () => this.syncDependents());
+    // Поиск здесь ещё не восстановлен после перерисовки — его применит setupSearch
+    this.syncDependents({ search: false });
+  }
+
+  syncDependents({ search = true } = {}) {
+    const root = document.querySelector('.settings-page');
+    if (!root) return;
+
+    root.querySelectorAll('[data-parent], [data-parent-value]').forEach(row => {
+      let on = true;
+      if (row.dataset.parent) {
+        const parent = document.getElementById(row.dataset.parent);
+        if (parent && !parent.checked) on = false;
+      }
+      if (on && row.dataset.parentValue) {
+        const [id, value] = row.dataset.parentValue.split(':');
+        const el = document.getElementById(id);
+        const current = el?.dataset.value ?? el?.value;
+        if (current !== value) on = false;
+      }
+
+      if (row.dataset.mode === 'dim') {
+        row.classList.toggle('is-disabled', !on);
+      } else {
+        row.hidden = !on;
+      }
+    });
+
+    // Поиск учитывает видимость: включили «Звуки» во время поиска —
+    // новые строки проходят тот же фильтр
+    if (search && this._searchQuery) this.applySearch();
+  }
+
+  /**
+   * Навигация по разделам: щелчок прокручивает к разделу, при прокрутке
+   * подсвечивается тот, что сейчас наверху. Короткие последние разделы до
+   * верха не докручиваются, поэтому выбранный щелчком пункт держится, пока
+   * прокрутка не закончится, а внизу страницы активен последний раздел.
+   */
+  setupNavigation() {
+    const root = document.querySelector('.settings-page');
+    const scroller = root?.closest('.content');
+    if (!root || !scroller) return;
+    const signal = this._renderAbort.signal;
+
+    const links = [...root.querySelectorAll('.settings-nav a[data-section]')];
+    const sections = links.map(a => document.getElementById(a.dataset.section)).filter(Boolean);
+
+    const setActive = (id) => {
+      links.forEach(a => {
+        const on = a.dataset.section === id;
+        a.classList.toggle('active', on);
+        if (on) a.setAttribute('aria-current', 'true');
+        else a.removeAttribute('aria-current');
+      });
+    };
+
+    this._navLock = null;
+    const spy = () => {
+      if (this._navLock || !root.isConnected) return;
+      const visible = sections.filter(s => !s.classList.contains('is-filtered'));
+      if (visible.length === 0) {
+        setActive(null);
+        return;
+      }
+
+      const line = scroller.getBoundingClientRect().top + 96;
+      let current = visible[0].id;
+      for (const s of visible) {
+        if (s.getBoundingClientRect().top <= line) current = s.id;
+      }
+      const atBottom = scroller.scrollTop > 0 &&
+        scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 4;
+      if (atBottom) current = visible[visible.length - 1].id;
+      setActive(current);
+    };
+    this._spy = spy;
+
+    let frame = 0;
+    scroller.addEventListener('scroll', () => {
+      if (frame) return;
+      frame = requestAnimationFrame(() => { frame = 0; spy(); });
+    }, { passive: true, signal });
+    scroller.addEventListener('scrollend', () => { this._navLock = null; }, { signal });
+
+    const reduceMotion = () => document.body.classList.contains('no-animations') ||
+      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
+    links.forEach(link => {
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        const target = document.getElementById(link.dataset.section);
+        if (!target || target.classList.contains('is-filtered')) return;
+        this._navLock = link.dataset.section;
+        setActive(this._navLock);
+        target.scrollIntoView({ behavior: reduceMotion() ? 'auto' : 'smooth', block: 'start' });
+        // Фокус — на заголовок раздела: с клавиатуры дальше идёт Tab по
+        // его пунктам, а не обратно по меню
+        target.querySelector('.settings-section-title')?.focus({ preventScroll: true });
+        // Если прокручивать некуда, scrollend не придёт — снимаем сами
+        clearTimeout(this._navLockTimer);
+        this._navLockTimer = setTimeout(() => { this._navLock = null; }, 1200);
+      }, { signal });
+    });
+
+    spy();
+  }
+
+  /**
+   * Поиск по подписи, описанию и ключевым словам строки. Регистр и «ё/е»
+   * не важны. Разделы без совпадений прячутся, пункты меню к ним гаснут.
+   */
+  setupSearch() {
+    const input = document.getElementById('settings-search');
+    const clear = document.getElementById('settings-search-clear');
+    if (!input) return;
+    const signal = this._renderAbort.signal;
+
+    // После перерисовки (смена языка, сброс) запрос сохраняется
+    if (this._searchQuery) input.value = this._searchQuery;
+
+    input.addEventListener('input', () => this.applySearch());
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && input.value) {
+        e.preventDefault();
+        e.stopPropagation();
+        input.value = '';
+        this.applySearch();
+      }
+    });
+    clear?.addEventListener('click', () => {
+      input.value = '';
+      this.applySearch();
+      input.focus();
+    });
+
+    // Ctrl+F — как в браузере. По коду клавиши: в русской раскладке
+    // e.key здесь «а»
+    document.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.code === 'KeyF') {
+        if (!document.body.contains(input)) return;
+        e.preventDefault();
+        input.focus();
+        input.select();
+      }
+    }, { signal });
+
+    this.applySearch();
+  }
+
+  applySearch() {
+    const root = document.querySelector('.settings-page');
+    const input = document.getElementById('settings-search');
+    if (!root || !input) return;
+
+    const norm = (text) => String(text || '').toLowerCase().replace(/ё/g, 'е');
+    const query = norm(input.value.trim());
+    this._searchQuery = input.value.trim();
+
+    const clear = document.getElementById('settings-search-clear');
+    if (clear) clear.hidden = !query;
+    root.classList.toggle('is-searching', !!query);
+
+    // Подсветка — только в неизменных текстах. Живые подписи (сводка
+    // автовыключения, потолок скорости) пишутся кодом, и сохранённый
+    // оригинал вернул бы устаревший текст
+    const esc = window.escapeHtml;
+    const highlight = (el) => {
+      if (!el || el.hasAttribute('data-live')) return;
+      if (el.dataset.orig === undefined) {
+        if (el.children.length > 0) return;
+        el.dataset.orig = el.textContent;
+      }
+      const text = el.dataset.orig;
+      const at = query ? norm(text).indexOf(query) : -1;
+      if (at < 0) {
+        el.textContent = text;
+        return;
+      }
+      el.innerHTML = esc(text.slice(0, at)) +
+        `<mark class="settings-hit">${esc(text.slice(at, at + query.length))}</mark>` +
+        esc(text.slice(at + query.length));
+    };
+
+    const rows = [...root.querySelectorAll('.settings-section .settings-item, .settings-section .settings-block')];
+    const textOf = (row) => norm([
+      row.querySelector('.settings-item-label')?.textContent,
+      row.querySelector('.settings-item-description')?.textContent,
+      row.dataset.keywords
+    ].join(' '));
+
+    const sections = [...root.querySelectorAll('.settings-section')];
+
+    const matched = new Set();
+    rows.forEach(row => {
+      if (!query || textOf(row).includes(query)) matched.add(row);
+    });
+
+    // Совпало название раздела («оформление»), а строки — нет: показываем
+    // раздел целиком. Если же в разделе нашлись строки, только их — иначе
+    // «звук» открывал бы все уведомления подряд
+    if (query) {
+      sections.forEach(section => {
+        if (!norm(section.querySelector('.settings-section-title')?.textContent).includes(query)) return;
+        const own = rows.filter(row => row.closest('.settings-section') === section);
+        if (!own.some(row => matched.has(row))) own.forEach(row => matched.add(row));
+      });
+    }
+
+    // Совпала скрытая зависимая строка (громкость при выключенных звуках) —
+    // показываем её «родителя»: включив его, человек увидит и саму строку
+    rows.forEach(row => {
+      if (!query || !row.hidden || !matched.has(row) || !row.dataset.parent) return;
+      const parentRow = document.getElementById(row.dataset.parent)?.closest('.settings-item');
+      if (parentRow) matched.add(parentRow);
+    });
+
+    rows.forEach(row => {
+      row.classList.toggle('is-filtered', !!query && !matched.has(row));
+      row.querySelectorAll('.settings-item-label, .settings-item-description').forEach(highlight);
+    });
+
+    let anyVisible = false;
+    sections.forEach(section => {
+      const has = !query || rows.some(row => row.closest('.settings-section') === section &&
+        !row.hidden && !row.classList.contains('is-filtered'));
+      section.classList.toggle('is-filtered', !has);
+      if (has) anyVisible = true;
+      const danger = section.querySelector('.settings-danger');
+      if (danger) {
+        danger.classList.toggle('is-filtered', !!query &&
+          ![...danger.querySelectorAll('.settings-item')].some(row => !row.classList.contains('is-filtered')));
+      }
+      const link = root.querySelector(`.settings-nav a[data-section="${section.id}"]`);
+      link?.classList.toggle('is-empty', !has);
+    });
+
+    const empty = document.getElementById('settings-empty');
+    if (empty) empty.hidden = anyVisible;
+
+    // Новый запрос — к началу результатов, иначе первое совпадение могло
+    // оказаться выше видимой области
+    const scroller = root.closest('.content');
+    if (query && this._lastQuery !== query && scroller) scroller.scrollTop = 0;
+    this._lastQuery = query;
+    this._spy?.();
   }
 
   /**
@@ -1494,9 +1761,9 @@ class SettingsPage {
     const i18n = window.i18n;
     const esc = window.escapeHtml;
     const html = `
-      <div style="text-align: center;">
-        <h3 style="font-size: 20px; font-weight: 600; color: var(--text-primary); margin-bottom: 12px;">${esc(title)}</h3>
-        ${textHtml ? `<p style="font-size: 14px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 0;">${textHtml}</p>` : ''}
+      <div class="settings-confirm">
+        <h3 class="settings-confirm-title">${esc(title)}</h3>
+        ${textHtml ? `<p class="settings-confirm-text">${textHtml}</p>` : ''}
       </div>
     `;
     return window.utils.showCustomConfirmation(html, {
@@ -1506,66 +1773,78 @@ class SettingsPage {
     });
   }
 
+  /**
+   * Процессы приложения. Список свёрнут и опрашивается только при
+   * раскрытии — и по кнопке «Обновить».
+   */
   setupDiagnostics() {
+    const details = document.getElementById('processes-details');
     const refreshBtn = document.getElementById('refresh-processes-btn');
     const list = document.getElementById('processes-list');
-    if (!refreshBtn || !list || !window.electronAPI?.getProcessMetrics) return;
+    if (!details || !refreshBtn || !list) return;
 
-    if (!refreshBtn.dataset.bound) {
-      refreshBtn.addEventListener('click', () => this.renderProcessMetrics());
-      refreshBtn.dataset.bound = 'true';
+    if (!window.electronAPI?.getProcessMetrics) {
+      details.closest('.settings-block')?.setAttribute('hidden', '');
+      return;
     }
 
-    this.renderProcessMetrics();
+    details.addEventListener('toggle', () => {
+      if (details.open) this.renderProcessMetrics();
+    });
+    refreshBtn.addEventListener('click', () => this.renderProcessMetrics());
   }
 
   async renderProcessMetrics() {
     const list = document.getElementById('processes-list');
     if (!list) return;
+    const esc = window.escapeHtml;
+
+    if (!list.children.length) {
+      list.innerHTML = window.DOMHelpers?.skeletonRows ? window.DOMHelpers.skeletonRows(3) : '';
+    }
 
     try {
       const metrics = await window.electronAPI.getProcessMetrics();
+      if (!list.isConnected) return;
       if (!metrics || metrics.length === 0) {
-        list.innerHTML = '<div style="color: var(--text-secondary);">Нет данных</div>';
+        list.innerHTML = '<div class="settings-note">Нет данных</div>';
         return;
       }
 
-      const formatMb = (kb) => {
-        if (typeof kb !== 'number') return '—';
-        return `${(kb / 1024).toFixed(1)} MB`;
-      };
+      // Единицы по-русски и с запятой: «118,6 МБ», как везде в приложении
+      const mb = (kb) => typeof kb === 'number'
+        ? `${(kb / 1024).toFixed(1).replace('.', ',')} МБ`
+        : '—';
+      const cpu = (value) => typeof value === 'number'
+        ? `${value.toFixed(1).replace('.', ',')} %`
+        : '—';
 
-      const formatCpu = (cpu) => {
-        const value = cpu?.percentCPUUsage;
-        if (typeof value !== 'number') return '—';
-        return `${value.toFixed(1)}%`;
-      };
+      const totalKb = metrics.reduce((sum, m) => sum + (Number(m.memory?.workingSetSize) || 0), 0);
+      const summary = document.getElementById('processes-summary');
+      if (summary && totalKb > 0) {
+        summary.textContent = `Всего ${mb(totalKb)} памяти · процессов: ${metrics.length}`;
+      }
 
-      list.innerHTML = metrics.map(metric => {
-        const label = metric.label || metric.type || 'process';
-        const memory = formatMb(metric.memory?.workingSetSize);
-        const cpu = formatCpu(metric.cpu);
-        const pid = metric.pid || '—';
-
-        return `
-          <div style="display: grid; grid-template-columns: 1fr auto auto; gap: 12px; align-items: center; padding: 10px 12px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius-md);">
-            <div>
-              <div style="font-size: 13px; font-weight: 600; color: var(--text-primary);">${label}</div>
-              <div style="font-size: 11px; color: var(--text-secondary);">pid: ${pid} • type: ${metric.type || '—'}</div>
-            </div>
-            <div style="font-size: 12px; color: var(--text-secondary);">CPU ${cpu}</div>
-            <div style="font-size: 12px; color: var(--text-secondary);">RAM ${memory}</div>
-          </div>
-        `;
-      }).join('');
+      list.innerHTML = `
+        <div class="process-row process-head" aria-hidden="true">
+          <span>Процесс</span><span>CPU</span><span>Память</span>
+        </div>
+        ${metrics.map(metric => `
+          <div class="process-row">
+            <span class="process-name">
+              <span class="truncate">${esc(String(metric.label || metric.type || 'process'))}</span>
+              <span class="process-meta">pid ${esc(String(metric.pid || '—'))} · ${esc(String(metric.type || '—'))}</span>
+            </span>
+            <span class="process-num num">${cpu(metric.cpu?.percentCPUUsage)}</span>
+            <span class="process-num num">${mb(metric.memory?.workingSetSize)}</span>
+          </div>`).join('')}`;
     } catch (error) {
       console.error('[Diagnostics] Failed to load process metrics:', error);
-      list.innerHTML = '<div style="color: var(--text-secondary);">Ошибка загрузки данных</div>';
+      list.innerHTML = '<div class="settings-note tone-error">Не удалось получить данные</div>';
     }
   }
 
   async loadAppVersion() {
-    const i18n = window.i18n;
     const versionEl = document.getElementById('setting-app-version');
     if (!versionEl) return;
     try {

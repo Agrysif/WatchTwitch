@@ -1,0 +1,819 @@
+/* ===== СТАТИСТИКА И КАЛЕНДАРЬ =====
+ *
+ * Владелец: STATS. Здесь — страницы «Статистика» (statistics.html) и «Календарь» (calendar.html).
+ *
+ * Подключается после main.css, themes.css и animations.css, поэтому
+ * перекрывает общие компоненты и прежние правила страниц из main.css без
+ * !important. Только токены themes.css (var(--surface-1), var(--accent-text)…),
+ * без готовых цветов. Рамки и разделители — border или псевдоэлемент, не
+ * box-shadow: экономный режим графики (включён по умолчанию) снимает все тени.
+ *
+ * Файл подключён всегда, а не только на своих страницах, поэтому каждое
+ * правило — под корневым классом страницы (.statistics-page, .calendar-page)
+ * или под собственным именем, которого нет у других страниц.
+ */
+
+/* ───────────────────────── Общее для обеих страниц ───────────────────────── */
+
+/* Обложка игры в строке списка. Слот держит размер и серую подложку с
+   тихим значком: пока картинка грузится или если её нет, строка не
+   прыгает и не показывает значок битого изображения */
+.stats-cover {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 43px;
+  overflow: hidden;
+  border-radius: var(--radius-xs);
+  background: var(--surface-2);
+  color: var(--text-tertiary);
+}
+
+.stats-cover > svg {
+  grid-area: 1 / 1;
+  opacity: 0.6;
+}
+
+.stats-cover > img {
+  grid-area: 1 / 1;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.stats-cover.is-sm {
+  width: 28px;
+  height: 37px;
+}
+
+/* Списки внутри карточек выходят на ширину отступа строки: так текст
+   строк стоит ровно под заголовком карточки, а подсветка при наведении
+   не упирается в него */
+.statistics-page .card .list,
+.calendar-page .card .list {
+  margin-left: -12px;
+  margin-right: -12px;
+}
+
+/* Кнопка «Показать все» — призрачная: её подпись выравниваем по правому
+   краю содержимого, а не по краю подложки при наведении */
+.statistics-page .missed-more,
+.calendar-page .tl-more {
+  flex: none;
+  margin-right: -10px;
+}
+
+/* ───────────────────────── Статистика ───────────────────────── */
+
+.statistics-page .page-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+/* Малые кнопки рядом с сегментами — в их высоту (32px): иначе ряд
+   выглядел неровным. Кегль остаётся малым, как у сегментов */
+.statistics-page .page-actions > .btn-sm,
+.calendar-toolbar > .btn-sm {
+  min-height: var(--ctl-h);
+}
+
+/* Свой период — строкой под шапкой, справа: прямо под сегментом, который
+   её открыл */
+.stats-range {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: -4px 0 16px;
+  animation: stats-range-in var(--dur-base) var(--ease-out);
+}
+
+@keyframes stats-range-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+
+.stats-range-word {
+  font-size: var(--fs-small);
+  color: var(--text-secondary);
+}
+
+.stats-date {
+  position: relative;
+}
+
+.stats-date .input-field {
+  width: 136px;
+  padding-right: 32px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.stats-date > svg {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  width: 16px;
+  height: 16px;
+  transform: translateY(-50%);
+  color: var(--text-tertiary);
+  pointer-events: none;
+}
+
+/* Системное поле даты лежит под видимым: окно выбора открывается прямо
+   под полем, а не в углу страницы */
+.stats-date-native {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  padding: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Итоги — всегда четыре в ряд: при auto-fit на окне 1000px выходило три
+   и одна сиротой во второй строке */
+.statistics-page .stats-totals {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: var(--space-3);
+}
+
+.statistics-page .stats-totals .kpi-value {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Аналитика: показатели без своих рамок, между ними — тонкие вертикальные
+   линии. Линия — левая граница каждого показателя; у первого в каждой
+   строке её срезает clip-path сетки (сетка сдвинута влево на отступ и
+   ещё на 1px), поэтому раскладка не зависит от числа показателей */
+.statistics-page .analytics-grid {
+  display: flex;
+  flex-wrap: wrap;
+  row-gap: 16px;
+  margin: 0 -16px 0 -17px;
+  clip-path: inset(0 0 0 1px);
+}
+
+/* Тройной класс: компактный режим в main.css задаёт .analytics-item
+   отступы плитки, а здесь плитки нет */
+.statistics-page .analytics-grid > .analytics-item {
+  flex: 1 1 128px;
+  min-width: 0;
+  padding: 2px 16px;
+  background: none;
+  border: 0;
+  border-left: 1px solid var(--border-color);
+  border-radius: 0;
+}
+
+/* Подпись — в одну строку: перенос у одного показателя опускал его
+   число ниже соседних */
+.statistics-page .analytics-item .kpi-label {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.statistics-page .analytics-item .kpi-sub {
+  margin-top: 4px;
+  color: var(--text-secondary);
+}
+
+.statistics-page .analytics-note {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-color);
+  font-size: var(--fs-small);
+  line-height: 18px;
+  color: var(--text-secondary);
+}
+
+/* Пустое состояние внутри карточки — плотнее, чем на целой странице */
+.statistics-page .list > .empty-state {
+  padding: 24px 16px 28px;
+}
+
+/* Топ категорий: доля времени — полосой, акцент только у неё */
+.statistics-page .stats-top-card .card-subtitle {
+  color: var(--text-tertiary);
+}
+
+.top-cat-row {
+  min-height: 60px;
+}
+
+.top-cat-share {
+  flex: none;
+  width: 200px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 36px;
+  align-items: center;
+  column-gap: 10px;
+  row-gap: 6px;
+}
+
+.top-cat-time {
+  grid-column: 1 / -1;
+  text-align: right;
+  font-size: var(--fs-strong);
+  line-height: 20px;
+  font-weight: var(--fw-semibold);
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.top-cat-pct {
+  font-size: var(--fs-small);
+  line-height: 16px;
+  text-align: right;
+  color: var(--text-tertiary);
+}
+
+/* Упущенные награды. Строки нейтральные: раньше каждая была залита
+   оранжевым, и цвет переставал что-либо значить. Янтарным остаётся
+   только недобор меньше часа */
+.statistics-page .missed-card .card-header {
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+
+.statistics-page .missed-sum {
+  font-size: var(--fs-small);
+  font-weight: var(--fw-regular);
+  color: var(--text-secondary);
+}
+
+.statistics-page .missed-list {
+  margin-top: 0;
+  gap: 0;
+}
+
+.statistics-page .missed-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 40px;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: none;
+}
+
+.statistics-page .missed-item.close {
+  border: 0;
+  background: none;
+}
+
+.statistics-page .missed-item:hover {
+  background: var(--hover-bg);
+}
+
+.missed-main {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.statistics-page .missed-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-size: var(--fs-body);
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Игра уступает место названию награды первой */
+.statistics-page .missed-game {
+  flex: 0 3 auto;
+  min-width: 0;
+  font-size: var(--fs-small);
+  color: var(--text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.statistics-page .missed-short {
+  flex: none;
+  font-size: var(--fs-small);
+  font-weight: var(--fw-medium);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.statistics-page .missed-short.tone-warn {
+  color: var(--warning);
+}
+
+.missed-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.statistics-page .missed-note {
+  margin: 0;
+  font-size: var(--fs-small);
+  line-height: 16px;
+  color: var(--text-tertiary);
+}
+
+/* Последние сессии: подписи колонок — в шапке карточки, ровно над
+   числами строк (у строк и шапки один правый край) */
+.session-cols {
+  display: grid;
+  grid-template-columns: repeat(3, 96px);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+  text-align: right;
+  color: var(--text-tertiary);
+}
+
+.statistics-page .session-item {
+  min-height: 52px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+.statistics-page .session-meta .badge {
+  height: 18px;
+}
+
+.session-nums {
+  flex: none;
+  display: grid;
+  grid-template-columns: repeat(3, 96px);
+  text-align: right;
+}
+
+.session-num {
+  font-size: var(--fs-body);
+  line-height: 20px;
+  font-weight: var(--fw-semibold);
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+/* Нули и прочерки — тихим цветом: глаз цепляется за то, что есть */
+.session-num.is-zero {
+  font-weight: var(--fw-regular);
+  color: var(--text-tertiary);
+}
+
+/* Сессии, не вошедшие в итоги, — тихая информационная строка внизу */
+.statistics-page .stats-excluded {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px 10px 14px;
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  font-size: var(--fs-small);
+  line-height: 18px;
+  color: var(--text-secondary);
+}
+
+.statistics-page .stats-excluded > svg {
+  flex: none;
+  color: var(--text-tertiary);
+}
+
+.statistics-page .stats-excluded-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.statistics-page .stats-excluded-text b {
+  font-weight: var(--fw-semibold);
+  color: var(--text-primary);
+}
+
+/* Текст окна подтверждения удаления сессий. Окно добавляется в body, вне
+   страницы, поэтому имя своё, а не под .statistics-page */
+.stats-confirm-text {
+  margin-top: 8px;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  color: var(--text-secondary);
+}
+
+/* ───────────────────────── Календарь ───────────────────────── */
+
+/* Панель: фильтр и «Завершённые» слева, сводка справа */
+.calendar-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-bottom: var(--space-3);
+}
+
+.calendar-page .calendar-summary {
+  margin: 0 0 0 auto;
+  font-size: var(--fs-small);
+  line-height: 16px;
+  color: var(--text-secondary);
+}
+
+/* Галочка в чипе видна, только когда он включён */
+.calendar-ended-chip .chip-check {
+  display: none;
+}
+
+.calendar-ended-chip[aria-pressed="true"] .chip-check {
+  display: block;
+}
+
+/* Данные из памяти — тихая строка, а не жёлтая рамка посреди сводки */
+.calendar-page .calendar-warn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 var(--space-3);
+  padding: 7px 12px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--warning-soft);
+  font-size: var(--fs-small);
+  line-height: 16px;
+  color: var(--text-primary);
+}
+
+.calendar-page .calendar-warn > svg {
+  flex: none;
+  color: var(--warning);
+}
+
+.calendar-page.is-refreshing #calendar-body,
+.calendar-page.is-refreshing #calendar-timeline {
+  opacity: 0.6;
+  transition: opacity var(--transition-base);
+}
+
+/* Лента времени. Обрезку делений делает .tl-chart, а не вся лента: иначе
+   обрезалась бы и рамка фокуса у кнопки «Показать все» под ней */
+.calendar-page #calendar-timeline {
+  --tl-name-width: 150px;
+  --tl-gap: 12px;
+  position: relative;
+  overflow: visible;
+}
+
+.calendar-page .tl-chart {
+  position: relative;
+  overflow: hidden;
+}
+
+.calendar-page .tl-scale {
+  display: grid;
+  grid-template-columns: var(--tl-name-width) minmax(0, 1fr);
+  gap: var(--tl-gap);
+  height: 20px;
+  margin-bottom: 6px;
+}
+
+.calendar-page .tl-tick {
+  top: 18px;
+  background: var(--border-color);
+}
+
+/* Выходные чуть заметнее — по ним удобно ориентироваться */
+.calendar-page .tl-tick.weekend {
+  background: var(--border-strong);
+}
+
+.calendar-page .tl-label {
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+  color: var(--text-tertiary);
+}
+
+/* Точка «сейчас» над линией выходит за верх строк — не обрезаем её */
+.calendar-page .tl-rows {
+  gap: 4px;
+  overflow: visible;
+}
+
+.calendar-page .tl-row {
+  grid-template-columns: var(--tl-name-width) minmax(0, 1fr);
+  gap: var(--tl-gap);
+}
+
+.calendar-page .tl-name {
+  font-size: var(--fs-small);
+  line-height: 16px;
+  color: var(--text-secondary);
+}
+
+.calendar-page .tl-row:hover .tl-name {
+  color: var(--text-primary);
+}
+
+.calendar-page .tl-track {
+  height: 20px;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  transition: background var(--transition-fast);
+}
+
+.calendar-page .tl-row:hover .tl-track {
+  background: var(--hover-bg);
+}
+
+/* Обычная кампания — нейтральная полоса: 51 одинаковая фиолетовая
+   полоса ничего не выделяла */
+.calendar-page .tl-bar {
+  top: 2px;
+  bottom: 2px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: var(--surface-3);
+}
+
+.calendar-page .tl-bar-text {
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+  font-weight: var(--fw-medium);
+  color: var(--text-secondary);
+}
+
+/* Свои — только когда в ленте есть и чужие (.tl-mixed ставит JS): при
+   автофарме в списке все игры, и выделенным оказалось бы всё. Полоска
+   слева — псевдоэлементом, а не тенью: экономный режим тени снимает */
+.calendar-page #calendar-timeline.tl-mixed .tl-bar.mine:not(.late):not(.upcoming) {
+  background: var(--accent-soft);
+}
+
+.calendar-page #calendar-timeline.tl-mixed .tl-bar.mine:not(.late):not(.upcoming)::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 2px;
+  background: var(--accent);
+}
+
+.calendar-page #calendar-timeline.tl-mixed .tl-bar.mine:not(.late):not(.upcoming) .tl-bar-text {
+  color: var(--text-primary);
+}
+
+/* Все награды уже не успеть */
+.calendar-page .tl-bar.late {
+  background: var(--warning-soft);
+}
+
+.calendar-page .tl-bar.late .tl-bar-text {
+  color: var(--warning);
+}
+
+/* Ещё не началась — только контур */
+.calendar-page .tl-bar.upcoming {
+  background: transparent;
+  border: 1px solid var(--border-strong);
+}
+
+/* Уходит за край окна — конец полосы растворяется, а не обрывается
+   ровным краем, который читался бы как настоящий срок */
+.calendar-page .tl-bar.clipped-end {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent);
+  mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent);
+}
+
+.calendar-page .tl-now {
+  width: 1px;
+  margin-left: 0;
+  border-radius: 0;
+  background: var(--danger);
+  box-shadow: none;
+}
+
+.calendar-page .tl-now::before {
+  content: '';
+  position: absolute;
+  top: -4px;
+  left: -3px;
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-circle);
+  background: var(--danger);
+}
+
+.calendar-page .tl-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 28px;
+  margin-top: 10px;
+}
+
+.calendar-page .tl-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+  color: var(--text-tertiary);
+}
+
+.calendar-page .tl-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.calendar-page .tl-swatch {
+  display: inline-block;
+  flex: none;
+  width: 14px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--surface-3);
+}
+
+.calendar-page .tl-swatch.is-now {
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-circle);
+  background: var(--danger);
+}
+
+.calendar-page .tl-swatch.is-mine {
+  background: var(--accent-soft);
+  border-left: 2px solid var(--accent);
+}
+
+.calendar-page .tl-swatch.is-late {
+  background: var(--warning-soft);
+  border: 1px solid var(--warning);
+}
+
+.calendar-page .tl-swatch.is-upcoming {
+  background: transparent;
+  border: 1px solid var(--border-strong);
+}
+
+/* Скелетон ленты на время первой загрузки */
+.calendar-page .tl-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 26px 0 4px calc(var(--tl-name-width) + var(--tl-gap));
+}
+
+.calendar-page .tl-skeleton .skeleton {
+  height: 16px;
+  border-radius: var(--radius-xs);
+}
+
+/* Группы по срокам */
+.calendar-page .calendar-group {
+  margin-bottom: var(--space-3);
+}
+
+.calendar-page .calendar-group-head {
+  margin-bottom: 4px;
+}
+
+.calendar-page .calendar-group-title {
+  font-size: var(--fs-title);
+  font-weight: var(--fw-semibold);
+}
+
+/* Счётчик — обычный нейтральный бейдж, без фиолетовой подложки */
+.calendar-page .calendar-group-count {
+  padding: 0 7px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--surface-3);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: var(--fw-semibold);
+  font-family: var(--font-ui);
+  letter-spacing: 0;
+}
+
+.calendar-page .calendar-list {
+  gap: 0;
+}
+
+.calendar-page .calendar-item {
+  gap: 12px;
+  min-height: var(--row-h);
+  padding: 8px 12px;
+  border: 0;
+  background: none;
+  opacity: 1;
+}
+
+/* Уже не догнать: приглушено содержимое, но не кнопка — добавить
+   такую игру всё равно можно */
+.calendar-page .calendar-item.hopeless .stats-cover,
+.calendar-page .calendar-item.hopeless .row-main {
+  opacity: 0.55;
+}
+
+.calendar-page .calendar-art {
+  width: 32px;
+  height: 43px;
+}
+
+.calendar-page .calendar-name {
+  margin-bottom: 2px;
+  font-size: var(--fs-strong);
+  font-weight: var(--fw-medium);
+}
+
+.calendar-campaign {
+  font-weight: var(--fw-regular);
+  color: var(--text-secondary);
+}
+
+.calendar-page .calendar-meta {
+  gap: 4px 6px;
+  font-size: var(--fs-small);
+}
+
+.calendar-page .calendar-when,
+.calendar-page .calendar-when.upcoming {
+  font-weight: var(--fw-medium);
+  color: var(--text-primary);
+}
+
+/* «1 награда за час» и «Не успеть» — бейджи; прежние правила давали им
+   рамку и свои цвета */
+.calendar-page .calendar-tag {
+  padding: 0 7px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--success-soft);
+  color: var(--success);
+  font-weight: var(--fw-semibold);
+}
+
+.calendar-page .calendar-tag.late {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.calendar-action {
+  flex: none;
+  display: flex;
+  justify-content: flex-end;
+  min-width: 96px;
+}
+
+.calendar-page .calendar-owned {
+  font-size: 11px;
+  font-weight: var(--fw-semibold);
+  color: var(--text-secondary);
+}
+
+.calendar-page .calendar-add {
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.calendar-page .calendar-empty {
+  padding: 0;
+}
+
+/* ───────────────────────── Компактный режим ─────────────────────────
+   Строки — по токену --row-h (44px), отступы — те же 12px по краям, что
+   и у разделителей: прежнее правило main.css давало 10px, и текст
+   строк съезжал относительно заголовка карточки */
+body.compact-mode .calendar-page .calendar-item {
+  padding: 4px 12px;
+}
+
+body.compact-mode .statistics-page .session-item {
+  min-height: var(--row-h);
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
+body.compact-mode .statistics-page .top-cat-row {
+  min-height: 48px;
+}
+
+body.compact-mode .statistics-page .missed-item {
+  min-height: 34px;
+  padding-top: 4px;
+  padding-bottom: 4px;
+}

@@ -21,7 +21,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   // Уведомления
   showNotification: (title, body, icon) => ipcRenderer.send('show-notification', { title, body, icon }),
-  showDropNotification: (dropName, gameName, dropIcon) => ipcRenderer.send('show-drop-notification', { dropName, gameName, dropIcon }),
+  // extra (необязательно): { kind: 'drop'|'summary'|'test', meta: '2 из 4' }
+  showDropNotification: (dropName, gameName, dropIcon, extra) => ipcRenderer.send('show-drop-notification', {
+    dropName, gameName, dropIcon,
+    extra: extra && typeof extra === 'object'
+      ? { kind: extra.kind, meta: extra.meta, count: extra.count }
+      : undefined
+  }),
+  // Системное уведомление при окне в фокусе main присылает сюда: окно
+  // показывает его тостом, а не всплывашкой Windows поверх себя
+  onInAppNotice: (callback) => ipcRenderer.on('in-app-notice', (_e, notice) => callback(notice)),
   
   // Выключение
   shutdownComputer: (action) => ipcRenderer.invoke('shutdown-computer', action),

@@ -6,6 +6,7 @@ const translations = {
       accounts: 'Аккаунты',
       drops: 'Дропсы',
       subscriptions: 'Подписки',
+      calendar: 'Календарь',
       statistics: 'Статистика',
       settings: 'Настройки'
     },
@@ -356,6 +357,7 @@ const translations = {
       accounts: 'Accounts',
       drops: 'Drops',
       subscriptions: 'Subscriptions',
+      calendar: 'Calendar',
       statistics: 'Statistics',
       settings: 'Settings'
     },

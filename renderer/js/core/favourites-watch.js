@@ -123,6 +123,7 @@ class FavouritesWatch {
     console.log('[Избранное] В эфире:', channel.displayName, '|', body);
 
     window.notifyFarmingEvent?.(`${channel.displayName} в эфире`, body);
+    window.eventLog?.add({ type: 'favourite-live', title: `${channel.displayName} в эфире`, detail: body }); window.chime?.play('favourite');
     window.utils?.showToast(`${channel.displayName} в эфире: ${body}`, withDrops ? 'success' : 'info');
   }
 }
