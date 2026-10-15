@@ -1,136 +1,81 @@
-// Notification Service - централизованная система уведомлений
+/**
+ * NotificationService — прежняя обёртка над уведомлениями.
+ *
+ * Своим кодом её почти никто не зовёт: уведомления о событиях фарминга
+ * идут через window.notifyFarmingEvent (farming-page.js), окно о награде —
+ * через window.showDropNotification, звук — через window.chime. Объект
+ * оставлен ради совместимости: settings-manager.js сообщает ему о
+ * выключателе звука.
+ *
+ * Раньше сервис при загрузке создавал собственный AudioContext (открытый
+ * аудиопоток Windows на всё время работы) и пищал своим тоном в 800 Гц
+ * мимо всех настроек. Теперь звук один — chime.js, с громкостью, тихими
+ * часами и игровым режимом. Тексты без эмодзи: Windows рисует их в
+ * уведомлениях по-разному, а заголовок и так говорит суть.
+ */
 class NotificationService {
   constructor() {
     this.soundEnabled = true;
-    this.notificationSound = null;
-    this.initSound();
   }
 
-  /**
-   * Инициализация звука для уведомлений
-   */
-  initSound() {
-    // Создаём простой звук уведомления используя Web Audio API
-    // Можно будет заменить на реальный аудио файл
-    this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-  }
-
-  /**
-   * Воспроизвести звук уведомления
-   */
+  /** Звук о полученной награде — общим сигналом chime.js. */
   playNotificationSound() {
-    if (!this.soundEnabled || !this.audioContext) return;
-
-    try {
-      const oscillator = this.audioContext.createOscillator();
-      const gainNode = this.audioContext.createGain();
-      
-      oscillator.connect(gainNode);
-      gainNode.connect(this.audioContext.destination);
-      
-      oscillator.frequency.value = 800;
-      oscillator.type = 'sine';
-      
-      gainNode.gain.setValueAtTime(0.3, this.audioContext.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.5);
-      
-      oscillator.start(this.audioContext.currentTime);
-      oscillator.stop(this.audioContext.currentTime + 0.5);
-    } catch (error) {
-      console.error('Failed to play notification sound:', error);
-    }
+    if (!this.soundEnabled) return false;
+    return !!window.chime?.play?.('drop');
   }
 
-  /**
-   * Показать desktop уведомление
-   */
+  /** Системное уведомление Windows. */
   async showDesktopNotification(title, body, options = {}) {
-    console.log('[NotificationService] showDesktopNotification called:', { title, body, options, hasElectronAPI: !!window.electronAPI });
-    
     try {
-      if (window.electronAPI && window.electronAPI.showNotification) {
-        console.log('[NotificationService] Calling electronAPI.showNotification');
+      if (window.electronAPI?.showNotification) {
         window.electronAPI.showNotification(title, body, options.icon || null);
       } else {
-        console.warn('[NotificationService] electronAPI not available. Notification:', title, body);
+        console.warn('[Уведомления] electronAPI недоступен:', title);
       }
     } catch (error) {
-      console.error('[NotificationService] Failed to show desktop notification:', error);
+      console.error('[Уведомления] Не показано:', error);
     }
   }
 
-  /**
-   * Показать кастомное уведомление о дропе (в стиле приложения)
-   */
-  showCustomDropNotification(dropName, gameName, dropIcon = null) {
-    // Используем Electron API для показа уведомления на экране (не внутри приложения)
-    if (window.electronAPI && window.electronAPI.showDropNotification) {
-      window.electronAPI.showDropNotification(dropName, gameName, dropIcon);
+  /** Окно о полученной награде (в углу экрана). */
+  showCustomDropNotification(dropName, gameName, dropIcon = null, extra = undefined) {
+    if (window.electronAPI?.showDropNotification) {
+      window.electronAPI.showDropNotification(dropName, gameName, dropIcon, extra);
     } else if (typeof window.showDropNotification === 'function') {
-      window.showDropNotification(dropName, gameName, dropIcon);
+      window.showDropNotification(dropName, gameName, dropIcon, extra);
     } else {
-      console.error('[NotificationService] No method available to show drop notification');
+      console.error('[Уведомления] Окно о награде показать нечем');
     }
   }
 
-  /**
-   * Уведомление о готовности дропа
-   */
+  /** Награду можно забрать. */
   notifyDropReady(dropName, gameName) {
     return this.showDesktopNotification(
-      '🎁 Дроп готов к получению!',
-      `${dropName}\n${gameName}`,
-      { 
-        icon: '../assets/icon.png',
-        tag: `drop-ready-${dropName}` // Предотвращает дубликаты
-      }
+      'Награда готова',
+      `${dropName} · ${gameName}`
     );
   }
 
-  /**
-   * Уведомление об успешном получении дропа
-   */
+  /** Награда получена — окно с наградой, если оно не выключено. */
   notifyDropClaimed(dropName, gameName, dropIcon = null) {
-    // Проверяем настройку перед показом уведомления
-    const settings = window.SettingsManager;
-    if (!settings || !settings.get('notifyOnDropClaimed')) {
-      return;
-    }
-    
-    // Показываем кастомное уведомление в стиле приложения
-    // Используем глобальную функцию если доступна, иначе собственную
+    if (window.settings?.get?.('notifyOnDropClaimed') === false) return;
+
     if (typeof window.showDropNotification === 'function') {
       return window.showDropNotification(dropName, gameName, dropIcon);
-    } else {
-      return this.showCustomDropNotification(dropName, gameName, dropIcon);
     }
+    return this.showCustomDropNotification(dropName, gameName, dropIcon);
   }
 
-  /**
-   * Уведомление об ошибке
-   */
+  /** Ошибка — системным уведомлением. */
   notifyError(message, details = '') {
-    return this.showDesktopNotification(
-      '❌ Ошибка',
-      `${message}\n${details}`,
-      { 
-        icon: '../assets/icon.png',
-        playSound: false
-      }
-    );
+    return this.showDesktopNotification('Ошибка', details ? `${message}: ${details}` : message);
   }
 
-  /**
-   * Включить/выключить звук
-   */
   toggleSound(enabled) {
-    this.soundEnabled = enabled;
+    this.soundEnabled = enabled !== false;
     return this.soundEnabled;
   }
 
-  /**
-   * Проверить статус звука
-   */
   isSoundEnabled() {
     return this.soundEnabled;
   }

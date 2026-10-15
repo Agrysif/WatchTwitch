@@ -1,0 +1,2069 @@
+/* ===== ФАРМИНГ =====
+ *
+ * Владелец: FARMING. Здесь — renderer/pages/farming.html, farming-page.js, окно категории, сайдбарная строка статуса (farm-status.js) — правила страницы «Фарминг». Корневой класс .farming-page.
+ *
+ * Подключается после main.css, themes.css и animations.css, поэтому
+ * перекрывает общие компоненты и прежние правила страниц из main.css без
+ * !important. Только токены themes.css (var(--surface-1), var(--accent-text)…),
+ * без готовых цветов. Рамки и разделители — border или псевдоэлемент, не
+ * box-shadow: экономный режим графики (включён по умолчанию) снимает все тени.
+ *
+ * Разделы:
+ *   1. Главный блок: простой, плеер, колонка статуса
+ *   2. Панель наград кампании
+ *   3. Предложения: сменить категорию, добавить выгодную игру
+ *   4. Очередь категорий
+ *   5. Окна: выбор категории, категория, стрим; график зрителей
+ *   6. Чек-лист первого запуска
+ *   7. Панель плеера (кнопки поверх видео)
+ *   8. Компактный режим и узкое окно
+ */
+
+/* ───────────────────────── 1. Главный блок ───────────────────────── */
+
+.farm-hero {
+  padding: 16px;
+}
+
+/* ── Простой: «Фарминг не запущен» ──
+   Заглушка — сама кнопка запуска. Внутри карточки своя рамка и фон ей не
+   нужны (рамка в рамке), остаётся спокойная пустая область по центру */
+.farming-page .waiting-state {
+  min-height: 200px;
+  gap: 10px;
+  padding: 28px 18px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.farming-page .waiting-state:hover {
+  background: var(--hover-bg);
+}
+
+.farming-page .waiting-state:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.farming-page .waiting-label {
+  margin: 4px 0 0;
+  font-family: var(--font-display);
+  font-size: 16px;
+  line-height: 22px;
+  font-weight: var(--fw-semibold);
+  color: var(--text-primary);
+}
+
+/* Пояснение под заголовком: сколько в очереди и что будет при запуске */
+.farming-page .waiting-sub {
+  max-width: 420px;
+  margin: -4px 0 0;
+  font-size: 13px;
+  line-height: 18px;
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.farming-page .waiting-sub:empty {
+  display: none;
+}
+
+/* Вид главной кнопки. Это <p> внутри элемента с role="button" — вложенную
+   кнопку не делаем, иначе фокус и нажатие раздваиваются */
+.farming-page .waiting-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: var(--ctl-h);
+  margin: 6px 0 0;
+  padding: 0 16px;
+  border-radius: var(--radius-ctl);
+  background: var(--accent-strong);
+  color: var(--text-on-accent);
+  font-size: 13px;
+  font-weight: var(--fw-semibold);
+  line-height: 1;
+  transition: background var(--transition-fast);
+}
+
+/* Треугольник «play» залитый — так кнопка запуска читается сразу */
+.farming-page .waiting-hint svg {
+  flex: none;
+  fill: currentColor;
+}
+
+.farming-page .waiting-state:hover .waiting-hint {
+  background: var(--accent-hover);
+}
+
+/* Поиск стрима уже идёт (пишет farm-status.js): кнопка запуска не нужна */
+.farming-page .waiting-state.is-busy {
+  cursor: progress;
+}
+
+.farming-page .waiting-state.is-busy .waiting-hint {
+  display: none;
+}
+
+/* ── Плеер и колонка статуса ── */
+.farm-hero-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 1fr);
+  gap: 16px;
+  align-items: stretch;
+}
+
+.farm-hero-media {
+  min-width: 0;
+  align-self: start;
+}
+
+/* При видимом чате плеер и чат занимают всю ширину, колонка — под ними */
+.farm-hero.has-chat .farm-hero-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+#player-chat-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  transition: grid-template-columns var(--dur-slow) var(--ease-out);
+}
+
+.farm-hero.has-chat #player-chat-grid {
+  grid-template-columns: 1fr 340px;
+}
+
+/* Слот плеера: webview встаёт точно поверх него (SlottedWebview меряет
+   прямоугольник слота), поэтому размер слота и есть размер видео */
+#farming-player-slot {
+  position: relative;
+  width: 100%;
+  padding-bottom: 56.25%;
+  background: #000;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+#twitch-chat-container {
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  transition: opacity var(--dur-slow) var(--ease-out), transform var(--dur-slow) var(--ease-out);
+}
+
+#farming-chat-slot {
+  width: 100%;
+  height: 100%;
+  min-height: 300px;
+  background: var(--surface-2);
+}
+
+/* Колонка справа от плеера. Кнопки прижаты к низу: когда колонка ниже
+   плеера, они встают вровень с его нижним краем */
+.farm-hero-side {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+/* ── Строка статуса: точка + фраза + пояснение ── */
+.farm-status-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 20px;
+  min-width: 0;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: var(--fw-semibold);
+  color: var(--text-primary);
+}
+
+/* Пока farm-status.js ничего не написал — строки нет совсем */
+.farm-status-line:not(:has(.farm-status-main:not(:empty))) {
+  display: none;
+}
+
+.farm-status-main {
+  flex: none;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.farm-status-sub {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: var(--fw-regular);
+  color: var(--text-secondary);
+}
+
+.farm-status-sub:not(:empty)::before {
+  content: '·';
+  margin-right: 8px;
+  color: var(--text-tertiary);
+}
+
+.farm-status-line.is-error .farm-status-main {
+  color: var(--danger);
+}
+
+/* ── Канал ──
+   Без рамки, свечения и «живого» индикатора: что идёт, уже сказала строка
+   статуса. Блок целиком открывает подробности стрима — подсветка при
+   наведении и стрелка справа говорят, что по нему можно нажать */
+.farming-page .stream-info-card {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin: -6px -8px;
+  padding: 6px 8px;
+  overflow: visible;
+  background: none;
+  border: 0;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.farming-page .stream-info-card::before {
+  content: none;
+}
+
+.farming-page .stream-info-card:hover {
+  background: var(--hover-bg);
+}
+
+.farming-page .stream-info-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
+}
+
+.farming-page .stream-cover-wrapper {
+  flex: none;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+}
+
+.farming-page .stream-cover-wrapper::before {
+  content: none;
+}
+
+.farming-page .stream-game-cover {
+  display: block;
+  width: 40px;
+  height: 54px;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  background: var(--surface-2);
+  box-shadow: none;
+}
+
+.farming-page .stream-game-cover:not([src]),
+.farming-page .stream-game-cover[src=""] {
+  background: var(--surface-2);
+}
+
+.stream-info-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.stream-channel-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.farming-page .stream-channel-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-display);
+  font-size: 15px;
+  line-height: 20px;
+  font-weight: var(--fw-semibold);
+  color: var(--text-primary);
+}
+
+.farming-page .stream-game-name {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: var(--fw-regular);
+  color: var(--text-secondary);
+}
+
+.farming-page .stream-title-text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  margin: 4px 0 0;
+  overflow: hidden;
+  white-space: normal;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-tertiary);
+  overflow-wrap: anywhere;
+}
+
+.stream-meta {
+  margin-top: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.stream-meta .num {
+  color: var(--text-primary);
+}
+
+/* Теги стрима — бейджем и только когда они есть */
+.farming-page .stream-category-tag {
+  display: none;
+  max-width: 100%;
+  margin-top: 6px;
+  padding: 3px 7px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 14px;
+  font-weight: var(--fw-medium);
+}
+
+.farming-page .stream-category-tag:not(:empty) {
+  display: inline-block;
+}
+
+.stream-info-chevron {
+  flex: none;
+  align-self: center;
+  color: var(--text-tertiary);
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.farming-page .stream-info-card:hover .stream-info-chevron {
+  opacity: 1;
+}
+
+/* ── Следующая награда ── */
+.farm-next {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  grid-template-rows: auto auto auto;
+  column-gap: 10px;
+  row-gap: 2px;
+  align-items: center;
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+}
+
+.farm-next[hidden] {
+  display: none;
+}
+
+.farm-next-art {
+  grid-row: 1 / span 2;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  background: var(--surface-3);
+}
+
+/* Без картинки — нейтральный подарок вместо пустого квадрата */
+.farm-next-art.is-empty {
+  display: grid;
+  place-items: center;
+  color: var(--text-tertiary);
+}
+
+.farm-next-label {
+  grid-column: 2;
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--text-tertiary);
+}
+
+.farm-next-name {
+  grid-column: 2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: var(--fw-semibold);
+  color: var(--text-primary);
+}
+
+.farm-next-when {
+  grid-column: 2 / span 2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.farm-next-when.is-ready {
+  color: var(--success);
+}
+
+.farm-next-pct {
+  grid-column: 3;
+  grid-row: 1;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: var(--fw-semibold);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.farm-next .progress {
+  grid-column: 1 / -1;
+  margin-top: 8px;
+}
+
+/* ── Баллы канала: три числа в одну строку ── */
+.farm-side-label {
+  margin-bottom: 6px;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: var(--fw-medium);
+  color: var(--text-secondary);
+}
+
+.farming-page .points-strip .points-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0;
+}
+
+.farming-page .points-strip .points-cell {
+  min-width: 0;
+  padding: 0 10px;
+}
+
+.farming-page .points-strip .points-cell:first-child {
+  padding-left: 0;
+}
+
+.farming-page .points-strip .points-cell + .points-cell {
+  border-left: 1px solid var(--border-color);
+  border-top: 0;
+}
+
+.farming-page .points-strip .points-head {
+  display: block;
+  margin: 0 0 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  line-height: 14px;
+  font-weight: var(--fw-regular);
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-tertiary);
+}
+
+.farming-page .points-strip .points-head svg {
+  display: none;
+}
+
+.farming-page .points-strip .points-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-display);
+  font-size: 16px;
+  line-height: 22px;
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0;
+  color: var(--text-primary);
+}
+
+.farming-page .points-strip .points-sub,
+.farming-page .points-strip .points-sub-accent {
+  margin-top: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  line-height: 14px;
+  font-weight: var(--fw-regular);
+  color: var(--text-tertiary);
+}
+
+/* ── Кнопки управления ── */
+.farm-hero-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: auto;
+}
+
+.farm-next-stream {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.farm-next-stream span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* «‹ Категория ›» — одна группа: стрелки явно про категорию, а не про
+   стримы. Выглядит как вторичная кнопка, внутри — две кнопки-иконки */
+.farm-cat-stepper {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  gap: 0;
+  height: var(--ctl-h);
+  padding: 0 1px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-ctl);
+  background: var(--button-secondary-bg);
+}
+
+.farm-cat-stepper .btn-icon.btn-sm {
+  width: 28px;
+  height: 28px;
+  border-radius: calc(var(--radius-ctl) - 2px);
+  color: var(--text-secondary);
+}
+
+.farm-cat-stepper .btn-icon.btn-sm:hover {
+  background: var(--surface-3);
+  color: var(--text-primary);
+}
+
+.farm-cat-stepper-label {
+  padding: 0 4px;
+  font-size: 12px;
+  font-weight: var(--fw-medium);
+  color: var(--text-secondary);
+  user-select: none;
+}
+
+/* ───────────────────────── 2. Панель наград ───────────────────────── */
+
+/* Нейтральная часть того же блока: линия сверху вместо фиолетовой плашки.
+   display пишет JS (style) — здесь его не трогаем */
+#drops-progress-horizontal {
+  margin-top: 16px;
+  padding: 16px 0 0;
+  border: 0;
+  border-top: 1px solid var(--border-color);
+  border-radius: 0;
+  background: none;
+}
+
+.drops-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.drops-panel-head .card-title {
+  margin: 0;
+  min-width: 0;
+}
+
+.drops-panel-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: none;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.drops-panel-pct {
+  font-family: var(--font-display);
+  font-size: 15px;
+  line-height: 20px;
+  font-weight: var(--fw-semibold);
+  color: var(--text-primary);
+}
+
+.drops-panel > .progress {
+  margin-bottom: 14px;
+}
+
+/* Прогноз: сколько ещё смотреть и что успеется до автовыключения */
+.drops-panel .drops-forecast {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  margin: -4px 0 14px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-secondary);
+}
+
+.drops-panel .drops-forecast > svg {
+  flex: none;
+  color: var(--text-tertiary);
+}
+
+.drops-panel .drops-forecast-main {
+  font-weight: var(--fw-medium);
+  color: var(--text-primary);
+}
+
+.drops-panel .drops-forecast-clock,
+.drops-panel .drops-forecast-note {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  font-weight: var(--fw-regular);
+  color: var(--text-secondary);
+}
+
+.drops-panel .drops-forecast-clock::before,
+.drops-panel .drops-forecast-note::before {
+  content: '·';
+  margin-right: 6px;
+  color: var(--text-tertiary);
+}
+
+.drops-panel .drops-forecast-note.ok {
+  color: var(--success);
+}
+
+/* Не успеваем всё — говорим прямо, но без заливки */
+.drops-panel .drops-forecast-note.short {
+  color: var(--warning);
+}
+
+/* Несколько кампаний одной игры: у каждой своя строка-заголовок */
+.drops-panel .drops-campaign-section + .drops-campaign-section {
+  margin-top: 14px;
+}
+
+.drops-panel-campaign {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin-bottom: 8px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-secondary);
+}
+
+.drops-panel-campaign-art {
+  flex: none;
+  width: 20px;
+  height: 26px;
+  border-radius: var(--radius-xs);
+  object-fit: cover;
+  background: var(--surface-2);
+}
+
+.drops-panel-campaign-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: var(--fw-semibold);
+  color: var(--text-primary);
+}
+
+.drops-panel-campaign-meta {
+  flex: none;
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Карточки наград ── */
+.drop-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+.drops-panel .drop-progress-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  min-height: 0;
+  padding: 10px;
+  background: var(--surface-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+
+.drops-panel .drop-progress-card:hover {
+  border-color: var(--border-strong);
+}
+
+.drops-panel .drop-progress-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.drop-tile-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.drop-tile-art {
+  flex: none;
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  background: var(--surface-3);
+}
+
+.drop-tile-art.is-empty {
+  display: grid;
+  place-items: center;
+  color: var(--text-tertiary);
+}
+
+.drop-tile-pct {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: var(--fw-semibold);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.drop-tile-check {
+  display: grid;
+  place-items: center;
+  color: var(--success);
+}
+
+.drop-tile-name {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  min-height: 32px;
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: var(--fw-medium);
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.drop-tile-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.drop-tile-meta > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Полученная награда: картинка приглушена, подпись зелёная */
+.drops-panel .drop-progress-card.is-earned .drop-tile-art {
+  opacity: 0.7;
+}
+
+.drops-panel .drop-progress-card.is-earned .drop-tile-meta {
+  color: var(--success);
+}
+
+/* ── Подвал панели ── */
+.drops-panel-foot {
+  margin-top: 12px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-secondary);
+}
+
+.drops-panel-foot.is-pending {
+  color: var(--text-primary);
+  font-weight: var(--fw-medium);
+}
+
+/* «Все награды получены» — строка с действием, без заливки целого блока */
+.farming-page .drops-done {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 8px 8px 8px 12px;
+  border-radius: var(--radius-md);
+  background: var(--success-soft);
+}
+
+.farming-page .drops-done > svg {
+  flex: none;
+  color: var(--success);
+}
+
+.farming-page .drops-done-text {
+  flex: 1 1 auto;
+  font-size: 13px;
+  font-weight: var(--fw-semibold);
+  color: var(--text-primary);
+}
+
+.farming-page .drops-done-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.farming-page .drops-done-hint {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* Загрузка панели после смены категории — силуэт вместо надписи */
+.drops-panel.is-loading .skeleton-title {
+  width: 160px;
+}
+
+.drops-panel-skeleton-bar {
+  height: 8px;
+  margin: 12px 0 14px;
+  border-radius: var(--radius-pill);
+}
+
+.drops-panel-skeleton-tile {
+  height: 112px;
+  border-radius: var(--radius-md);
+}
+
+/* Прежний список дропсов (не показывается, но id живы) */
+.drops-legacy {
+  margin-top: 16px;
+}
+
+.drops-legacy-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.drops-legacy-overall,
+.drops-legacy-time {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* ───────────────────────── 3. Предложения ───────────────────────── */
+
+/* «Категория запущена вручную — перейти?» Нейтральная строка с одной
+   главной кнопкой, без жёлтой рамки */
+#switch-offer-slot {
+  margin-top: 12px;
+}
+
+.farming-page .switch-offer {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  padding: 12px 12px 12px 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+}
+
+.farming-page .switch-offer-text {
+  flex: 1;
+  min-width: 220px;
+}
+
+.farming-page .switch-offer-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: var(--fw-semibold);
+  color: var(--text-primary);
+}
+
+.farming-page .switch-offer-title > svg {
+  flex: none;
+  color: var(--warning);
+}
+
+.farming-page .switch-offer-sub {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-secondary);
+}
+
+.farming-page .switch-offer-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* Подсказка о выгодной игре, которой нет в очереди */
+.farming-page .suggestion {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 12px;
+  padding: 8px 8px 8px 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+}
+
+.farming-page .suggestion-art {
+  flex: none;
+  width: 30px;
+  height: 40px;
+  border-radius: var(--radius-xs);
+  object-fit: cover;
+  background: var(--surface-3);
+}
+
+.farming-page .suggestion-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.farming-page .suggestion-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: var(--fw-semibold);
+  color: var(--text-primary);
+}
+
+.farming-page .suggestion-sub {
+  margin-top: 0;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-secondary);
+}
+
+.farming-page .suggestion-add {
+  flex: none;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.farming-page .suggestion-hide {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: var(--ctl-h-sm);
+  height: var(--ctl-h-sm);
+  font-size: 0;
+}
+
+.farming-page .suggestion-hide:hover {
+  background: var(--hover-bg);
+  color: var(--text-primary);
+}
+
+/* ───────────────────────── 4. Очередь категорий ───────────────────────── */
+
+.farm-queue-head {
+  flex-wrap: wrap;
+}
+
+.farm-queue-head .card-title .badge {
+  font-family: var(--font-ui);
+  letter-spacing: 0;
+}
+
+.farm-queue-head .card-title .badge:empty {
+  display: none;
+}
+
+.farm-queue-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* «Автофарм всех дропсов»: состояние показывает переключатель внутри,
+   сама кнопка не перекрашивается — иначе рядом два акцента */
+#add-all-drops-btn[aria-pressed="true"],
+#add-all-drops-btn.is-on {
+  background: var(--button-secondary-bg);
+  border-color: var(--border-color);
+  color: var(--text-primary);
+}
+
+#add-all-drops-btn[aria-pressed="true"]:hover,
+#add-all-drops-btn.is-on:hover {
+  background: var(--button-secondary-hover);
+  border-color: var(--border-strong);
+}
+
+#add-all-drops-btn .switch {
+  pointer-events: none;
+}
+
+/* ── Строка категории ──
+   Слева номер в очереди (при наведении на его месте — ручка
+   перетаскивания), обложка, название и одна строка подробностей; справа
+   действия. «Смотреть», «Закрепить» и «Убрать» видны при наведении,
+   переключатель — всегда: он и есть состояние строки */
+#categories-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.farming-page .category-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 72px;
+  margin: 0;
+  padding: 8px 8px 8px 40px;
+  background: none;
+  border: 0;
+  border-radius: var(--radius-md);
+  box-shadow: none;
+  cursor: grab;
+  transition: background var(--transition-fast), opacity var(--transition-fast);
+}
+
+.farming-page .category-item:hover {
+  background: var(--hover-bg);
+}
+
+/* Разделитель строк — псевдоэлементом: тени экономный режим снимает */
+.farming-page .category-item + .category-item::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 40px;
+  right: 8px;
+  height: 1px;
+  background: var(--border-color);
+  pointer-events: none;
+}
+
+.farming-page .category-item:hover::before,
+.farming-page .category-item:hover + .category-item::before,
+.farming-page .category-item.current::before,
+.farming-page .category-item.current + .category-item::before {
+  opacity: 0;
+}
+
+/* Текущая категория: приподнятая поверхность и полоска акцента слева */
+.farming-page .category-item.current {
+  background: var(--surface-2);
+  border: 0;
+  box-shadow: none;
+}
+
+.farming-page .category-item.current::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 12px;
+  bottom: 12px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+/* Закреплённые узнаются по значку булавки, а не по полосе слева */
+.farming-page .category-item.pinned {
+  border-left: 0;
+}
+
+.farming-page .category-item.disabled {
+  opacity: 0.55;
+}
+
+.farming-page .category-item.disabled .category-image img {
+  filter: grayscale(1);
+}
+
+.farming-page .category-item.drops-completed,
+.farming-page .category-item.ending-soon {
+  background: none;
+  border: 0;
+}
+
+.farming-page .category-item.current.drops-completed {
+  background: var(--surface-2);
+}
+
+.farming-page .category-item.ended {
+  opacity: 0.55;
+}
+
+.farming-page .category-item.dragging {
+  opacity: 0.5;
+  cursor: grabbing;
+  background: var(--surface-2);
+}
+
+/* Номер в очереди и ручка делят одно место слева */
+.farming-page .category-priority {
+  position: absolute;
+  left: 4px;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  min-width: 0;
+  height: auto;
+  padding: 0;
+  border-radius: 0;
+  background: none;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-weight: var(--fw-regular);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  transition: opacity var(--transition-fast);
+}
+
+.farming-page .category-drag-handle {
+  position: absolute;
+  left: 4px;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  color: var(--text-tertiary);
+  cursor: grab;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.farming-page .category-item:hover .category-drag-handle,
+.farming-page .category-item.dragging .category-drag-handle {
+  opacity: 1;
+}
+
+.farming-page .category-item:hover .category-priority,
+.farming-page .category-item.dragging .category-priority {
+  opacity: 0;
+}
+
+.farming-page .category-image {
+  flex: none;
+  width: 40px;
+  height: 54px;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.farming-page .category-image img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center top;
+}
+
+/* Обложка больше не «прокручивается» при наведении: движение без смысла */
+.farming-page .category-item:hover .category-image img {
+  animation: none;
+}
+
+.farming-page .category-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.farming-page .category-name {
+  margin: 0 0 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: var(--fw-medium);
+  color: var(--text-primary);
+}
+
+/* Строка подробностей: «Сейчас · Дропсы 64% · 19 д 9 ч · 44 тыс. зрителей · Авто» */
+.farming-page .category-status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px 6px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--text-secondary);
+}
+
+.farming-page .category-viewers {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.farming-page .category-viewers:empty,
+.farming-page .category-time-left:empty {
+  display: none;
+}
+
+/* Точка-разделитель — только между текстовыми частями; у бейджей своя
+   подложка, им разделитель не нужен */
+.farming-page .category-drops-status ~ .category-viewers:not(:empty)::before {
+  content: '·';
+  margin-right: 6px;
+  color: var(--text-tertiary);
+}
+
+.farming-page .category-current-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-size: 11px;
+  font-weight: var(--fw-semibold);
+  text-transform: none;
+}
+
+.farming-page .category-drops-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: var(--fw-medium);
+  text-transform: none;
+}
+
+.farming-page .category-drops-status svg {
+  display: none;
+}
+
+.farming-page .category-drops-status.active {
+  background: none;
+  color: var(--text-primary);
+}
+
+.farming-page .category-drops-status.completed {
+  background: none;
+  color: var(--success);
+}
+
+.farming-page .category-drops-status.too-late {
+  background: none;
+  border: 0;
+  color: var(--warning);
+}
+
+.farming-page .category-time-left {
+  font-weight: var(--fw-regular);
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.farming-page .category-time-left::before {
+  content: '·';
+  margin-right: 6px;
+  color: var(--text-tertiary);
+}
+
+/* Меньше суток до конца кампании — срок янтарным */
+.farming-page .category-time-left.is-soon {
+  color: var(--warning);
+}
+
+.farming-page .category-tag,
+.farming-page .category-tag.category-auto-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  margin: 0;
+  padding: 0 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: var(--fw-medium);
+}
+
+.farming-page .time-badge {
+  padding: 0;
+  background: none;
+  color: var(--text-secondary);
+}
+
+.farming-page .time-badge.ending-soon {
+  background: none;
+  color: var(--warning);
+}
+
+.farming-page .time-badge.ended {
+  background: none;
+  color: var(--text-tertiary);
+}
+
+/* ── Действия строки ── */
+.farming-page .category-play-btn,
+.farming-page .category-pin-btn,
+.farming-page .category-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: var(--ctl-h-sm);
+  height: var(--ctl-h-sm);
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-ctl);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  opacity: 0;
+  visibility: visible;
+  transform: none;
+  transition: opacity var(--transition-fast), background var(--transition-fast), color var(--transition-fast);
+}
+
+.farming-page .category-play-btn svg,
+.farming-page .category-pin-btn svg,
+.farming-page .category-remove svg {
+  width: 16px;
+  height: 16px;
+}
+
+.farming-page .category-item:hover :is(.category-play-btn, .category-pin-btn, .category-remove),
+.farming-page .category-item:focus-within :is(.category-play-btn, .category-pin-btn, .category-remove) {
+  opacity: 1;
+  transition-delay: 0s;
+}
+
+.farming-page .category-play-btn:hover,
+.farming-page .category-pin-btn:hover {
+  background: var(--hover-bg);
+  color: var(--text-primary);
+  transform: none;
+}
+
+.farming-page .category-play-btn:focus-visible,
+.farming-page .category-pin-btn:focus-visible,
+.farming-page .category-remove:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Закреплённая — булавка видна всегда, иначе не понять, как открепить */
+.farming-page .category-pin-btn.active {
+  opacity: 1;
+  visibility: visible;
+  border: 0;
+  background: transparent;
+  color: var(--accent-text);
+}
+
+.farming-page .category-pin-btn.active:hover {
+  background: var(--hover-bg);
+  color: var(--accent-text);
+}
+
+.farming-page .category-remove:hover {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.farming-page .category-toggle-switch {
+  margin: 0 4px;
+}
+
+/* «Закреплённые» / «Остальные категории» — подписи групп */
+.farming-page .pinned-divider {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 14px 0 4px;
+  padding: 0 8px 0 40px;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: var(--fw-medium);
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-secondary);
+}
+
+.farming-page .pinned-divider.pinned-head {
+  margin-top: 0;
+}
+
+.farming-page .pinned-divider::after {
+  content: none;
+}
+
+/* Пустая очередь */
+.farming-page .no-categories {
+  padding: 32px 24px;
+}
+
+/* «Категория удалена — Вернуть»: вид тоста, внизу по центру */
+.category-undo {
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  z-index: var(--z-toast);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: calc(100vw - 32px);
+  padding: 6px 6px 6px 14px;
+  transform: translateX(-50%);
+  background: var(--surface-overlay);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-pop);
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 18px;
+  animation: farm-undo-in var(--dur-base) var(--ease-out);
+}
+
+.category-undo-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.category-undo .category-undo-btn {
+  flex-shrink: 0;
+  color: var(--accent-text);
+  font-weight: var(--fw-semibold);
+}
+
+.category-undo .category-undo-btn:hover {
+  color: var(--accent-text);
+}
+
+@keyframes farm-undo-in {
+  from { opacity: 0; transform: translate(-50%, 8px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+/* ───────────────────────── 5. Окна ───────────────────────── */
+
+/* ── Выбор категории (кнопка «Добавить») ── */
+.category-picker-dialog {
+  height: min(640px, calc(100vh - 48px));
+}
+
+.category-picker-search {
+  padding: 0 20px 12px;
+}
+
+.category-picker-dialog .dialog-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 0 12px 12px;
+}
+
+.category-picker .game-item-selector {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+  padding: 8px;
+  background: none;
+  border: 0;
+  border-radius: var(--radius-md);
+  box-shadow: none;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.category-picker .game-item-selector:hover,
+.category-picker .game-item-selector:focus-visible {
+  background: var(--hover-bg);
+  border: 0;
+  box-shadow: none;
+}
+
+.category-picker .game-item-selector:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.category-picker .game-item-selector img {
+  flex: none;
+  width: 40px;
+  height: 54px;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  background: var(--surface-2);
+}
+
+.category-picker .game-item-info {
+  flex: 1;
+  min-width: 0;
+  gap: 2px;
+}
+
+.category-picker .game-item-name {
+  margin: 0;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: var(--fw-medium);
+}
+
+.category-picker .game-item-viewers {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-secondary);
+}
+
+.category-picker .game-item-added {
+  padding: 0;
+  background: none;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-weight: var(--fw-medium);
+}
+
+.category-picker .game-item-selector.added {
+  cursor: default;
+}
+
+.category-picker .game-item-add {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: var(--ctl-h-sm);
+  height: var(--ctl-h-sm);
+  border-radius: var(--radius-ctl);
+  color: var(--text-secondary);
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.category-picker .game-item-selector:hover .game-item-add,
+.category-picker .game-item-selector:focus-visible .game-item-add {
+  opacity: 1;
+}
+
+.category-picker .picker-empty {
+  padding: 32px 16px;
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+/* ── Окно категории ── */
+.category-dialog .dialog-head {
+  align-items: center;
+}
+
+/* Первым в шапке стоит обложка, а общее правило растягивает первый
+   элемент шапки на всю ширину — здесь растягивается текст, а не картинка */
+.category-dialog .dialog-head > .category-dialog-cover,
+.stream-detail-dialog .dialog-head > .stream-detail-avatar {
+  flex: none;
+}
+
+.category-dialog .dialog-head > div,
+.stream-detail-dialog .dialog-head > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.category-dialog-cover {
+  flex: none;
+  width: 44px;
+  height: 59px;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  background: var(--surface-2);
+}
+
+.category-dialog .dialog-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.category-dialog .row-meta {
+  margin-top: 4px;
+}
+
+.category-dialog .dialog-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 0 12px 16px;
+}
+
+.category-dialog-label {
+  margin: 0 8px 4px;
+}
+
+.category-dialog .stream-card-clickable {
+  cursor: pointer;
+}
+
+.category-dialog .stream-card-clickable:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.category-dialog .row-avatar {
+  width: 36px;
+  height: 36px;
+}
+
+.category-dialog .row-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.category-dialog .row-title > .stream-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.category-dialog .row-title .stream-login {
+  flex: none;
+  font-size: 12px;
+  font-weight: var(--fw-regular);
+  color: var(--text-tertiary);
+}
+
+.category-dialog .row-title .badge {
+  flex: none;
+}
+
+.category-dialog .stream-row-title {
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-tertiary);
+}
+
+/* «Смотреть» — при наведении и у лучшего канала: три десятка одинаковых
+   кнопок подряд превращали список в стену */
+.category-dialog .stream-row-watch {
+  flex: none;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.category-dialog .stream-card-clickable:first-child .stream-row-watch,
+.category-dialog .stream-card-clickable:hover .stream-row-watch,
+.category-dialog .stream-card-clickable:focus-visible .stream-row-watch {
+  opacity: 1;
+}
+
+.category-dialog .loading-state,
+.category-dialog .empty-state {
+  padding: 32px 16px;
+}
+
+.category-dialog-about {
+  margin: 16px 8px 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-color);
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--text-secondary);
+}
+
+.category-dialog-about .section-label {
+  margin: 0 0 4px;
+}
+
+/* ── Подробности стрима (клик по карточке канала) ── */
+.stream-detail-dialog .dialog-head {
+  align-items: center;
+}
+
+.stream-detail-avatar {
+  flex: none;
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-circle);
+  object-fit: cover;
+  background: var(--surface-2);
+}
+
+.stream-detail-dialog .row-meta {
+  margin-top: 2px;
+}
+
+.stream-detail-kpis {
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 12px 16px;
+  margin-bottom: 16px;
+}
+
+.stream-detail-kpis .kpi-value {
+  margin-top: 2px;
+  font-size: 18px;
+  line-height: 24px;
+}
+
+.stream-detail-section {
+  padding-top: 12px;
+  margin-top: 12px;
+  border-top: 1px solid var(--border-color);
+}
+
+.stream-detail-section .section-label {
+  margin: 0 0 6px;
+}
+
+.stream-detail-title {
+  margin: -4px -6px;
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+  cursor: copy;
+  transition: background var(--transition-fast);
+}
+
+.stream-detail-title:hover {
+  background: var(--hover-bg);
+}
+
+.stream-detail-category {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.stream-detail-category .row-title {
+  white-space: normal;
+}
+
+.stream-detail-about {
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+/* ── «Нужен вход в Twitch» (окно входа, класс auth-modal — его ищет повтор
+   запуска, поэтому обёртка прежняя; здесь только содержимое) ── */
+.farm-login-dialog {
+  width: min(480px, calc(100vw - 48px));
+}
+
+.farm-login-lead {
+  margin: 0 0 12px;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--text-secondary);
+}
+
+.farm-login-steps {
+  margin-bottom: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-color);
+}
+
+.farm-login-steps .section-label {
+  margin: 0 0 6px;
+}
+
+.farm-login-steps ol {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--text-primary);
+}
+
+.farm-login-steps li + li {
+  margin-top: 4px;
+}
+
+.farm-login-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* ── График зрителей ── */
+.viewers-chart-popover {
+  position: fixed;
+  z-index: var(--z-modal);
+  padding: 0;
+  background: var(--surface-overlay);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-pop);
+  pointer-events: auto;
+}
+
+.farming-page .stream-meta-viewers {
+  cursor: default;
+}
+
+/* ───────────────────────── 6. Чек-лист первого запуска ───────────────────────── */
+
+.farm-onboarding .card-header {
+  margin-bottom: 4px;
+}
+
+.onboarding-steps {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.onboarding-step {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  padding: 6px 0;
+}
+
+.onboarding-step + .onboarding-step {
+  border-top: 1px solid var(--border-color);
+}
+
+.onboarding-mark {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border: 1.5px solid var(--border-strong);
+  border-radius: var(--radius-circle);
+  color: transparent;
+  font-size: 12px;
+  font-weight: var(--fw-semibold);
+  font-variant-numeric: tabular-nums;
+}
+
+.onboarding-step:not(.is-done) .onboarding-mark {
+  color: var(--text-secondary);
+}
+
+.onboarding-step.is-done .onboarding-mark {
+  border-color: var(--success);
+  background: var(--success);
+  color: var(--surface-1);
+}
+
+.onboarding-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.onboarding-title {
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: var(--fw-medium);
+  color: var(--text-primary);
+}
+
+.onboarding-sub {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-secondary);
+}
+
+/* Выполненный шаг — приглушён, не зачёркнут */
+.onboarding-step.is-done .onboarding-title,
+.onboarding-step.is-done .onboarding-sub {
+  color: var(--text-tertiary);
+}
+
+.onboarding-actions {
+  display: flex;
+  gap: 6px;
+  flex: none;
+}
+
+/* ───────────────────────── 7. Панель плеера ───────────────────────── */
+/* Кнопки лежат поверх видео, поэтому фон тёмный в любой теме */
+.player-bar {
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(15, 16, 18, 0.82);
+}
+
+.player-bar-btn.active {
+  background: var(--accent-strong);
+  border-color: transparent;
+  color: #fff;
+}
+
+.player-menu {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(27, 28, 32, 0.98);
+}
+
+.player-menu-item.active {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font-weight: var(--fw-semibold);
+}
+
+.player-menu-item.active .player-menu-hint {
+  color: rgba(255, 255, 255, 0.6);
+  opacity: 1;
+}
+
+/* ───────────────────────── 8. Компактный режим и узкое окно ───────────────────────── */
+
+body.compact-mode .farm-hero {
+  padding: 12px;
+}
+
+body.compact-mode .farming-page .category-item {
+  min-height: 52px;
+  padding: 4px 8px 4px 36px;
+  gap: 8px;
+}
+
+body.compact-mode .farming-page .category-item + .category-item::before {
+  left: 36px;
+}
+
+body.compact-mode .farming-page .category-image {
+  width: 30px;
+  height: 40px;
+}
+
+body.compact-mode .farming-page .category-item .category-image img {
+  width: 100%;
+  height: 100%;
+}
+
+body.compact-mode .farming-page .category-name {
+  font-size: 13px;
+  line-height: 18px;
+}
+
+body.compact-mode .farming-page .category-status {
+  font-size: 11px;
+}
+
+/* В компактном режиме ручка остаётся: номер и ручка делят одно место */
+body.compact-mode .farming-page .category-drag-handle {
+  display: flex;
+}
+
+body.compact-mode .farming-page .category-priority,
+body.compact-mode .farming-page .category-drag-handle {
+  width: 26px;
+}
+
+body.compact-mode .farming-page .pinned-divider {
+  padding-left: 36px;
+}
+
+body.compact-mode .drop-tiles {
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+}
+
+body.compact-mode .drops-panel .drop-progress-card {
+  padding: 8px;
+}
+
+body.compact-mode .drop-tile-art {
+  width: 40px;
+  height: 40px;
+}
+
+/* Колонка статуса уже: плеер получает чуть меньше места */
+@media (max-width: 1180px) {
+  .farm-hero-grid {
+    grid-template-columns: minmax(0, 1.15fr) minmax(250px, 1fr);
+  }
+}
+
+/* Невысокое окно: подпись над баллами и название стрима уступают место,
+   чтобы прогресс кампании оставался на первом экране */
+@media (max-height: 720px) {
+  .farming-page .page-header {
+    min-height: 32px;
+    margin-bottom: 12px;
+  }
+
+  .farming-page .points-strip .farm-side-label {
+    display: none;
+  }
+
+  .farming-page .stream-title-text {
+    -webkit-line-clamp: 1;
+  }
+
+  .farming-page .stream-category-tag:not(:empty) {
+    display: none;
+  }
+}

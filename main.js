@@ -879,6 +879,8 @@ function setGameModeState(game, offReason = null) {
 
   refreshStreamLimits();
   sendToMain('game-mode', gameModeState);
+  // Награды, пришедшие во время игры, — одним окном, когда игра закрыта
+  if (!active) flushDropsAfterGame();
 }
 
 ipcMain.handle('get-game-mode', () => gameModeState);
@@ -1601,16 +1603,59 @@ if (launchedByAutostart) {
 let splashShownAt = 0;
 const SPLASH_MIN_MS = 1500;
 
+/**
+ * Этапы загрузки на заставке. Раньше под полосой всё время висело
+ * «Загрузка приложения…» с бесконечной анимацией: по ней не понять, идёт
+ * ли запуск или завис. Теперь полоса доходит до доли текущего этапа:
+ *   0 — заставка показана (ставит сама заставка), 1 — грузится интерфейс,
+ *   2 — интерфейс загружен, окно восстанавливает сессию, 3 — готово.
+ * Этап мог прийти раньше, чем заставка загрузилась, — тогда он
+ * применяется по её did-finish-load. Этапы только растут.
+ */
+let splashStage = null;
+
+function setSplashStage(index, text, percent) {
+  if (splashStage && splashStage.index >= index) return;
+  splashStage = { index, text, percent };
+  applySplashStage();
+}
+
+function applySplashStage() {
+  if (!splashWindow || splashWindow.isDestroyed() || !splashStage) return;
+  const contents = splashWindow.webContents;
+  if (contents.isLoading()) return;
+  const { index, text, percent } = splashStage;
+  contents.executeJavaScript(
+    'window.splash && window.splash.stage(' + index + ', ' + JSON.stringify(text) + ', ' + percent + ')'
+  ).catch(() => { /* заставка уже закрылась */ });
+}
+
+/** Заставка гаснет (180 мс на её стороне) и закрывается следом. */
+function closeSplash() {
+  const win = splashWindow;
+  splashWindow = null;
+  if (!win || win.isDestroyed()) return;
+  win.webContents.executeJavaScript('window.splash && window.splash.done()').catch(() => {});
+  setTimeout(() => {
+    if (!win.isDestroyed()) win.close();
+  }, 200);
+}
+
 function createSplashWindow() {
   splashShownAt = Date.now();
+  splashStage = null;
+  // Окно больше карточки (380×260): вокруг место под мягкую тень, иначе
+  // её обрезал бы край окна. Раньше градиент заливал весь прямоугольник
+  // окна, и углы у заставки были острыми
   splashWindow = new BrowserWindow({
-    width: 500,
-    height: 400,
+    width: 440,
+    height: 320,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
     resizable: false,
     movable: false,
+    hasShadow: false,
     backgroundColor: '#00000000',
     webPreferences: {
       nodeIntegration: false,
@@ -1618,7 +1663,9 @@ function createSplashWindow() {
     }
   });
 
-  splashWindow.loadFile('splash.html');
+  // Версия — в углу заставки: по снимку экрана сразу видно, что запущено
+  splashWindow.loadFile('splash.html', { query: { v: app.getVersion() } });
+  splashWindow.webContents.on('did-finish-load', () => applySplashStage());
   splashWindow.center();
 }
 
@@ -1744,6 +1791,8 @@ function createMainWindow() {
   });
 
   mainWindow.loadFile('renderer/index.html');
+  setSplashStage(1, 'Загружаю интерфейс…', 40);
+  mainWindow.webContents.once('did-finish-load', () => setSplashStage(2, 'Восстанавливаю сессию…', 75));
   trackWindowState(mainWindow);
   trackMainWindowFocus(mainWindow);
 
@@ -1796,12 +1845,12 @@ function createMainWindow() {
     const splashWait = (launchedByAutostart || !splashShownAt)
       ? 0
       : Math.max(0, SPLASH_MIN_MS - (Date.now() - splashShownAt));
+    setSplashStage(3, 'Готово', 100);
 
     setTimeout(() => {
-      if (splashWindow) {
-        splashWindow.close();
-        splashWindow = null;
-      }
+      // Главное окно показывается, пока заставка гаснет поверх него:
+      // переход без пустого кадра между ними
+      closeSplash();
       if (!mainWindow || mainWindow.isDestroyed()) return;
 
       if (launchedByAutostart) {
@@ -3061,7 +3110,9 @@ ipcMain.handle('settings-merge', (event, partial) => {
 const RENDERER_STORE_KEYS = new Set([
   'accounts', 'categories', 'statistics', 'blacklist', 'watchTimeStats', 'subscriptions',
   'campaignHistory', 'autoDropsModeEnabled', 'deletedCategories', 'activeSession',
-  'subscriptions_priority_enabled', 'backupBeforeRestore'
+  'subscriptions_priority_enabled', 'backupBeforeRestore',
+  // Журнал событий (renderer/js/core/event-log.js): пишет и читает окно
+  'eventLog'
 ]);
 const WEBVIEW_STORE_KEYS = new Set(['settings.preferredStreamQuality', 'settings.autoClaimDrops']);
 const deniedStoreKeys = new Set();
@@ -3176,31 +3227,182 @@ ipcMain.on('close-stream', () => {
 // Уведомления - кастомное окно
 let dropNotificationWindow = null;
 
-function createDropNotification(dropName, gameName, dropIcon) {
+/**
+ * Окно о полученной награде — карточка в правом нижнем углу экрана.
+ *
+ * Как живёт окно. Страница (renderer/notification.html) держит его 6 с и
+ * закрывается сама; наведение курсора ставит часы на паузу (окно шлёт
+ * hold-drop-notification, и main снимает свою страховку), после ухода
+ * курсора — ещё хотя бы 2 с. Страховка main закрывает окно, если страница
+ * не справилась: прежние 6,5 с от создания, 4 с после ухода курсора и
+ * 30 с при любом раскладе.
+ *
+ * Несколько наград подряд. Раньше каждое новое окно молча закрывало
+ * предыдущее, и из трёх наград, полученных разом, человек видел одну.
+ * Теперь они ждут в очереди (enqueueDropNotification): пока в очереди
+ * кто-то есть, текущее окно живёт 3,5 с; три и больше ждущих — одно
+ * сводное окно «Получено 4 награды». createDropNotification сам по себе
+ * ведёт себя по-прежнему (закрывает предыдущее окно): так его проверяет
+ * tests/audit-notifications.cjs.
+ *
+ * Игра. Окно не забирает фокус (focusable: false, showInactive), но и
+ * просто всплыть поверх полноэкранной игры — уже помеха. Пока включён
+ * игровой режим, награды копятся и после игры приходят одним окном
+ * «Пока вы играли».
+ *
+ * Песочница. Этот кусок файла — от «let dropNotificationWindow» до
+ * «Старые системные уведомления» — тест исполняет отдельно, где есть
+ * только require, BrowserWindow, ipcMain, console, Buffer, setTimeout и
+ * clearTimeout. Поэтому store, mainWindow, gameModeState, sendToMain и
+ * bringMainWindowToFront здесь — только через typeof, а electron и
+ * path — через require. Маркеры-комментарии не переименовывать.
+ */
+const DROP_NOTIFICATION = {
+  // Окно больше карточки (380×96): вокруг неё место под тень
+  width: 412,
+  height: 128,
+  // От правого и нижнего края рабочей области (до карточки ещё 16 и 24)
+  margin: 4,
+  lifeMs: 6000,
+  queuedLifeMs: 3500,
+  safetyMs: 6500,
+  releaseMs: 4000,
+  hardLimitMs: 30000,
+  queueMax: 10,
+  summaryFrom: 3,
+  whilePlayingMax: 50,
+  gapMs: 250
+};
+const dropQueue = [];
+let dropQueueOverflow = 0;
+let dropQueueTimer = null;
+// Награды, полученные во время игры (pendingWhilePlaying из спецификации)
+let dropsWhilePlaying = [];
+let dropsWhilePlayingExtra = 0;
+
+function notificationText(value, max) {
+  if (value === undefined || value === null) return '';
+  return String(value).replace(/\s+/g, ' ').trim().slice(0, max);
+}
+
+/** «награда / награды / наград» по числу. */
+function dropsWord(n) {
+  const tens = Math.abs(n) % 100;
+  const ones = tens % 10;
+  if (tens > 10 && tens < 20) return 'наград';
+  if (ones === 1) return 'награда';
+  if (ones >= 2 && ones <= 4) return 'награды';
+  return 'наград';
+}
+
+/** «Получена 21 награда», «Получено 4 награды»: глагол — по числу. */
+function receivedDropsTitle(n) {
+  const verb = n % 10 === 1 && n % 100 !== 11 ? 'Получена' : 'Получено';
+  return verb + ' ' + n + ' ' + dropsWord(n);
+}
+
+function dropNotificationTheme() {
+  try {
+    if (typeof store !== 'undefined' && store.get('settings.theme') === 'light') return 'light';
+  } catch (e) { /* хранилище недоступно — тёмная */ }
+  return 'dark';
+}
+
+/**
+ * Угол экрана, на котором главное окно. Раньше считалось от нуля
+ * основного монитора, и при окне на втором мониторе уведомление
+ * появлялось не там (а при панели задач слева или сверху — со сдвигом).
+ */
+function dropNotificationBounds() {
+  const { screen } = require('electron');
+  let display = null;
+  try {
+    if (typeof mainWindow !== 'undefined' && mainWindow && !mainWindow.isDestroyed()) {
+      display = screen.getDisplayMatching(mainWindow.getBounds());
+    }
+  } catch (e) { /* окно закрывается — возьмём основной экран */ }
+  const area = (display || screen.getPrimaryDisplay()).workArea;
+  const { width, height, margin } = DROP_NOTIFICATION;
+  return {
+    x: Math.round(area.x + area.width - width - margin),
+    y: Math.round(area.y + area.height - height - margin),
+    width,
+    height
+  };
+}
+
+/** Картинку окно само не грузит (у него нет сети) — main скачивает и шлёт data:image/… */
+function fetchNotificationImage(url, win, done) {
+  if (!url || !/^https?:\/\//i.test(url)) {
+    done(null);
+    return;
+  }
+  const protocol = /^https:/i.test(url) ? require('https') : require('http');
+  let finished = false;
+  const finish = (value) => {
+    if (finished) return;
+    finished = true;
+    done(value);
+  };
+  const request = protocol.get(url, (response) => {
+    const type = String(response.headers['content-type'] || '');
+    if (response.statusCode !== 200 || !type.startsWith('image/')) {
+      console.warn('[Уведомления] Картинка награды не получена:', response.statusCode, type);
+      response.resume();
+      finish(null);
+      return;
+    }
+    const chunks = [];
+    let size = 0;
+    response.on('data', (chunk) => {
+      size += chunk.length;
+      // Картинка награды — десятки килобайт; мегабайты значат что-то не то
+      if (size > 4 * 1024 * 1024) {
+        request.destroy();
+        finish(null);
+        return;
+      }
+      chunks.push(chunk);
+    });
+    response.on('end', () => {
+      finish('data:' + type + ';base64,' + Buffer.concat(chunks).toString('base64'));
+    });
+    response.on('error', () => finish(null));
+  }).on('error', (err) => {
+    console.warn('[Уведомления] Картинка награды не скачалась:', err.message);
+    finish(null);
+  });
+  request.setTimeout(4000, () => request.destroy());
+  win.once('closed', () => request.destroy());
+}
+
+/**
+ * Создаёт окно о награде. extra: { kind: 'drop'|'summary'|'test', meta,
+ * eyebrow, count, queued } — всё необязательно; queued > 0 — за этим окном
+ * ждут ещё, и оно живёт короче.
+ */
+function createDropNotification(dropName, gameName, dropIcon, extra = {}) {
   // Закрываем предыдущее уведомление если есть
   if (dropNotificationWindow && !dropNotificationWindow.isDestroyed()) {
     dropNotificationWindow.close();
   }
 
-  const { screen } = require('electron');
-  const primaryDisplay = screen.getPrimaryDisplay();
-  const { width, height } = primaryDisplay.workAreaSize;
-
-  // Параметры уведомления
-  const notificationWidth = 360;
-  const notificationHeight = 100;
-  const margin = 20;
+  const options = extra && typeof extra === 'object' ? extra : {};
+  const kind = options.kind === 'summary' || options.kind === 'test' ? options.kind : 'drop';
+  const queued = Math.max(0, Math.floor(Number(options.queued) || 0));
 
   const notificationWindow = new BrowserWindow({
-    width: notificationWidth,
-    height: notificationHeight,
-    x: width - notificationWidth - margin,
-    y: height - notificationHeight - margin,
+    ...dropNotificationBounds(),
     frame: false,
     transparent: true,
     alwaysOnTop: true,
     skipTaskbar: true,
     resizable: false,
+    movable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    hasShadow: false,
     show: false,
     // Уведомление не должно забирать фокус: награды приходят посреди игры,
     // и полноэкранная игра от этого сворачивалась, а нажатые клавиши уходили
@@ -3220,19 +3422,36 @@ function createDropNotification(dropName, gameName, dropIcon) {
     }
   });
 
-  // Формируем URL с параметрами - передаем напрямую через IPC
   dropNotificationWindow = notificationWindow;
   notificationWindow.loadFile('renderer/notification.html');
 
-  // Ссылку держим свою, а не глобальную: окно живёт несколько секунд и
-  // закрывается само, обработчик 'closed' обнуляет dropNotificationWindow.
-  // Если это случится до 'ready-to-show' — а так бывает при подряд идущих
-  // наградах, — обращение к глобальной ссылке уронит весь главный процесс.
-  // Ровно это и произошло: приложение упало ночью, и фарминг встал до утра.
+  // Часы окна. Ссылку держим свою, а не глобальную: окно живёт несколько
+  // секунд и закрывается само, обработчик 'closed' обнуляет
+  // dropNotificationWindow. Если это случится до 'ready-to-show' — а так
+  // бывает при подряд идущих наградах, — обращение к глобальной ссылке
+  // уронит весь главный процесс. Ровно это и произошло: приложение упало
+  // ночью, и фарминг встал до утра.
   // Закрытие не зависит от таймеров/работоспособности renderer.
-  const expiry = setTimeout(() => {
+  const createdAt = Date.now();
+  const lifeMs = queued > 0 ? DROP_NOTIFICATION.queuedLifeMs : DROP_NOTIFICATION.lifeMs;
+  const destroy = () => {
     if (!notificationWindow.isDestroyed()) notificationWindow.destroy();
-  }, 6500);
+  };
+  const life = {
+    kind,
+    createdAt,
+    held: false,
+    expiry: null,
+    deadline: 0,
+    hardStop: setTimeout(destroy, DROP_NOTIFICATION.hardLimitMs),
+    arm(ms) {
+      clearTimeout(life.expiry);
+      life.deadline = Date.now() + ms;
+      life.expiry = setTimeout(destroy, ms);
+    }
+  };
+  life.arm(queued > 0 ? DROP_NOTIFICATION.queuedLifeMs + 500 : DROP_NOTIFICATION.safetyMs);
+  notificationWindow.wtLife = life;
 
   notificationWindow.once('ready-to-show', () => {
     if (!notificationWindow || notificationWindow.isDestroyed()) {
@@ -3243,76 +3462,189 @@ function createDropNotification(dropName, gameName, dropIcon) {
     notificationWindow.showInactive();
 
     const targetWindow = notificationWindow;
-    const sendToNotification = (dropIconData) => {
-      if (!targetWindow || targetWindow.isDestroyed()) {
-        console.log('[Main] Окно уведомления уже закрыто, картинка не нужна');
-        return;
-      }
-      targetWindow.webContents.send('notification-data', { dropName, gameName, dropIcon: dropIconData });
+    const payload = {
+      dropName: notificationText(dropName, 200),
+      gameName: notificationText(gameName, 120),
+      kind,
+      meta: notificationText(options.meta, 160),
+      eyebrow: notificationText(options.eyebrow, 60),
+      count: Math.max(0, Math.floor(Number(options.count) || 0)),
+      theme: dropNotificationTheme(),
+      queued,
+      // Сколько жить странице: часы идут с создания окна, а не с показа
+      lifeMs: Math.max(1500, lifeMs - (Date.now() - createdAt))
     };
-    
+    const sendToNotification = (dropIconData) => {
+      if (!targetWindow || targetWindow.isDestroyed()) return;
+      targetWindow.webContents.send('notification-data', { ...payload, dropIcon: dropIconData });
+    };
+
     // Название показываем сразу, даже если сервер картинки не отвечает.
     sendToNotification(null);
-    // Загружаем картинку через главный процесс и передаем как base64
-    if (dropIcon && dropIcon.startsWith('http')) {
-      const https = require('https');
-      const http = require('http');
-      const protocol = dropIcon.startsWith('https') ? https : http;
-      
-      console.log('[Main] Downloading image:', dropIcon);
-      
-      const request = protocol.get(dropIcon, (response) => {
-        console.log('[Main] Response status:', response.statusCode);
-        console.log('[Main] Response content-type:', response.headers['content-type']);
-        
-        // Проверяем что ответ успешный и это изображение
-        if (response.statusCode !== 200 || !response.headers['content-type']?.startsWith('image/')) {
-          console.error('[Main] Invalid response - not an image or error status');
-          sendToNotification(null);
-          response.resume();
-          return;
-        }
-        
-        const chunks = [];
-        
-        response.on('data', (chunk) => {
-          chunks.push(chunk);
-        });
-        
-        response.on('end', () => {
-          const buffer = Buffer.concat(chunks);
-          const base64 = buffer.toString('base64');
-          const contentType = response.headers['content-type'];
-          const dataUrl = `data:${contentType};base64,${base64}`;
-          
-          console.log('[Main] Image downloaded successfully, size:', buffer.length, 'bytes');
-          sendToNotification(dataUrl);
-        });
-        response.on('error', () => sendToNotification(null));
-        
-      }).on('error', (err) => {
-        console.error('[Main] Failed to download image:', err.message);
-        sendToNotification(null);
+    if (typeof dropIcon === 'string' && /^https?:\/\//i.test(dropIcon)) {
+      fetchNotificationImage(dropIcon, targetWindow, (dataUrl) => {
+        if (dataUrl) sendToNotification(dataUrl);
       });
-      request.setTimeout(4000, () => request.destroy());
-      notificationWindow.once('closed', () => request.destroy());
-    } else {
-      sendToNotification(null);
     }
   });
 
   notificationWindow.on('closed', () => {
-    clearTimeout(expiry);
+    clearTimeout(life.expiry);
+    clearTimeout(life.hardStop);
     if (dropNotificationWindow === notificationWindow) dropNotificationWindow = null;
+    // Следующая награда из очереди — когда это окно ушло
+    scheduleDropQueue();
+  });
+
+  return notificationWindow;
+}
+
+/** Окно, приславшее сообщение, — и именно текущее окно о награде. */
+function senderDropNotificationWindow(event) {
+  if (!event || !event.sender || event.sender.isDestroyed()) return null;
+  const senderWindow = BrowserWindow.fromWebContents(event.sender);
+  if (!senderWindow || senderWindow !== dropNotificationWindow || senderWindow.isDestroyed()) return null;
+  return senderWindow;
+}
+
+/** Сводка нескольких наград: «Получено 4 награды · Сумерки, Рамка и ещё 2». */
+function buildDropSummary(items, total, eyebrow) {
+  const names = items.map(i => i.dropName).filter(Boolean);
+  const games = [...new Set(items.map(i => i.gameName).filter(Boolean))];
+  const prefix = games.length === 1 ? games[0] + ' · ' : '';
+  // Строка одна, около 45 знаков: второе название — только если влезает,
+  // иначе обрезанное многоточием оно ничего не говорит
+  const shown = names.slice(0, 1);
+  if (names[1] && (prefix + names[0] + ', ' + names[1] + ' и ещё 99').length <= 46) shown.push(names[1]);
+  const rest = total - shown.length;
+  const list = shown.join(', ') + (rest > 0 ? (shown.length ? ' и ещё ' : '') + rest : '');
+  return {
+    kind: 'summary',
+    dropName: receivedDropsTitle(total),
+    gameName: '',
+    meta: prefix + list,
+    eyebrow: eyebrow || '',
+    count: total,
+    dropIcon: (items.find(i => i.dropIcon) || {}).dropIcon || null
+  };
+}
+
+function showDropItem(item, queuedAfter) {
+  createDropNotification(item.dropName, item.gameName, item.dropIcon, {
+    kind: item.kind,
+    meta: item.meta,
+    eyebrow: item.eyebrow,
+    count: item.count,
+    queued: queuedAfter
   });
 }
 
-ipcMain.on('show-drop-notification', (event, { dropName, gameName, dropIcon }) => {
-  console.log('[Main] show-drop-notification received:', { dropName, gameName, dropIcon });
+/** Текущее окно — короче: за ним ждут. */
+function shortenDropNotification() {
+  const win = dropNotificationWindow;
+  if (!win || win.isDestroyed()) return;
+  try {
+    win.webContents.send('notification-queue', { queued: dropQueue.length + dropQueueOverflow });
+  } catch (e) { /* окно закрывается */ }
+  const life = win.wtLife;
+  if (!life || life.held) return;
+  const deadline = Math.max(Date.now() + 800, life.createdAt + DROP_NOTIFICATION.queuedLifeMs + 500);
+  if (deadline < life.deadline) life.arm(deadline - Date.now());
+}
+
+function scheduleDropQueue() {
+  if (!dropQueue.length && !dropQueueOverflow) return;
+  clearTimeout(dropQueueTimer);
+  // Короткая пауза между окнами: следующее заметно появляется заново, а
+  // не подменяет текст в том же месте
+  dropQueueTimer = setTimeout(drainDropQueue, DROP_NOTIFICATION.gapMs);
+}
+
+function drainDropQueue() {
+  dropQueueTimer = null;
+  if (dropNotificationWindow && !dropNotificationWindow.isDestroyed()) return;
+  // Приложение закрывается — новых окон не создаём
+  if (require('electron').app.isQuitting || (typeof mainWindow !== 'undefined' && !mainWindow)) {
+    dropQueue.length = 0;
+    dropQueueOverflow = 0;
+    return;
+  }
+  if (!dropQueue.length && !dropQueueOverflow) return;
+
+  // Проверку и готовые сводки показываем как есть
+  if (dropQueue[0] && dropQueue[0].kind !== 'drop') {
+    const item = dropQueue.shift();
+    showDropItem(item, dropQueue.length + dropQueueOverflow);
+    return;
+  }
+
+  const drops = dropQueue.filter(i => i.kind === 'drop');
+  if (drops.length + dropQueueOverflow >= DROP_NOTIFICATION.summaryFrom) {
+    for (let i = dropQueue.length - 1; i >= 0; i--) {
+      if (dropQueue[i].kind === 'drop') dropQueue.splice(i, 1);
+    }
+    const total = drops.length + dropQueueOverflow;
+    dropQueueOverflow = 0;
+    showDropItem(buildDropSummary(drops, total, ''), dropQueue.length);
+    return;
+  }
+
+  const item = dropQueue.shift();
+  showDropItem(item, dropQueue.length + dropQueueOverflow);
+}
+
+/** Награда пришла: показать сразу, поставить в очередь или отложить до конца игры. */
+function enqueueDropNotification(item) {
+  if (!item) return;
+  const playing = item.kind !== 'test' && typeof gameModeState !== 'undefined' && gameModeState && gameModeState.active;
+  if (playing) {
+    if (dropsWhilePlaying.length < DROP_NOTIFICATION.whilePlayingMax) dropsWhilePlaying.push(item);
+    else dropsWhilePlayingExtra += 1;
+    console.log('[Уведомления] Идёт игра — о награде скажу после неё:', item.dropName);
+    return;
+  }
+
+  const busy = dropNotificationWindow && !dropNotificationWindow.isDestroyed();
+  if (!busy && !dropQueue.length && !dropQueueOverflow && !dropQueueTimer) {
+    showDropItem(item, 0);
+    return;
+  }
+  if (dropQueue.length >= DROP_NOTIFICATION.queueMax) dropQueueOverflow += 1;
+  else dropQueue.push(item);
+  if (busy) shortenDropNotification();
+  else scheduleDropQueue();
+}
+
+/** Игровой режим выключился: одно окно обо всём, что пришло за игру. */
+function flushDropsAfterGame() {
+  if (!dropsWhilePlaying.length && !dropsWhilePlayingExtra) return;
+  const items = dropsWhilePlaying;
+  const total = items.length + dropsWhilePlayingExtra;
+  dropsWhilePlaying = [];
+  dropsWhilePlayingExtra = 0;
+  const item = total === 1
+    ? { ...items[0], eyebrow: 'Пока вы играли' }
+    : buildDropSummary(items, total, 'Пока вы играли');
+  enqueueDropNotification(item);
+}
+
+ipcMain.on('show-drop-notification', (event, payload) => {
+  const { dropName, gameName, dropIcon, extra } = payload || {};
+  const options = extra && typeof extra === 'object' ? extra : {};
+  const kind = options.kind === 'summary' || options.kind === 'test' ? options.kind : 'drop';
+  console.log('[Уведомления] Окно о награде:', kind, notificationText(dropName, 80));
   // Тот же выключатель «Уведомления Windows», что и у системных уведомлений
-  // ниже: окно о награде всплывает поверх всего, в том числе поверх игры
-  if (store.get('settings.notifications') === false) return;
-  createDropNotification(dropName, gameName, dropIcon);
+  // ниже: окно о награде всплывает поверх всего, в том числе поверх игры.
+  // Проверка из настроек показывается всегда — это явное действие
+  if (kind !== 'test' && typeof store !== 'undefined' && store.get('settings.notifications') === false) return;
+  enqueueDropNotification({
+    kind,
+    dropName: notificationText(dropName, 200),
+    gameName: notificationText(gameName, 120),
+    dropIcon: typeof dropIcon === 'string' && /^https?:\/\//i.test(dropIcon) ? dropIcon.slice(0, 2000) : null,
+    meta: notificationText(options.meta, 160),
+    count: Math.max(0, Math.floor(Number(options.count) || 0))
+  });
 });
 
 ipcMain.on('close-drop-notification', (event) => {
@@ -3323,19 +3655,60 @@ ipcMain.on('close-drop-notification', (event) => {
   }
 });
 
+// Щелчок по карточке: приложение — вперёд, на страницу наград
+ipcMain.on('open-drop-notification', (event) => {
+  const win = senderDropNotificationWindow(event);
+  if (!win) return;
+  const kind = win.wtLife ? win.wtLife.kind : 'drop';
+  if (typeof bringMainWindowToFront === 'function') bringMainWindowToFront();
+  if (kind !== 'test' && typeof sendToMain === 'function') sendToMain('navigate-to-page', 'drops');
+  // Окно уже гаснет на своей стороне — закрываем, когда анимация дошла
+  setTimeout(() => {
+    if (!win.isDestroyed()) win.close();
+  }, 170);
+});
+
+// Курсор на карточке: страховку снимаем, после ухода — 4 с
+ipcMain.on('hold-drop-notification', (event, on) => {
+  const win = senderDropNotificationWindow(event);
+  if (!win || !win.wtLife) return;
+  const life = win.wtLife;
+  life.held = !!on;
+  if (life.held) {
+    clearTimeout(life.expiry);
+    life.expiry = null;
+    life.deadline = Infinity;
+  } else {
+    life.arm(DROP_NOTIFICATION.releaseMs);
+  }
+});
+
 // Показанные системные уведомления, см. show-notification
 const liveNotifications = [];
 const MAX_LIVE_NOTIFICATIONS = 10;
 
 // Старые системные уведомления (оставляем для совместимости)
-ipcMain.on('show-notification', (event, { title, body, icon }) => {
+ipcMain.on('show-notification', (event, { title, body, icon } = {}) => {
   console.log('[Main] show-notification received:', { title, body, icon });
   const notificationsEnabled = store.get('settings.notifications', true);
   console.log('[Main] Notifications enabled:', notificationsEnabled);
-  
+
   if (notificationsEnabled) {
+    // Окно на виду и в фокусе — человек смотрит в приложение. Всплывашка
+    // Windows в углу экрана только дублировала бы то, что видно на
+    // странице, и потом висела бы в Центре уведомлений. Отдаём окну:
+    // оно покажет обычный тост
+    try {
+      if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() &&
+          !mainWindow.isMinimized() && mainWindow.isFocused()) {
+        console.log('[Main] Окно в фокусе — уведомление показываю в окне');
+        sendToMain('in-app-notice', { title: String(title || ''), body: String(body || '') });
+        return;
+      }
+    } catch (e) { /* окно закрывается — покажем системное */ }
+
     console.log('[Main] Showing notification');
-    const notificationOptions = { 
+    const notificationOptions = {
       title, 
       body,
       silent: false,

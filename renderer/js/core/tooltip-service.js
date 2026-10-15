@@ -8,25 +8,12 @@ class TooltipService {
   }
 
   init() {
-    // Создаём элемент tooltip
+    // Вид подсказки — класс .tooltip в main.css (цвета темы); здесь
+    // остаются только место и видимость. Раньше вид был прописан тут же
+    // готовыми цветами, и на светлой теме подсказка оставалась чёрной
     this.tooltip = document.createElement('div');
     this.tooltip.className = 'tooltip';
-    this.tooltip.style.cssText = `
-      position: fixed;
-      background: rgba(0, 0, 0, 0.95);
-      color: white;
-      padding: 8px 12px;
-      border-radius: var(--radius-sm);
-      font-size: 13px;
-      font-weight: 500;
-      pointer-events: none;
-      opacity: 0;
-      z-index: 100000;
-      transition: opacity 0.2s ease;
-      max-width: 300px;
-      word-wrap: break-word;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-    `;
+    this.tooltip.setAttribute('role', 'tooltip');
     document.body.appendChild(this.tooltip);
 
     // Обработчики для всех элементов с data-tooltip

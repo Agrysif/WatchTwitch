@@ -1,20 +1,26 @@
 <div class="farming-page">
+  <!-- Заголовок без data-i18n: прежний ключ farming.title — «Фарминг дропсов»,
+       и i18n.updatePage() вернул бы его при каждом переходе. Подзаголовок
+       убран: он повторял название раздела другими словами -->
   <div class="page-header">
-    <h1 class="page-title" data-i18n="farming.title">Фарминг дропсов</h1>
-    <p class="page-subtitle" data-i18n="farming.subtitle">Автоматический сбор дропсов на Twitch</p>
+    <h1 class="page-title">Фарминг</h1>
+    <div class="page-actions"></div>
   </div>
 
-  <!-- Current Stream Info -->
-  <div class="card">
-    <!-- Header -->
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-      <div class="card-title" data-i18n="farming.currentStream">Текущий стрим</div>
-    </div>
-    
+  <!-- Сводка «Пока вас не было» (заполняет event-log-ui.js) и чек-лист
+       первого запуска (заполняет farming-page.js). Пустые слоты места не
+       занимают -->
+  <div id="away-summary-slot"></div>
+  <div id="onboarding-slot"></div>
+
+  <!-- Главный блок: что происходит прямо сейчас. Плеер и колонка статуса
+       стоят рядом, чтобы на 1000×650 без прокрутки было видно и стрим, и
+       следующую награду, и кнопки -->
+  <section class="card farm-hero" id="farm-hero">
     <div id="current-stream-info">
-      <!-- Заглушка — это кнопка запуска (обработчик в farming-page.js).
-           Раньше она выглядела кнопкой, а клик не делал ничего, и подпись
-           «Ожидание» при остановленном фарминге сбивала с толку -->
+      <!-- Заглушка — это кнопка запуска (обработчик в farming-page.js на
+           #current-stream-info). Вложенную <button> не делаем: заглушка сама
+           role="button", а «кнопка» внутри — только её вид -->
       <div class="no-stream waiting-state" tabindex="0" role="button" aria-label="Начать фарминг">
         <div class="waiting-icon" aria-hidden="true">
           <span class="waiting-ring waiting-ring-outer"></span>
@@ -22,38 +28,122 @@
           <span class="waiting-dot"></span>
         </div>
         <p class="waiting-label">Фарминг не запущен</p>
-        <p class="waiting-hint" data-i18n="farming.startFarming">Начать фарминг</p>
+        <p class="waiting-sub"></p>
+        <p class="waiting-hint">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 4.5v15a1 1 0 0 0 1.53.85l12-7.5a1 1 0 0 0 0-1.7l-12-7.5A1 1 0 0 0 6 4.5z"/></svg>
+          <span data-i18n="farming.startFarming">Начать фарминг</span>
+        </p>
       </div>
     </div>
-    
-    <!-- Twitch Player -->
+
     <div id="twitch-player-container" style="display: none;">
-      <div id="player-chat-grid" style="display: grid; grid-template-columns: 1fr; gap: 12px; transition: grid-template-columns 0.3s ease;">
-        <!-- Player 16:9 -->
-        <!-- Слот для постоянного плеера. Сам webview живёт в index.html и только
-             позиционируется поверх этого места — см. renderer/js/core/player-manager.js -->
-        <div id="farming-player-slot"
-             style="position: relative; width: 100%; padding-bottom: 56.25%; background: #000; border-radius: var(--radius-md); overflow: hidden;"></div>
-        
-        <!-- Chat -->
-        <!-- Слот для постоянного чата. Сам webview живёт вне страницы и только
-             позиционируется поверх этого места — см. renderer/js/core/chat-manager.js.
-             Внутри страницы он держаться не может: роутер перерисовывает её через
-             innerHTML, и вместе с чатом умирал автосбор бонусных сундуков. -->
-        <div id="twitch-chat-container" style="display: none; background: var(--bg-secondary); border-radius: var(--radius-md); overflow: hidden; border: 1px solid var(--border-color); opacity: 0; transform: translateX(20px); transition: opacity 0.3s ease, transform 0.3s ease;">
-          <div id="farming-chat-slot" style="width: 100%; height: 450px; background: #13161a;"></div>
+      <div class="farm-hero-grid">
+        <div class="farm-hero-media">
+          <!-- Колонки сетки пишет toggleChat() в style: показан чат — «плеер + 340px» -->
+          <div id="player-chat-grid">
+            <!-- Слот постоянного плеера. Сам webview живёт в index.html и только
+                 позиционируется поверх этого места — см. core/player-manager.js -->
+            <div id="farming-player-slot"></div>
+
+            <!-- Слот постоянного чата. Webview чата тоже живёт вне страницы:
+                 роутер перерисовывает её через innerHTML, и вместе с чатом
+                 умирал бы автосбор бонусных сундуков (core/chat-manager.js) -->
+            <div id="twitch-chat-container" style="display: none; opacity: 0; transform: translateX(20px);">
+              <div id="farming-chat-slot"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="farm-hero-side">
+          <!-- Что происходит — фразой. Пишет features/farming/farm-status.js -->
+          <div class="farm-status-line" id="farming-status-line" role="status" aria-live="polite">
+            <span class="status-dot"></span>
+            <span class="farm-status-main"></span>
+            <span class="farm-status-sub"></span>
+          </div>
+
+          <!-- Карточка канала. Клик открывает подробности стрима
+               (setupStreamInfoClick в farming-page.js) -->
+          <div id="stream-details" class="stream-info-card" role="button" tabindex="0" aria-label="Подробнее о стриме">
+            <div class="stream-cover-wrapper">
+              <img id="stream-game-cover" src="" alt="" class="stream-game-cover">
+            </div>
+            <div class="stream-info-main">
+              <div class="stream-channel-line">
+                <span id="stream-channel" class="stream-channel-name"></span>
+              </div>
+              <div id="stream-game" class="stream-game-name"></div>
+              <div id="stream-title" class="stream-title-text"></div>
+              <!-- Число зрителей и слово к нему пишет startStreamStatsUpdate;
+                   наведение на строку показывает график зрителей -->
+              <div class="stream-meta row-meta">
+                <span class="stream-meta-viewers"><span id="stream-viewers" class="num">-</span> <span id="stream-viewers-label">зрителей</span></span>
+                <span class="stream-meta-uptime">в эфире <span id="stream-uptime" class="num">-</span></span>
+              </div>
+              <div id="stream-category" class="stream-category-tag"></div>
+            </div>
+            <svg class="stream-info-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+          </div>
+
+          <!-- Ближайшая награда: картинка, «через 25 мин · к 03:40», процент.
+               Пишет updateNextReward(); без кампании блок скрыт -->
+          <div class="farm-next" id="farm-next-reward" hidden></div>
+
+          <!-- Баллы канала: показывается только во время фарминга. Три числа
+               в одну строку без отдельных рамок -->
+          <div id="channel-points-card" class="points-strip" style="display: none;">
+            <div class="farm-side-label">Баллы канала</div>
+            <div class="points-grid">
+              <div class="points-cell">
+                <div class="points-head">За сессию</div>
+                <div id="channel-points-total" class="points-value num">-</div>
+                <div id="channel-points-earned" class="points-sub">-</div>
+              </div>
+              <div class="points-cell">
+                <div class="points-head">Сундуки</div>
+                <div id="bonus-chests-count" class="points-value num">-</div>
+                <div id="bonus-chests-points" class="points-sub">-</div>
+              </div>
+              <div class="points-cell">
+                <div class="points-head">За этот стрим</div>
+                <div id="passive-points-earned" class="points-value num">-</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Управление. Раньше самой заметной была фиолетовая «Другой стрим»,
+               а две кнопки по краям были подписаны одинаково «Категория».
+               Теперь все три спокойные, а категории листаются переключателем
+               «‹ Категория ›» — понятно, что стрелки про категорию -->
+          <div class="farm-hero-actions">
+            <button class="btn btn-secondary farm-next-stream" id="next-stream-btn" title="Переключиться на другой стрим этой же категории">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/></svg>
+              <span data-i18n="farming.anotherStream">Другой стрим</span>
+            </button>
+            <div class="farm-cat-stepper" role="group" aria-label="Переключить категорию">
+              <button class="btn btn-ghost btn-icon btn-sm" id="prev-category-btn" title="Предыдущая категория очереди" aria-label="Предыдущая категория">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+              </button>
+              <span class="farm-cat-stepper-label" aria-hidden="true">Категория</span>
+              <button class="btn btn-ghost btn-icon btn-sm" id="next-category-btn" title="Следующая категория очереди" aria-label="Следующая категория">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+              </button>
+            </div>
+          </div>
         </div>
       </div>
-      
-      <!-- Preload setup script for all webviews on this page -->
+
+      <!-- Скрипт ниже — прежний, без изменений: проставляет preload всем
+           webview документа. Роутер выполняет его один раз при первой
+           загрузке страницы -->
       <script>
         const setupPreloads = async () => {
           const preloadPath = await window.electronAPI.getWebviewPreloadPath();
           console.log('[FarmingPage] Setting preload path:', preloadPath);
-          
+
           const webviews = document.querySelectorAll('webview');
           console.log('[FarmingPage] Found webviews:', webviews.length);
-          
+
           for (const webview of webviews) {
             // Check if preload is not already set to this path
             if (webview.getAttribute('preload') !== preloadPath) {
@@ -75,837 +165,65 @@
         // (трафик считается в main-процессе), а сам обработчик вешался на
         // document при каждом заходе на страницу и никогда не снимался.
       </script>
-      
-      <div style="display: flex; gap: 12px; margin-top: 10px;">
-        <!-- Stream Details - full width -->
-        <div id="stream-details" class="stream-info-card">
-          <!-- Game Cover with gradient background -->
-          <div class="stream-cover-wrapper">
-            <img id="stream-game-cover" src="" alt="" class="stream-game-cover">
-          </div>
-          
-          <!-- Info -->
-          <div style="flex: 1; min-width: 0;">
-            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 5px;">
-              <div class="stream-live-indicator"></div>
-              <span id="stream-channel" class="stream-channel-name"></span>
-            </div>
-            <div id="stream-game" class="stream-game-name"></div>
-            <div id="stream-title" class="stream-title-text"></div>
-            <div id="stream-category" class="stream-category-tag"></div>
-          </div>
-          
-          <!-- Mini Stats -->
-          <div class="stream-stats-container">
-            <div class="stream-stat-item">
-              <div class="stream-stat-label">Зрители</div>
-              <div id="stream-viewers" class="stream-stat-value">-</div>
-            </div>
-            <div class="stream-stat-divider"></div>
-            <div class="stream-stat-item">
-              <div class="stream-stat-label">В эфире</div>
-              <div id="stream-uptime" class="stream-stat-value">-</div>
-            </div>
-          </div>
-          
-        </div>
-      </div>
 
-      <!-- Quick Actions Bar - Redesigned -->
-      <div style="display: flex; gap: 8px; margin-top: 8px;">
-        <button class="btn btn-secondary" id="prev-category-btn" style="flex: 1; height: 42px; font-size: 13px; display: flex; align-items: center; justify-content: center; gap: 8px; background: var(--bg-secondary); border: 1px solid var(--border-color); transition: all 0.2s ease;" title="Предыдущая категория">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-            <path d="M15 18l-6-6 6-6"/>
-          </svg>
-          <!-- «Категория», а не «Назад»: кнопка листает категории, а не
-               стримы. Без data-i18n — перевод farming.back всё ещё «Назад»
-               и перезаписал бы подпись при каждом переходе -->
-          <span style="font-weight: 500;">Категория</span>
-        </button>
-        <button class="btn btn-primary" id="next-stream-btn" style="flex: 2; height: 42px; font-size: 13px; display: flex; align-items: center; justify-content: center; gap: 8px; background: #7c5cff; border: none; box-shadow: none; transition: all 0.2s ease; color: white;" title="Следующий стрим">
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M4 7h11"/>
-            <path d="M12 4l3 3-3 3"/>
-            <path d="M20 17H9"/>
-            <path d="M12 14l-3 3 3 3"/>
-          </svg>
-          <span style="font-weight: 600; color: white;" data-i18n="farming.anotherStream">Другой стрим</span>
-        </button>
-        <button class="btn btn-secondary" id="next-category-btn" style="flex: 1; height: 42px; font-size: 13px; display: flex; align-items: center; justify-content: center; gap: 8px; background: var(--bg-secondary); border: 1px solid var(--border-color); transition: all 0.2s ease;" title="Следующая категория">
-          <span style="font-weight: 500;">Категория</span>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-            <path d="M9 18l6-6-6-6"/>
-          </svg>
-        </button>
-      </div>
-      
-      <!-- Canvas for viewers chart -->
-      <canvas id="viewers-chart" width="400" height="240" style="position: fixed; display: none; pointer-events: auto; z-index: 10000; background: rgba(14, 14, 16, 0.99); border: 1px solid var(--border-color); border-radius: var(--radius-md); box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8); padding: 16px;"></canvas>
+      <!-- График зрителей: всплывает при наведении на строку «зрителей».
+           Место и видимость пишет setupViewersChart, вид — page-farming.css -->
+      <canvas id="viewers-chart" width="400" height="240" class="viewers-chart-popover" style="display: none;"></canvas>
     </div>
-    
-    <!-- Drops Progress Horizontal Block -->
-    <div id="drops-progress-horizontal" style="display: none; margin-top: 12px; padding: 16px; background: rgba(124, 92, 255, 0.08); border-radius: var(--radius-md); border: 1px solid rgba(124, 92, 255, 0.25); box-shadow: none;">
-      <!-- Контент генерируется динамически в updateDropsHorizontalProgress() -->
-    </div>
+
+    <!-- Награды кампании. Разметку собирает renderDropsPanel() -->
+    <div id="drops-progress-horizontal" style="display: none;"></div>
 
     <!-- Предложение сменить вручную запущенную категорию. Отдельно от
-         панели дропсов: та перерисовывается каждые полминуты и стирала
+         панели наград: та перерисовывается каждые полминуты и стирала
          предложение в тот же миг, когда оно появлялось -->
-    <div id="switch-offer-slot" style="display: none; margin-top: 12px;"></div>
+    <div id="switch-offer-slot" style="display: none;"></div>
 
-    <!-- Channel Points Stats - показывается только во время фарминга -->
-    <div id="channel-points-card" class="card" style="margin-top: 12px; display: none;">
-      <div class="card-title" style="display: flex; align-items: center; gap: 8px;">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="10"/>
-          <path d="M12 6v6l4 2"/>
-        </svg>
-        <span data-i18n="farming.channelPoints">Баллы канала</span>
+    <!-- Прежний список дропсов. Не показывается (его место заняла панель
+         наград выше), но id остаются: к ним обращается farming-page.js -->
+    <div id="drops-progress-container" class="drops-legacy" style="display: none;">
+      <div class="drops-legacy-head">
+        <div class="card-title" data-i18n="farming.dropsProgress">Прогресс дропсов</div>
+        <div id="drops-overall-progress" class="drops-legacy-overall"></div>
       </div>
-      
-      <!-- Метрики без отдельных рамок: три вложенных блока внутри карточки
-           давали лишний визуальный шум. Разделяем вертикальными линиями. -->
-      <div class="points-grid">
-        <!-- За сессию -->
-        <div class="points-cell">
-          <div class="points-head">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="10"/>
-              <path d="M12 7v10M9.5 9.5h4a1.5 1.5 0 010 3h-3a1.5 1.5 0 000 3h4"/>
-            </svg>
-            <span data-i18n="farming.sessionPoints">За сессию</span>
-          </div>
-          <div id="channel-points-total" class="points-value">-</div>
-          <div id="channel-points-earned" class="points-sub points-sub-accent">-</div>
-        </div>
-
-        <!-- Сундучки -->
-        <div class="points-cell">
-          <div class="points-head">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="3" y="8" width="18" height="12" rx="2"/>
-              <path d="M3 11h18M12 8V4M8 8V6M16 8V6"/>
-            </svg>
-            <span data-i18n="farming.chests">Сундучки</span>
-          </div>
-          <div id="bonus-chests-count" class="points-value">-</div>
-          <div id="bonus-chests-points" class="points-sub">-</div>
-        </div>
-
-        <!-- За этот стрим -->
-        <div class="points-cell">
-          <div class="points-head">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-            </svg>
-            <span data-i18n="farming.thisStream">За этот стрим</span>
-          </div>
-          <div id="passive-points-earned" class="points-value">-</div>
-        </div>
-      </div>
-    </div>
-    
-    <!-- Drops Progress -->
-    <div id="drops-progress-container" style="display: none; margin-top: 16px; padding: 16px; background: var(--bg-secondary); border-radius: var(--radius-md); border: 1px solid var(--border-color);">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-        <h3 style="margin: 0; font-size: 16px; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-            <path d="M8 2L10 6H14L11 9L12 13L8 10.5L4 13L5 9L2 6H6L8 2Z"/>
-          </svg>
-          <span data-i18n="farming.dropsProgress">Прогресс дропсов</span>
-        </h3>
-        <div id="drops-overall-progress" style="font-size: 14px; color: var(--text-secondary);"></div>
-      </div>
-      
       <div id="drops-campaigns-list"></div>
-      
-      <div id="drops-time-remaining" style="margin-top: 12px; padding: 12px; background: rgba(124, 92, 255, 0.1); border-radius: var(--radius-sm); border: 1px solid rgba(124, 92, 255, 0.3); font-size: 13px; color: var(--text-secondary); text-align: center; display: none;"></div>
+      <div id="drops-time-remaining" class="drops-legacy-time" style="display: none;"></div>
     </div>
-  </div>
+  </section>
 
-  <!-- Categories List -->
-  <div class="card">
-    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-      <div style="display: flex; align-items: center; gap: 12px;">
-        <div class="card-title" style="margin: 0;" data-i18n="farming.selectCategories">Выберите категории</div>
-        <button class="btn btn-secondary" id="drops-filter-btn" style="padding: 8px 14px; font-size: 13px; display: flex; align-items: center; gap: 6px; height: 36px;">
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
-            <circle cx="6" cy="6" r="6"/>
-          </svg>
+  <!-- Очередь категорий: в каком порядке приложение их фармит -->
+  <section class="card farm-queue">
+    <div class="card-header farm-queue-head">
+      <div class="card-title">Очередь категорий <span class="badge num" id="farm-queue-count"></span></div>
+      <div class="farm-queue-actions">
+        <button class="btn btn-ghost btn-sm" id="drops-filter-btn" aria-pressed="false" title="Поднять наверх категории с идущими кампаниями">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11.53 2.3a.53.53 0 0 1 .95 0l2.31 4.68a2.12 2.12 0 0 0 1.6 1.16l5.16.76a.53.53 0 0 1 .3.9l-3.74 3.64a2.12 2.12 0 0 0-.61 1.88l.88 5.14a.53.53 0 0 1-.77.56l-4.62-2.43a2.12 2.12 0 0 0-1.97 0L6.4 21.01a.53.53 0 0 1-.77-.56l.88-5.14a2.12 2.12 0 0 0-.61-1.88L2.16 9.8a.53.53 0 0 1 .3-.91l5.16-.75a2.12 2.12 0 0 0 1.6-1.16z"/></svg>
           <span data-i18n="farming.dropsFirst">Сначала с дропсами</span>
         </button>
-      </div>
-      <div style="display: flex; gap: 8px;">
-        <button class="btn btn-primary" id="add-all-drops-btn" style="height: 36px; background: #7c5cff; border: none;">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-            <path d="M8 2L10 6H14L11 9L12 13L8 10.5L4 13L5 9L2 6H6L8 2Z"/>
-          </svg>
-          <span data-i18n="farming.farmAllDrops">Фарм всех дропсов</span>
+        <!-- Режим включён или нет — показывает переключатель внутри кнопки
+             (aria-pressed), подпись не меняется -->
+        <button class="btn btn-secondary btn-sm" id="add-all-drops-btn" aria-pressed="false" title="Сам добавлять все игры, где сейчас идут кампании с дропсами">
+          <span class="switch switch-sm" aria-hidden="true"></span>
+          <span class="farm-autodrops-label">Автофарм всех дропсов</span>
         </button>
-        <button class="btn btn-secondary" id="add-category-btn" style="height: 36px;">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-            <path d="M8 2v12M2 8h12" stroke="currentColor" stroke-width="2"/>
-          </svg>
-          <span data-i18n="farming.addCategory">Добавить категорию</span>
+        <button class="btn btn-secondary btn-sm" id="add-category-btn" title="Добавить игру в очередь">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+          <span>Добавить</span>
         </button>
       </div>
     </div>
 
+    <!-- Подсказка о выгодной игре, которой нет в очереди -->
     <div id="category-suggestion"></div>
 
-    <div id="categories-list">
-      <div class="no-categories" style="text-align: center; padding: 40px; color: var(--text-secondary);">
-        <p data-i18n="farming.noCategories">Нет выбранных категорий</p>
-        <p style="font-size: 14px; margin-top: 8px;" data-i18n="farming.dragToReorder">Перетащите для изменения порядка</p>
+    <div id="categories-list" class="list">
+      <div class="no-categories empty-state">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h.01M3 12h.01M3 18h.01"/><path d="M8 6h13M8 12h13M8 18h13"/></svg>
+        <h3>Очередь пуста</h3>
+        <p>Добавьте игру или включите «Автофарм всех дропсов» — приложение само соберёт игры с кампаниями.</p>
       </div>
     </div>
-  </div>
-
+  </section>
 </div>
 
-<style>
-  /* Stream Info Card Styles */
-  .stream-info-card {
-    flex: 1;
-    padding: 14px 18px;
-    background: var(--bg-secondary);
-    border-radius: var(--radius-md);
-    border: 1.5px solid var(--border-color);
-    display: flex;
-    gap: 14px;
-    align-items: center;
-    transition: all 0.3s ease;
-    position: relative;
-    overflow: hidden;
-  }
-
-  .stream-info-card::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 2px;
-    background: transparent;
-    opacity: 0.8;
-  }
-
-  .stream-info-card:hover {
-    /* Removed hover effects */
-  }
-
-  .stream-cover-wrapper {
-    position: relative;
-    flex-shrink: 0;
-    overflow: hidden;
-    border-radius: var(--radius-md);
-  }
-
-  .stream-cover-wrapper::before {
-    content: '';
-    position: absolute;
-    top: -50%;
-    left: -50%;
-    width: 200%;
-    height: 200%;
-    background: transparent;
-    transform: translateX(-100%) translateY(-100%) rotate(45deg);
-    transition: transform 0.6s;
-    z-index: 1;
-  }
-
-  .stream-info-card:hover .stream-cover-wrapper::before {
-    transform: translateX(100%) translateY(100%) rotate(45deg);
-  }
-
-  .stream-game-cover {
-    width: 50px;
-    height: 68px;
-    border-radius: var(--radius-md);
-    object-fit: cover;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
-    position: relative;
-  }
-
-  /* Заглушка, пока у категории нет обложки: иначе оставалась картинка прошлой игры */
-  .stream-game-cover:not([src]),
-  .stream-game-cover[src=""] {
-    background: var(--bg-tertiary);
-  }
-
-  .stream-live-indicator {
-    width: 8px;
-    height: 8px;
-    background: #35d08a;
-    border-radius: var(--radius-circle);
-    animation: pulse 2s infinite;
-    box-shadow: 0 0 8px #35d08a;
-  }
-
-  .stream-channel-name {
-    font-size: 15px;
-    font-weight: 700;
-    color: var(--text-primary);
-  }
-
-  .stream-game-name {
-    font-size: 12px;
-    color: var(--text-secondary);
-    margin-bottom: 4px;
-    font-weight: 500;
-  }
-
-  .stream-title-text {
-    font-size: 11px;
-    color: var(--text-tertiary);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    margin-bottom: 5px;
-  }
-
-  /* Плашка с тегами стрима.
-     В правиле стояло два display подряд (none, затем inline-block) — побеждал
-     второй, поэтому плашка отрисовывалась всегда, в том числе пустой серой
-     капсулой, когда у стрима нет тегов. Теперь показывается только с текстом. */
-  .stream-category-tag {
-    display: none;
-    font-size: 10px;
-    color: #848d9b;
-    padding: 4px 10px;
-    background: rgba(173, 173, 184, 0.15);
-    border: 1px solid rgba(173, 173, 184, 0.25);
-    border-radius: var(--radius-sm);
-    font-weight: 500;
-  }
-
-  .stream-category-tag:not(:empty) {
-    display: inline-block;
-  }
-
-  .stream-stats-container {
-    display: flex;
-    gap: 16px;
-    align-items: center;
-    padding: 0 16px;
-    flex-shrink: 0;
-  }
-
-  .stream-stat-item {
-    text-align: center;
-  }
-
-  .stream-stat-label {
-    font-size: 10px;
-    color: var(--text-tertiary);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    margin-bottom: 4px;
-    font-weight: 600;
-  }
-
-  .stream-stat-value {
-    font-size: 14px;
-    font-weight: 700;
-    color: var(--text-primary);
-  }
-
-  .stream-stat-divider {
-    width: 1px;
-    height: 32px;
-    background: transparent;
-  }
-
-  .stream-chat-toggle {
-    height: 36px;
-    width: 36px;
-    padding: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-    border-radius: var(--radius-md);
-    transition: all 0.2s ease;
-  }
-
-  .stream-chat-toggle:hover {
-    transform: translateY(-2px);
-    border-color: var(--accent-color);
-  }
-
-  .no-stream {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 60px 20px;
-  }
-
-  /* Заглушка запускает фарминг по клику — пусть и выглядит кнопкой целиком */
-  .waiting-state {
-    cursor: pointer;
-  }
-
-  .waiting-state:hover,
-  .waiting-state:focus-visible {
-    border-color: var(--accent-color);
-  }
-
-  .waiting-hint {
-    margin: -6px 0 0;
-    color: var(--accent-color);
-    font-size: 13px;
-    font-weight: 600;
-  }
-
-  .stream-card {
-    padding: 16px;
-    background: var(--bg-secondary);
-    border-radius: var(--radius-md);
-    border: 1px solid var(--border-color);
-  }
-
-  .stream-header {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 12px;
-  }
-
-  .status-indicator {
-    width: 12px;
-    height: 12px;
-    border-radius: var(--radius-circle);
-    animation: pulse 2s infinite;
-  }
-
-  .stream-name {
-    font-size: 18px;
-    font-weight: 600;
-    color: var(--text-primary);
-  }
-
-  .stream-preview {
-    border-radius: var(--radius-md);
-    overflow: hidden;
-  }
-
-  .stream-preview img {
-    width: 100%;
-    height: auto;
-    display: block;
-  }
-
-  .category-item {
-    padding: 16px;
-    background: var(--bg-secondary);
-    border-radius: var(--radius-md);
-    border: 1px solid var(--border-color);
-    margin-bottom: 12px;
-    cursor: grab;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    transition: all 0.2s;
-    min-height: 90px;
-  }
-
-  .category-item.ending-soon {
-    border-color: #f97316;
-    background: rgba(249, 115, 22, 0.05);
-  }
-
-  .category-item.ended {
-    opacity: 0.5;
-  }
-
-  .category-item:hover {
-    background: rgba(124, 92, 255, 0.05);
-  }
-
-  .category-item.drops-completed {
-    border-color: rgba(53, 208, 138, 0.3);
-    background: rgba(53, 208, 138, 0.05);
-  }
-
-  .category-item.drops-completed .category-status {
-    color: #35d08a;
-  }
-
-  .category-drag-handle {
-    color: var(--text-secondary);
-    cursor: grab;
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-  }
-
-  .category-item.dragging {
-    opacity: 0.5;
-    cursor: grabbing;
-  }
-
-  .category-image {
-    width: 50px;
-    height: 70px;
-    border-radius: var(--radius-sm);
-    overflow: hidden;
-    flex-shrink: 0;
-  }
-
-  .category-image img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    object-position: center top;
-  }
-
-  .category-item:hover .category-image img {
-    animation: category-image-scroll 3s linear infinite alternate;
-  }
-
-  @keyframes category-image-scroll {
-    from {
-      object-position: center top;
-    }
-    to {
-      object-position: center bottom;
-    }
-  }
-
-  /* min-width: 0 обязателен. По умолчанию флекс-элемент не сжимается уже
-     своего содержимого, поэтому строка категории переполнялась: кнопки
-     справа уезжали за границу карточки, а появление кнопки закрепления
-     сдвигало Play всего на пару пикселей вместо освобождения места. */
-  .category-info {
-    flex: 1;
-    min-width: 0;
-  }
-
-  .category-name {
-    font-size: 16px;
-    font-weight: 600;
-    color: var(--text-primary);
-    margin-bottom: 4px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .category-status {
-    font-size: 13px;
-    color: var(--text-secondary);
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 8px;
-    flex-wrap: wrap;
-  }
-
-  .time-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 2px 8px;
-    border-radius: var(--radius-sm);
-    background: var(--bg-primary);
-    font-size: 12px;
-    font-weight: 500;
-  }
-
-  .time-badge.ending-soon {
-    background: rgba(249, 115, 22, 0.2);
-    color: #f97316;
-  }
-
-  .time-badge.ended {
-    background: rgba(239, 68, 68, 0.2);
-    color: #ef4444;
-  }
-
-  .time-badge svg {
-    flex-shrink: 0;
-  }
-
-  /* Номер, Play и булавка — одной высоты и с одним скруглением, как у
-     остальных кнопок: раньше строка выглядела неровной */
-  .category-priority {
-    background: var(--accent-color);
-    color: white;
-    box-sizing: border-box;
-    height: 30px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0 12px;
-    border-radius: var(--radius-ctl);
-    font-size: 13px;
-    font-weight: 600;
-    flex-shrink: 0;
-    min-width: 40px;
-    text-align: center;
-  }
-
-  .category-remove {
-    background: none;
-    border: none;
-    color: var(--text-secondary);
-    cursor: pointer;
-    padding: 8px;
-    border-radius: var(--radius-sm);
-    transition: all 0.2s;
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .category-play-btn {
-    background: rgba(124, 92, 255, 0.1);
-    border: 1px solid rgba(124, 92, 255, 0.3);
-    color: #7c5cff;
-    cursor: pointer;
-    box-sizing: border-box;
-    height: 30px;
-    padding: 0 12px;
-    border-radius: var(--radius-ctl);
-    transition: all 0.2s;
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 12px;
-    font-weight: 600;
-    gap: 6px;
-  }
-
-  .category-play-btn:hover {
-    background: rgba(124, 92, 255, 0.2);
-    border-color: rgba(124, 92, 255, 0.5);
-    transform: scale(1.05);
-  }
-
-  .category-drops-status {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 4px 10px;
-    border-radius: var(--radius-md);
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-  }
-
-  .category-drops-status.active {
-    background: rgba(124, 92, 255, 0.15);
-    color: #7c5cff;
-  }
-
-  .category-drops-status.completed {
-    background: rgba(53, 208, 138, 0.15);
-    color: #35d08a;
-  }
-
-  /* Зрителей и срок карточка обновляет на месте; пока данных нет, пустой
-     span не должен добавлять лишний отступ в строке */
-  .category-viewers:empty,
-  .category-time-left:empty {
-    display: none;
-  }
-
-  /* Бейдж «Авто» — цветами темы: прежний светлый #bda0ff на светлой
-     теме почти не читался */
-  .category-tag.category-auto-tag {
-    background: var(--accent-quiet);
-    color: var(--accent-color);
-    border: 1px solid var(--accent-color);
-  }
-
-  /* Категория, которая фармится сейчас: по списку из сотни карточек
-     иначе было не понять, что именно идёт */
-  .category-item.current {
-    border-color: var(--accent-color);
-    box-shadow: inset 0 0 0 1px var(--accent-color);
-  }
-
-  .category-current-badge {
-    display: inline-flex;
-    align-items: center;
-    padding: 2px 8px;
-    border-radius: var(--radius-sm);
-    background: var(--accent-color);
-    color: #fff;
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
-  }
-
-  .category-remove:hover {
-    background: var(--error-color);
-    color: white;
-  }
-
-  .drop-progress-item {
-    padding: 20px;
-    background: var(--bg-secondary);
-    border-radius: var(--radius-md);
-    border: 1px solid var(--border-color);
-    margin-bottom: 12px;
-  }
-
-  .drop-progress-item.drop-completed {
-    border-color: var(--success-color);
-    background: rgba(53, 208, 138, 0.05);
-  }
-
-  .drop-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 12px;
-  }
-
-  .drop-name {
-    font-size: 16px;
-    font-weight: 600;
-    color: var(--text-primary);
-  }
-
-  .drop-percentage {
-    font-size: 18px;
-    font-weight: 700;
-    color: var(--accent-color);
-  }
-
-  .drop-completed .drop-percentage {
-    color: var(--success-color);
-  }
-
-  .drop-progress-bar {
-    position: relative;
-    height: 32px;
-    background: var(--progress-bg);
-    border-radius: var(--radius-md);
-    overflow: visible;
-    margin-top: 8px;
-  }
-
-  .drop-progress-fill {
-    height: 100%;
-    background: var(--accent-color);
-    border-radius: var(--radius-md);
-    transition: width 0.5s ease;
-    position: relative;
-  }
-
-  .drop-completed .drop-progress-fill {
-    background: var(--success-color);
-  }
-
-  .drop-checkpoints {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 100%;
-    display: flex;
-    justify-content: space-between;
-    padding: 0 16px;
-    align-items: center;
-    pointer-events: none;
-  }
-
-  .checkpoint {
-    width: 16px;
-    height: 16px;
-    background: var(--card-bg);
-    border: 3px solid var(--progress-bg);
-    border-radius: var(--radius-circle);
-    transition: all 0.3s;
-  }
-
-  .checkpoint.completed {
-    border-color: var(--success-color);
-    background: var(--success-color);
-  }
-
-  /* Drops info styles */
-  #stream-drops-info {
-    animation: slideInUp 0.3s ease-out;
-  }
-
-  @keyframes slideInUp {
-    from {
-      opacity: 0;
-      transform: translateY(10px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
-
-  #stream-drops-list > div {
-    transition: all 0.2s ease;
-  }
-
-  #stream-drops-list > div:hover {
-    background: rgba(255, 255, 255, 0.04) !important;
-    border-color: rgba(124, 92, 255, 0.4) !important;
-  }
-
-  /* Drops items animation */
-  #stream-drops-list [style*="margin-bottom: 6px"] {
-    transition: all 0.2s ease;
-  }
-
-  #stream-drops-list [style*="margin-bottom: 6px"]:hover {
-    background: rgba(255, 255, 255, 0.05) !important;
-    transform: translateX(2px);
-  }
-
-    border-color: var(--success-color);
-    background: var(--success-color);
-  }
-
-  .checkpoint.active {
-    border-color: var(--accent-color);
-    animation: checkpointPulse 1.5s infinite;
-  }
-
-  /* «Категория удалена — Вернуть»: несколько секунд на отмену крестика */
-  .category-undo {
-    position: fixed;
-    left: 50%;
-    bottom: 24px;
-    transform: translateX(-50%);
-    z-index: 9000;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    max-width: calc(100vw - 32px);
-    padding: 8px 8px 8px 16px;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-    color: var(--text-primary);
-    font-size: 13px;
-  }
-
-  .category-undo-text {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .category-undo-btn {
-    flex-shrink: 0;
-    height: 30px;
-    padding: 0 12px;
-    font-size: 13px;
-  }
-</style>
-
 <script src="./js/features/drops/drop-detail-modal.js"></script>
-

@@ -1,0 +1,1089 @@
+/* ===== НАСТРОЙКИ И АККАУНТЫ =====
+ *
+ * Владелец: SETTINGS. Здесь — страницы «Настройки» (settings-page.js) и «Аккаунты» (accounts.html).
+ *
+ * Подключается после main.css, themes.css и animations.css, поэтому
+ * перекрывает общие компоненты и прежние правила страниц из main.css без
+ * !important. Только токены themes.css (var(--surface-1), var(--accent-text)…),
+ * без готовых цветов. Рамки и разделители — border или псевдоэлемент, не
+ * box-shadow: экономный режим графики (включён по умолчанию) снимает все тени.
+ */
+
+/* ───────────────────────── Настройки: каркас ───────────────────────── */
+
+/* Меню разделов и колонка карточек — одним блоком: поиск в шапке встаёт
+   ровно над правым краем карточек, а не у края широкого окна */
+.settings-page {
+  --settings-nav-w: 184px;
+  --settings-gap: 24px;
+  --settings-indent: 20px;
+  max-width: calc(var(--settings-nav-w) + var(--settings-gap) + 720px);
+}
+
+/* Прежние правила main.css ставили шапку и колонку по центру в 800px */
+.settings-page .settings-header {
+  max-width: none;
+  margin: 0 0 16px;
+  padding: 0;
+}
+
+.settings-search {
+  width: 260px;
+}
+
+/* Отступы под значок и крестик — с запасом по весу селектора: оформления
+   поверх классики задают полям свои отступы, и текст наезжал на лупу */
+.settings-page .settings-search > .input-field {
+  padding-left: 34px;
+  padding-right: 34px;
+}
+
+/* Свой крестик вместо системного: тот на тёмной теме почти не виден */
+.settings-search > .input-field::-webkit-search-cancel-button {
+  display: none;
+}
+
+.settings-search .settings-search-clear {
+  position: absolute;
+  right: 2px;
+  width: 28px;
+  min-height: 28px;
+  height: 28px;
+}
+
+.settings-layout {
+  display: grid;
+  grid-template-columns: var(--settings-nav-w) minmax(0, 720px);
+  gap: var(--settings-gap);
+  align-items: start;
+}
+
+/* ── Меню разделов ──
+   Липнет к верху прокрутки: на длинной странице всегда видно, где ты,
+   и любой раздел — в один щелчок */
+.settings-nav {
+  position: sticky;
+  top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.settings-nav a {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: var(--radius-ctl);
+  color: var(--text-secondary);
+  /* Строка 18px, а не 1: подпись обрезается по своей коробке (многоточие),
+     и при высоте строки 13px у «у», «р», «д» срезались хвосты */
+  font: var(--fw-medium) 13px/18px var(--font-ui);
+  white-space: nowrap;
+  text-decoration: none;
+  transition: background var(--transition-fast), color var(--transition-fast), opacity var(--transition-fast);
+}
+
+.settings-nav a > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.settings-nav a svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  color: var(--text-tertiary);
+  transition: color var(--transition-fast);
+}
+
+.settings-nav a:hover {
+  background: var(--hover-bg);
+  color: var(--text-primary);
+}
+
+.settings-nav a.active {
+  background: var(--surface-2);
+  color: var(--text-primary);
+}
+
+.settings-nav a.active svg,
+.settings-nav a:hover svg {
+  color: var(--text-secondary);
+}
+
+/* На светлой теме серая подложка сливается с фоном окна — белая плашка
+   с рамкой, как у выбранного пункта главного меню */
+.theme-light .settings-nav a.active {
+  background: var(--surface-1);
+  outline: 1px solid var(--border-color);
+  outline-offset: -1px;
+}
+
+/* Во время поиска разделы без совпадений гаснут, но остаются на месте:
+   меню не прыгает под пальцем */
+.settings-nav a.is-empty {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.settings-nav a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* ── Колонка карточек ── */
+.settings-page .settings-container {
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.settings-page .settings-section {
+  margin: 0 0 12px;
+  padding: 4px 16px 6px;
+  background: var(--surface-1);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  scroll-margin-top: 16px;
+}
+
+.settings-page .settings-section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 14px 0 6px;
+  font-family: var(--font-display);
+  font-size: var(--fs-title);
+  line-height: var(--lh-title);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--ls-tight);
+  color: var(--text-primary);
+}
+
+/* Цветные значки разделов убраны: раздел узнают по названию и месту */
+.settings-page .settings-section-title svg {
+  display: none;
+}
+
+.settings-page .settings-section-title:focus {
+  outline: none;
+}
+
+.settings-page .settings-section-title:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
+}
+
+/* ── Строка настройки ──
+   Подпись и описание слева, элемент управления справа. Разделитель —
+   линия сверху у каждой видимой строки, кроме первой видимой: скрытые
+   зависимые строки и отфильтрованные поиском не оставляют двойных линий */
+.settings-page .settings-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: var(--row-h);
+  padding: 10px 0;
+  border: 0;
+}
+
+.settings-page .settings-item::before,
+.settings-page .settings-block::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--border-color);
+  display: none;
+}
+
+.settings-page :is(.settings-item, .settings-block):not([hidden], .is-filtered) ~ :is(.settings-item, .settings-block):not([hidden], .is-filtered)::before {
+  display: block;
+}
+
+.settings-page .settings-block {
+  position: relative;
+}
+
+.settings-page .is-filtered {
+  display: none !important;
+}
+
+.settings-page .settings-item-info {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+}
+
+.settings-page .settings-item-label {
+  display: block;
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: var(--fw-medium);
+  color: var(--text-primary);
+}
+
+/* На светлой теме Chromium под Windows рисует тёмный текст заметно
+   тоньше: и 500, и 600 там выглядят обычным, и подпись сливалась с
+   описанием. Полужирный светлой темы — 700 (themes.css) */
+.theme-light .settings-page .settings-item-label,
+.theme-light .account-title .row-title {
+  font-weight: var(--fw-semibold);
+}
+
+/* Подпись — это <label> элемента: по ней можно щёлкать, как по самому
+   переключателю */
+.settings-page label.settings-item-label[for] {
+  cursor: pointer;
+}
+
+.settings-page .settings-item-description {
+  max-width: 520px;
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-secondary);
+}
+
+.settings-page .settings-item-description:empty {
+  display: none;
+}
+
+/* Подписи, которые пишет код: потолок скорости, разбор своих игр,
+   занятые сочетания клавиш */
+.settings-note {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-tertiary);
+}
+
+.settings-note:empty {
+  display: none;
+}
+
+.settings-note.tone-warn {
+  color: var(--warning);
+}
+
+.settings-note.tone-error {
+  color: var(--danger);
+}
+
+.settings-item-control {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex: none;
+}
+
+.settings-item-control select.input-field {
+  width: 190px;
+}
+
+/* Высокая строка (горячие клавиши со списком сочетаний): переключатель —
+   напротив подписи, а не посередине списка */
+.settings-page .settings-item.is-top {
+  align-items: flex-start;
+}
+
+.settings-page .settings-item.is-top .settings-item-control {
+  min-height: 18px;
+  margin-top: 1px;
+}
+
+/* Прежние правила main.css красили эти кнопки по id: синяя рамка у
+   «Копировать настройки», красная у сброса и очистки. Вид теперь задают
+   классы .btn-* */
+.settings-page #export-settings-btn,
+.settings-page #reset-settings-btn,
+.settings-page #clear-statistics-btn {
+  border-color: transparent;
+}
+
+/* Зависимые пункты — с отступом, и линия над ними начинается с того же
+   отступа: видно, к какому переключателю они относятся */
+.settings-page .settings-item.is-sub {
+  min-height: calc(var(--row-h) - 8px);
+  padding-left: var(--settings-indent);
+}
+
+.settings-page .settings-item.is-sub::before {
+  left: var(--settings-indent);
+}
+
+/* Родитель выключен: пункт виден и доступен, но понятно, что сейчас он
+   ни на что не влияет */
+.settings-page .settings-item.is-disabled .settings-item-info {
+  opacity: 0.5;
+}
+
+/* Подпись сверху, элементы под ней — поле своих игр, ряд кнопок копии */
+.settings-page .settings-item.is-stacked {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.settings-page .settings-item.is-stacked .settings-item-control {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+
+.settings-page .settings-item.is-stacked .settings-input {
+  width: 100%;
+}
+
+.settings-page .settings-item.is-stacked .settings-item-control > .settings-note {
+  flex-basis: 100%;
+  margin-top: 0;
+}
+
+/* Найденное в подписи */
+mark.settings-hit {
+  padding: 0 1px;
+  border-radius: 2px;
+  background: var(--accent-soft);
+  color: inherit;
+}
+
+.settings-empty {
+  margin: 0 0 12px;
+  background: var(--surface-1);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+}
+
+/* ── Элементы управления в строках ── */
+
+/* Ползунок (громкость, прозрачность стекла). Класс ios-range остаётся на
+   элементе: оформление iOS 27 рисует его по-своему поверх этого */
+.settings-range {
+  --fill: 50%;
+  width: 160px;
+  height: 20px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.settings-range::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(90deg, var(--accent) 0, var(--accent) var(--fill), var(--progress-bg) var(--fill), var(--progress-bg) 100%);
+}
+
+.settings-range::-webkit-slider-thumb {
+  width: 16px;
+  height: 16px;
+  margin-top: -6px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-circle);
+  background: #fff;
+  -webkit-appearance: none;
+  appearance: none;
+  transition: transform var(--transition-fast);
+}
+
+.settings-range:active::-webkit-slider-thumb {
+  transform: scale(1.1);
+}
+
+.settings-range:focus {
+  outline: none;
+}
+
+.settings-range:focus-visible::-webkit-slider-thumb {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.settings-range-value {
+  min-width: 38px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--text-secondary);
+}
+
+.glass-opacity-stack {
+  display: flex;
+  flex-direction: column;
+  width: 200px;
+}
+
+.glass-opacity-stack .settings-range {
+  width: 100%;
+}
+
+.glass-opacity-scale {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 2px;
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--text-tertiary);
+}
+
+/* Промежуток тихих часов — два поля времени в ряд */
+.settings-page .quiet-range {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  flex-wrap: nowrap;
+  color: var(--text-tertiary);
+}
+
+.settings-page .quiet-range input[type="time"] {
+  width: 92px;
+  height: var(--ctl-h-sm);
+  padding: 0 8px;
+  background: var(--input-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-ctl);
+  color: var(--text-primary);
+  font: var(--fw-regular) 13px var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  color-scheme: inherit;
+  transition: border-color var(--transition-fast);
+}
+
+.settings-page .quiet-range input[type="time"]:hover {
+  border-color: var(--border-strong);
+}
+
+.settings-page .quiet-range input[type="time"]:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* Горячие клавиши — сочетание и что оно делает */
+.settings-keys {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  align-items: center;
+  gap: 6px 10px;
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-secondary);
+}
+
+.kbd-combo {
+  display: inline-flex;
+  gap: 3px;
+}
+
+.kbd-combo kbd {
+  min-width: 20px;
+  padding: 1px 6px;
+  border: 1px solid var(--border-color);
+  border-bottom-width: 2px;
+  border-radius: var(--radius-xs);
+  background: var(--surface-2);
+  color: var(--text-primary);
+  font: var(--fw-medium) 11px/14px var(--font-ui);
+  text-align: center;
+}
+
+/* ── Опасная зона ──
+   Отдельная рамка тоном ошибки: необратимые действия не стоят в одном
+   ряду с «Сохранить копию» */
+.settings-danger {
+  margin: 8px 0 10px;
+  padding: 0 12px;
+  border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
+  border-radius: var(--radius-md);
+}
+
+.settings-danger-title {
+  padding: 10px 0 0;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: var(--fw-semibold);
+  color: var(--danger);
+}
+
+.settings-page .settings-danger .settings-item {
+  min-height: 52px;
+}
+
+/* ── Свёрнутая диагностика ── */
+.settings-details-summary {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: var(--row-h);
+  padding: 10px 0;
+  list-style: none;
+  cursor: pointer;
+}
+
+.settings-details-summary::-webkit-details-marker {
+  display: none;
+}
+
+.settings-details-summary .settings-item-label,
+.settings-details-summary .settings-item-description {
+  display: block;
+}
+
+.settings-details-chevron {
+  display: flex;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-ctl);
+  color: var(--text-tertiary);
+  transition: transform var(--transition-base), background var(--transition-fast);
+}
+
+.settings-details-summary:hover .settings-details-chevron {
+  background: var(--hover-bg);
+  color: var(--text-primary);
+}
+
+.settings-details[open] .settings-details-chevron {
+  transform: rotate(180deg);
+}
+
+.settings-details-summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.settings-details-body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 0 0 12px;
+}
+
+.process-list {
+  align-self: stretch;
+}
+
+.process-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 72px 96px;
+  gap: 12px;
+  align-items: center;
+  padding: 6px 0;
+  border-top: 1px solid var(--border-color);
+}
+
+.process-row.process-head {
+  border-top: 0;
+  padding-top: 0;
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--text-tertiary);
+}
+
+.process-row.process-head span:not(:first-child) {
+  text-align: right;
+}
+
+.process-name {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: var(--fw-medium);
+  color: var(--text-primary);
+}
+
+.process-meta {
+  font-size: 11px;
+  line-height: 14px;
+  font-weight: var(--fw-regular);
+  color: var(--text-tertiary);
+}
+
+.process-num {
+  font-size: 12px;
+  text-align: right;
+  color: var(--text-secondary);
+}
+
+/* Компактный режим: строки ниже за счёт отступов, не шрифта */
+body.compact-mode .settings-page .settings-item {
+  padding: 6px 0;
+}
+
+body.compact-mode .settings-page .settings-section-title {
+  padding-top: 10px;
+}
+
+body.compact-mode .accounts-list .account-card {
+  min-height: 52px;
+  padding: 6px 12px;
+}
+
+/* Узкое окно (крупный масштаб Windows): меню — строкой над карточками */
+@media (max-width: 900px) {
+  .settings-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .settings-nav {
+    position: static;
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .settings-search {
+    width: 200px;
+  }
+}
+
+/* ── Окно подтверждения (сброс, очистка, выход, удаление аккаунта) ──
+   Заголовок и одна-две строки; глагол и красный цвет — на самой кнопке */
+.settings-confirm {
+  text-align: left;
+}
+
+.settings-confirm-title {
+  margin: 0 0 8px;
+  font-family: var(--font-display);
+  font-size: var(--fs-h2);
+  line-height: var(--lh-h2);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--ls-tight);
+  color: var(--text-primary);
+}
+
+.settings-confirm-text {
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--text-secondary);
+}
+
+.settings-confirm-text b {
+  font-weight: var(--fw-semibold);
+  color: var(--text-primary);
+}
+
+/* ───────────────────────── Аккаунты ───────────────────────── */
+
+.accounts-page {
+  max-width: 880px;
+}
+
+/* Пока список пуст, то же самое говорит пустое состояние */
+.accounts-page:has(.no-accounts) .accounts-notice {
+  display: none;
+}
+
+/* Пояснение — тихой строкой под шапкой, без жёлтой полосы и рамки */
+.accounts-page .accounts-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: -6px 0 12px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-secondary);
+}
+
+.accounts-page .accounts-notice svg {
+  flex: none;
+  margin-top: 1px;
+  color: var(--text-tertiary);
+}
+
+.accounts-page .accounts-notice b {
+  font-weight: var(--fw-semibold);
+  color: var(--text-primary);
+}
+
+.accounts-card {
+  padding: 4px;
+}
+
+.accounts-list .skeleton-row {
+  height: 64px;
+  margin: 0;
+}
+
+/* Строка аккаунта */
+.accounts-list .account-card {
+  min-height: 64px;
+  padding: 10px 12px;
+  margin: 0;
+  background: none;
+  border: 0;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  user-select: none;
+}
+
+.accounts-list .account-card:hover {
+  background: var(--hover-bg);
+}
+
+.accounts-list .account-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.accounts-list .account-card.dragging {
+  opacity: 0.5;
+}
+
+.accounts-list .drag-handle {
+  display: flex;
+  flex: none;
+  margin: 0 -4px 0 -6px;
+  color: var(--text-tertiary);
+  cursor: grab;
+  opacity: 0.6;
+  transition: opacity var(--transition-fast), color var(--transition-fast);
+}
+
+.accounts-list .account-card:hover .drag-handle {
+  opacity: 1;
+}
+
+.accounts-list .drag-handle:active {
+  cursor: grabbing;
+}
+
+/* Аватар: картинка или первая буква на нейтральной подложке — раньше
+   буква сидела на фиолетовом круге с фиолетовой обводкой */
+.account-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  overflow: hidden;
+  border-radius: var(--radius-circle);
+  background: var(--surface-3);
+  color: var(--text-secondary);
+  font: var(--fw-semibold) 16px/1 var(--font-display);
+}
+
+.account-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.account-avatar-lg {
+  width: 56px;
+  height: 56px;
+  font-size: 22px;
+}
+
+.account-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.account-title .row-title {
+  min-width: 0;
+}
+
+.account-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.account-note svg {
+  flex: none;
+  margin-top: 1px;
+}
+
+.accounts-list .account-status,
+.account-title .badge {
+  flex: none;
+}
+
+.account-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  flex: none;
+}
+
+/* Удаление — красным только при наведении: строка не выглядит тревожной */
+.account-actions .account-btn.delete:hover {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+/* «Вошли не в тот аккаунт?» — строка-ссылка, раскрывает пояснение */
+.external-login-hint {
+  margin-top: 12px;
+}
+
+.external-login-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px 4px 2px;
+  border-radius: var(--radius-sm);
+  list-style: none;
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: color var(--transition-fast);
+}
+
+.external-login-summary::-webkit-details-marker {
+  display: none;
+}
+
+.external-login-summary:hover {
+  color: var(--text-primary);
+}
+
+.external-login-summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.external-login-summary svg {
+  color: var(--text-tertiary);
+  transition: transform var(--transition-base);
+}
+
+.external-login-hint[open] .external-login-summary svg {
+  transform: rotate(90deg);
+}
+
+.external-login-content {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  max-width: 560px;
+  padding: 6px 0 0 24px;
+}
+
+.external-login-text {
+  margin: 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--text-secondary);
+}
+
+/* ── Окно «Об аккаунте» (на .dialog) ── */
+.account-hero {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 4px 0 16px;
+}
+
+.account-hero-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+}
+
+.account-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.account-copy svg {
+  flex: none;
+  color: var(--text-tertiary);
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.account-copy:hover svg,
+.account-copy:focus-visible svg {
+  opacity: 1;
+}
+
+.account-copy:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
+}
+
+.account-handle {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.account-handle:hover {
+  color: var(--text-primary);
+}
+
+.account-facts {
+  margin: 0;
+  border-top: 1px solid var(--border-color);
+}
+
+.account-fact {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  min-height: 40px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.account-fact dt {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.account-fact dd {
+  margin: 0;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.account-fact dd.tone-warn {
+  color: var(--warning);
+}
+
+.account-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 14px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--text-secondary);
+}
+
+.account-alert > svg {
+  flex: none;
+  margin-top: 1px;
+  color: var(--warning);
+}
+
+.account-alert-title {
+  font-size: 13px;
+  font-weight: var(--fw-semibold);
+  color: var(--text-primary);
+}
+
+/* ── Окно входа в Twitch ──
+   Каркас .auth-modal* общий (notifications.css); здесь только своё
+   содержимое и размер под страницу входа Twitch */
+.auth-modal-content.twitch-login-modal {
+  width: 720px;
+  max-width: 100%;
+  max-height: 90vh;
+}
+
+.twitch-login-modal .auth-modal-header h3 {
+  font-family: var(--font-display);
+  font-size: var(--fs-h2);
+  line-height: var(--lh-h2);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--ls-tight);
+}
+
+.twitch-login-why {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0 0 12px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--text-secondary);
+}
+
+.twitch-login-why svg {
+  flex: none;
+  margin-top: 1px;
+  color: var(--text-tertiary);
+}
+
+.twitch-login-why b {
+  font-weight: var(--fw-semibold);
+  color: var(--text-primary);
+}
+
+/* Страница Twitch внутри — по высоте окна: на 650px прежние 500px плюс
+   шапка не помещались, и кнопки уезжали за край */
+.twitch-login-frame {
+  height: min(500px, calc(90vh - 210px));
+  min-height: 280px;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+}
+
+.twitch-login-frame webview {
+  width: 100%;
+  height: 100%;
+}
+
+.twitch-login-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.twitch-login-status {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-secondary);
+}
+
+.twitch-login-status .tone-ok {
+  color: var(--success);
+}
+
+.twitch-login-status .tone-warn {
+  color: var(--warning);
+}

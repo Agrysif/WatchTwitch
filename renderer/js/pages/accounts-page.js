@@ -1,14 +1,19 @@
-// Accounts page logic
+// Страница «Аккаунты»
+//
+// Список — строки .list-row (как в остальных списках приложения): аватар,
+// имя, мета, статус бейджем и действия. Цвет только по смыслу: зелёный
+// «Активен», янтарный «Нужен вход». Классы и data-атрибуты строк
+// (.account-card, .account-btn.*, data-username) прежние — на них завязаны
+// обработчики ниже и снимки.
 function initAccountsPage() {
   console.log('Initializing accounts page...');
-  
+
   // Load and render accounts
   loadAndRenderAccounts();
-  
-  // Setup event listeners
+
   // Кнопки «Войти через cookies» больше нет: она создавала аккаунт-пустышку
   // без настоящего cookie, а под первым аккаунтом идёт фарминг. Cookie
-  // сохраняет окно «Войти в Twitch» на карточке аккаунта
+  // сохраняет окно «Войти в Twitch» на строке аккаунта
   const addTwitchBtn = document.getElementById('add-twitch-btn');
   const openBrowserBtn = document.getElementById('open-browser-btn');
 
@@ -24,11 +29,17 @@ function initAccountsPage() {
 }
 
 async function loadAndRenderAccounts() {
-  const accounts = await Storage.getAccounts();
+  let accounts = [];
+  try {
+    accounts = (await Storage.getAccounts()) || [];
+  } catch (error) {
+    // Без списка показываем пустое состояние с кнопкой входа, а не вечный скелетон
+    console.error('[Аккаунты] Не удалось прочитать список:', error);
+  }
   renderAccounts(accounts);
 }
 
-// Даты на карточке аккаунта. Раньше было «Added 14.10.2026 • Last:
+// Даты на строке аккаунта. Раньше было «Added 14.10.2026 • Last:
 // 14.10.2026, 01:51:07» — по-английски и с секундами, которые тут ни к чему.
 // Хвост « г.» из русской локали убираем: в строке он только мешает
 function formatAccountDay(ts, withYear = true) {
@@ -57,127 +68,146 @@ function formatAccountLastLogin(ts) {
   return `${formatAccountDay(d, d.getFullYear() !== today.getFullYear())} в ${time}`;
 }
 
+/**
+ * Состояние аккаунта одним объектом — его показывают и строка списка, и
+ * окно подробностей, и раньше оба считали его каждый по-своему.
+ */
+function describeAccountState(account) {
+  const i18n = window.i18n;
+  const en = i18n?.currentLang === 'en';
+  const isActive = account.loginMethod === 'oauth';
+  const isTwitchLoggedIn = account.twitchLoggedIn || false;
+  const tokenExpiringSoon = isActive && account.oauthExpiresAt &&
+    (new Date(account.oauthExpiresAt).getTime() - Date.now() < 7 * 24 * 60 * 60 * 1000); // 7 дней
+
+  if (!isActive) {
+    return {
+      isActive, isTwitchLoggedIn, tokenExpiringSoon, tone: 'warning',
+      badge: en ? i18n.t('accounts.requiresOAuthShort') : 'Нужно подключить',
+      note: en ? i18n.t('accounts.requiresOAuthWarning') : 'Аккаунт добавлен по cookie — подключите его через Twitch, иначе фарминг под ним не работает',
+      action: 'activate'
+    };
+  }
+  if (!isTwitchLoggedIn) {
+    return {
+      isActive, isTwitchLoggedIn, tokenExpiringSoon, tone: 'warning',
+      badge: en ? i18n.t('accounts.requiresTwitchLoginShort') : 'Нужен вход',
+      note: en ? i18n.t('accounts.requiresTwitchLoginWarning') : 'Без входа в Twitch минуты и баллы канала не засчитываются',
+      action: 'login'
+    };
+  }
+  if (tokenExpiringSoon) {
+    return {
+      isActive, isTwitchLoggedIn, tokenExpiringSoon, tone: 'warning',
+      badge: i18n.t('accounts.tokenExpiringSoon'),
+      note: `${i18n.t('accounts.tokenExpiresOn')} ${formatAccountDay(account.oauthExpiresAt)}`,
+      action: ''
+    };
+  }
+  return {
+    isActive, isTwitchLoggedIn, tokenExpiringSoon, tone: 'success',
+    badge: i18n.t('accounts.active'), note: '', action: ''
+  };
+}
+
+function accountIcon(name, size = 16) {
+  return window.Icons?.get(name, size) ?? '';
+}
+
+function accountAvatarHtml(account, size = 40) {
+  const esc = window.escapeHtml;
+  const letter = esc(String(account.username || '?').charAt(0).toUpperCase());
+  return account.avatar
+    ? `<img src="${esc(account.avatar)}" alt="" width="${size}" height="${size}" data-letter="${letter}">`
+    : `<span>${letter}</span>`;
+}
+
+// Битая ссылка на аватар оставляла пустой круг — подставляем букву имени
+function fallbackAccountAvatars(root) {
+  root.querySelectorAll('.account-avatar img[data-letter]').forEach(img => {
+    img.addEventListener('error', () => {
+      const span = document.createElement('span');
+      span.textContent = img.dataset.letter;
+      img.replaceWith(span);
+    }, { once: true });
+  });
+}
+
 function renderAccounts(accounts) {
   const i18n = window.i18n;
   const container = document.getElementById('accounts-list');
-  
+
   if (!container) return;
-  
+  const esc = window.escapeHtml;
+  const addBtn = document.getElementById('add-twitch-btn');
+  if (addBtn) addBtn.hidden = accounts.length === 0;
+
   if (accounts.length === 0) {
     container.innerHTML = `
-      <div class="no-accounts" style="text-align: center; padding: 60px; color: var(--text-secondary);">
-        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="opacity: 0.3; margin: 0 auto;">
-          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" stroke-width="2"/>
-          <circle cx="12" cy="7" r="4" stroke-width="2"/>
-        </svg>
-        <p style="margin-top: 16px;">${i18n.t('accounts.noAccounts')}</p>
+      <div class="empty-state no-accounts">
+        ${accountIcon('users', 40)}
+        <h3>Добавьте аккаунт Twitch</h3>
+        <p>Вход — через Twitch в браузере: пароль приложению не передаётся.</p>
+        <button type="button" class="btn btn-primary" id="empty-add-twitch-btn">
+          <img src="../assets/logo.svg" alt="" class="btn-logo" width="18" height="18"><span>${i18n.t('accounts.loginWithTwitch')}</span>
+        </button>
       </div>
     `;
+    container.querySelector('#empty-add-twitch-btn')?.addEventListener('click', handleTwitchLogin);
     return;
   }
 
-  // Значки в строках-предупреждениях — те же, что в тостах, вместо эмодзи:
-  // эмодзи рисуются системным шрифтом и выбиваются из остальных иконок
-  const warningIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0; margin-top: 1px;"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
-  const clockIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0; margin-top: 1px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
-  const noteStyle = 'font-size: 12px; color: #f0a83c; margin-top: 6px; display: flex; gap: 6px; align-items: flex-start;';
-  // Имя, аватар и почта приходят от Twitch или из файла резервной копии —
-  // в разметку только экранированными
-  const esc = window.escapeHtml;
+  const several = accounts.length > 1;
 
-  container.innerHTML = accounts.map(account => {
+  container.innerHTML = accounts.map((account, index) => {
     const username = esc(account.username);
-    const avatarContent = account.avatar
-      ? `<img src="${esc(account.avatar)}" alt="${username}" style="width: 100%; height: 100%; border-radius: var(--radius-circle); object-fit: cover;">`
-      : esc(String(account.username || '').charAt(0).toUpperCase());
+    const state = describeAccountState(account);
     const addedDay = account.addedAt ? formatAccountDay(account.addedAt) : '';
     const meta = [
       addedDay ? `Добавлен ${addedDay}` : '',
       account.loginMethod === 'oauth' ? 'OAuth' : 'Cookie',
-      `Последний вход: ${formatAccountLastLogin(account.lastLogin)}`
-    ].filter(Boolean).join(' · ');
-    
-    // Проверяем статус аккаунта: активен только если OAuth авторизация
-    const isActive = account.loginMethod === 'oauth';
-    const isTwitchLoggedIn = account.twitchLoggedIn || false; // Новый флаг для входа в Twitch
-    const statusClass = (isActive && isTwitchLoggedIn) ? 'connected' : 'warning';
-    const tokenExpiringSoon = isActive && account.oauthExpiresAt && (new Date(account.oauthExpiresAt).getTime() - Date.now() < 7 * 24 * 60 * 60 * 1000); // 7 дней
-    const finalStatusClass = tokenExpiringSoon ? 'warning' : statusClass;
-    const statusIcon = (isActive && isTwitchLoggedIn)
-      ? '<circle cx="12" cy="12" r="5"/>' 
-      : '<path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>';
-    const statusText = tokenExpiringSoon 
-      ? i18n.t('accounts.tokenExpiringSoon') 
-      : (isActive && isTwitchLoggedIn ? i18n.t('accounts.active') : (!isActive ? i18n.t('accounts.requiresOAuthShort') : i18n.t('accounts.requiresTwitchLoginShort')));
-    
+      `Вход ${formatAccountLastLogin(account.lastLogin)}`
+    ].filter(Boolean).map(part => `<span>${esc(part)}</span>`).join('');
+
+    // Главное действие строки — подписью и всегда на виду; выход и
+    // удаление — значками, по наведению (как в остальных списках)
+    const mainAction = state.action === 'activate'
+      ? `<button type="button" class="btn btn-secondary btn-sm account-btn activate" data-username="${username}" title="Подключить через Twitch (OAuth)">Подключить</button>`
+      : state.action === 'login'
+        ? `<button type="button" class="btn btn-secondary btn-sm account-btn login-twitch" data-username="${username}" title="Войти в Twitch">${accountIcon('user', 14)}<span>Войти</span></button>`
+        : '';
+
     return `
-    <div class="account-card scale-in ${!isActive || !isTwitchLoggedIn ? 'inactive-account' : ''}" draggable="true" data-username="${username}" data-priority="${Number(account.priority) || 0}">
-      <div class="account-avatar">
-        ${avatarContent}
-      </div>
-      <div class="account-info">
-        <div class="account-username">${username}</div>
-        <div class="account-meta">${meta}</div>
-        ${!isActive ? `<div style="${noteStyle}">
-          ${warningIcon}<span>${i18n.t('accounts.requiresOAuthWarning')}</span>
-        </div>` : ''}
-        ${isActive && !isTwitchLoggedIn ? `<div style="${noteStyle}">
-          ${warningIcon}<span>${i18n.t('accounts.requiresTwitchLoginWarning')}</span>
-        </div>` : ''}
-        ${tokenExpiringSoon ? `<div style="${noteStyle}">
-          ${clockIcon}<span>${i18n.t('accounts.tokenExpiresOn')} ${formatAccountDay(account.oauthExpiresAt)}</span>
-        </div>` : ''}
-      </div>
-      <div style="display: flex; align-items: center; margin-right: 8px; cursor: grab; color: var(--text-tertiary);" class="drag-handle">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="opacity: 0.5;">
-          <circle cx="6" cy="12" r="2"/>
-          <circle cx="18" cy="12" r="2"/>
-          <circle cx="6" cy="5" r="2"/>
-          <circle cx="18" cy="5" r="2"/>
-          <circle cx="6" cy="19" r="2"/>
-          <circle cx="18" cy="19" r="2"/>
-        </svg>
-      </div>
-      <div class="account-status ${finalStatusClass}">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-          ${statusIcon}
-        </svg>
-        <span>${statusText}</span>
+    <div class="account-card list-row ${state.tone === 'warning' ? 'inactive-account' : ''}" draggable="${several}" tabindex="0"
+         data-username="${username}" data-priority="${Number(account.priority) || 0}">
+      ${several ? `<span class="drag-handle" title="Перетащите, чтобы поменять порядок (или Alt + ↑/↓)" aria-hidden="true">${accountIcon('grip', 16)}</span>` : ''}
+      <div class="account-avatar">${accountAvatarHtml(account, 40)}</div>
+      <div class="row-main account-info">
+        <div class="account-title">
+          <span class="row-title account-username">${username}</span>
+          <span class="badge ${state.tone === 'success' ? 'badge-success' : 'badge-warning'} account-status ${state.tone === 'success' ? 'connected' : 'warning'}">${esc(state.badge)}</span>
+          ${several && index === 0 ? '<span class="badge badge-outline" title="Фарминг идёт под этим аккаунтом">Основной</span>' : ''}
+        </div>
+        <div class="row-meta account-meta">${meta}</div>
+        ${state.note ? `<div class="account-note tone-warn">${accountIcon(state.action ? 'warning' : 'clock', 14)}<span>${esc(state.note)}</span></div>` : ''}
       </div>
       <div class="account-actions">
-        ${!isActive ? `<button class="account-btn activate" data-username="${username}" title="Активировать через OAuth">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-            <path d="M9 11l3 3L22 4" stroke-width="2"/>
-            <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" stroke-width="2"/>
-          </svg>
-        </button>` : ''}
-        ${isActive && !isTwitchLoggedIn ? `<button class="account-btn login-twitch" data-username="${username}" title="Войти в Twitch">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M11.571 4.714h1.715v5.143H11.57zm4.715 0H18v5.143h-1.714zM6 0L1.714 4.286v15.428h5.143V24l4.286-4.286h3.428L22.286 12V0zm14.571 11.143l-3.428 3.428h-3.429l-3 3v-3H6.857V1.714h13.714Z"/>
-          </svg>
-        </button>` : ''}
-        ${isActive && isTwitchLoggedIn ? `<button class="account-btn logout-twitch" data-username="${username}" title="Выйти из Twitch">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" stroke-width="2"/>
-            <polyline points="16 17 21 12 16 7" stroke-width="2"/>
-            <line x1="21" y1="12" x2="9" y2="12" stroke-width="2"/>
-          </svg>
-        </button>` : ''}
-        <button class="account-btn delete" data-username="${username}" title="Удалить аккаунт" aria-label="Удалить аккаунт">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-            <path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14z" stroke-width="2"/>
-          </svg>
-        </button>
+        ${mainAction}
+        <div class="row-actions">
+          ${state.isActive && state.isTwitchLoggedIn ? `<button type="button" class="btn btn-ghost btn-icon btn-sm account-btn logout-twitch" data-username="${username}" title="Выйти из Twitch" aria-label="Выйти из Twitch">${accountIcon('logout', 16)}</button>` : ''}
+          <button type="button" class="btn btn-ghost btn-icon btn-sm account-btn delete" data-username="${username}" title="Удалить аккаунт" aria-label="Удалить аккаунт">${accountIcon('trash', 16)}</button>
+        </div>
       </div>
     </div>
-  `}).join('');
+  `;
+  }).join('');
+  fallbackAccountAvatars(container);
 
   // Setup login to Twitch buttons
   container.querySelectorAll('.account-btn.login-twitch').forEach(btn => {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation();
-      const username = btn.getAttribute('data-username');
-      await handleTwitchWebLogin(username);
+      await handleTwitchWebLogin(btn.getAttribute('data-username'));
     });
   });
 
@@ -185,43 +215,7 @@ function renderAccounts(accounts) {
   container.querySelectorAll('.account-btn.logout-twitch').forEach(btn => {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation();
-      const username = btn.getAttribute('data-username');
-      
-      const confirmed = await window.utils.showCustomConfirmation(`
-        <div style="text-align: center;">
-          <div style="width: 80px; height: 80px; margin: 0 auto 20px; background: rgba(255, 159, 67, 0.2); border-radius: var(--radius-circle); display: flex; align-items: center; justify-content: center;">
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#FF9F43" stroke-width="2">
-              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-              <polyline points="16 17 21 12 16 7"/>
-              <line x1="21" y1="12" x2="9" y2="12"/>
-            </svg>
-          </div>
-          <h3 style="font-size: 20px; font-weight: 600; color: var(--text-primary); margin-bottom: 12px;">Выйти из Twitch?</h3>
-          <p style="font-size: 14px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 0;">
-            Вы уверены, что хотите выйти из аккаунта <strong style="color: var(--text-primary);">${esc(username)}</strong>?<br>
-            <span style="color: #f0a83c;">⚠️ Для фарминга дропсов потребуется снова войти</span>
-          </p>
-        </div>
-      `, {
-        confirmText: 'Выйти',
-        cancelText: 'Отмена',
-        confirmClass: 'btn-warning'
-      });
-
-      if (!confirmed) return;
-
-      const accounts = await Storage.getAccounts();
-      const accountIndex = accounts.findIndex(a => a.username === username);
-      
-      if (accountIndex >= 0) {
-        accounts[accountIndex].twitchLoggedIn = false;
-        accounts[accountIndex].webviewCookies = null;
-        // Выход ручной: проверка входа (LoginGuard) не должна сама вернуть флаг
-        delete accounts[accountIndex].twitchSessionLost;
-        await Storage.set('accounts', accounts);
-        await loadAndRenderAccounts();
-        window.utils.showToast(`Выполнен выход из ${username}`, 'success');
-      }
+      await logoutTwitchAccount(btn.getAttribute('data-username'));
     });
   });
 
@@ -229,40 +223,7 @@ function renderAccounts(accounts) {
   container.querySelectorAll('.account-btn.activate').forEach(btn => {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation();
-      const username = btn.getAttribute('data-username');
-      window.utils.showToast('Открываем OAuth авторизацию...', 'info');
-      
-      try {
-        const result = await window.electronAPI.startTwitchAuth();
-        
-        if (result && result.success && result.user) {
-          // Обновляем существующий аккаунт с OAuth данными
-          const accounts = await Storage.getAccounts();
-          const accountIndex = accounts.findIndex(a => a.username === username);
-          
-          if (accountIndex >= 0) {
-            accounts[accountIndex] = {
-              ...accounts[accountIndex],
-              loginMethod: 'oauth',
-              displayName: result.user.displayName,
-              avatar: result.user.profileImageUrl || accounts[accountIndex].avatar,
-              email: result.user.email,
-              lastLogin: Date.now(),
-              oauthExpiresAt: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString() // 60 дней
-            };
-            
-            await Storage.set('accounts', accounts);
-            await loadAndRenderAccounts();
-            window.utils.showToast(`Аккаунт ${username} активирован!`, 'success');
-          }
-        } else {
-          // Неудачный вход раньше проходил молча: кнопка ничего не говорила
-          throw new Error(result?.error || 'Авторизация не удалась');
-        }
-      } catch (error) {
-        console.error('Activation error:', error);
-        window.utils.showToast(friendlyLoginError(error?.message), 'error');
-      }
+      await activateAccountOAuth(btn.getAttribute('data-username'));
     });
   });
 
@@ -270,75 +231,62 @@ function renderAccounts(accounts) {
   container.querySelectorAll('.account-btn.delete').forEach(btn => {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation(); // Prevent card click
-      const username = btn.getAttribute('data-username');
-      
-      // Show custom confirmation modal
-      const modalHtml = `
-        <div style="text-align: center;">
-          <div style="width: 80px; height: 80px; margin: 0 auto 20px; background: rgba(255, 107, 107, 0.2); border-radius: var(--radius-circle); display: flex; align-items: center; justify-content: center;">
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#f0555f" stroke-width="2">
-              <path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14z"/>
-              <line x1="10" y1="11" x2="10" y2="17"/>
-              <line x1="14" y1="11" x2="14" y2="17"/>
-            </svg>
-          </div>
-          <h3 style="font-size: 20px; font-weight: 600; color: var(--text-primary); margin-bottom: 12px;">Удалить аккаунт?</h3>
-          <p style="font-size: 14px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 0;">Вы уверены, что хотите удалить аккаунт <strong style="color: var(--text-primary);">${esc(username)}</strong>?</p>
-        </div>
-      `;
-
-      const confirmed = await window.utils.showCustomConfirmation(modalHtml, {
-        confirmText: 'Удалить',
-        cancelText: 'Отмена',
-        confirmClass: 'btn-danger'
-      });
-
-      if (!confirmed) return;
-      
-      await Storage.removeAccount(username);
-      await loadAndRenderAccounts();
-
-      // Без аккаунтов фарминг шёл вхолостую: стрим играл, а дропсы не
-      // копились. Останавливаем, но активную сессию сохраняем — с новым
-      // аккаунтом её можно будет продолжить
-      let noAccountsLeft = false;
-      try {
-        noAccountsLeft = ((await Storage.getAccounts()) || []).length === 0;
-      } catch (e) { /* список не прочитан — фарминг не трогаем */ }
-      const page = window.farmingPage;
-      if (noAccountsLeft && page?.sessionStartTime) {
-        page.stopFarming(false, true);
-        window.utils.showToast(`Аккаунт ${username} удалён, фарминг остановлен`, 'success');
-        return;
-      }
-
-      // Здесь же раньше обращались к несуществующему confirmModal, и каждое
-      // удаление заканчивалось ошибкой в консоли: окно подтверждения
-      // закрывает себя само
-      window.utils.showToast(`Аккаунт ${username} удалён`, 'success');
+      await deleteAccount(btn.getAttribute('data-username'));
     });
   });
 
-  // Setup click on account card to show details
+  // Строка открывает подробности — щелчком или Enter/Пробелом с клавиатуры
   container.querySelectorAll('.account-card').forEach(card => {
-    card.addEventListener('click', async (e) => {
-      // Don't show modal if clicking on buttons or drag handle
-      if (e.target.closest('.account-actions') || e.target.closest('.drag-handle')) {
-        return;
-      }
-      
+    const open = async () => {
       const username = card.getAttribute('data-username');
-      const accounts = await Storage.getAccounts();
-      const account = accounts.find(a => a.username === username);
-      
-      if (account) {
-        showAccountDetailsModal(account);
+      const list = await Storage.getAccounts();
+      const account = list.find(a => a.username === username);
+      if (account) showAccountDetailsModal(account, card);
+    };
+    card.addEventListener('click', (e) => {
+      // Don't show modal if clicking on buttons or drag handle
+      if (e.target.closest('.account-actions') || e.target.closest('.drag-handle')) return;
+      open();
+    });
+    card.addEventListener('keydown', (e) => {
+      if (e.target !== card) return;
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        open();
+      } else if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+        // Порядок с клавиатуры: перетаскивание мышью доступно не всем
+        e.preventDefault();
+        const sibling = e.key === 'ArrowUp' ? card.previousElementSibling : card.nextElementSibling;
+        if (!sibling?.classList.contains('account-card')) return;
+        if (e.key === 'ArrowUp') container.insertBefore(card, sibling);
+        else container.insertBefore(sibling, card);
+        card.focus();
+        saveAccountOrder(container);
       }
     });
   });
 
   // Setup drag-and-drop reordering
-  setupAccountDragAndDrop();
+  if (several) setupAccountDragAndDrop();
+}
+
+/** Порядок строк на экране → priority в хранилище. */
+async function saveAccountOrder(container) {
+  const cards = container.querySelectorAll('.account-card');
+  const accounts = await Storage.getAccounts();
+
+  cards.forEach((card, index) => {
+    const username = card.getAttribute('data-username');
+    const accountIndex = accounts.findIndex(a => a.username === username);
+    if (accountIndex >= 0) {
+      accounts[accountIndex].priority = index;
+    }
+  });
+
+  await Storage.set('accounts', accounts);
+  window.utils.showToast('Порядок аккаунтов обновлён', 'success');
+  // Пометка «Основной» должна переехать к новому первому
+  renderAccounts(await Storage.getAccounts());
 }
 
 function setupAccountDragAndDrop() {
@@ -347,54 +295,43 @@ function setupAccountDragAndDrop() {
 
   let draggedElement = null;
 
-  const accountCards = container.querySelectorAll('.account-card');
-
-  accountCards.forEach(card => {
+  container.querySelectorAll('.account-card').forEach(card => {
     card.addEventListener('dragstart', (e) => {
       draggedElement = card;
-      card.style.opacity = '0.5';
+      card.classList.add('dragging');
       e.dataTransfer.effectAllowed = 'move';
     });
 
     card.addEventListener('dragend', () => {
-      card.style.opacity = '1';
+      card.classList.remove('dragging');
       draggedElement = null;
     });
 
     card.addEventListener('dragover', (e) => {
+      if (!draggedElement) return;
       e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
-      
+
       const afterElement = getDragAfterElement(container, e.clientY);
       if (afterElement == null) {
         container.appendChild(draggedElement);
-      } else {
+      } else if (afterElement !== draggedElement) {
         container.insertBefore(draggedElement, afterElement);
       }
     });
 
-    card.addEventListener('drop', async () => {
-      // Save new order
-      const cards = container.querySelectorAll('.account-card');
-      const accounts = await Storage.getAccounts();
-      
-      cards.forEach((card, index) => {
-        const username = card.getAttribute('data-username');
-        const accountIndex = accounts.findIndex(a => a.username === username);
-        if (accountIndex >= 0) {
-          accounts[accountIndex].priority = index;
-        }
-      });
-
-      await Storage.set('accounts', accounts);
-      window.utils.showToast('Порядок аккаунтов обновлен', 'success');
+    card.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      await saveAccountOrder(container);
     });
   });
 }
 
 function getDragAfterElement(container, y) {
-  const draggableElements = [...container.querySelectorAll('.account-card:not([style*="opacity"])')]
-    .filter(el => el.style.opacity !== '0.5');
+  // Перетаскиваемую строку помечает класс .dragging. Раньше её искали по
+  // style="opacity", и строки, которые уже перетаскивали однажды, навсегда
+  // выпадали из расчёта
+  const draggableElements = [...container.querySelectorAll('.account-card:not(.dragging)')];
 
   return draggableElements.reduce((closest, child) => {
     const box = child.getBoundingClientRect();
@@ -408,19 +345,120 @@ function getDragAfterElement(container, y) {
   }, { offset: Number.NEGATIVE_INFINITY }).element;
 }
 
+/** Текст окна подтверждения: заголовок и одна-две строки, без значков-кругов. */
+function accountConfirmHtml(title, textHtml) {
+  return `
+    <div class="settings-confirm">
+      <h3 class="settings-confirm-title">${window.escapeHtml(title)}</h3>
+      ${textHtml ? `<p class="settings-confirm-text">${textHtml}</p>` : ''}
+    </div>
+  `;
+}
+
+async function logoutTwitchAccount(username) {
+  const esc = window.escapeHtml;
+  const confirmed = await window.utils.showCustomConfirmation(
+    accountConfirmHtml('Выйти из Twitch?',
+      `Аккаунт <b>${esc(username)}</b> останется в списке, но для фарминга дропсов и баллов придётся войти снова.`),
+    { confirmText: 'Выйти', cancelText: 'Отмена', confirmClass: 'btn-danger' });
+
+  if (!confirmed) return;
+
+  const accounts = await Storage.getAccounts();
+  const accountIndex = accounts.findIndex(a => a.username === username);
+
+  if (accountIndex >= 0) {
+    accounts[accountIndex].twitchLoggedIn = false;
+    accounts[accountIndex].webviewCookies = null;
+    // Выход ручной: проверка входа (LoginGuard) не должна сама вернуть флаг
+    delete accounts[accountIndex].twitchSessionLost;
+    await Storage.set('accounts', accounts);
+    await loadAndRenderAccounts();
+    window.utils.showToast(`Выполнен выход из ${username}`, 'success');
+  }
+}
+
+async function activateAccountOAuth(username) {
+  window.utils.showToast('Открываем OAuth авторизацию...', 'info');
+
+  try {
+    const result = await window.electronAPI.startTwitchAuth();
+
+    if (result && result.success && result.user) {
+      // Обновляем существующий аккаунт с OAuth данными
+      const accounts = await Storage.getAccounts();
+      const accountIndex = accounts.findIndex(a => a.username === username);
+
+      if (accountIndex >= 0) {
+        accounts[accountIndex] = {
+          ...accounts[accountIndex],
+          loginMethod: 'oauth',
+          displayName: result.user.displayName,
+          avatar: result.user.profileImageUrl || accounts[accountIndex].avatar,
+          email: result.user.email,
+          lastLogin: Date.now(),
+          oauthExpiresAt: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString() // 60 дней
+        };
+
+        await Storage.set('accounts', accounts);
+        await loadAndRenderAccounts();
+        window.utils.showToast(`Аккаунт ${username} активирован!`, 'success');
+      }
+    } else {
+      // Неудачный вход раньше проходил молча: кнопка ничего не говорила
+      throw new Error(result?.error || 'Авторизация не удалась');
+    }
+  } catch (error) {
+    console.error('Activation error:', error);
+    window.utils.showToast(friendlyLoginError(error?.message), 'error');
+  }
+}
+
+async function deleteAccount(username) {
+  const esc = window.escapeHtml;
+  const confirmed = await window.utils.showCustomConfirmation(
+    accountConfirmHtml('Удалить аккаунт?',
+      `Аккаунт <b>${esc(username)}</b> пропадёт из списка. Чтобы вернуть его, придётся войти заново.`),
+    { confirmText: 'Удалить', cancelText: 'Отмена', confirmClass: 'btn-danger' });
+
+  if (!confirmed) return;
+
+  await Storage.removeAccount(username);
+  await loadAndRenderAccounts();
+
+  // Без аккаунтов фарминг шёл вхолостую: стрим играл, а дропсы не
+  // копились. Останавливаем, но активную сессию сохраняем — с новым
+  // аккаунтом её можно будет продолжить
+  let noAccountsLeft = false;
+  try {
+    noAccountsLeft = ((await Storage.getAccounts()) || []).length === 0;
+  } catch (e) { /* список не прочитан — фарминг не трогаем */ }
+  const page = window.farmingPage;
+  if (noAccountsLeft && page?.sessionStartTime) {
+    page.stopFarming(false, true);
+    window.utils.showToast(`Аккаунт ${username} удалён, фарминг остановлен`, 'success');
+    return;
+  }
+
+  // Здесь же раньше обращались к несуществующему confirmModal, и каждое
+  // удаление заканчивалось ошибкой в консоли: окно подтверждения
+  // закрывает себя само
+  window.utils.showToast(`Аккаунт ${username} удалён`, 'success');
+}
+
 async function handleTwitchLogin() {
   try {
     console.log('handleTwitchLogin called - opening browser for OAuth');
     window.utils.showToast('Открываю браузер для авторизации...', 'info');
-    
+
     const result = await window.electronAPI.startTwitchAuth();
     console.log('Auth result:', result);
-    
+
     if (result && result.success && result.user) {
       // Получаем accessToken из store (он сохранился при авторизации)
       const oauthData = await window.electronAPI.getOAuthUser();
       console.log('OAuth data:', oauthData);
-      
+
       const account = {
         username: result.user.login,
         displayName: result.user.displayName,
@@ -435,7 +473,7 @@ async function handleTwitchLogin() {
         lastLogin: Date.now(),
         oauthExpiresAt: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString() // 60 дней
       };
-      
+
       console.log('Saving account with token:', account.accessToken ? 'YES' : 'NO');
       await Storage.saveAccount(account);
       await loadAndRenderAccounts();
@@ -482,76 +520,71 @@ async function handleTwitchWebLogin(username) {
   const i18n = window.i18n;
   // У webview входа нет allowpopups: атрибут булев, и прежний
   // allowpopups="false" как раз разрешал всплывающие окна в сессии Twitch.
-  // То же в окне входа для нового аккаунта ниже
+  // Класс .auth-modal сохранён: по нему фарминг понимает, что открыто окно
+  // входа, и не перезапускается поверх него
+  const returnFocus = document.activeElement;
   const modal = document.createElement('div');
   modal.className = 'auth-modal';
   modal.innerHTML = `
     <div class="auth-modal-overlay"></div>
-    <div class="auth-modal-content" style="width: 700px; max-height: 90vh;">
+    <div class="auth-modal-content twitch-login-modal" role="dialog" aria-modal="true" aria-labelledby="twitch-login-title">
       <div class="auth-modal-header">
-        <h3>🔐 ${i18n.t('accounts.twitchLogin')}</h3>
-        <button class="close-modal">
-          <svg width="20" height="20" viewBox="0 0 20 20">
-            <path d="M4 4L16 16M16 4L4 16" stroke="currentColor" stroke-width="2"/>
-          </svg>
+        <h3 id="twitch-login-title">${i18n.t('accounts.twitchLogin')}</h3>
+        <button type="button" class="close-modal" title="${i18n.t('accounts.close')}" aria-label="${i18n.t('accounts.close')}">
+          ${accountIcon('close', 16)}
         </button>
       </div>
       <div class="auth-modal-body">
-        <div style="background: rgba(124, 92, 255, 0.1); border: 1px solid rgba(124, 92, 255, 0.3); border-radius: var(--radius-md); padding: 16px; margin-bottom: 20px;">
-          <div style="font-weight: 600; margin-bottom: 8px; color: var(--text-primary);">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="vertical-align: middle; margin-right: 6px;">
-              <circle cx="12" cy="12" r="10" stroke-width="2"/>
-              <path d="M12 16v-4M12 8h.01" stroke-width="2"/>
-            </svg>
-            ${i18n.t('accounts.whyTwitchLogin')}
-          </div>
-          <div style="font-size: 13px; color: var(--text-secondary); line-height: 1.6;">
-            ${i18n.t('accounts.whyTwitchLoginText')}
-          </div>
+        <p class="twitch-login-why">
+          ${accountIcon('info', 16)}
+          <span><b>${i18n.t('accounts.whyTwitchLogin')}</b> Без входа Twitch не засчитывает минуты просмотра и не даёт собирать баллы канала. Войдите в окне ниже — оно закроется само.</span>
+        </p>
+
+        <div class="twitch-login-frame">
+          <webview id="twitch-login-webview"
+                   src="https://www.twitch.tv/login"
+                   partition="persist:twitch"></webview>
         </div>
-        
-        <div style="margin-bottom: 16px;">
-          <div style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin-bottom: 12px;">
-            ${i18n.t('accounts.loginThroughBrowser')}
-          </div>
-          <div style="border: 1px solid var(--border-color); border-radius: var(--radius-md); overflow: hidden; height: 500px; background: white;">
-            <webview id="twitch-login-webview" 
-                     src="https://www.twitch.tv/login" 
-                     style="width: 100%; height: 100%;"
-                     partition="persist:twitch"></webview>
-          </div>
-        </div>
-        
-        <div style="display: flex; gap: 12px; align-items: center;">
-          <button class="btn btn-primary" id="check-login-btn" style="flex: 1;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="margin-right: 6px;">
-              <path d="M9 11l3 3L22 4" stroke-width="2"/>
-            </svg>
-            ${i18n.t('accounts.checkAuthorization')}
+
+        <div class="twitch-login-foot">
+          <div id="login-status" class="twitch-login-status" role="status">${i18n.t('accounts.checkingAuth')}</div>
+          <button type="button" class="btn btn-secondary close-modal">${i18n.t('accounts.close')}</button>
+          <button type="button" class="btn btn-primary" id="check-login-btn">
+            ${accountIcon('check', 16)}<span>${i18n.t('accounts.checkAuthorization')}</span>
           </button>
-          <button class="btn btn-secondary close-modal" style="flex: 1;">${i18n.t('accounts.close')}</button>
         </div>
-        
-        <div id="login-status" style="margin-top: 12px; text-align: center; font-size: 13px; color: var(--text-secondary);">${i18n.t('accounts.checkingAuth')}</div>
       </div>
     </div>
   `;
-  
+
   document.body.style.overflow = 'hidden';
   document.body.appendChild(modal);
-  
+
   const webview = modal.querySelector('#twitch-login-webview');
   const checkBtn = modal.querySelector('#check-login-btn');
   const statusDiv = modal.querySelector('#login-status');
+  const setStatus = (text, tone = '') => {
+    statusDiv.innerHTML = `<span${tone ? ` class="tone-${tone}"` : ''}>${window.escapeHtml(text)}</span>`;
+  };
   // Окно закрывают и по таймеру после входа, и кнопкой — второй вызов
   // не должен падать на уже убранном окне
   const closeModal = () => {
     document.body.style.overflow = '';
+    document.removeEventListener('keydown', onKey, true);
     if (modal.parentNode) modal.parentNode.removeChild(modal);
+    if (returnFocus && document.body.contains(returnFocus)) returnFocus.focus?.();
   };
+  const onKey = (e) => {
+    if (e.key === 'Escape') {
+      e.stopPropagation();
+      clearInterval(autoCheckInterval);
+      closeModal();
+    }
+  };
+  document.addEventListener('keydown', onKey, true);
   // Проверки идут по таймеру и по кнопке одновременно: вход засчитываем один раз
   let loginDone = false;
-  
+
   // Функция проверки авторизации.
   // true — вход есть и сохранён, false — входа пока нет,
   // null — вход есть, но привязать его не к чему (статус уже написан)
@@ -561,54 +594,39 @@ async function handleTwitchWebLogin(username) {
       // Получаем URL webview
       const currentUrl = webview.getURL();
       console.log('Current webview URL:', currentUrl);
-      
+
       // НЕ проверяем если всё ещё на странице входа
       if (currentUrl.includes('/login') || currentUrl.includes('/passport')) {
         console.log('Still on login page, skipping check');
-        statusDiv.innerHTML = '<span style="color: var(--text-secondary);">Жду вход в Twitch…</span>';
+        setStatus('Жду вход в Twitch…');
         return false;
       }
-      
+
       // Проверяем наличие элементов которые появляются только после авторизации
       const isLoggedIn = await webview.executeJavaScript(`
         (function() {
-          console.log('🔍 Checking Twitch login status...');
-          
           // Проверяем URL еще раз внутри webview
           if (window.location.href.includes('/login') || window.location.href.includes('/passport')) {
-            console.log('❌ Still on login/passport page');
             return false;
           }
-          
+
           // Способ 1: Проверяем кнопку пользовательского меню (самый надежный)
-          const userButton = document.querySelector('[data-a-target="user-menu-toggle"]');
-          if (userButton) {
-            console.log('✅ Found user menu toggle button');
-            return true;
-          }
-          
+          if (document.querySelector('[data-a-target="user-menu-toggle"]')) return true;
+
           // Способ 2: Проверяем аватар пользователя в шапке
-          const userAvatar = document.querySelector('figure[class*="ScAvatar"], img[alt*="user avatar"]');
-          if (userAvatar) {
-            console.log('✅ Found user avatar');
-            return true;
-          }
-          
+          if (document.querySelector('figure[class*="ScAvatar"], img[alt*="user avatar"]')) return true;
+
           // Способ 3: Проверяем наличие имени пользователя в DOM
           const usernameElement = document.querySelector('[data-a-target="user-display-name"]');
-          if (usernameElement && usernameElement.textContent.trim().length > 0) {
-            console.log('✅ Found username element:', usernameElement.textContent);
-            return true;
-          }
-          
-          console.log('❌ No clear auth indicators found');
+          if (usernameElement && usernameElement.textContent.trim().length > 0) return true;
+
           return false;
         })();
       `).catch((err) => {
         console.log('Error checking login:', err);
         return false;
       });
-      
+
       if (isLoggedIn) {
         // Извлекаем куки из webview для сохранения
         try {
@@ -617,9 +635,9 @@ async function handleTwitchWebLogin(username) {
               return document.cookie;
             })();
           `);
-          
+
           console.log('Extracted cookies from webview');
-          
+
           // Обновляем аккаунт
           const accounts = await Storage.getAccounts();
           if (loginDone) return true;
@@ -628,9 +646,9 @@ async function handleTwitchWebLogin(username) {
           // тогда аккаунт не находился, вход не засчитывался и окно не
           // закрывалось. Привязываем вход к первому аккаунту: под ним фарминг
           if (accountIndex < 0 && !username && accounts.length > 0) accountIndex = 0;
-          
+
           if (accountIndex < 0) {
-            statusDiv.innerHTML = '<span style="color: #f0a83c;">Вход есть, но аккаунт не найден. Добавьте его кнопкой «Войти через Twitch»</span>';
+            setStatus('Вход есть, но аккаунт не найден. Добавьте его кнопкой «Добавить аккаунт»', 'warn');
             return null;
           }
 
@@ -642,22 +660,22 @@ async function handleTwitchWebLogin(username) {
             account.webviewCookies = cookies; // Сохраняем куки
             // Вход восстановлен вручную — метка «сняла проверка» больше не нужна
             delete account.twitchSessionLost;
-            
+
             await Storage.set('accounts', accounts);
-            
-            statusDiv.innerHTML = '<span style="color: var(--success-color);">Вход выполнен — закрываю окно</span>';
+
+            setStatus('Вход выполнен — закрываю окно', 'ok');
             window.utils.showToast(`Аккаунт ${account.username} активирован!`, 'success');
             // Красный значок и экран повторного входа обновляем сразу, а не
             // при следующей плановой проверке через пять минут
             window.loginGuard?.check?.();
-            
+
             // Очищаем интервал и закрываем
             clearInterval(autoCheckInterval);
             setTimeout(() => {
               closeModal();
               loadAndRenderAccounts();
             }, 1000);
-            
+
             return true;
           }
         } catch (error) {
@@ -670,34 +688,35 @@ async function handleTwitchWebLogin(username) {
       return false;
     }
   };
-  
+
   // Автоматическая проверка каждые 3 секунды (уменьшили частоту)
   // Модалку могли снести переходом на другую вкладку — тогда остановить
   // опрос было бы некому, а webview входа уже нет
   let autoCheckInterval = setInterval(() => {
     if (!document.body.contains(modal)) {
       clearInterval(autoCheckInterval);
+      document.removeEventListener('keydown', onKey, true);
       return;
     }
     checkTwitchLogin();
   }, 3000);
-  
+
   // Первая проверка через 2 секунды после открытия (даем время загрузиться)
   setTimeout(() => checkTwitchLogin(), 2000);
-  
+
   // Обработчик кнопки "Проверить авторизацию" (ручная проверка)
   checkBtn.addEventListener('click', async () => {
     checkBtn.disabled = true;
-    statusDiv.innerHTML = '<span style="color: var(--text-secondary);">Проверяю вход…</span>';
-    
+    setStatus('Проверяю вход…');
+
     const result = await checkTwitchLogin();
-    
+
     if (result === false) {
-      statusDiv.innerHTML = '<span style="color: #f0a83c;">Войдите в Twitch в окне выше и попробуйте снова</span>';
+      setStatus('Войдите в Twitch в окне выше и попробуйте снова', 'warn');
     }
     if (result !== true) checkBtn.disabled = false;
   });
-  
+
   // Закрытие модального окна
   modal.querySelectorAll('.close-modal').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -705,376 +724,136 @@ async function handleTwitchWebLogin(username) {
       closeModal();
     });
   });
-  
+
   modal.querySelector('.auth-modal-overlay').addEventListener('click', () => {
     clearInterval(autoCheckInterval);
     closeModal();
   });
+
+  modal.querySelector('.close-modal')?.focus();
 }
 
-async function handleWebLoginForNewAccount() {
+// Окно «Об аккаунте». Раньше — цветные плитки на каждое поле (фиолетовая
+// почта, зелёный метод, оранжевая дата, голубое время); теперь спокойный
+// список «название — значение», цвет только у статуса
+function showAccountDetailsModal(account, returnFocusTo = null) {
   const i18n = window.i18n;
-  const modal = document.createElement('div');
-  modal.className = 'auth-modal';
-  modal.innerHTML = `
-    <div class="auth-modal-overlay"></div>
-    <div class="auth-modal-content" style="width: 700px; max-height: 90vh;">
-      <div class="auth-modal-header">
-        <h3>🔐 Войти через логин/пароль Twitch</h3>
-        <button class="close-modal">
-          <svg width="20" height="20" viewBox="0 0 20 20">
-            <path d="M4 4L16 16M16 4L4 16" stroke="currentColor" stroke-width="2"/>
-          </svg>
-        </button>
-      </div>
-      <div class="auth-modal-body">
-        <div style="background: rgba(124, 92, 255, 0.1); border: 1px solid rgba(124, 92, 255, 0.3); border-radius: var(--radius-md); padding: 16px; margin-bottom: 20px;">
-          <div style="font-weight: 600; margin-bottom: 8px; color: var(--text-primary);">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="vertical-align: middle; margin-right: 6px;">
-              <circle cx="12" cy="12" r="10" stroke-width="2"/>
-              <path d="M12 16v-4M12 8h.01" stroke-width="2"/>
-            </svg>
-            Важная информация
-          </div>
-          <div style="font-size: 13px; color: var(--text-secondary); line-height: 1.6;">
-            Войдите в Twitch через встроенный браузер используя логин и пароль. 
-            После успешного входа аккаунт будет автоматически добавлен в приложение для фарминга дропсов и баллов канала.
-          </div>
-        </div>
-        
-        <div style="margin-bottom: 16px;">
-          <div style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin-bottom: 12px;">
-            Войдите в Twitch:
-          </div>
-          <div style="border: 1px solid var(--border-color); border-radius: var(--radius-md); overflow: hidden; height: 500px; background: white;">
-            <webview id="twitch-login-webview" 
-                     src="https://www.twitch.tv/login" 
-                     style="width: 100%; height: 100%;"
-                     partition="persist:newaccount"></webview>
-          </div>
-        </div>
-        
-        <div style="display: flex; gap: 12px; align-items: center;">
-          <button class="btn btn-primary" id="check-login-btn" style="flex: 1;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="margin-right: 6px;">
-              <path d="M9 11l3 3L22 4" stroke-width="2"/>
-            </svg>
-            ${i18n.t('accounts.checkAndAddAccount')}
-          </button>
-          <button class="btn btn-secondary close-modal" style="flex: 1;">${i18n.t('accounts.close')}</button>
-        </div>
-        
-        <div id="login-status" style="margin-top: 12px; text-align: center; font-size: 13px; color: var(--text-secondary);">${i18n.t('accounts.waitingForLogin')}</div>
-      </div>
-    </div>
-  `;
-  
-  document.body.style.overflow = 'hidden';
-  document.body.appendChild(modal);
-  
-  const webview = modal.querySelector('#twitch-login-webview');
-  const checkBtn = modal.querySelector('#check-login-btn');
-  const statusDiv = modal.querySelector('#login-status');
-  const closeModal = () => {
-    clearInterval(autoCheckInterval);
-    document.body.style.overflow = '';
-    document.body.removeChild(modal);
-  };
-  
-  // Функция проверки авторизации и добавления аккаунта
-  const checkAndAddAccount = async () => {
-    try {
-      const currentUrl = webview.getURL();
-      console.log('Current webview URL:', currentUrl);
-      
-      if (currentUrl.includes('/login') || currentUrl.includes('/passport')) {
-        console.log('Still on login page, skipping check');
-        statusDiv.innerHTML = '<span style="color: var(--text-secondary);">⏳ Ожидание входа в Twitch...</span>';
-        return false;
-      }
-      
-      const isLoggedIn = await webview.executeJavaScript(`
-        (function() {
-          const userButton = document.querySelector('[data-a-target="user-menu-toggle"]');
-          if (userButton) return true;
-          
-          const userAvatar = document.querySelector('figure[class*="ScAvatar"]');
-          if (userAvatar) return true;
-          
-          const usernameElement = document.querySelector('[data-a-target="user-display-name"]');
-          if (usernameElement && usernameElement.textContent.trim().length > 0) return true;
-          
-          return false;
-        })()
-      `);
-      
-      if (!isLoggedIn) {
-        console.log('Not logged in yet');
-        return false;
-      }
-      
-      console.log('✅ User is logged in!');
-      statusDiv.innerHTML = '<span style="color: #35d08a;">✅ Авторизация обнаружена! Получаем данные аккаунта...</span>';
-      
-      // Получаем имя пользователя
-      const userData = await webview.executeJavaScript(`
-        (function() {
-          const usernameElement = document.querySelector('[data-a-target="user-display-name"]');
-          if (usernameElement) {
-            return { username: usernameElement.textContent.trim() };
-          }
-          return null;
-        })()
-      `);
-      
-      if (!userData || !userData.username) {
-        statusDiv.innerHTML = '<span style="color: #f0a83c;">⚠️ Не удалось получить имя пользователя</span>';
-        return false;
-      }
-      
-      console.log('Got username:', userData.username);
-      
-      // Проверяем, не добавлен ли уже этот аккаунт
-      const existingAccounts = await Storage.getAccounts();
-      const accountExists = existingAccounts.some(acc => acc.username.toLowerCase() === userData.username.toLowerCase());
-      
-      if (accountExists) {
-        statusDiv.innerHTML = `<span style="color: #f0a83c;">⚠️ Аккаунт ${window.escapeHtml(userData.username)} уже добавлен</span>`;
-        window.utils.showToast(`Аккаунт ${userData.username} уже существует`, 'warning');
-        setTimeout(() => closeModal(), 2000);
-        return true;
-      }
-      
-      // Добавляем новый аккаунт
-      const newAccount = {
-        username: userData.username,
-        displayName: userData.username,
-        loginMethod: 'webview',
-        isTwitchLoggedIn: true,
-        addedAt: Date.now(),
-        lastLogin: Date.now()
-      };
-      
-      await Storage.saveAccount(newAccount);
-      await loadAndRenderAccounts();
-      
-      statusDiv.innerHTML = `<span style="color: #35d08a;">✅ Аккаунт ${window.escapeHtml(userData.username)} успешно добавлен!</span>`;
-      window.utils.showToast(`Аккаунт ${userData.username} добавлен!`, 'success');
-      
-      setTimeout(() => closeModal(), 1500);
-      return true;
-      
-    } catch (error) {
-      console.error('Error checking login:', error);
-      statusDiv.innerHTML = '<span style="color: #f0555f;">❌ Ошибка проверки авторизации</span>';
-      return false;
-    }
-  };
-  
-  // Автоматическая проверка каждые 3 секунды
-  // Модалку могли снести переходом на другую вкладку — тогда остановить
-  // опрос было бы некому, а webview входа уже нет
-  let autoCheckInterval = setInterval(() => {
-    if (!document.body.contains(modal)) {
-      clearInterval(autoCheckInterval);
-      return;
-    }
-    checkAndAddAccount();
-  }, 3000);
-  
-  // Первая проверка через 2 секунды
-  setTimeout(() => checkAndAddAccount(), 2000);
-  
-  // Обработчик кнопки проверки
-  checkBtn.addEventListener('click', async () => {
-    checkBtn.disabled = true;
-    statusDiv.innerHTML = '<span style="color: var(--text-secondary);">⏳ Проверка авторизации...</span>';
-    
-    const result = await checkAndAddAccount();
-    
-    if (!result) {
-      statusDiv.innerHTML = '<span style="color: #f0a83c;">⚠️ Войдите в Twitch в окне выше и попробуйте снова</span>';
-      checkBtn.disabled = false;
-    }
-  });
-  
-  // Закрытие модального окна
-  modal.querySelectorAll('.close-modal').forEach(btn => {
-    btn.addEventListener('click', closeModal);
-  });
-  
-  modal.querySelector('.auth-modal-overlay').addEventListener('click', closeModal);
-}
-
-// Show account details modal
-function showAccountDetailsModal(account) {
   // Имя, аватар и почта — внешние строки: в разметку только экранированными
   const esc = window.escapeHtml;
   const username = esc(account.username);
-  const avatarContent = account.avatar 
-    ? `<img src="${esc(account.avatar)}" alt="${username}" style="width: 100%; height: 100%; border-radius: var(--radius-circle); object-fit: cover;">` 
-    : `<div style="width: 100%; height: 100%; border-radius: var(--radius-circle); background: #7c5cff; display: flex; align-items: center; justify-content: center; font-size: 48px; font-weight: 600; color: white;">${esc(String(account.username || '').charAt(0).toUpperCase())}</div>`;
-  
-  const isActive = account.loginMethod === 'oauth';
-  const isTwitchLoggedIn = account.twitchLoggedIn || false;
-  const tokenExpiringSoon = isActive && account.oauthExpiresAt && (new Date(account.oauthExpiresAt).getTime() - Date.now() < 7 * 24 * 60 * 60 * 1000);
-  
-  const statusBadge = (isActive && isTwitchLoggedIn) 
-    ? `<div style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; background: rgba(53, 208, 138, 0.15); color: #35d08a; border-radius: var(--radius-md); font-size: 13px; font-weight: 600;"><span style="width: 8px; height: 8px; background: #35d08a; border-radius: var(--radius-circle);"></span>${i18n.t('accounts.active')}</div>`
-    : tokenExpiringSoon
-    ? `<div style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; background: rgba(255, 159, 67, 0.15); color: #FF9F43; border-radius: var(--radius-md); font-size: 13px; font-weight: 600;"><span style="width: 8px; height: 8px; background: #FF9F43; border-radius: var(--radius-circle);"></span>${i18n.t('accounts.tokenExpires')}</div>`
-    : '<div style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; background: rgba(255, 107, 107, 0.15); color: #f0555f; border-radius: var(--radius-md); font-size: 13px; font-weight: 600;"><span style="width: 8px; height: 8px; background: #f0555f; border-radius: var(--radius-circle);"></span>Требует действий</div>';
+  const state = describeAccountState(account);
+  const locale = i18n.getLocale();
 
-  const addedDate = new Date(account.addedAt);
+  const addedDate = account.addedAt ? new Date(account.addedAt) : null;
   const lastLoginDate = account.lastLogin ? new Date(account.lastLogin) : null;
   const oauthExpiryDate = account.oauthExpiresAt ? new Date(account.oauthExpiresAt) : null;
+  const valid = (d) => d && !isNaN(d.getTime());
+
+  const facts = [
+    account.email ? `
+      <div class="account-fact">
+        <dt>${i18n.t('accounts.email')}</dt>
+        <dd><button type="button" class="account-copy" data-copy="${esc(account.email)}" title="Скопировать">
+          <span class="truncate">${esc(account.email)}</span>${accountIcon('copy', 14)}
+        </button></dd>
+      </div>` : '',
+    `<div class="account-fact">
+      <dt>${i18n.t('accounts.authMethod')}</dt>
+      <dd>${account.loginMethod === 'oauth' ? 'OAuth 2.0' : 'Cookie'}</dd>
+    </div>`,
+    valid(addedDate) ? `<div class="account-fact">
+      <dt>${i18n.t('accounts.dateAdded')}</dt>
+      <dd>${addedDate.toLocaleDateString(locale, { day: 'numeric', month: 'long', year: 'numeric' })}</dd>
+    </div>` : '',
+    valid(lastLoginDate) ? `<div class="account-fact">
+      <dt>${i18n.t('accounts.lastActivity')}</dt>
+      <dd>${lastLoginDate.toLocaleString(locale, { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}</dd>
+    </div>` : '',
+    valid(oauthExpiryDate) && state.isActive ? `<div class="account-fact">
+      <dt>${i18n.t('accounts.tokenExpires')}</dt>
+      <dd class="${state.tokenExpiringSoon ? 'tone-warn' : ''}">${oauthExpiryDate.toLocaleDateString(locale, { day: 'numeric', month: 'long', year: 'numeric' })}</dd>
+    </div>` : ''
+  ].filter(Boolean).join('');
+
+  const actionLabel = state.action === 'activate' ? 'Подключить через Twitch'
+    : state.action === 'login' ? 'Войти в Twitch' : '';
 
   const modal = document.createElement('div');
-  modal.className = 'auth-modal';
+  modal.className = 'dialog-backdrop account-details-backdrop';
   modal.innerHTML = `
-    <div class="auth-modal-overlay"></div>
-    <div class="auth-modal-content account-details-modal" style="animation: slideUp 0.3s ease;">
-      <div class="auth-modal-header" style="border-bottom: 1px solid var(--border-color); padding-bottom: 20px; margin-bottom: 24px; position: relative; display: flex; align-items: center; justify-content: space-between;">
-        <h2 style="margin: 0;">${i18n.t('accounts.accountInfo')}</h2>
-        <button class="modal-close-btn">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-            <line x1="18" y1="6" x2="6" y2="18"/>
-            <line x1="6" y1="6" x2="18" y2="18"/>
-          </svg>
+    <div class="dialog dialog-sm account-details-modal" role="dialog" aria-modal="true" aria-labelledby="account-details-title">
+      <div class="dialog-head">
+        <div>
+          <div class="dialog-eyebrow">${i18n.t('accounts.accountInfo')}</div>
+          <h2 class="dialog-title" id="account-details-title">${esc(account.displayName || account.username)}</h2>
+        </div>
+        <button type="button" class="dialog-close modal-close-btn" title="${i18n.t('common.close')}" aria-label="${i18n.t('common.close')}">
+          ${accountIcon('close', 16)}
         </button>
       </div>
 
-      <div class="auth-modal-body" style="padding: 0;">
-        <!-- Avatar and Name Section -->
-        <div style="display: flex; flex-direction: column; align-items: center; gap: 16px; margin-bottom: 32px;">
-          <div style="width: 120px; height: 120px; border-radius: var(--radius-circle); overflow: hidden; box-shadow: none; border: 4px solid var(--card-bg);">
-            ${avatarContent}
-          </div>
-          <div style="text-align: center;">
-            <h3 style="margin: 0 0 8px 0; font-size: 24px; font-weight: 600; color: var(--text-primary);">${esc(account.displayName || account.username)}</h3>
-            ${account.displayName ? `<p class="clickable" data-copy="@${username}" style="margin: 0 0 12px 0; font-size: 14px; color: var(--text-secondary); cursor: pointer; transition: color 0.2s;" onmouseover="this.style.color='var(--accent-color)'" onmouseout="this.style.color='var(--text-secondary)'">@${username}</p>` : ''}
-            ${statusBadge}
+      <div class="dialog-body">
+        <div class="account-hero">
+          <div class="account-avatar account-avatar-lg">${accountAvatarHtml(account, 56)}</div>
+          <div class="account-hero-text">
+            <button type="button" class="account-copy account-handle" data-copy="@${username}" title="Скопировать">@${username}${accountIcon('copy', 14)}</button>
+            <span class="badge ${state.tone === 'success' ? 'badge-success' : 'badge-warning'}">${esc(state.badge)}</span>
           </div>
         </div>
 
-        <!-- Details Grid -->
-        <div style="display: grid; gap: 16px;">
-          ${account.email ? `
-          <div class="detail-row clickable" data-copy="${esc(account.email)}" style="display: flex; align-items: center; gap: 12px; padding: 16px; background: var(--input-bg); border-radius: var(--radius-md); border: 1px solid var(--border-color);">
-            <div style="width: 40px; height: 40px; background: rgba(124, 92, 255, 0.15); border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#7c5cff" stroke-width="2">
-                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
-                <polyline points="22,6 12,13 2,6"/>
-              </svg>
-            </div>
-            <div style="flex: 1; min-width: 0;">
-              <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;">${i18n.t('accounts.email')}</div>
-              <div style="font-size: 14px; font-weight: 500; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis;">${esc(account.email)}</div>
-            </div>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-tertiary)" stroke-width="2" style="flex-shrink: 0;">
-              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-            </svg>
-          </div>
-          ` : ''}
+        <dl class="account-facts">${facts}</dl>
 
-          <div class="detail-row" style="display: flex; align-items: center; gap: 12px; padding: 16px; background: var(--input-bg); border-radius: var(--radius-md); border: 1px solid var(--border-color);">
-            <div style="width: 40px; height: 40px; background: rgba(53, 208, 138, 0.15); border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#35d08a" stroke-width="2">
-                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
-              </svg>
+        ${state.action ? `
+          <div class="account-alert">
+            ${accountIcon('warning', 16)}
+            <div>
+              <div class="account-alert-title">${i18n.t('accounts.requiresAction')}</div>
+              <div>${state.action === 'activate' ? i18n.t('accounts.requiresOAuth') : i18n.t('accounts.requiresTwitchLogin')}</div>
             </div>
-            <div style="flex: 1;">
-              <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;">${i18n.t('accounts.authMethod')}</div>
-              <div style="font-size: 14px; font-weight: 500; color: var(--text-primary);">${account.loginMethod === 'oauth' ? 'OAuth 2.0' : 'Cookie'}</div>
-            </div>
-          </div>
-
-          <div class="detail-row" style="display: flex; align-items: center; gap: 12px; padding: 16px; background: var(--input-bg); border-radius: var(--radius-md); border: 1px solid var(--border-color);">
-            <div style="width: 40px; height: 40px; background: rgba(255, 159, 67, 0.15); border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FF9F43" stroke-width="2">
-                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-                <line x1="16" y1="2" x2="16" y2="6"/>
-                <line x1="8" y1="2" x2="8" y2="6"/>
-                <line x1="3" y1="10" x2="21" y2="10"/>
-              </svg>
-            </div>
-            <div style="flex: 1;">
-              <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;">${i18n.t('accounts.dateAdded')}</div>
-              <div style="font-size: 14px; font-weight: 500; color: var(--text-primary);">${addedDate.toLocaleDateString(i18n.getLocale(), { day: 'numeric', month: 'long', year: 'numeric' })}</div>
-            </div>
-          </div>
-
-          ${lastLoginDate ? `
-          <div class="detail-row" style="display: flex; align-items: center; gap: 12px; padding: 16px; background: var(--input-bg); border-radius: var(--radius-md); border: 1px solid var(--border-color);">
-            <div style="width: 40px; height: 40px; background: rgba(0, 224, 255, 0.15); border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00E0FF" stroke-width="2">
-                <circle cx="12" cy="12" r="10"/>
-                <polyline points="12 6 12 12 16 14"/>
-              </svg>
-            </div>
-            <div style="flex: 1;">
-              <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;">${i18n.t('accounts.lastActivity')}</div>
-              <div style="font-size: 14px; font-weight: 500; color: var(--text-primary);">${lastLoginDate.toLocaleString(i18n.getLocale(), { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}</div>
-            </div>
-          </div>
-          ` : ''}
-
-          ${oauthExpiryDate && isActive ? `
-          <div class="detail-row" style="display: flex; align-items: center; gap: 12px; padding: 16px; background: var(--input-bg); border-radius: var(--radius-md); border: 1px solid var(--border-color);">
-            <div style="width: 40px; height: 40px; background: linear-gradient(135deg, ${tokenExpiringSoon ? 'rgba(255, 159, 67, 0.15), rgba(255, 159, 67, 0.05)' : 'rgba(124, 92, 255, 0.15), rgba(107, 73, 240, 0.05)'}); border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="${tokenExpiringSoon ? '#FF9F43' : '#7c5cff'}" stroke-width="2">
-                <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M13.8 12H3"/>
-              </svg>
-            </div>
-            <div style="flex: 1;">
-              <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;">${i18n.t('accounts.tokenExpires')}</div>
-              <div style="font-size: 14px; font-weight: 500; color: ${tokenExpiringSoon ? '#FF9F43' : 'var(--text-primary)'};">${oauthExpiryDate.toLocaleDateString(i18n.getLocale(), { day: 'numeric', month: 'long', year: 'numeric' })}</div>
-            </div>
-          </div>
-          ` : ''}
-
-          ${!isActive || !isTwitchLoggedIn ? `
-          <div style="margin-top: 8px; padding: 16px; background: rgba(255, 159, 67, 0.1); border-radius: var(--radius-md); border: 1px solid rgba(255, 159, 67, 0.3);">
-            <div style="display: flex; gap: 12px; align-items: start;">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FF9F43" stroke-width="2" style="flex-shrink: 0; margin-top: 2px;">
-                <circle cx="12" cy="12" r="10"/>
-                <line x1="12" y1="8" x2="12" y2="12"/>
-                <line x1="12" y1="16" x2="12.01" y2="16"/>
-              </svg>
-              <div style="flex: 1;">
-                <div style="font-size: 13px; font-weight: 600; color: #FF9F43; margin-bottom: 6px;">${i18n.t('accounts.requiresAction')}</div>
-                <div style="font-size: 13px; color: var(--text-secondary); line-height: 1.5;">
-                  ${!isActive ? i18n.t('accounts.requiresOAuth') : i18n.t('accounts.requiresTwitchLogin')}
-                </div>
-              </div>
-            </div>
-          </div>
-          ` : ''}
-        </div>
+          </div>` : ''}
       </div>
 
-      <div class="auth-modal-footer">
-        <span class="footer-close-text" onclick="this.closest('.auth-modal').querySelector('.modal-close-btn').click();">
-          ${i18n.t('common.close')}
-        </span>
-      </div>
+      ${state.action ? `
+        <div class="dialog-foot">
+          <button type="button" class="btn btn-secondary" data-action="close">${i18n.t('common.close')}</button>
+          <button type="button" class="btn btn-primary" data-action="fix">${actionLabel}</button>
+        </div>` : ''}
     </div>
   `;
 
   document.body.style.overflow = 'hidden';
   document.body.appendChild(modal);
+  fallbackAccountAvatars(modal);
 
   const closeModal = () => {
     document.body.style.overflow = '';
-    const overlay = modal.querySelector('.auth-modal-overlay');
-    if (overlay) overlay.style.opacity = '0';
-    setTimeout(() => document.body.removeChild(modal), 200);
+    document.removeEventListener('keydown', onKey, true);
+    if (modal.parentNode) modal.parentNode.removeChild(modal);
+    if (returnFocusTo && document.body.contains(returnFocusTo)) returnFocusTo.focus();
   };
+  const onKey = (e) => {
+    if (e.key === 'Escape') {
+      e.stopPropagation();
+      closeModal();
+    }
+  };
+  document.addEventListener('keydown', onKey, true);
 
   modal.querySelector('.modal-close-btn').addEventListener('click', closeModal);
+  modal.querySelector('[data-action="close"]')?.addEventListener('click', closeModal);
+  modal.querySelector('[data-action="fix"]')?.addEventListener('click', () => {
+    closeModal();
+    if (state.action === 'activate') activateAccountOAuth(account.username);
+    else handleTwitchWebLogin(account.username);
+  });
 
-  modal.querySelector('.auth-modal-overlay').addEventListener('click', closeModal);
+  // Закрывает только щелчок, начатый на фоне: выделение текста с
+  // отпусканием мыши за краем окна раньше закрывало его
+  let downOnBackdrop = false;
+  modal.addEventListener('pointerdown', (e) => { downOnBackdrop = e.target === modal; });
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal && downOnBackdrop) closeModal();
+  });
 
   // Add click handlers for copying
   modal.querySelectorAll('[data-copy]').forEach(element => {
@@ -1090,11 +869,7 @@ function showAccountDetailsModal(account) {
     });
   });
 
-  // Add fade-in animation
-  setTimeout(() => {
-    const overlay = modal.querySelector('.auth-modal-overlay');
-    if (overlay) overlay.style.opacity = '1';
-  }, 10);
+  (modal.querySelector('[data-action="fix"]') || modal.querySelector('.modal-close-btn'))?.focus();
 }
 
 // Expose functions globally

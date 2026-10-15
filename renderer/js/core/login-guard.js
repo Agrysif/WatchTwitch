@@ -136,6 +136,13 @@ class LoginGuard {
           ? 'Twitch не узнаёт вход аккаунта' + user + ': сохранённый вход истёк.'
           : 'Сохранённый вход в Twitch истёк.');
 
+    // Утром по журналу видно, когда пропал вход, а сигнал «нужно
+    // внимание» звучит и во время игры: без входа ночь фарминга пропадёт
+    window.eventLog?.add({ type: 'login', title: 'Нет входа в Twitch', detail: revoked ? 'Twitch завершил сеанс' : 'Сохранённый вход истёк' });
+    window.chime?.play('attention');
+
+    const closeIcon = window.Icons?.get?.('close', 16) ||
+      '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
     const overlay = document.createElement('div');
     overlay.id = 'login-guard-overlay';
     overlay.className = 'whats-new-overlay';
@@ -143,33 +150,31 @@ class LoginGuard {
     // продолжит играть. Верно второе: плеер никто не останавливает, но без
     // входа Twitch не засчитывает ни минуты, ни награды
     overlay.innerHTML = `
-      <div class="whats-new" role="dialog" aria-label="Нужен вход в Twitch" style="max-width: 460px;">
+      <div class="whats-new login-guard-dialog" role="alertdialog" aria-modal="true" aria-labelledby="login-guard-title" aria-describedby="login-guard-text">
         <div class="whats-new-head">
           <div>
-            <div class="whats-new-eyebrow">Награды не засчитываются</div>
-            <h2 class="whats-new-title">Войдите в Twitch заново</h2>
+            <div class="whats-new-eyebrow dialog-eyebrow is-warning">Награды не засчитываются</div>
+            <h2 class="whats-new-title" id="login-guard-title">Войдите в Twitch заново</h2>
           </div>
-          <button class="whats-new-close" id="login-guard-close" aria-label="Позже">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M18 6L6 18M6 6l12 12"/>
-            </svg>
-          </button>
+          <button class="whats-new-close" id="login-guard-close" title="Позже" aria-label="Позже">${closeIcon}</button>
         </div>
         <div class="whats-new-body">
-          <p style="margin: 0 0 12px; color: var(--text-secondary); line-height: 1.5;">
+          <p class="login-guard-text" id="login-guard-text">
             ${reason}
             Стрим продолжит играть, но минуты и награды не засчитываются,
             пока вы не войдёте снова.
           </p>
-          <div style="display: flex; gap: 10px; margin-top: 16px;">
-            <button class="btn btn-primary" id="login-guard-login" style="flex: 1; justify-content: center;">Войти в Twitch</button>
-            <button class="btn btn-secondary" id="login-guard-later" style="justify-content: center;">Позже</button>
-          </div>
+        </div>
+        <div class="dialog-foot">
+          <button class="btn btn-secondary" id="login-guard-later">Позже</button>
+          <button class="btn btn-primary" id="login-guard-login">Войти в Twitch</button>
         </div>
       </div>
     `;
+    this.returnFocus = document.activeElement;
     document.body.appendChild(overlay);
     this.overlay = overlay;
+    setTimeout(() => overlay.querySelector('#login-guard-login')?.focus({ preventScroll: true }), 0);
 
     const abort = new AbortController();
     this._abort = abort;
@@ -184,9 +189,16 @@ class LoginGuard {
 
   close() {
     if (this._abort) this._abort.abort();
+    const wasOpen = !!this.overlay;
     if (this.overlay) this.overlay.remove();
     this.overlay = null;
     this._abort = null;
+    // Фокус — туда, где был до окна: клавиатурой не приходится искать
+    // место на странице заново
+    if (wasOpen && this.returnFocus?.isConnected) {
+      try { this.returnFocus.focus({ preventScroll: true }); } catch (e) { /* элемент ушёл */ }
+    }
+    this.returnFocus = null;
   }
 
   /** Ведёт на вкладку аккаунтов и открывает окно входа Twitch. */
