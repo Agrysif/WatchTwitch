@@ -248,7 +248,9 @@
               type: 'drop',
               title: dropName,
               game: gameName || undefined,
-              icon: safeImageUrl(drop.imageURL || drop.image || drop.imageUrl) || undefined
+              icon: safeImageUrl(drop.imageURL || drop.image || drop.imageUrl) || undefined,
+              // id награды: если её уже забрал автосбор, вторая запись не нужна
+              key: dropInstanceID
             });
             claimBtn.disabled = true;
             claimBtn.innerHTML = `${icon('check', 16)}<span>Получено</span>`;

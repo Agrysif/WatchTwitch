@@ -435,11 +435,20 @@ class FarmingPage {
     const fromDashboard = this.buildActiveCampaignsMapFromCampaigns(campaigns);
 
     if (fromDashboard.size > 0) {
+      this.noteCampaignsComplete(true);
       return { map: fromDashboard, complete: true };
     }
 
     const inventory = await window.electronAPI.fetchDropsInventory();
+    this.noteCampaignsComplete(false);
     return { map: this.buildActiveCampaignsMapFromCampaigns(inventory), complete: false };
+  }
+
+  /** Полон ли список кампаний — для подсказки на заглушке простоя. */
+  noteCampaignsComplete(complete) {
+    if (this._campaignsComplete === complete) return;
+    this._campaignsComplete = complete;
+    this.updateWaitingSub();
   }
 
   async loadActiveCampaignsMap() {
@@ -2012,6 +2021,12 @@ class FarmingPage {
       text = `В очереди ${enabled.length} ${this.plural(enabled.length, 'категория', 'категории', 'категорий')}`;
       if (withDrops === 1) text += ', у одной идёт кампания';
       else if (withDrops > 1) text += `, у ${withDrops} идут кампании`;
+      // Полный список кампаний Twitch отдаёт только после первого стрима за
+      // запуск приложения. На новом компьютере без пояснения казалось, что
+      // автофарм сломан
+      if (this._campaignsComplete === false) {
+        text += '. Twitch пока показал не все кампании — полный список придёт через несколько секунд после запуска, можно начинать';
+      }
     }
     if (sub.textContent !== text) sub.textContent = text;
   }
@@ -2392,8 +2407,10 @@ class FarmingPage {
 
     // Часть кампаний засчитывается только на своих каналах. Выбор
     // пользователя не отменяем, но предупреждаем, что дропсов тут не будет.
+    // По неполному списку кампаний (soft) не предупреждаем: у игры могут
+    // быть кампании, которых Twitch ещё не показал
     const allowed = await this.allowedChannelsFor(category.name);
-    if (allowed.length > 0 && !allowed.includes(login)) {
+    if (allowed.length > 0 && !allowed.soft && !allowed.includes(login)) {
       window.utils?.showToast('Этот канал не засчитывает дропсы кампании', 'warning');
     }
 
@@ -2557,7 +2574,7 @@ class FarmingPage {
     // Часть кампаний Twitch привязывает к конкретным стримерам: просмотр
     // остальных не засчитывается вовсе. Раньше приложение выбирало стрим по
     // зрителям и тегу «Drops» и могло всю ночь смотреть «не того».
-    const allowed = await this.allowedChannelsFor(categoryName);
+    let allowed = await this.allowedChannelsFor(categoryName);
     if (allowed.length > 0) {
       const permitted = window.DropCredit.filterAllowed(streams, allowed);
       if (permitted.length > 0) {
@@ -2569,14 +2586,21 @@ class FarmingPage {
           console.log('[Выбор стрима] Разрешённый канал в эфире:', live.login);
           return live;
         }
-        console.warn('[Выбор стрима] Кампания только для %d каналов, никто из них не в эфире', allowed.length);
-        // При переборе категорий (options.quiet) итог сообщает перебор
-        // одним тостом — иначе на каждую категорию выходило по три
-        if (!options.quiet) {
-          const word = this.plural(allowed.length, 'канала', 'каналов', 'каналов');
-          window.utils?.showToast(`Кампания засчитывается только у ${allowed.length} ${word}, никто не в эфире`, 'warning');
+        if (allowed.soft) {
+          // Список кампаний неполный — ограничение лишь пожелание (см.
+          // allowedChannelsFor): никого из разрешённых нет, берём любой стрим
+          console.log('[Выбор стрима] Разрешённые каналы не в эфире, список кампаний ещё неполный — беру любой стрим категории');
+          allowed = [];
+        } else {
+          console.warn('[Выбор стрима] Кампания только для %d каналов, никто из них не в эфире', allowed.length);
+          // При переборе категорий (options.quiet) итог сообщает перебор
+          // одним тостом — иначе на каждую категорию выходило по три
+          if (!options.quiet) {
+            const word = this.plural(allowed.length, 'канала', 'каналов', 'каналов');
+            window.utils?.showToast(`Кампания засчитывается только у ${allowed.length} ${word}, никто не в эфире`, 'warning');
+          }
+          return null;
         }
-        return null;
       }
     }
 
@@ -2620,6 +2644,7 @@ class FarmingPage {
   /**
    * Разрешённые каналы для кампаний игры. Пусто — любой канал категории.
    * Берутся только кампании, которые ещё имеет смысл фармить.
+   * allowed.soft — список кампаний неполный, ограничение лишь пожелание.
    */
   async allowedChannelsFor(categoryName) {
     if (!window.DropCredit || !window.electronAPI?.fetchDropsInventory) return [];
@@ -2628,7 +2653,20 @@ class FarmingPage {
       const matched = this.matchCampaignsForGame(result?.campaigns || [], categoryName);
       const CV = window.CampaignValue;
       const worthwhile = CV ? matched.filter(c => CV.evaluate(c).feasible) : matched;
-      return window.DropCredit.allowedLogins(worthwhile.length ? worthwhile : matched);
+      const allowed = window.DropCredit.allowedLogins(worthwhile.length ? worthwhile : matched);
+      // Пока Twitch не отдал полный список кампаний (до первого стрима после
+      // запуска; на новом компьютере это бросается в глаза), видны только
+      // начатые. У Overwatch среди них оказалась одна кампания, привязанная
+      // к двум каналам не в эфире, — и приложение решило, что игра
+      // засчитывается только у них, и не запускало ни один стрим. Совсем
+      // отбрасывать ограничение тоже нельзя: у игры, где все кампании на
+      // своих каналах, первый стрим после каждого запуска шёл бы мимо
+      // зачёта, а при выключенном автопереключении — так и оставался бы.
+      // Поэтому по неполному списку ограничение мягкое: живой разрешённый
+      // канал берём, а если таких нет — любой стрим категории; после старта
+      // плеера придёт полный список, и проверка зачёта поправит выбор
+      if (allowed.length && result?.dashboardComplete !== true) allowed.soft = true;
+      return allowed;
     } catch (error) {
       console.warn('[Выбор стрима] Не удалось прочитать список каналов кампании:', error?.message);
       return [];
@@ -7332,11 +7370,20 @@ class FarmingPage {
 
     if (!this._claimAttempted) this._claimAttempted = new Set();
     if (!this._claimRetry) this._claimRetry = new Map();
+    // Награды, уже полученные за этот запуск. Twitch ещё минуту-другую
+    // отдаёт их в инвентаре как «готова к получению», и раньше приложение
+    // «забирало» их каждые полминуты заново — с уведомлением, звуком и
+    // записью в журнал на каждый круг
+    if (!this._claimedIds) this._claimedIds = new Set();
 
     for (const campaign of campaigns) {
       for (const drop of (campaign.drops || [])) {
         const id = drop.dropInstanceID;
         if (!id) continue;                     // Twitch выдаёт его только у готовых наград
+        if (this._claimedIds.has(id)) {
+          drop.claimed = true;                 // устаревший ответ Twitch
+          continue;
+        }
         if (drop.claimed) continue;
         // Запрос по этой награде уже идёт
         if (this._claimAttempted.has(id)) continue;
@@ -7356,13 +7403,29 @@ class FarmingPage {
         try {
           const result = await window.electronAPI.claimDrop(id);
 
-          if (result?.success) {
+          if (result?.success && result.already) {
+            // Twitch: «уже получена». Это не новая награда — её забрали
+            // раньше (мы или на сайте), объявлять нечего
+            drop.claimed = true;
+            this._claimedIds.add(id);
+            this._claimRetry.delete(id);
+            console.log('[Дропсы] Уже получена раньше:', name);
+          } else if (result?.success && window.eventLog?.hasKey?.(id)) {
+            // После перезапуска память пуста, а Twitch на уже выданную
+            // награду иногда отвечает «можно получить», а не «уже получена».
+            // Журнал помнит id наград 14 дней — объявлять второй раз незачем
+            drop.claimed = true;
+            this._claimedIds.add(id);
+            this._claimRetry.delete(id);
+            console.log('[Дропсы] Уже объявлена раньше:', name);
+          } else if (result?.success) {
+            this._claimedIds.add(id);
             window.chime?.dropClaimed();
             drop.claimed = true;
             this._claimRetry.delete(id);
             window.utils?.showToast(`Награда получена: ${name}`, 'success');
             const game = campaign.game?.name || campaign.name || '';
-            window.eventLog?.add({ type: 'drop', title: name, game, icon: drop.imageURL });
+            window.eventLog?.add({ type: 'drop', title: name, game, icon: drop.imageURL, key: id });
             // «2 из 4» — сколько наград кампании уже получено, вместе с этой
             const drops = campaign.drops || [];
             const extra = drops.length > 1

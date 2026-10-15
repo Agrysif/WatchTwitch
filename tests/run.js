@@ -1154,6 +1154,48 @@ function loadClass(relativePath, className, globals = {}) {
   check('ошибка на странице — зависание', PM.verdict({ hasVideo: true, hasError: true, time: 9 }, 5), 'stalled');
 }
 
+// ─── Журнал: эхо одной и той же награды ──────────────────────────────
+{
+  const EL = loadClass('renderer/js/core/event-log.js', 'EventLog');
+  const t0 = 1_800_000_000_000;
+  const мин = 60000;
+  const награда = (title, key, at) => ({ id: key + at, type: 'drop', title, game: 'Delta Force', key, at });
+  let list = [];
+  // Две награды чередуются каждые полминуты, как было в жалобе
+  for (let i = 0; i < 6; i++) {
+    const at = t0 + i * 30000;
+    list = EL.insert(list, i % 2 ? награда('S11 Adv Arm Select Pack', 'u#c#arm', at) : награда('Adv Vest Selection Pack', 'u#c#vest', at), at);
+  }
+  check('чередующиеся повторы двух наград — две записи', list.length, 2);
+  const черезДень = EL.insert(list, награда('Adv Vest Selection Pack', 'u#c#vest', t0 + 24 * 60 * мин), t0 + 24 * 60 * мин);
+  check('та же награда (тот же id) и через сутки — эхо', черезДень.length, 2);
+  // Разные награды с одним названием (ящик за каждый час) — все в журнале
+  let ящики = [];
+  for (let i = 0; i < 3; i++) {
+    const at = t0 + i * 60 * мин;
+    ящики = EL.insert(ящики, награда('Supply Crate', 'u#c#crate' + i, at), at);
+  }
+  check('одноимённые награды с разными id — три записи', ящики.length, 3);
+  // Записи без ключа (ручное «Забрать всё») эхом не считаются
+  let вручную = [];
+  for (let i = 0; i < 2; i++) {
+    const at = t0 + i * 30 * мин;
+    вручную = EL.insert(вручную, { id: 'm' + i, type: 'drop', title: 'Забрано вручную: 1 награда', at }, at);
+  }
+  check('ручные получения без id — две записи', вручную.length, 2);
+  check('ключ сохраняется в записи', EL.normalize({ type: 'drop', title: 'X', key: 'u#c#d' }, t0).key, 'u#c#d');
+}
+
+// ─── Журнал помнит выданные награды ──────────────────────────────────
+{
+  const EL = loadClass('renderer/js/core/event-log.js', 'EventLog');
+  const log = Object.create(EL.prototype);
+  log.state = { entries: [{ id: 'a', type: 'drop', title: 'X', at: 1, key: 'drop-1' }] };
+  check('журнал знает выданную награду', log.hasKey('drop-1'), true);
+  check('чужой id — нет', log.hasKey('drop-2'), false);
+  check('пустой id — нет', log.hasKey(''), false);
+}
+
 // ─── Итог ────────────────────────────────────────────────────────────
 console.log('');
 if (failures.length) {

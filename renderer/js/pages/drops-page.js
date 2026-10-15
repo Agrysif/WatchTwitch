@@ -1287,7 +1287,9 @@
             type: 'drop',
             title: drop?.benefitName || drop?.name || 'Награда',
             game: campaign?.game?.name || drop?.game || undefined,
-            icon: drop?.imageURL || drop?.image || undefined
+            icon: drop?.imageURL || drop?.image || undefined,
+            // id награды: если её уже забрал автосбор, вторая запись не нужна
+            key: dropInstanceID
           });
         } catch (e) { /* журнал необязателен */ }
 
