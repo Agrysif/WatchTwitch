@@ -2,7 +2,7 @@
 
 - «Фарминг» с первого взгляда: статус («Минуты засчитываются»), плеер, следующая награда со временем и прогресс кампании видны сразу, без прокрутки
 - Спокойные тёмная и светлая темы: нейтральные серые поверхности, цвет только там, где он что-то значит
-- Новое оформление «iOS 27»: стекло на чистом нейтральном фоне. Включается в «Настройки → Оформление», там же ползунок прозрачности
+- Новое оформление «iOS 27» по умолчанию: стекло на чистом нейтральном фоне и ползунок прозрачности. Классический вид — одним переключателем в «Настройки → Оформление»
 - Настройки: разделы слева, поиск, опасные действия собраны в одном месте
 - Подписки: избранные каналы — отдельной рамкой над остальными
 - Окно загрузки показывает этапы запуска и версию
@@ -42,7 +42,7 @@
 
 - Farming at a glance: status ("Minutes are counting"), the player, the next reward with its time and campaign progress are all visible without scrolling
 - Calm dark and light themes: neutral grey surfaces, colour only where it means something
-- New "iOS 27" look: glass on a clean neutral background. Turn it on in Settings → Appearance, together with a translucency slider
+- New "iOS 27" look by default: glass on a clean neutral background with a translucency slider. The classic look is one switch away in Settings → Appearance
 - Settings: sections on the left, search, dangerous actions grouped in one place
 - Subscriptions: favourite channels have their own frame above the rest
 - The loading window shows startup steps and the version

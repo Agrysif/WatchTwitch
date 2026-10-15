@@ -1116,6 +1116,18 @@ function loadClass(relativePath, className, globals = {}) {
   check('после миграции выбор пользователя уважается',
     загрузить({ autoSwitchStreams: false, settingsVersion: 2 }).sm.settings.autoSwitchStreams, false);
   check('новая установка — автопереключение включено', загрузить(null).sm.settings.autoSwitchStreams, true);
+
+  // Оформление iOS 27 по умолчанию: старая «Классика», сохранённая сама
+  // собой, меняется; выбранная вручную — остаётся
+  check('новая установка — оформление iOS 27', загрузить(null).sm.settings.uiStyle, 'ios27');
+  check('классика по умолчанию у старой установки → iOS 27',
+    загрузить({ uiStyle: 'classic', settingsVersion: 2 }).sm.settings.uiStyle, 'ios27');
+  check('установка без ключа оформления → iOS 27',
+    загрузить({ theme: 'dark' }).sm.settings.uiStyle, 'ios27');
+  check('классика, выбранная вручную, сохраняется',
+    загрузить({ uiStyle: 'classic', uiStyleChosen: true, settingsVersion: 2 }).sm.settings.uiStyle, 'classic');
+  check('после миграции классика не возвращается в iOS',
+    загрузить({ uiStyle: 'classic', settingsVersion: 3 }).sm.settings.uiStyle, 'classic');
 }
 
 {
