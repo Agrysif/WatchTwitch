@@ -36,7 +36,7 @@ assert.equal(pkg.build.appId, 'com.watchtwitch.app');
 assert.equal(pkg.build.nsis.artifactName, '${productName}-Setup-${version}.${ext}');
 // Окно «Что нового» выбирает язык по флагу в заголовке раздела, а не по
 // фразе: заголовки могут быть любыми («Новый дизайн», «Fixes»)
-assert.ok(/^## 🇷🇺 S/m.test(metadata.releaseNotes), 'нет русского раздела');
-assert.ok(/^## 🇬🇧 S/m.test(metadata.releaseNotes), 'нет английского раздела');
+assert.ok(/^## 🇷🇺 \S/m.test(metadata.releaseNotes), 'нет русского раздела');
+assert.ok(/^## 🇬🇧 \S/m.test(metadata.releaseNotes), 'нет английского раздела');
 console.log('PASS release metadata, installer SHA-512/size, blockmap, packaged source, unchanged update feed and installer identity');
 console.log(JSON.stringify({ version: metadata.version, installer: name, bytes: installer.length, sha512: hash }));
