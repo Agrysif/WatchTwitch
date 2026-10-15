@@ -34,7 +34,9 @@ const previousConfig = yaml.load(fs.readFileSync(path.join(dist, 'audit-old-app-
 assert.deepEqual(config, previousConfig, 'Update feed/cache configuration changed');
 assert.equal(pkg.build.appId, 'com.watchtwitch.app');
 assert.equal(pkg.build.nsis.artifactName, '${productName}-Setup-${version}.${ext}');
-assert.ok(metadata.releaseNotes.includes('## 🇷🇺 Что нового'));
-assert.ok(metadata.releaseNotes.includes("## 🇬🇧 What's new"));
+// Окно «Что нового» выбирает язык по флагу в заголовке раздела, а не по
+// фразе: заголовки могут быть любыми («Новый дизайн», «Fixes»)
+assert.ok(/^## 🇷🇺 S/m.test(metadata.releaseNotes), 'нет русского раздела');
+assert.ok(/^## 🇬🇧 S/m.test(metadata.releaseNotes), 'нет английского раздела');
 console.log('PASS release metadata, installer SHA-512/size, blockmap, packaged source, unchanged update feed and installer identity');
 console.log(JSON.stringify({ version: metadata.version, installer: name, bytes: installer.length, sha512: hash }));
