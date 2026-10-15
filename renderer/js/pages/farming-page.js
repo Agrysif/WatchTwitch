@@ -6048,6 +6048,23 @@ class FarmingPage {
         const viewersEl = document.getElementById('stream-viewers');
         if (!isCurrent() || !viewersEl) return;
 
+        // stats === null — Twitch подтвердил, что канал не в эфире (сбой сети
+        // main отдаёт исключением, оно уходит в catch). Раньше этот ответ
+        // молча пропускался: стрим заканчивался, а приложение до утра
+        // показывало «Минуты засчитываются» и ничего не делало.
+        if (stats === null) {
+          this._offlineStatChecks = (this._offlineStatChecks || 0) + 1;
+          const uptimeEl = document.getElementById('stream-uptime');
+          if (uptimeEl) uptimeEl.textContent = 'не в эфире';
+          if (this._offlineStatChecks >= 2) {
+            this._offlineStatChecks = 0;
+            console.warn('[Стрим] Канал закончил эфир:', channelLogin);
+            this.onPlayerDead({ channel: channelLogin, reason: 'канал закончил эфир' });
+          }
+          return;
+        }
+        this._offlineStatChecks = 0;
+
         if (stats) {
           // Обновляем зрителей: «12,4 тыс.» и слово в нужной форме рядом
           // («1 зритель», «3 зрителя») — подпись стоит прямо в строке
@@ -7489,6 +7506,20 @@ class FarmingPage {
     if (detail.channel && detail.channel.toLowerCase() !== this.currentStream.login.toLowerCase()) return;
 
     const login = this.currentStream.login;
+
+    // Конец эфира замечают двое: сторож плеера и проверка статистики. Пока
+    // один ищет замену, второй ничего не делает — иначе канал сменился бы
+    // дважды подряд
+    if (this._deadHandlingFor === login) return;
+    this._deadHandlingFor = login;
+    try {
+      await this._handlePlayerDead(login, detail);
+    } finally {
+      if (this._deadHandlingFor === login) this._deadHandlingFor = null;
+    }
+  }
+
+  async _handlePlayerDead(login, detail = {}) {
     const name = this.currentStream.displayName || login;
 
     // Настройка «Автопереключение стримов» должна что-то значить

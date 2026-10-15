@@ -617,3 +617,11 @@ body.ui-ios27.theme-light.low-graphics .settings-range::-webkit-slider-thumb {
   outline: 1px solid rgba(0, 0, 0, 0.1);
   outline-offset: -1px;
 }
+
+
+/* Группы подписок («Избранные», «Остальные каналы») — такие же листы
+   стекла, как карточки */
+body.ui-ios27 .subs-group {
+  border-color: var(--glass-stroke);
+  box-shadow: var(--glass-shadow);
+}
