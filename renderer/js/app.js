@@ -227,6 +227,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   // автозапуске Windows) тоже убрано: оно ничего не сообщало
   if (Array.isArray(savedAccounts) && savedAccounts.length === 0) {
     setTimeout(() => {
+      // Только если человек ещё на стартовой странице: за эту секунду он мог
+      // сам открыть другую вкладку, и выдёргивать его оттуда незачем
+      if (router.currentPage && router.currentPage !== 'farming') return;
       router.navigate('accounts');
     }, 1000);
   }
