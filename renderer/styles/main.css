@@ -1,3 +1,21 @@
+/* ===== ОСНОВНЫЕ СТИЛИ =====
+ *
+ * Порядок файла:
+ *   1. Основа: сброс, body, фокус, полосы прокрутки, утилиты
+ *   2. Оболочка: заголовок окна, сайдбар, меню, блок фарминга, контент
+ *   3. Компоненты: кнопки, поля, переключатели, сегменты, карточки,
+ *      списки, бейджи, прогресс, окна, пустые состояния, подсказка, метрики
+ *   4. Общие блоки оболочки: окно «Что нового», отсчёт выключения
+ *   5. Прежние правила страниц: база, на которую опираются page-*.css
+ *   6. Режимы: компактный, без анимаций, экономный
+ *
+ * Цвета — только токены themes.css. Новые правила с готовыми значениями
+ * цвета (#7c5cff, rgba(124, 92, 255, …)) ломали светлую тему: дорожки
+ * прогресса rgba(255,255,255,.12) на белом фоне не видны.
+ */
+
+/* ───────────────────────── 1. Основа ───────────────────────── */
+
 * {
   margin: 0;
   padding: 0;
@@ -5,264 +23,282 @@
 }
 
 body {
-  font-family: 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif;
-  /* Фон задан явно: раньше body оставался прозрачным, и в любом зазоре
-     между панелями просвечивала подложка окна */
-  background: var(--bg-primary);
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  /* Фон задан явно: иначе в любом зазоре между панелями просвечивает
+     подложка окна */
+  background: var(--surface-0);
   color: var(--text-primary);
-  font-size: 13px;
-  line-height: 1.5;
   overflow: hidden;
   user-select: none;
   -webkit-font-smoothing: antialiased;
 }
 
-/* Title Bar */
+/* Кнопки и поля берут шрифт интерфейса. По умолчанию Chromium рисует их
+   своим системным шрифтом 13.33px, и подписи кнопок отличались от текста
+   рядом */
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
+/* Атрибут hidden побеждает любые display правил классов */
+[hidden] {
+  display: none !important;
+}
+
+/* Видимый фокус с клавиатуры. :where — нулевая специфичность: компонент
+   со своим видом фокуса (поля ввода) перекрывает его без борьбы */
+:where(button, a, summary, [role="button"], [tabindex]):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: var(--accent-soft);
+}
+
+/* Полосы прокрутки: тонкие капсулы без стрелок. Прозрачная рамка
+   вокруг бегунка — отступ от края, а не ширина самой полосы */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: var(--scrollbar-track);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  background-clip: padding-box;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-button {
+  display: none;
+}
+
+/* Утилиты */
+.visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+.muted {
+  color: var(--text-tertiary);
+}
+
+.truncate {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ───────────────────────── 2. Оболочка ───────────────────────── */
+
+/* Заголовок окна. Название — тихое: где ты, говорит меню, а не титул */
 .titlebar {
   height: 32px;
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  justify-content: space-between;
   -webkit-app-region: drag;
-  border-bottom: 1px solid var(--border-color);
   background: var(--titlebar-bg);
+  border-bottom: 1px solid var(--border-color);
 }
 
 .titlebar-drag {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding-left: 12px;
   flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding-left: 12px;
 }
 
 .titlebar-logo {
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  border-radius: var(--radius-xs);
 }
 
 .titlebar-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-primary);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: var(--fw-semibold);
+  color: var(--text-secondary);
+}
+
+/* Инструменты заголовка (журнал событий): не перетаскивают окно */
+.titlebar-tools {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  padding-right: 4px;
+  -webkit-app-region: no-drag;
 }
 
 .titlebar-controls {
   display: flex;
+  height: 100%;
   -webkit-app-region: no-drag;
 }
 
 .titlebar-button {
+  position: relative;
   width: 46px;
   height: 32px;
-  border: none;
-  background: transparent;
-  color: var(--text-primary);
-  cursor: pointer;
-  transition: background-color 0.2s;
   display: flex;
   align-items: center;
   justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
 }
 
 .titlebar-button:hover {
   background: var(--hover-bg);
+  color: var(--text-primary);
 }
 
+.titlebar-button:active {
+  background: var(--press-bg);
+}
+
+/* Системный красный Windows: кнопку закрытия узнают по нему */
 .titlebar-button.close:hover {
-  background: #f0555f;
-  color: white;
+  background: #c42b1c;
+  color: #fff;
 }
 
-/* App Container */
+/* Кнопка инструмента — не во всю высоту, как системные, а «пилюлей»:
+   иначе она читалась бы как ещё одна кнопка управления окном */
+.titlebar-tools .titlebar-button {
+  width: 32px;
+  height: 26px;
+  border-radius: var(--radius-sm);
+}
+
+.titlebar-tools .titlebar-button svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Есть непросмотренное важное: точка в углу значка. Если внутри число —
+   капсула с ним */
+.titlebar-badge {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  box-shadow: 0 0 0 2px var(--titlebar-bg);
+}
+
+.titlebar-badge:not(:empty) {
+  top: 1px;
+  right: 1px;
+  width: auto;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  background: var(--accent-strong);
+  color: var(--text-on-accent);
+  font-size: 10px;
+  line-height: 14px;
+  font-weight: var(--fw-semibold);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Окно приложения */
 .app-container {
   display: flex;
   height: calc(100vh - 32px);
 }
 
-/* Sidebar */
-/* Атрибут hidden должен побеждать любые display правил классов */
-[hidden] {
-  display: none !important;
-}
-
+/* Сайдбар */
 .sidebar {
-  width: 212px;
-  background: var(--sidebar-bg);
-  border-right: 1px solid var(--border-color);
+  width: var(--sidebar-w);
+  flex: none;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  padding: 12px 8px;
+  padding: 8px;
+  background: var(--sidebar-bg);
+  border-right: 1px solid var(--border-color);
 }
 
 /* Меню и блок фарминга делят высоту так:
    — меню по возможности целиком; ужаться может, но не меньше чем до
      четырёх пунктов, и тогда видна полоса прокрутки. Раньше меню
      сжималось до нуля без всякого признака прокрутки: на ноутбуке во
-     время фарминга пропадали Настройки и Статистика, а в игровом режиме
-     и сама кнопка «Остановить» уезжала за нижний край;
+     время фарминга пропадали Настройки и Статистика;
    — блок фарминга не сжимается и не прокручивается: внутри него
      мини-плеер (отдельный слой webview, его обрезает только собственный
-     контейнер, а не прокрутка блока) и подсказка шкалы дропсов,
-     раскрывающаяся вверх, — прокрутка срезала бы её;
+     контейнер, а не прокрутка блока);
    — место освобождают иначе: первым прячется мини-плеер, на низком окне
-     блок фарминга уплотняется (медиазапросы ниже). */
+     меню и карточка уплотняются (медиазапросы ниже). */
 .sidebar-top {
   display: flex;
   flex-direction: column;
   flex: 0 1 auto;
-  /* Четыре пункта и край пятого — чтобы было видно, что есть ещё */
-  min-height: 168px;
+  /* Четыре пункта и край пятого — видно, что есть ещё */
+  min-height: 160px;
   overflow-y: auto;
 }
 
-/* Тонкая полоса прокрутки: заметна, но не съедает ширину пунктов */
 .sidebar-top::-webkit-scrollbar {
   width: 4px;
 }
 
-.sidebar-farming {
+.nav-group {
   display: flex;
   flex-direction: column;
-  gap: var(--gap-tight);
-  margin-top: auto;
-  flex: 0 0 auto;
-  padding-top: var(--gap-base);
-  border-top: 1px solid var(--border-color);
+  gap: 2px;
 }
 
-/* Отступы элементов блока фарминга. Раньше они были прописаны в разметке,
-   и уплотнить блок на низком окне было нечем */
-#sidebar-mini-player-container {
-  margin-bottom: 8px;
-}
-
-#sidebar-drops-progress {
-  padding: 12px 14px;
-  margin-bottom: 6px;
-}
-
-#farming-session-info {
-  padding: 16px;
-  margin-bottom: 8px;
-}
-
-#sidebar-start-farming-btn,
-#sidebar-stop-farming-btn {
-  padding: 14px 20px;
-}
-
-#sidebar-to-autofarm-btn {
-  padding: 11px 20px;
-  margin-bottom: 8px;
-}
-
-/* Окно ниже 780px. Обычному фармингу (плеер, дропсы, сессия, «Остановить»)
-   при полном меню нужно 780px высоты, поэтому здесь:
-   — мини-плеер уступает место первым: меню и «Остановить» важнее. Поток
-     при этом не прерывается: SlottedWebview видит, что слот скрыт, и прячет
-     видео, не выгружая плеер;
-   — блок фарминга плотнее, чтобы и при всех значках сразу (минимум окна —
-     600px) «Остановить» оставалась на экране, а меню — хотя бы на четыре
-     пункта. */
-@media (max-height: 779px) {
-  #sidebar-mini-player-container {
-    display: none !important;
-  }
-
-  .sidebar-farming {
-    gap: 6px;
-    padding-top: 8px;
-  }
-
-  #sidebar-drops-progress {
-    padding: 9px 12px;
-    margin-bottom: 0;
-  }
-
-  #sidebar-drops-progress .drops-credit {
-    margin-top: 6px;
-  }
-
-  .sidebar-farming > .game-mode-badge {
-    padding: 6px 10px;
-    margin-bottom: 0;
-  }
-
-  /* Заголовок «Сессия» лишний: зелёная точка «Активна» говорит то же */
-  #farming-session-info {
-    padding: 10px 12px;
-    margin-bottom: 0;
-  }
-
-  #farming-session-info .session-title {
-    display: none;
-  }
-
-  #sidebar-start-farming-btn,
-  #sidebar-stop-farming-btn {
-    padding: 10px 16px;
-  }
-
-  #sidebar-to-autofarm-btn {
-    padding: 8px 12px;
-    margin-bottom: 0;
-    font-size: 12px;
-  }
-
-  /* Без значка подпись помещается в одну строку, а не в две */
-  #sidebar-to-autofarm-btn svg {
-    display: none;
-  }
-
-  #sidebar-to-autofarm-btn span {
-    min-width: 0;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-  }
-}
-
-/* Значок «Нет входа», значок игрового режима и кнопка «Переключить на
-   автофарм» добавляют по 50–70px — с любым из них плееру нужно окно выше.
-   Кнопку farming-page.js показывает через style.display, поэтому и смотрим
-   на атрибут style; значки прячутся атрибутом hidden. */
-@media (max-height: 919px) {
-  .sidebar-farming:has(> #login-badge:not([hidden])) > #sidebar-mini-player-container,
-  .sidebar-farming:has(> #game-mode-badge:not([hidden])) > #sidebar-mini-player-container,
-  .sidebar-farming:has(> #sidebar-to-autofarm-btn:not([style*="display: none"])) > #sidebar-mini-player-container {
-    display: none !important;
-  }
-}
-
-.sidebar-farming button {
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-#farming-session-info {
-  animation: slideIn 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-  transition: all 0.3s ease;
-}
-
-@keyframes slideIn {
-  from {
-    opacity: 0;
-    transform: translateY(-10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes pulse {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.5;
-  }
+.nav-divider {
+  flex: none;
+  height: 1px;
+  margin: 8px 10px;
+  background: var(--border-color);
 }
 
 .nav-item {
@@ -270,18 +306,26 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 9px 11px;
+  flex: none;
+  width: 100%;
+  height: 34px;
+  padding: 0 10px;
   border: none;
+  border-radius: var(--radius-ctl);
   background: transparent;
   color: var(--text-secondary);
-  cursor: pointer;
-  border-radius: var(--radius-ctl);
-  margin-bottom: 2px;
-  transition: background var(--transition-fast), color var(--transition-fast);
   font-size: 13px;
-  font-weight: 500;
+  font-weight: var(--fw-medium);
   text-align: left;
-  width: 100%;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.nav-item svg,
+.nav-icon {
+  width: 18px;
+  height: 18px;
+  flex: none;
 }
 
 .nav-item:hover {
@@ -289,95 +333,526 @@ body {
   color: var(--text-primary);
 }
 
+/* Выбранный пункт — приподнятая поверхность и полоска акцента слева.
+   Фиолетовая заливка с фиолетовым текстом спорила с главной кнопкой:
+   на экране было два одинаково ярких пятна */
 .nav-item.active {
-  background: var(--accent-quiet);
-  color: var(--accent-color);
-  font-weight: 600;
-}
-
-.nav-icon {
-  flex-shrink: 0;
-}
-
-/* Content Area */
-.content {
-  flex: 1;
-  background: var(--bg-primary);
-  overflow-y: auto;
-  position: relative;
-}
-
-#page-container {
-  padding: 16px;
-  max-width: 1400px;
-  margin: 0 auto;
-}
-
-/* Common Elements */
-.page-header {
-  margin-bottom: 18px;
-}
-
-/* Заголовок страницы в плотной сетке не должен съедать экран:
-   ориентироваться помогает подсвеченный пункт в сайдбаре, а не крупный титул */
-.page-title {
-  font-size: 20px;
-  font-weight: 600;
-  letter-spacing: -0.015em;
+  background: var(--surface-2);
   color: var(--text-primary);
-  margin-bottom: 3px;
 }
 
-.page-subtitle {
+.nav-item.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 9px;
+  bottom: 9px;
+  width: 3px;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+}
+
+/* На светлой теме серая подложка почти сливалась с фоном сайдбара: здесь
+   выбранный пункт — белая плашка с тонкой рамкой. Рамка — outline, а не
+   тень: экономный режим графики снимает тени */
+.theme-light .nav-item.active {
+  background: var(--surface-1);
+  outline: 1px solid var(--border-color);
+  outline-offset: -1px;
+}
+
+.theme-light .nav-item.active:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.nav-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Обновление готово: зелёная точка в конце пункта «Настройки» */
+.update-notification-badge {
+  margin-left: auto;
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: var(--radius-circle);
+  background: var(--success);
+}
+
+.update-notification-badge svg {
+  display: none;
+}
+
+/* ── Блок фарминга в сайдбаре ──
+   Раньше это были пять отдельных плашек (дропсы, «Нет входа», игровой
+   режим, сессия, кнопка) — на окне 1000×650 меню уезжало под прокрутку.
+   Теперь одна карточка с разделами и кнопка под ней. Видимость частей
+   по-прежнему пишет JS через style.display и hidden */
+.sidebar-farming {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: none;
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-color);
+}
+
+#sidebar-mini-player-container {
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  transition: opacity var(--dur-slow) var(--ease-out), transform var(--dur-slow) var(--ease-out);
+}
+
+#sidebar-player-slot {
+  position: relative;
+  width: 100%;
+  padding-bottom: 56.25%;
+  background: #000;
+}
+
+.farm-card {
+  background: var(--surface-1);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 2px 12px;
+}
+
+/* Карточка исчезает, когда в ней ничего не показано: все части скрыты
+   атрибутом hidden или style="display: none" */
+.farm-card:not(:has(> :not([hidden], [style*="display: none"]))) {
+  display: none;
+}
+
+.farm-card-section {
+  padding: 8px 0;
+  transition: opacity var(--dur-slow) var(--ease-out), transform var(--dur-slow) var(--ease-out);
+}
+
+/* Разделитель между видимыми частями — без лишней линии над первой */
+.farm-card > :not([hidden], [style*="display: none"]) ~ :not([hidden], [style*="display: none"]) {
+  border-top: 1px solid var(--border-color);
+}
+
+.farm-card-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 20px;
+}
+
+.farm-card .status-dot {
+  width: 8px;
+  height: 8px;
+}
+
+.farm-card-status {
+  flex: 1;
+  min-width: 0;
   font-size: 13px;
+  line-height: 18px;
+  font-weight: var(--fw-semibold);
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.farm-card-timer {
+  flex: none;
+  font-size: 12px;
   color: var(--text-secondary);
 }
 
-/* Cards */
-.card {
-  background: var(--card-bg);
-  border-radius: var(--radius-md);
-  padding: var(--pad-card);
-  border: 1px solid var(--border-color);
-  margin-bottom: var(--gap-base);
+.farm-card-sub {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-tertiary);
 }
 
-.card-title {
-  font-size: 15px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  color: var(--text-primary);
-  margin-bottom: var(--gap-base);
+.farm-card-detail {
+  flex: 1;
+  min-width: 0;
 }
 
-/* Buttons */
-.btn {
-  padding: var(--pad-control);
-  border: 1px solid transparent;
-  border-radius: var(--radius-ctl);
+.farm-card-traffic {
+  flex: none;
+}
+
+.farm-card-label {
+  flex: 1;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.farm-card-percent {
   font-size: 13px;
-  font-weight: 500;
+  line-height: 18px;
+  font-weight: var(--fw-semibold);
+  color: var(--text-primary);
+}
+
+/* Шкала дропсов. Деления показывают, где выдаётся каждая награда; шкала
+   идёт по времени просмотра, а не по среднему проценту наград: прогресс
+   внутри кампании общий, и отметка встаёт ровно туда, где награду дадут */
+.drops-track {
+  position: relative;
+  height: 6px;
+  margin: 6px 0;
+  border-radius: var(--radius-pill);
+  background: var(--progress-bg);
+  overflow: hidden;
+}
+
+#sidebar-drops-bar {
+  height: 100%;
+  width: 0;
+  background: var(--accent);
+  transition: width var(--dur-slow) var(--ease-out);
+}
+
+#sidebar-drops-progress.is-complete #sidebar-drops-bar {
+  background: var(--success);
+}
+
+.drops-marks {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* Деление — вырез цветом карточки: видно и на заливке, и на дорожке,
+   в обеих темах. Прежняя светлая чёрточка терялась на светлой теме */
+.drops-mark {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--surface-1);
+}
+
+/* Последнее деление упирается в край — сдвигаем внутрь, иначе его
+   срезает скругление дорожки */
+.drops-mark.last {
+  margin-left: -1px;
+}
+
+/* Следующая награда — строкой, видна всегда. Раньше она пряталась во
+   всплывающую по наведению подсказку, и узнать, что будет следующим,
+   можно было только случайно */
+.drops-tip {
+  position: static;
+  margin-top: 8px;
+  font-size: 12px;
+}
+
+.drops-tip:empty {
+  display: none;
+}
+
+.drops-tip-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.drops-tip-row > div {
+  min-width: 0;
+}
+
+.drops-tip img {
+  width: 24px;
+  height: 24px;
+  flex: none;
+  border-radius: var(--radius-xs);
+  object-fit: cover;
+  background: var(--surface-2);
+}
+
+.drops-tip-name {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: var(--fw-medium);
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.drops-tip-left {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-secondary);
+}
+
+/* «Собрано 1 из 4 · чёрточки — рубежи» — пояснение для подсказки по
+   наведению; в постоянной строке лишнее */
+.drops-tip-note {
+  display: none;
+}
+
+/* Зачёт минут: зелёный — Twitch засчитывает, янтарный — ждём ответа,
+   красный — канал не засчитывает и стрим будет сменён */
+.drops-credit {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-secondary);
+}
+
+.drops-credit-dot {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: var(--radius-circle);
+  background: var(--warning);
+}
+
+.drops-credit[data-state="ok"] .drops-credit-dot {
+  background: var(--success);
+}
+
+.drops-credit[data-state="none"] .drops-credit-dot {
+  background: var(--danger);
+}
+
+.drops-credit[data-state="none"] {
+  color: var(--danger);
+}
+
+/* Значки «Нет входа в Twitch» и «Игровой режим» — строки карточки, а не
+   отдельные цветные плашки. Красным — только то, что требует действия */
+.farm-card-alert {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: var(--fw-medium);
+  color: var(--text-secondary);
+}
+
+.farm-card-alert > span {
+  flex: 1;
+  min-width: 0;
+}
+
+.farm-card-alert svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+
+.farm-card-alert.is-danger {
+  color: var(--danger);
   cursor: pointer;
-  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.farm-card-alert.is-danger:hover span {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* Кнопки блока: видимость, прозрачность и сдвиг пишет JS, здесь только
+   длительность — та же, что у появления разделов карточки */
+.sidebar-farming > .btn {
+  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast),
+              opacity var(--dur-base) var(--ease-out), transform var(--dur-base) var(--ease-out);
+}
+
+/* «Остановить» — спокойная кнопка с красным знаком: рядом с карточкой
+   прогресса сплошная красная плашка была самым громким пятном окна,
+   хотя нажимают её редко */
+.btn-stop svg {
+  color: var(--danger);
+}
+
+.btn-secondary.btn-stop:hover {
+  background: var(--danger-soft);
+  border-color: transparent;
+  color: var(--danger);
+}
+
+/* Окно ниже 720px. Значок «Нет входа», игровой режим и кнопка «Вернуть
+   автовыбор» добавляют по строке — с любым из них мини-плееру места нет.
+   Меню и «Остановить» важнее; поток при этом не прерывается: SlottedWebview
+   видит, что слот скрыт, и прячет видео, не выгружая плеер. Кнопку
+   farming-page.js показывает через style.display, поэтому смотрим на
+   атрибут style; значки прячутся атрибутом hidden */
+@media (max-height: 719px) {
+  .sidebar-farming:has(#login-badge:not([hidden])) #sidebar-mini-player-container,
+  .sidebar-farming:has(#game-mode-badge:not([hidden])) #sidebar-mini-player-container,
+  .sidebar-farming:has(#sidebar-to-autofarm-btn:not([style*="display: none"])) #sidebar-mini-player-container {
+    display: none !important;
+  }
+
+  /* Меню целиком важнее воздуха: на 1000×650 с мини-плеером ему не
+     хватало 15px, и «Настройки» уходили под прокрутку */
+  .nav-item {
+    height: 32px;
+  }
+
+  .nav-divider {
+    margin: 6px 10px;
+  }
+
+  /* Название игры в значке — одной строкой: вторая строка стоила меню
+     последнего пункта */
+  .farm-card-alert > span {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+/* Совсем низкое окно (минимум приложения — 600px): мини-плеер прячется
+   всегда, меню и карточка плотнее */
+@media (max-height: 639px) {
+  #sidebar-mini-player-container {
+    display: none !important;
+  }
+
+  .nav-item {
+    height: 30px;
+  }
+
+  .farm-card-sub {
+    display: none;
+  }
+
+  .sidebar-farming > .btn-lg {
+    min-height: 36px;
+  }
+}
+
+/* Область страниц */
+.content {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  overflow-y: auto;
+  /* Место под полосу прокрутки держим всегда: иначе на коротком списке
+     (фильтр «В эфире», пустой поиск, страница без прокрутки) полоса
+     исчезала, и шапка с карточками прыгали на 8px вбок */
+  scrollbar-gutter: stable;
+  background: var(--surface-0);
+}
+
+#page-container {
+  padding: 20px 24px 32px;
+  max-width: 1240px;
+  margin: 0 auto;
+}
+
+/* Заголовок страницы: название слева, действия страницы справа */
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 36px;
+  margin-bottom: 16px;
+}
+
+.page-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--fs-h1);
+  line-height: var(--lh-h1);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--ls-tight);
+  color: var(--text-primary);
+}
+
+/* Подзаголовки повторяли название раздела другими словами; владельцы
+   страниц могут убрать и саму разметку */
+.page-subtitle {
+  display: none;
+}
+
+.page-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ───────────────────────── 3. Компоненты ───────────────────────── */
+
+/* ── C1. Кнопки ──
+   Правило: одна .btn-primary на видимую область, остальное — secondary
+   или ghost. Иконочные кнопки — .btn .btn-ghost .btn-icon с title и
+   aria-label. Высота задана минимальной, а не жёсткой: у части кнопок в
+   шаблонах пока инлайновые отступы, и жёсткая высота резала бы подпись */
+.btn {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  justify-content: center;
+  gap: 8px;
+  min-height: var(--ctl-h);
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-ctl);
+  background: transparent;
+  color: var(--text-primary);
+  font: var(--fw-medium) 13px/1.25 var(--font-ui);
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
+}
+
+.btn svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+
+/* Свой логотип на кнопках «Войти через Twitch» — одинаковый на дропсах,
+   подписках и аккаунтах. Тонкая светлая кромка отделяет фиолетовый значок
+   от фиолетовой кнопки */
+.btn-logo {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  border-radius: 5px;
+  outline: 1px solid rgba(255, 255, 255, 0.35);
+  outline-offset: -1px;
+}
+
+/* Нажатие — затемнение поверх любого фона, без своего цвета у каждого
+   варианта */
+.btn:active:not(:disabled) {
+  background-image: linear-gradient(var(--press-bg), var(--press-bg));
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .btn-primary {
-  background: var(--accent-color);
-  color: white;
+  background: var(--accent-strong);
+  color: var(--text-on-accent);
 }
 
 .btn-primary:hover {
   background: var(--accent-hover);
-  box-shadow: none;
 }
 
 .btn-secondary {
   background: var(--button-secondary-bg);
   border-color: var(--border-color);
-  color: var(--text-primary);
 }
 
 .btn-secondary:hover {
@@ -385,211 +860,1270 @@ body {
   border-color: var(--border-strong);
 }
 
-/* Navigation Button Hover Effects */
-#prev-category-btn:hover {
-  background: rgba(124, 92, 255, 0.15) !important;
-  border-color: rgba(124, 92, 255, 0.4) !important;
+.btn-ghost {
+  color: var(--text-secondary);
 }
 
-#next-stream-btn:hover {
-  background: #a35fff !important;
-  box-shadow: none;
-}
-
-#next-category-btn:hover {
-  background: rgba(53, 208, 138, 0.15) !important;
-  border-color: rgba(53, 208, 138, 0.4) !important;
+.btn-ghost:hover {
+  background: var(--hover-bg);
+  color: var(--text-primary);
 }
 
 .btn-danger {
-  background: #f0555f;
-  color: white;
+  background: var(--danger-strong);
+  color: #fff;
 }
 
 .btn-danger:hover {
-  background: #c20010;
+  background: var(--danger-hover);
 }
 
-/* Недоступная кнопка видна, но не откликается на наведение. Раньше это
-   держали копии .btn-primary/.btn-secondary у старого окна обновления —
-   их убрали, потому что они же делали вторичные кнопки прозрачными. */
-.btn:disabled {
-  opacity: 0.6;
+.btn-danger-ghost {
+  color: var(--danger);
+}
+
+.btn-danger-ghost:hover {
+  background: var(--danger-soft);
+}
+
+.btn-sm {
+  min-height: var(--ctl-h-sm);
+  padding: 0 10px;
+  font-size: 12px;
+  gap: 6px;
+}
+
+.btn-sm svg {
+  width: 14px;
+  height: 14px;
+}
+
+.btn-lg {
+  min-height: var(--ctl-h-lg);
+  padding: 0 18px;
+  font-size: 14px;
+  font-weight: var(--fw-semibold);
+}
+
+.btn-block {
+  display: flex;
+  width: 100%;
+}
+
+.btn-icon {
+  width: var(--ctl-h);
+  height: var(--ctl-h);
+  min-height: 0;
+  padding: 0;
+}
+
+.btn-icon.btn-sm {
+  width: var(--ctl-h-sm);
+  height: var(--ctl-h-sm);
+}
+
+/* Недоступная кнопка видна, но не откликается на наведение: фон
+   возвращается к обычному для своего варианта */
+.btn:disabled,
+.btn[aria-disabled="true"] {
+  opacity: 0.5;
   cursor: not-allowed;
 }
 
-.btn-primary:disabled:hover {
-  background: var(--accent-color);
+.btn-primary:disabled {
+  background: var(--accent-strong);
 }
 
-.btn-secondary:disabled:hover {
+.btn-secondary:disabled {
   background: var(--button-secondary-bg);
   border-color: var(--border-color);
 }
 
-.btn-danger:disabled:hover {
-  background: #f0555f;
+.btn-ghost:disabled,
+.btn-danger-ghost:disabled {
+  background: transparent;
 }
 
-/* Input Fields */
-.input-group {
-  margin-bottom: 16px;
+.btn-danger:disabled {
+  background: var(--danger-strong);
 }
 
-.input-label {
-  display: block;
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--text-primary);
-  margin-bottom: 8px;
+/* Кнопка-переключатель (чип): включённое состояние — мягкий акцент */
+.btn.is-on,
+.btn[aria-pressed="true"] {
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
+  color: var(--accent-text);
 }
 
-.input-field {
-  width: 100%;
-  padding: 8px 12px;
+/* Идёт действие: подпись прячется, на её месте — кольцо */
+.btn.is-loading {
+  position: relative;
+  color: transparent !important;
+  pointer-events: none;
+}
+
+.btn.is-loading::after {
+  content: '';
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-circle);
+  border: 2px solid var(--text-secondary);
+  border-color: var(--text-secondary) transparent var(--text-secondary) transparent;
+  animation: spin 0.8s linear infinite;
+}
+
+.btn-primary.is-loading::after,
+.btn-danger.is-loading::after {
+  border-color: #fff transparent #fff transparent;
+}
+
+/* ── C2. Поля и выпадающие списки ── */
+.input-field,
+.settings-input {
+  height: var(--ctl-h);
+  padding: 0 10px;
   background: var(--input-bg);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-ctl);
   color: var(--text-primary);
-  font-size: 13px;
-  transition: border-color var(--transition-fast);
-  height: 32px;
-  box-sizing: border-box;
+  font: var(--fw-regular) 13px var(--font-ui);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
 
-.input-field:focus {
+.input-field {
+  width: 100%;
+}
+
+.input-field:hover,
+.settings-input:hover {
+  border-color: var(--border-strong);
+}
+
+.input-field:focus,
+.settings-input:focus {
   outline: none;
-  border-color: var(--accent-color);
-  box-shadow: 0 0 0 2px var(--accent-quiet);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.input-field::placeholder,
+.settings-input::placeholder {
+  color: var(--text-tertiary);
 }
 
 .input-field:read-only {
   cursor: pointer;
 }
 
-.input-field:read-only:hover {
-  border-color: rgba(124, 92, 255, 0.5);
+/* Стрелка своего цвета: системная у select на тёмной теме — чужеродная */
+select.input-field {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 30px;
+  cursor: pointer;
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23858a95' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
 }
 
-/* Progress Bars */
-.progress-bar {
-  width: 100%;
-  height: 8px;
-  background: var(--progress-bg);
-  border-radius: var(--radius-sm);
-  overflow: hidden;
+select.input-field option {
+  background: var(--surface-overlay);
+  color: var(--text-primary);
+}
+
+.input-label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: var(--fw-medium);
+  color: var(--text-secondary);
+}
+
+.search-field {
   position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.search-field > svg {
+  position: absolute;
+  left: 10px;
+  width: 16px;
+  height: 16px;
+  color: var(--text-tertiary);
+  pointer-events: none;
+}
+
+.search-field > .input-field {
+  width: 100%;
+  padding-left: 34px;
+}
+
+/* ── C3. Переключатель ──
+   Один вид у всех переключателей приложения: настройки (.settings-toggle),
+   категории (.category-toggle-switch) и новый .switch. Раньше их было три
+   разных размеров и цветов. */
+.switch {
+  position: relative;
+  display: inline-block;
+  flex: none;
+  width: 36px;
+  height: 20px;
+  margin: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--toggle-bg);
+  vertical-align: middle;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  transition: background var(--transition-base);
+}
+
+.switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: var(--radius-circle);
+  background: #fff;
+  box-shadow: var(--shadow-sm);
+  transition: transform var(--transition-base);
+}
+
+.switch.is-on,
+.switch:checked,
+.switch[aria-checked="true"],
+[aria-pressed="true"] > .switch {
+  background: var(--accent);
+}
+
+.switch.is-on::after,
+.switch:checked::after,
+.switch[aria-checked="true"]::after,
+[aria-pressed="true"] > .switch::after {
+  transform: translateX(16px);
+}
+
+.switch:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.switch:disabled,
+.switch.is-disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Малый — в строках списков и внутри кнопок-чипов */
+.switch-sm {
+  width: 30px;
+  height: 18px;
+}
+
+.switch-sm::after {
+  width: 14px;
+  height: 14px;
+}
+
+.switch-sm.is-on::after,
+.switch-sm:checked::after,
+.switch-sm[aria-checked="true"]::after,
+[aria-pressed="true"] > .switch-sm::after {
+  transform: translateX(12px);
+}
+
+/* Переключатель настроек: label > input + .settings-slider */
+.settings-toggle {
+  position: relative;
+  display: inline-block;
+  flex: none;
+  width: 36px;
+  height: 20px;
+  cursor: pointer;
+}
+
+.settings-toggle input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.settings-slider {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-pill);
+  background: var(--toggle-bg);
+  cursor: pointer;
+  transition: background var(--transition-base);
+}
+
+.settings-slider::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: var(--radius-circle);
+  background: #fff;
+  box-shadow: var(--shadow-sm);
+  transition: transform var(--transition-base);
+}
+
+.settings-toggle input:checked + .settings-slider {
+  background: var(--accent);
+}
+
+.settings-toggle input:checked + .settings-slider::before {
+  transform: translateX(16px);
+}
+
+.settings-toggle input:focus-visible + .settings-slider {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.settings-toggle input:disabled + .settings-slider {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Переключатель категории: label.checked > input + .toggle-track > .toggle-thumb.
+   Стоит в строке списка, поэтому малый */
+.category-toggle-switch {
+  position: relative;
+  display: inline-block;
+  flex: none;
+  width: 30px;
+  height: 18px;
+  cursor: pointer;
+}
+
+.category-toggle-switch input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-track {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-pill);
+  background: var(--toggle-bg);
+  cursor: pointer;
+  transition: background var(--transition-base);
+}
+
+.category-toggle-switch.checked .toggle-track {
+  background: var(--accent);
+}
+
+.toggle-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-circle);
+  background: #fff;
+  box-shadow: var(--shadow-sm);
+  transition: transform var(--transition-base);
+}
+
+.category-toggle-switch.checked .toggle-thumb {
+  transform: translateX(12px);
+}
+
+.category-toggle-switch input:focus-visible + .toggle-track {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ── C4. Сегменты ──
+   Выбранный сегмент — приподнятая поверхность, а не акцент: рядом с
+   главной кнопкой фиолетовый сегмент читался как вторая главная */
+.segmented {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-ctl);
+}
+
+.segmented > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font: var(--fw-medium) 12px/1 var(--font-ui);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.segmented > button svg {
+  width: 14px;
+  height: 14px;
+}
+
+.segmented > button:hover {
+  color: var(--text-primary);
+}
+
+.segmented > button.active,
+.segmented > button.is-active,
+.segmented > button[aria-pressed="true"],
+.segmented > button[aria-selected="true"] {
+  background: var(--surface-3);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-sm);
+}
+
+.theme-light .segmented > button.active,
+.theme-light .segmented > button.is-active,
+.theme-light .segmented > button[aria-pressed="true"],
+.theme-light .segmented > button[aria-selected="true"] {
+  background: var(--surface-1);
+}
+
+.segmented .count {
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── C5. Карточки ── */
+.card {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: var(--pad-card);
+  margin-bottom: var(--space-3);
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 32px;
+  margin-bottom: 12px;
+}
+
+/* Заголовок карточки сам по себе (без .card-header) отделяется от
+   содержимого отступом — так написаны страницы до перевода на шапки */
+.card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 var(--space-3);
+  font-family: var(--font-display);
+  font-size: var(--fs-title);
+  line-height: var(--lh-title);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--ls-tight);
+  color: var(--text-primary);
+}
+
+.card-header .card-title {
+  margin: 0;
+}
+
+.card-title svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  color: var(--text-tertiary);
+}
+
+.card-subtitle {
+  font-size: var(--fs-small);
+  line-height: var(--lh-small);
+  color: var(--text-secondary);
+}
+
+.card-section + .card-section {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-color);
+}
+
+/* Подпись группы: «Остальные категории», «Избранные». Обычным регистром:
+   разрядка заглавными на русском читается хуже */
+.section-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 16px 0 8px;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: var(--fw-medium);
+  color: var(--text-secondary);
+}
+
+/* ── C6. Списки ──
+   Строки разделены тонкой линией, а не рамками: рамка вокруг каждой
+   строки и рамка карточки вокруг них давали «клетку» */
+.list {
+  display: flex;
+  flex-direction: column;
+}
+
+.list-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: var(--row-h);
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  transition: background var(--transition-fast);
+}
+
+.list-row:hover {
+  background: var(--hover-bg);
+}
+
+.list > .list-row + .list-row::before {
+  content: '';
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  top: 0;
+  height: 1px;
+  background: var(--border-color);
+}
+
+/* Подсвеченная строка сама очерчена — линии над ней и под ней лишние */
+.list-row:hover::before,
+.list-row:hover + .list-row::before {
+  opacity: 0;
+}
+
+.row-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.row-title {
+  font-size: var(--fs-strong);
+  line-height: var(--lh-strong);
+  font-weight: var(--fw-medium);
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.row-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  font-size: var(--fs-small);
+  line-height: var(--lh-small);
+  color: var(--text-secondary);
+}
+
+.row-meta > * + *::before {
+  content: '·';
+  margin-right: 6px;
+  color: var(--text-tertiary);
+}
+
+/* Бейдж отделён своей подложкой — точка-разделитель внутри него лишняя */
+.row-meta > .badge::before {
+  content: none;
+}
+
+/* Действия строки видны при наведении и при фокусе внутри строки */
+.row-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.list-row:hover .row-actions,
+.list-row:focus-within .row-actions,
+.row-actions.is-visible {
+  opacity: 1;
+}
+
+.row-art {
+  width: 40px;
+  height: 54px;
+  flex: none;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  background: var(--surface-2);
+}
+
+.row-avatar {
+  width: 36px;
+  height: 36px;
+  flex: none;
+  border-radius: var(--radius-circle);
+  object-fit: cover;
+  background: var(--surface-2);
+}
+
+/* Текущая строка: полоска акцента слева, как у пункта меню */
+.list-row.is-current::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 10px;
+  bottom: 10px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.list-row.is-muted {
+  opacity: 0.55;
+}
+
+/* ── C7. Бейджи и статусы ──
+   Мягкая подложка допустима только у маленьких бейджей: цвет живёт в
+   точке, тексте или значке, а не в заливке целого блока */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-3);
+  color: var(--text-secondary);
+  font: var(--fw-semibold) 11px/1 var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.badge svg {
+  width: 12px;
+  height: 12px;
+  flex: none;
+}
+
+.badge-success {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.badge-warning {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.badge-error {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.badge-info,
+.badge-accent {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+/* Рамка — border, а не box-shadow: экономный режим графики (по умолчанию
+   включён) снимает все тени, и обводка из тени пропала бы */
+.badge-outline {
+  padding: 0 6px;
+  background: transparent;
+  border: 1px solid var(--border-strong);
+}
+
+.status-dot {
+  display: inline-block;
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-circle);
+  background: var(--text-tertiary);
+}
+
+.status-dot.is-ok {
+  background: var(--success);
+}
+
+.status-dot.is-wait {
+  background: var(--warning);
+}
+
+.status-dot.is-error {
+  background: var(--danger);
+}
+
+.status-dot.is-busy {
+  background: var(--accent);
+}
+
+/* Единственная постоянная пульсация в интерфейсе — «идёт» */
+.status-dot.is-live {
+  background: var(--success);
+  animation: dot-live 2s var(--ease-in-out) infinite;
+}
+
+@keyframes dot-live {
+  50% { opacity: 0.45; }
+}
+
+.tone-ok { color: var(--success); }
+.tone-warn { color: var(--warning); }
+.tone-error { color: var(--danger); }
+.tone-muted { color: var(--text-tertiary); }
+
+/* ── C8. Прогресс ── */
+.progress,
+.progress-bar {
+  position: relative;
+  width: 100%;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--progress-bg);
+  overflow: hidden;
+}
+
+.progress-sm {
+  height: 4px;
+}
+
+.progress-lg {
+  height: 8px;
 }
 
 .progress-fill {
   height: 100%;
-  background: var(--accent-color);
-  border-radius: var(--radius-sm);
-  transition: width 0.3s ease;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width var(--dur-slow) var(--ease-out);
 }
 
-/* Toggle Switch */
-.toggle-switch {
-  position: relative;
-  display: inline-block;
-  width: 52px;
-  height: 28px;
-  background: #4a4a4a !important;
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  transition: background 0.3s ease, left 0.3s ease;
-  flex-shrink: 0;
+.progress.is-complete .progress-fill,
+.progress-fill.is-complete {
+  background: var(--success);
+}
+
+.progress.is-warn .progress-fill {
+  background: var(--warning);
+}
+
+/* ── C9. Модальные окна ──
+   Канонический класс — .dialog. Окно «Что нового» и экран входа строятся
+   на .whats-new*: они получают те же правила перечислением селекторов,
+   без правки разметки */
+.dialog-backdrop,
+.whats-new-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--scrim);
+  animation: fade-in var(--dur-base) var(--ease-out);
+}
+
+.dialog,
+.whats-new {
+  display: flex;
+  flex-direction: column;
+  width: min(480px, 100%);
+  max-height: calc(100vh - 48px);
+  background: var(--surface-overlay);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-modal);
+  overflow: hidden;
+  animation: dialog-in var(--dur-slow) var(--ease-out);
+}
+
+.dialog-sm { width: min(400px, 100%); }
+.dialog-lg { width: min(720px, 100%); }
+.dialog-xl { width: min(920px, 100%); }
+
+/* Заметки о выпуске — текст для чтения: строке нужна ширина побольше */
+.whats-new {
+  width: min(520px, 100%);
+}
+
+.dialog-head,
+.whats-new-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 20px 20px 12px;
+}
+
+.dialog-head > :first-child,
+.whats-new-head > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.dialog-eyebrow,
+.whats-new-eyebrow {
+  margin-bottom: 2px;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: var(--fw-semibold);
+  color: var(--text-secondary);
+}
+
+.dialog-eyebrow.is-warning { color: var(--warning); }
+.dialog-eyebrow.is-danger { color: var(--danger); }
+.dialog-eyebrow.is-success { color: var(--success); }
+
+.dialog-title,
+.whats-new-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--fs-h2);
+  line-height: var(--lh-h2);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--ls-tight);
+  color: var(--text-primary);
+}
+
+/* Крестик окна — как .btn .btn-ghost .btn-icon .btn-sm */
+.dialog-close,
+.whats-new-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: var(--ctl-h-sm);
+  height: var(--ctl-h-sm);
   margin-left: auto;
-  user-select: none;
-  outline: none !important;
-  border: none !important;
-  box-shadow: none !important;
-  padding: 0 !important;
-  pointer-events: auto;
-  appearance: none;
-  -webkit-appearance: none;
-  background-image: none;
-  color: transparent;
-  font-size: 0;
-  line-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-ctl);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
 }
 
-.toggle-switch:focus {
-  outline: none !important;
-  box-shadow: none !important;
+.dialog-close:hover,
+.whats-new-close:hover {
+  background: var(--hover-bg);
+  color: var(--text-primary);
 }
 
-.toggle-switch:focus-visible {
-  outline: none !important;
-  box-shadow: none !important;
+.dialog-close svg,
+.whats-new-close svg {
+  width: 16px;
+  height: 16px;
 }
 
-.toggle-switch:hover {
-  filter: brightness(1.1);
+.dialog-body,
+.whats-new-body {
+  padding: 0 20px 20px;
+  overflow: auto;
+  color: var(--text-secondary);
 }
 
-.toggle-switch::after {
-  content: '';
-  position: absolute;
-  width: 24px;
-  height: 24px;
-  background: #ffffff;
-  border-radius: var(--radius-circle);
-  top: 2px;
-  left: 2px;
-  transition: left 0.3s ease;
-  display: block;
-  pointer-events: none;
-  background-image: none !important;
+.dialog-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 20px 20px;
 }
 
-.toggle-switch::before {
-  content: '' !important;
-  display: none !important;
-  background-image: none !important;
+@keyframes dialog-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: none; }
 }
 
-.toggle-switch.active {
-  background: #7c5cff !important;
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
-.toggle-switch.active::after {
-  left: 26px;
+/* ── C11. Пустые состояния и загрузка ──
+   Пустое состояние: контурная иконка, заголовок, одно предложение, одна
+   кнопка. Загрузка списков — скелетоны вместо «Загрузка…» */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 40px 24px;
+  text-align: center;
+  color: var(--text-secondary);
 }
 
-/* Scrollbar */
-::-webkit-scrollbar {
-  width: 8px;
-}
-
-::-webkit-scrollbar-track {
-  background: var(--scrollbar-track);
-}
-
-::-webkit-scrollbar-thumb {
-  background: var(--scrollbar-thumb);
-  border-radius: var(--radius-sm);
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: var(--scrollbar-thumb-hover);
-}
-
-/* Loading Spinner */
-.spinner {
+.empty-state > svg {
   width: 40px;
   height: 40px;
-  border: 4px solid var(--border-color);
-  border-top-color: var(--accent-color);
-  border-radius: var(--radius-circle);
-  animation: spin 1s linear infinite;
+  margin-bottom: 6px;
+  color: var(--text-tertiary);
 }
 
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
+.empty-state h3 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--fs-title);
+  line-height: var(--lh-title);
+  font-weight: var(--fw-semibold);
+  color: var(--text-primary);
+}
+
+.empty-state p {
+  max-width: 380px;
+  margin: 0;
+  font-size: 13px;
+}
+
+.empty-state small {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.empty-state .btn {
+  margin-top: 10px;
+}
+
+.loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 40px 24px;
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--border-strong);
+  border-top-color: var(--accent);
+  border-radius: var(--radius-circle);
+  animation: spin 0.8s linear infinite;
+}
+
+.skeleton {
+  border-radius: var(--radius-sm);
+  background: linear-gradient(90deg, var(--surface-2) 0, var(--surface-3) 50%, var(--surface-2) 100%);
+  background-size: 200% 100%;
+  animation: skeleton 1.4s ease-in-out infinite;
+}
+
+.skeleton-text {
+  height: 12px;
+  margin: 6px 0;
+}
+
+.skeleton-title {
+  height: 16px;
+  width: 40%;
+}
+
+.skeleton-row {
+  height: var(--row-h);
+  margin-bottom: 4px;
+  border-radius: var(--radius-md);
+}
+
+.skeleton-tile {
+  aspect-ratio: 1;
+  border-radius: var(--radius-md);
+}
+
+@keyframes skeleton {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+
+/* ── C12. Подсказка (tooltip-service.js ставит только место и видимость) ── */
+.tooltip {
+  position: fixed;
+  z-index: var(--z-tooltip);
+  max-width: 280px;
+  padding: 6px 10px;
+  background: var(--surface-overlay);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-pop);
+  color: var(--text-primary);
+  font: var(--fw-regular) 12px/16px var(--font-ui);
+  overflow-wrap: break-word;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+
+/* ── C13. Плитки-метрики ── */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.kpi {
+  min-width: 0;
+  padding: 14px 16px;
+  /* Плитка — контейнер: число уменьшается, когда плитке тесно (четыре
+     в ряд на окне 1000px), а не переносится на вторую строку */
+  container-type: inline-size;
+  background: var(--surface-1);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+}
+
+.kpi-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-secondary);
+}
+
+.kpi-label svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  color: var(--text-tertiary);
+}
+
+.kpi-value {
+  margin-top: 6px;
+  font-family: var(--font-display);
+  font-size: var(--fs-metric);
+  line-height: var(--lh-metric);
+  font-weight: var(--fw-semibold);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+@container (max-width: 180px) {
+  .kpi-value {
+    font-size: 20px;
+    line-height: 24px;
   }
 }
+
+.kpi-sub {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-tertiary);
+}
+
+/* Метрика внутри карточки — без собственной рамки */
+.kpi-inline {
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
+
+/* ───────────────────────── 4. Общие блоки ───────────────────────── */
+
+/* ── Что нового (и экран входа на тех же классах) ── */
+.whats-new-loading,
+.whats-new-empty {
+  padding: 24px 0;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+/* Версии складываются, кроме самой свежей: после обновления интересна
+   прежде всего она, остальные — по желанию */
+.whats-new-release + .whats-new-release {
+  border-top: 1px solid var(--border-color);
+}
+
+.whats-new-release-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 0;
+  cursor: pointer;
+  user-select: none;
+}
+
+.whats-new-version {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-3);
+  color: var(--text-primary);
+  /* Шрифт интерфейса с табличными цифрами, как у остальных меток: моноширинный
+     IBM Plex Mono в проекте только начертанием 400, и полужирный номер версии
+     рисовался искусственным — мутно и не в тон бейджам рядом */
+  font: var(--fw-semibold) 12px/1 var(--font-ui);
+  font-variant-numeric: tabular-nums;
+}
+
+.whats-new-date {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.whats-new-chevron {
+  margin-left: auto;
+  color: var(--text-tertiary);
+  transition: transform var(--transition-base);
+}
+
+.whats-new-release.open .whats-new-chevron {
+  transform: rotate(180deg);
+}
+
+.whats-new-release-body {
+  display: none;
+  padding-bottom: 14px;
+}
+
+.whats-new-release.open .whats-new-release-body {
+  display: block;
+}
+
+.whats-new-section + .whats-new-section {
+  margin-top: 14px;
+}
+
+.whats-new-section-title {
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: var(--fw-semibold);
+  color: var(--text-primary);
+}
+
+.whats-new-section ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.whats-new-section li {
+  margin-bottom: 4px;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--text-secondary);
+}
+
+.whats-new-section li::marker {
+  color: var(--text-tertiary);
+}
+
+/* Важные пункты в заметках выделены звёздочками */
+.whats-new-section strong {
+  color: var(--text-primary);
+  font-weight: var(--fw-semibold);
+}
+
+.whats-new-section code {
+  padding: 1px 5px;
+  border-radius: var(--radius-xs);
+  background: var(--surface-3);
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+}
+
+/* ── Отсчёт до выключения ──
+   Поверх всего и всегда отменяем: выключать чужой компьютер без
+   возможности передумать приложение не вправе */
+.shutdown-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 12000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--scrim);
+  animation: fade-in var(--dur-base) var(--ease-out);
+}
+
+.shutdown-dialog {
+  min-width: 320px;
+  padding: 24px 28px;
+  text-align: center;
+  background: var(--surface-overlay);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-modal);
+  animation: dialog-in var(--dur-slow) var(--ease-out);
+}
+
+.shutdown-title {
+  font-family: var(--font-display);
+  font-size: var(--fs-h2);
+  line-height: var(--lh-h2);
+  font-weight: var(--fw-semibold);
+  color: var(--text-primary);
+}
+
+.shutdown-reason {
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.shutdown-countdown {
+  margin: 16px 0;
+  /* Цифры шрифта интерфейса с табличной шириной не прыгают, как и
+     моноширинные, но рисуются настоящим полужирным: у IBM Plex Mono в
+     проекте только 400, и 500 выходил искусственным */
+  font-family: var(--font-display);
+  font-size: 38px;
+  line-height: 44px;
+  font-weight: var(--fw-semibold);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  color: var(--warning);
+}
+
+/* Сводка автовыключения в настройках: что и когда произойдёт. Спокойная
+   строка: включать переключатель, не понимая последствий, страшно, но
+   жёлтая рамка на каждый показ — лишняя тревога */
+.shutdown-summary {
+  margin: 4px 0 8px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+/* ───────────────────────── 5. Прежние правила страниц ─────────────────────────
+ * Базовые правила, на которые опираются page-*.css: страницы перекрывают
+ * их частично (цвета, отступы), а сетки, раскладки и обрезку текста берут
+ * отсюда. Мёртвые правила (классы, которых нет ни в одном шаблоне, и
+ * подпорки светлой темы под старые инлайновые стили) удалены; оставшееся
+ * переносить в page-*.css только вместе с проверкой вычисленных стилей.
+ */
+
+/* ═════ ФАРМИНГ (FARMING → page-farming.css) ═════ */
 
 /* Category Selector Styles */
 .game-item-selector {
@@ -677,27 +2211,6 @@ body {
   flex-direction: column;
 }
 
-.search-container input {
-  width: 100%;
-  padding: 12px 16px;
-  background: var(--input-bg);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  color: var(--text-primary);
-  font-size: 14px;
-  transition: all 0.2s;
-}
-
-.search-container input:focus {
-  outline: none;
-  border-color: var(--accent-color);
-  box-shadow: 0 0 0 3px var(--accent-shadow);
-}
-
-.search-container input::placeholder {
-  color: var(--text-tertiary);
-}
-
 /* Custom scrollbar для списка категорий */
 .category-list {
   display: flex;
@@ -736,73 +2249,6 @@ body {
   margin-left: 8px;
 }
 
-.drops-badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 3px 8px;
-  background: rgba(53, 208, 138, 0.15);
-  border-radius: var(--radius-sm);
-  font-size: 11px;
-  color: #35d08a;
-  font-weight: 600;
-  margin-left: 8px;
-}
-
-.drops-badge svg {
-  flex-shrink: 0;
-}
-
-/* Category Toggle Switch */
-.category-toggle-switch {
-  position: relative;
-  display: inline-block;
-  width: 48px;
-  height: 26px;
-  margin-right: 8px;
-  flex-shrink: 0;
-  cursor: pointer;
-}
-
-.category-toggle-switch input {
-  opacity: 0;
-  width: 0;
-  height: 0;
-  position: absolute;
-}
-
-.toggle-track {
-  position: absolute;
-  cursor: pointer;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: #4a5057;
-  transition: background-color 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-  border-radius: var(--radius-md);
-}
-
-.category-toggle-switch.checked .toggle-track {
-  background-color: var(--accent-color);
-}
-
-.toggle-thumb {
-  position: absolute;
-  content: "";
-  height: 20px;
-  width: 20px;
-  left: 3px;
-  bottom: 3px;
-  background-color: white;
-  transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-  border-radius: var(--radius-circle);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-}
-
-.category-toggle-switch.checked .toggle-thumb {
-  transform: translateX(22px);
-}
-
 /* Category item disabled state */
 .category-item.disabled {
   opacity: 0.5;
@@ -810,1331 +2256,6 @@ body {
 
 .category-item.disabled .category-image img {
   filter: grayscale(100%);
-}
-
-/* Drops Page Styles */
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 24px;
-}
-
-.drops-current-card {
-  background: var(--bg-secondary);
-  border-radius: var(--radius-md);
-  padding: 20px;
-  border: 1px solid var(--border-color);
-}
-
-.drops-current-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 16px;
-}
-
-.drops-current-game {
-  font-size: 12px;
-  color: var(--text-secondary);
-  margin-bottom: 4px;
-}
-
-.drops-current-campaign {
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.drops-current-progress {
-  font-size: 13px;
-  color: var(--text-secondary);
-}
-
-.drops-progress-wrapper {
-  background: var(--bg-primary);
-  border-radius: var(--radius-md);
-  padding: 16px;
-}
-
-.drops-progress-info {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
-}
-
-.drops-reward-text {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--accent-color);
-}
-
-.drops-progress-percent {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.drops-progress-bar {
-  height: 6px;
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: var(--radius-sm);
-  overflow: hidden;
-  margin-bottom: 8px;
-}
-
-.drops-progress-fill {
-  height: 100%;
-  background: var(--accent-color);
-  border-radius: var(--radius-sm);
-  transition: width 0.3s ease;
-}
-
-.drops-progress-meta {
-  display: flex;
-  justify-content: space-between;
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-.drops-filters {
-  display: flex;
-  gap: 20px;
-  padding: 12px 16px;
-  background: var(--bg-secondary);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border-color);
-  margin-bottom: 20px;
-}
-
-.drops-filter-checkbox {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  cursor: pointer;
-  font-size: 13px;
-  color: var(--text-primary);
-  user-select: none;
-}
-
-.drops-filter-checkbox input[type="checkbox"] {
-  width: 16px;
-  height: 16px;
-  cursor: pointer;
-}
-
-.drops-campaigns {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.drops-campaign-card {
-  background: var(--bg-secondary);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border-color);
-  padding: 16px;
-  transition: border-color 0.2s;
-}
-
-.drops-campaign-card:hover {
-  border-color: var(--accent-color);
-}
-
-.drops-campaign-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 12px;
-}
-
-.drops-campaign-info {
-  flex: 1;
-}
-
-.drops-campaign-name {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: 4px;
-}
-
-.drops-campaign-game {
-  font-size: 13px;
-  color: var(--text-secondary);
-}
-
-.drops-status {
-  padding: 4px 10px;
-  border-radius: var(--radius-sm);
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.drops-campaign-progress {
-  margin-bottom: 16px;
-}
-
-.drops-campaign-stats {
-  display: flex;
-  justify-content: space-between;
-  font-size: 13px;
-  color: var(--text-primary);
-  margin-bottom: 8px;
-}
-
-.drops-campaign-drops {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.drops-drop-item {
-  background: var(--bg-primary);
-  border-radius: var(--radius-sm);
-  padding: 12px;
-  border: 1px solid var(--border-color);
-}
-
-.drops-drop-item.drops-drop-claimed {
-  background: rgba(53, 208, 138, 0.05);
-  border-color: rgba(53, 208, 138, 0.2);
-}
-
-.drops-drop-item.drops-drop-ready {
-  background: rgba(255, 179, 26, 0.05);
-  border-color: rgba(255, 179, 26, 0.3);
-}
-
-@keyframes pulse-glow {
-  0%, 100% {
-    box-shadow: 0 0 0 rgba(255, 179, 26, 0);
-  }
-  50% {
-    box-shadow: 0 0 12px rgba(255, 179, 26, 0.4);
-  }
-}
-
-.drops-drop-info {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
-}
-
-.drops-drop-reward {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--text-primary);
-}
-
-.drops-drop-status {
-  font-size: 12px;
-  font-weight: 600;
-  padding: 4px 8px;
-  border-radius: var(--radius-sm);
-}
-
-.drops-drop-status.claimed {
-  color: #35d08a;
-  background: rgba(53, 208, 138, 0.1);
-}
-
-.drops-drop-status.ready {
-  color: #f0a83c;
-  background: rgba(255, 179, 26, 0.1);
-}
-
-.drops-drop-progress {
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-.drops-no-drops {
-  padding: 20px;
-  text-align: center;
-  color: var(--text-secondary);
-  font-size: 13px;
-}
-
-
-.empty-state,
-.loading-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 60px 20px;
-  text-align: center;
-  color: var(--text-secondary);
-}
-
-.empty-state svg {
-  margin-bottom: 16px;
-  opacity: 0.5;
-}
-
-.empty-state p {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: 8px;
-}
-
-.empty-state small {
-  font-size: 13px;
-  color: var(--text-secondary);
-}
-
-.loading-state .spinner {
-  width: 48px;
-  height: 48px;
-  border: 4px solid var(--bg-primary);
-  border-top-color: var(--accent-color);
-  border-radius: var(--radius-circle);
-  animation: spin 1s linear infinite;
-  margin-bottom: 16px;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.loading-state p {
-  font-size: 14px;
-  color: var(--text-primary);
-}
-/* Settings Page Styles */
-.settings-container {
-  max-width: 800px;
-  margin: 0 auto;
-  padding: 20px;
-}
-
-/* Заголовок настроек стоит рядом с колонкой, а не внутри неё (оба лежат
-   прямо в #page-container), поэтому на широком окне висел у левого края,
-   отдельно от карточек. Та же ширина и тот же боковой отступ, что у
-   .settings-container, ставят его ровно над карточками. */
-.settings-header {
-  max-width: 800px;
-  margin-left: auto;
-  margin-right: auto;
-  padding: 0 20px;
-  box-sizing: border-box;
-}
-
-.settings-section {
-  background: var(--bg-secondary);
-  border-radius: var(--radius-md);
-  padding: 24px;
-  margin-bottom: 20px;
-  border: 1px solid var(--border-color);
-}
-
-.settings-section-title {
-  font-size: 18px;
-  font-weight: 700;
-  color: var(--text-primary);
-  margin-bottom: 20px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.settings-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px 0;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.settings-item:last-child {
-  border-bottom: none;
-}
-
-.settings-item-info {
-  flex: 1;
-  padding-right: 20px;
-}
-
-.settings-item-label {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: 4px;
-}
-
-.settings-item-description {
-  font-size: 13px;
-  color: var(--text-secondary);
-  line-height: 1.4;
-}
-
-/* Custom Select Dropdown */
-.custom-select {
-  position: relative;
-  min-width: 150px;
-  user-select: none;
-}
-
-.custom-select-trigger {
-  background: rgba(255, 255, 255, 0.03);
-  border: 1.5px solid rgba(124, 92, 255, 0.2);
-  border-radius: var(--radius-md);
-  padding: 10px 16px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  transition: all 0.2s ease;
-}
-
-.custom-select-trigger:hover {
-  border-color: rgba(124, 92, 255, 0.4);
-  background: rgba(124, 92, 255, 0.08);
-}
-
-.custom-select.open .custom-select-trigger {
-  border-color: rgba(124, 92, 255, 0.6);
-  background: rgba(124, 92, 255, 0.1);
-  border-bottom-left-radius: var(--radius-sm);
-  border-bottom-right-radius: var(--radius-sm);
-}
-
-.custom-select-value {
-  color: var(--text-primary);
-  font-size: 14px;
-  font-weight: 500;
-}
-
-.custom-select-arrow {
-  color: rgba(124, 92, 255, 0.7);
-  transition: transform 0.2s ease;
-  flex-shrink: 0;
-}
-
-.custom-select.open .custom-select-arrow {
-  transform: rotate(180deg);
-}
-
-.custom-select-options {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
-  right: 0;
-  background: #1a1a2e;
-  border: 1.5px solid rgba(124, 92, 255, 0.3);
-  border-radius: var(--radius-md);
-  overflow: hidden;
-  opacity: 0;
-  visibility: hidden;
-  transform: translateY(-10px);
-  transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
-  z-index: 1000;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4),
-              0 0 0 1px rgba(124, 92, 255, 0.1);
-}
-
-.custom-select.open .custom-select-options {
-  opacity: 1;
-  visibility: visible;
-  transform: translateY(0);
-}
-
-.custom-select-option {
-  padding: 12px 16px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  color: var(--text-secondary);
-  font-size: 14px;
-  font-weight: 500;
-  transition: all 0.15s ease;
-  position: relative;
-}
-
-.custom-select-option svg:first-child {
-  color: rgba(124, 92, 255, 0.5);
-  flex-shrink: 0;
-}
-
-.custom-select-option span {
-  flex: 1;
-}
-
-.custom-select-option .check-icon {
-  opacity: 0;
-  color: #7c5cff;
-  flex-shrink: 0;
-  transition: opacity 0.2s ease;
-}
-
-.custom-select-option:hover {
-  background: rgba(124, 92, 255, 0.1);
-  color: var(--text-primary);
-}
-
-.custom-select-option:hover svg:first-child {
-  color: #7c5cff;
-}
-
-.custom-select-option.selected {
-  background: rgba(124, 92, 255, 0.25);
-  color: #ffffff;
-  font-weight: 600;
-}
-
-.custom-select-option.selected svg:first-child {
-  color: #7c5cff;
-}
-
-.custom-select-option.selected .check-icon {
-  opacity: 1;
-}
-
-.custom-select-option:not(:last-child) {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-/* Light Theme Overrides for Custom Select */
-.theme-light .custom-select-trigger {
-  background: rgba(0, 0, 0, 0.02);
-  border-color: rgba(124, 92, 255, 0.25);
-}
-
-.theme-light .custom-select-trigger:hover {
-  background: rgba(124, 92, 255, 0.06);
-  border-color: rgba(124, 92, 255, 0.4);
-}
-
-.theme-light .custom-select.open .custom-select-trigger {
-  background: rgba(124, 92, 255, 0.08);
-  border-color: rgba(124, 92, 255, 0.5);
-}
-
-.theme-light .custom-select-options {
-  background: #ffffff;
-  border-color: rgba(124, 92, 255, 0.3);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12),
-              0 0 0 1px rgba(124, 92, 255, 0.15);
-}
-
-.theme-light .custom-select-option {
-  color: var(--text-secondary);
-}
-
-.theme-light .custom-select-option:hover {
-  background: rgba(124, 92, 255, 0.08);
-  color: var(--text-primary);
-}
-
-.theme-light .custom-select-option.selected {
-  background: rgba(124, 92, 255, 0.15);
-  color: #6b49f0;
-}
-
-.theme-light .custom-select-option:not(:last-child) {
-  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
-}
-
-.theme-light .custom-select-option svg:first-child {
-  color: rgba(124, 92, 255, 0.6);
-}
-
-.theme-light .custom-select-option:hover svg:first-child,
-.theme-light .custom-select-option.selected svg:first-child {
-  color: #7c5cff;
-}
-
-.theme-light .custom-select-arrow {
-  color: rgba(124, 92, 255, 0.8);
-}
-
-/* Old settings-select styles (можно удалить если не используется) */
-.settings-select {
-  background: rgba(255, 255, 255, 0.03);
-  color: var(--text-primary);
-  border: 1.5px solid rgba(124, 92, 255, 0.2);
-  border-radius: var(--radius-md);
-  padding: 10px 16px;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  outline: none;
-  transition: all 0.2s ease;
-  min-width: 150px;
-  appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg width='14' height='8' viewBox='0 0 14 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L7 7L13 1' stroke='%239147FF' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 14px center;
-  padding-right: 40px;
-}
-
-.settings-select:hover {
-  border-color: rgba(124, 92, 255, 0.4);
-  background: rgba(124, 92, 255, 0.08);
-}
-
-.settings-select:focus {
-  border-color: rgba(124, 92, 255, 0.6);
-  background: rgba(124, 92, 255, 0.1);
-  box-shadow: none;
-}
-
-.settings-select option {
-  background: #1a1a2e;
-  color: var(--text-primary);
-  padding: 12px 16px;
-  font-weight: 500;
-}
-
-.settings-select option:hover {
-  background: rgba(124, 92, 255, 0.15);
-}
-
-.settings-select option:checked {
-  background: rgba(124, 92, 255, 0.4);
-  color: #ffffff;
-  font-weight: 600;
-}
-
-/* Settings Toggle Styles */
-.settings-toggle {
-  position: relative;
-  display: inline-block;
-  width: 44px;
-  height: 24px;
-  flex-shrink: 0;
-  cursor: pointer;
-  overflow: hidden;
-}
-
-.settings-toggle input {
-  opacity: 0;
-  width: 0;
-  height: 0;
-  position: absolute;
-}
-
-.settings-slider {
-  position: absolute;
-  cursor: pointer;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: rgba(255, 255, 255, 0.1);
-  transition: all 0.3s ease;
-  border-radius: var(--radius-md);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-}
-
-.settings-slider::before {
-  content: '';
-  position: absolute;
-  height: 18px;
-  width: 18px;
-  left: 3px;
-  bottom: 2px;
-  background-color: white;
-  transition: all 0.3s ease;
-  border-radius: var(--radius-circle);
-}
-
-.settings-toggle input:checked + .settings-slider {
-  background-color: var(--accent-color);
-  border-color: var(--accent-color);
-}
-
-.settings-toggle input:checked + .settings-slider::before {
-  transform: translateX(20px);
-}
-
-.settings-toggle:hover .settings-slider {
-  box-shadow: none;
-}
-
-/* Settings Actions */
-.settings-actions {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.settings-actions button {
-  padding: 10px 20px;
-  background: transparent;
-  border: 1.5px solid rgba(124, 92, 255, 0.3);
-  border-radius: var(--radius-md);
-  color: var(--text-primary);
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.settings-actions button svg {
-  opacity: 0.7;
-  transition: opacity 0.2s ease;
-}
-
-.settings-actions button:hover {
-  border-color: rgba(124, 92, 255, 0.6);
-  background: rgba(124, 92, 255, 0.05);
-}
-
-.settings-actions button:hover svg {
-  opacity: 1;
-}
-
-.settings-actions button:active {
-  transform: translateY(0);
-}
-
-/* Красная обводка для необратимых действий: сброс настроек и очистка
-   статистики должны выглядеть одинаково опасными */
-#reset-settings-btn,
-#clear-statistics-btn {
-  border-color: rgba(239, 68, 68, 0.3);
-}
-
-#reset-settings-btn:hover,
-#clear-statistics-btn:hover {
-  border-color: rgba(239, 68, 68, 0.6);
-  background: rgba(239, 68, 68, 0.05);
-  color: #ef4444;
-}
-
-/* Синяя обводка для кнопки экспорта */
-#export-settings-btn {
-  border-color: rgba(59, 130, 246, 0.3);
-}
-
-#export-settings-btn:hover {
-  border-color: rgba(59, 130, 246, 0.6);
-  background: rgba(59, 130, 246, 0.05);
-  color: #3b82f6;
-}
-
-/* Light Theme Overrides for Settings Actions */
-.theme-light .settings-actions button {
-  background: rgba(0, 0, 0, 0.02);
-  border-color: rgba(124, 92, 255, 0.25);
-}
-
-.theme-light .settings-actions button:hover {
-  background: rgba(124, 92, 255, 0.06);
-  border-color: rgba(124, 92, 255, 0.4);
-}
-
-.theme-light #reset-settings-btn,
-.theme-light #clear-statistics-btn {
-  border-color: rgba(239, 68, 68, 0.35);
-}
-
-.theme-light #reset-settings-btn:hover,
-.theme-light #clear-statistics-btn:hover {
-  border-color: rgba(239, 68, 68, 0.6);
-  background: rgba(239, 68, 68, 0.08);
-  color: #dc2626;
-}
-
-.theme-light #export-settings-btn {
-  border-color: rgba(59, 130, 246, 0.35);
-}
-
-.theme-light #export-settings-btn:hover {
-  border-color: rgba(59, 130, 246, 0.6);
-  background: rgba(59, 130, 246, 0.08);
-  color: #2563eb;
-}
-
-/* Compact Mode */
-/* Light Theme - Drop Cards & Campaign Cards */
-.theme-light .campaign-card {
-  background: var(--bg-secondary) !important;
-  border-color: var(--border-color) !important;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08) !important;
-}
-
-.theme-light .campaign-card:hover {
-  border-color: var(--accent-color) !important;
-}
-
-/* Drop items backgrounds in light theme */
-.theme-light .campaign-card [style*="background: rgba(0,0,0"] {
-  background: rgba(0, 0, 0, 0.05) !important;
-}
-
-.theme-light .campaign-card [style*="background: rgba(0,0,0,0.85)"] {
-  background: rgba(0, 0, 0, 0.08) !important;
-}
-
-.theme-light .campaign-card [style*="background: rgba(0,0,0,0.9)"] {
-  background: rgba(0, 0, 0, 0.08) !important;
-}
-
-.theme-light .campaign-card [style*="background: rgba(0,0,0,0.3)"] {
-  background: rgba(0, 0, 0, 0.05) !important;
-}
-
-/* Progress bar track in light theme */
-.theme-light .campaign-card [style*="background: rgba(255,255,255,0.08)"] {
-  background: rgba(0, 0, 0, 0.08) !important;
-}
-
-/* Progress bar fill shadow fix for light theme */
-.theme-light .campaign-card [style*="box-shadow: 0 0 10px"] {
-  box-shadow: none;
-}
-
-/* Text colors for drop item names in light theme */
-.theme-light .campaign-card [style*="color: rgba(255,255,255,0.9)"] {
-  color: var(--text-primary) !important;
-}
-
-.theme-light .campaign-card [style*="color: rgba(255,255,255,0.7)"] {
-  color: var(--text-secondary) !important;
-}
-
-.theme-light .campaign-card [style*="color: rgba(255,255,255,0.5)"] {
-  color: var(--text-tertiary) !important;
-}
-
-/* Card backgrounds fixes */
-.theme-light .card {
-  background: var(--bg-secondary) !important;
-  border-color: var(--border-color) !important;
-}
-
-.theme-light .drops-drop-item {
-  background: var(--bg-secondary) !important;
-}
-
-.theme-light .drops-drop-item.drops-drop-claimed {
-  background: rgba(53, 208, 138, 0.08) !important;
-}
-
-.theme-light .drops-drop-item.drops-drop-ready {
-  background: rgba(255, 179, 26, 0.08) !important;
-}
-
-/* Light theme - Drops current card */
-.theme-light .drops-current-card {
-  background: var(--bg-secondary);
-  border-color: var(--border-color);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-}
-
-/* Light theme - Drops progress wrapper */
-.theme-light .drops-progress-wrapper {
-  background: var(--bg-primary);
-}
-
-/* Light theme - Progress bar */
-.theme-light .drops-progress-bar {
-  background: rgba(0, 0, 0, 0.08);
-}
-
-/* Light theme - Filters */
-.theme-light .drops-filters {
-  background: var(--bg-secondary);
-  border-color: var(--border-color);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
-}
-
-/* Light theme - Drop item card inner backgrounds */
-.theme-light .campaign-card > div:first-child {
-  opacity: 0.95;
-}
-
-/* Light theme - Button styling fixes */
-.theme-light .campaign-card button {
-  box-shadow: none;
-}
-
-.theme-light .campaign-card button:hover {
-  box-shadow: none;
-}
-
-/* Light theme - Status badges improvements */
-.theme-light .drops-drop-status.claimed {
-  background: rgba(53, 208, 138, 0.15);
-}
-
-.theme-light .drops-drop-status.ready {
-  background: rgba(255, 179, 26, 0.15);
-}
-
-/* Light theme - Inventory Drop Cards */
-.theme-light [style*="background: rgba(0,0,0,0.3)"] {
-  background: #ffffff !important;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.06) !important;
-}
-
-.theme-light [style*="background: rgba(0,0,0,0.9)"] {
-  background: rgba(0, 0, 0, 0.02) !important;
-  border-top: 1px solid rgba(0, 0, 0, 0.08);
-}
-
-/* Inventory filters buttons in light theme */
-.theme-light [style*="background: rgba(124, 92, 255,0.12)"] {
-  background: rgba(124, 92, 255, 0.1) !important;
-  border-color: rgba(124, 92, 255, 0.3) !important;
-}
-
-.theme-light [style*="background: rgba(124, 92, 255,0.2)"] {
-  background: rgba(124, 92, 255, 0.15) !important;
-}
-
-.theme-light [style*="background: rgba(124, 92, 255,0.08)"] {
-  background: rgba(124, 92, 255, 0.08) !important;
-  border-color: rgba(124, 92, 255, 0.25) !important;
-}
-
-.theme-light [style*="background: rgba(124, 92, 255,0.15)"] {
-  background: rgba(124, 92, 255, 0.12) !important;
-  border-color: rgba(124, 92, 255, 0.35) !important;
-}
-
-/* Inventory card text colors */
-.theme-light [style*="color: #fff"] {
-  color: var(--text-primary) !important;
-}
-
-.theme-light [style*="color: rgba(255,255,255,0.6)"] {
-  color: var(--text-secondary) !important;
-}
-
-.theme-light [style*="color: rgba(255,255,255,0.4)"] {
-  color: var(--text-tertiary) !important;
-}
-
-/* Inventory card border on hover in light theme */
-.theme-light [style*="border: 2px solid rgba(124, 92, 255,0.6)"] {
-  box-shadow: none;
-}
-
-/* Inventory card default state in light theme */
-.theme-light [style*="border: 2px solid transparent"][style*="background: rgba(0,0,0,0.3)"] {
-  border: 1px solid rgba(0, 0, 0, 0.08) !important;
-}
-
-/* Status badge "Получено" in light theme */
-.theme-light [style*="background: rgba(0,200,83,0.15)"] {
-  background: rgba(0, 200, 83, 0.12) !important;
-  color: #00a86b !important;
-}
-
-/* Active filter buttons in light theme */
-.theme-light [style*="background: rgba(124, 92, 255,0.5)"] {
-  background: rgba(124, 92, 255, 0.15) !important;
-  color: #6b49f0 !important;
-  font-weight: 600 !important;
-  border-color: rgba(124, 92, 255, 0.4) !important;
-}
-
-body.compact-mode .category-image {
-  height: 100px;
-}
-
-body.compact-mode .drop-card {
-  min-height: 280px;
-}
-
-body.compact-mode .stream-card {
-  padding: 12px;
-}
-
-/* No Animations */
-body.no-animations * {
-  animation: none !important;
-  transition: none !important;
-}
-
-/* Search Input Focus */
-#category-search-input:focus {
-  border-color: var(--accent-color);
-  box-shadow: none;
-}
-
-/* ===== ОКНО ОБНОВЛЕНИЯ =====
-   Окно строит updater.js со своими стилями, здесь — дополняющие правила
-   его классов. Стили старых окон (.update-overlay, .update-modal,
-   .update-notification) удалены: такой разметки давно нет, а вместе с
-   ними лежали три копии правил .btn-primary/.btn-secondary, которые
-   перебивали основные. Вторичные кнопки из-за них были прозрачными
-   (фон из несуществующей переменной) и не откликались на наведение. */
-.update-progress-bar {
-  height: 8px;
-  background: rgba(124, 92, 255, 0.1);
-  border-radius: var(--radius-pill);
-  overflow: hidden;
-  margin-bottom: 14px;
-  border: 1px solid rgba(124, 92, 255, 0.15);
-}
-
-.update-progress-fill {
-  height: 100%;
-  width: 0%;
-  background: #7c5cff;
-  background-size: 200% 100%;
-  border-radius: var(--radius-pill);
-  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: none;
-  animation: progressShimmer 2s linear infinite;
-}
-
-@keyframes progressShimmer {
-  0% { background-position: 0% 50%; }
-  100% { background-position: 200% 50%; }
-}
-
-.update-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  padding: 15px 36px;
-  border: none;
-  border-radius: var(--radius-md);
-  font-size: 15px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  -webkit-app-region: no-drag;
-  position: relative;
-  overflow: hidden;
-  white-space: nowrap;
-}
-
-.update-btn::before {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 0;
-  height: 0;
-  border-radius: var(--radius-circle);
-  background: rgba(255, 255, 255, 0.2);
-  transform: translate(-50%, -50%);
-  transition: width 0.6s, height 0.6s;
-}
-
-.update-btn:hover::before {
-  width: 300px;
-  height: 300px;
-}
-
-.update-btn svg {
-  position: relative;
-  z-index: 1;
-  width: 18px;
-  height: 18px;
-  flex-shrink: 0;
-}
-
-.update-btn span {
-  position: relative;
-  z-index: 1;
-}
-
-.update-btn-primary {
-  background: #7c5cff;
-  color: #ffffff;
-  box-shadow: none;
-}
-
-/* Update Notification Badge in Sidebar */
-.update-notification-badge {
-  position: absolute;
-  top: 6px;
-  right: 8px;
-  width: 22px;
-  height: 22px;
-  background: var(--accent-color);
-  border-radius: var(--radius-circle);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  /* Общий pulse (мерцание прозрачностью). Свой @keyframes pulse с
-     бирюзовым кольцом здесь был лишним: одноимённые keyframes
-     перебивают друг друга, и анимация зависела от порядка файлов. */
-  animation: pulse 2s ease-in-out infinite;
-  flex-shrink: 0;
-}
-
-.update-title {
-  font-weight: 600;
-  font-size: 14px;
-  color: var(--text-primary);
-  margin-bottom: 4px;
-}
-
-.update-version {
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-.update-actions {
-  display: flex;
-  gap: 8px;
-  justify-content: flex-end;
-}
-
-/* ===== DROP NOTIFICATION ===== */
-.drop-notification-container {
-  position: fixed;
-  bottom: 20px;
-  right: 20px;
-  z-index: 10000;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  pointer-events: none;
-}
-
-.drop-notification {
-  background: rgba(124, 92, 255, 0.15);
-  backdrop-filter: blur(20px);
-  border: 1px solid rgba(124, 92, 255, 0.3);
-  border-radius: var(--radius-md);
-  padding: 16px;
-  width: 360px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.05);
-  display: flex;
-  gap: 14px;
-  align-items: flex-start;
-  opacity: 0;
-  transform: translateX(400px);
-  transition: all 0.4s cubic-bezier(0.22, 1, 0.36, 1);
-  pointer-events: all;
-  position: relative;
-  overflow: hidden;
-}
-
-.drop-notification::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(124, 92, 255, 0.05);
-  opacity: 0;
-  transition: opacity 0.3s;
-  pointer-events: none;
-}
-
-.drop-notification:hover::before {
-  opacity: 1;
-}
-
-.drop-notification.show {
-  opacity: 1;
-  transform: translateX(0);
-}
-
-.drop-notification.hide {
-  opacity: 0;
-  transform: translateX(400px);
-}
-
-.drop-notification-icon {
-  width: 64px;
-  height: 64px;
-  border-radius: var(--radius-md);
-  overflow: hidden;
-  flex-shrink: 0;
-  background: rgba(124, 92, 255, 0.1);
-  border: 1px solid rgba(124, 92, 255, 0.2);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-}
-
-.drop-notification-icon img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.drop-notification-icon.loading::after {
-  content: '';
-  position: absolute;
-  width: 24px;
-  height: 24px;
-  border: 2px solid rgba(124, 92, 255, 0.3);
-  border-top-color: #7c5cff;
-  border-radius: var(--radius-circle);
-  animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-.drop-notification-content {
-  flex: 1;
-  min-width: 0;
-}
-
-.drop-notification-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 6px;
-}
-
-.drop-notification-title {
-  color: #e4e8ee;
-  font-size: 13px;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.drop-notification-emoji {
-  font-size: 16px;
-  filter: drop-shadow(0 0 8px rgba(124, 92, 255, 0.5));
-}
-
-.drop-notification-drop-name {
-  color: #e4e8ee;
-  font-size: 15px;
-  font-weight: 600;
-  margin-bottom: 4px;
-  line-height: 1.3;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-}
-
-.drop-notification-game {
-  color: rgba(239, 239, 241, 0.6);
-  font-size: 13px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.drop-notification-game-icon {
-  font-size: 14px;
-  opacity: 0.8;
-}
-
-.drop-notification-close {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  width: 24px;
-  height: 24px;
-  border-radius: var(--radius-sm);
-  background: rgba(0, 0, 0, 0.2);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  opacity: 0;
-  transition: all 0.2s;
-}
-
-.drop-notification:hover .drop-notification-close {
-  opacity: 1;
-}
-
-.drop-notification-close:hover {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.15);
-}
-
-.drop-notification-close svg {
-  width: 12px;
-  height: 12px;
-  color: rgba(239, 239, 241, 0.8);
-}
-
-.drop-notification-progress {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  height: 2px;
-  background: #7c5cff;
-  border-radius: 0 0 12px 12px;
-  transform-origin: left;
-  animation: dropNotificationProgress 5s linear forwards;
-}
-
-@keyframes dropNotificationProgress {
-  from {
-    width: 100%;
-  }
-  to {
-    width: 0%;
-  }
-}
-
-@media (max-width: 480px) {
-  .drop-notification-container {
-    right: 10px;
-    left: 10px;
-  }
-  
-  .drop-notification {
-    width: auto;
-  }
-}
-
-/* Campaign Progress Bar Tooltip */
-.campaign-progress-container {
-  overflow: visible !important;
-}
-
-.campaign-card {
-  overflow: visible !important;
-}
-
-.campaign-progress-bar {
-  position: relative;
-}
-
-.campaign-progress-tooltip {
-  animation: tooltipFadeIn 0.2s ease;
-}
-
-@keyframes tooltipFadeIn {
-  from {
-    opacity: 0;
-    transform: translateX(-50%) translateY(4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(-50%) translateY(0px);
-  }
-}
-
-.campaign-progress-tooltip img {
-  cursor: pointer;
-}
-
-.campaign-progress-tooltip img:hover {
-  box-shadow: none;
 }
 
 /* ===== БАЛЛЫ КАНАЛА =====
@@ -2197,11 +2318,6 @@ body.no-animations * {
   font-variant-numeric: tabular-nums;
 }
 
-.points-sub-accent {
-  color: var(--success-color);
-  font-weight: 500;
-}
-
 @media (max-width: 720px) {
   .points-grid {
     grid-template-columns: 1fr;
@@ -2217,52 +2333,6 @@ body.no-animations * {
     border-left: none;
     border-top: 1px solid var(--border-color);
   }
-}
-
-/* ===== ОТСЧЁТ ДО ВЫКЛЮЧЕНИЯ =====
- * Показывается поверх всего и всегда отменяем: выключать чужой компьютер
- * без возможности передумать приложение не вправе.
- */
-.shutdown-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 12000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.72);
-}
-
-.shutdown-dialog {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-md);
-  padding: 28px 32px;
-  text-align: center;
-  min-width: 320px;
-  box-shadow: var(--shadow-overlay);
-}
-
-.shutdown-title {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.shutdown-reason {
-  margin-top: 6px;
-  font-size: 13px;
-  color: var(--text-secondary);
-}
-
-.shutdown-countdown {
-  margin: 18px 0;
-  font-family: 'IBM Plex Mono', ui-monospace, monospace;
-  font-size: 38px;
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-  color: var(--warning-color);
-  letter-spacing: -0.02em;
 }
 
 /* ===== ЗАКРЕПЛЁННЫЕ КАТЕГОРИИ ===== */
@@ -2522,19 +2592,6 @@ body.no-animations * {
   opacity: 0.75;
 }
 
-/* Сводка по автовыключению. Включать переключатель, не понимая, что и
-   когда произойдёт, — страшно; строка отвечает на это прямо в настройках. */
-.shutdown-summary {
-  margin: 4px 0 8px;
-  padding: 10px 12px;
-  border: 1px solid var(--warning-color);
-  border-radius: var(--radius-ctl);
-  background: rgba(240, 168, 60, 0.08);
-  color: var(--text-secondary);
-  font-size: 12px;
-  line-height: 1.5;
-}
-
 /* В сайдбаре плеер маленький: панель сжимается до кнопки звука и
    всегда видна — выключить внезапно заигравший звук нужно уметь
    с любой вкладки, не возвращаясь на страницу фарминга. */
@@ -2553,262 +2610,6 @@ body.no-animations * {
 .player-bar-compact .player-bar-btn svg {
   width: 12px;
   height: 12px;
-}
-
-/* ===== ЧТО НОВОГО ===== */
-.whats-new-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 11000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 32px;
-  background: rgba(0, 0, 0, 0.68);
-  animation: whatsNewFade 0.2s ease;
-}
-
-@keyframes whatsNewFade {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-.whats-new {
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  max-width: 520px;
-  max-height: 78vh;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-overlay);
-  overflow: hidden;
-  animation: whatsNewRise 0.24s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-@keyframes whatsNewRise {
-  from { opacity: 0; transform: translateY(12px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.whats-new-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 18px 20px 14px;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.whats-new-eyebrow {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  color: var(--accent-color);
-}
-
-.whats-new-title {
-  margin: 4px 0 0;
-  font-size: 19px;
-  font-weight: 600;
-  letter-spacing: -0.015em;
-  color: var(--text-primary);
-}
-
-.whats-new-close {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  flex-shrink: 0;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-ctl);
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: background var(--transition-fast), color var(--transition-fast);
-}
-
-.whats-new-close:hover {
-  background: var(--hover-bg);
-  color: var(--text-primary);
-}
-
-.whats-new-body {
-  padding: 8px 20px 18px;
-  overflow-y: auto;
-}
-
-.whats-new-loading,
-.whats-new-empty {
-  padding: 22px 0;
-  text-align: center;
-  color: var(--text-secondary);
-  font-size: 13px;
-  line-height: 1.5;
-}
-
-/* Версии складываются, кроме самой свежей: после обновления интересна
-   прежде всего она, остальные — по желанию */
-.whats-new-release {
-  border-bottom: 1px solid var(--border-color);
-}
-
-.whats-new-release:last-child {
-  border-bottom: none;
-}
-
-.whats-new-release-head {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 13px 0;
-  cursor: pointer;
-  user-select: none;
-}
-
-.whats-new-version {
-  font-family: 'IBM Plex Mono', ui-monospace, monospace;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-primary);
-  padding: 2px 7px;
-  border-radius: var(--radius-sm);
-  background: var(--accent-quiet);
-  color: var(--accent-color);
-}
-
-.whats-new-date {
-  font-size: 11.5px;
-  color: var(--text-tertiary);
-}
-
-.whats-new-chevron {
-  margin-left: auto;
-  color: var(--text-tertiary);
-  transition: transform var(--transition-base);
-}
-
-.whats-new-release.open .whats-new-chevron {
-  transform: rotate(180deg);
-}
-
-.whats-new-release-body {
-  display: none;
-  padding-bottom: 14px;
-}
-
-.whats-new-release.open .whats-new-release-body {
-  display: block;
-}
-
-.whats-new-section + .whats-new-section {
-  margin-top: 14px;
-}
-
-.whats-new-section-title {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: 6px;
-}
-
-.whats-new-section ul {
-  margin: 0;
-  padding-left: 18px;
-}
-
-.whats-new-section li {
-  font-size: 12.5px;
-  line-height: 1.55;
-  color: var(--text-secondary);
-  margin-bottom: 4px;
-}
-
-/* Пояснение об ограничении на странице аккаунтов */
-.accounts-notice {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  margin-bottom: 14px;
-  padding: 12px 14px;
-  border: 1px solid var(--border-color);
-  border-left: 2px solid var(--warning-color);
-  border-radius: var(--radius-ctl);
-  background: var(--bg-secondary);
-  color: var(--text-secondary);
-  font-size: 12.5px;
-  line-height: 1.5;
-}
-
-.accounts-notice b {
-  color: var(--text-primary);
-  font-weight: 600;
-}
-
-/* ===== АНАЛИТИКА ===== */
-/* Сетка была рассчитана ровно на одну строку: нулевые отступы и
-   разделители слева. Стоило показателям не поместиться в строку, как
-   вторая наезжала на подписи первой, а разделитель доставался первому
-   элементу новой строки. Теперь раскладка не зависит от их числа. */
-.analytics-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-  column-gap: 10px;
-  row-gap: 10px;
-}
-
-.analytics-item {
-  padding: 12px 14px;
-  min-width: 0;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  background: var(--bg-secondary);
-}
-
-.analytics-label {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-tertiary);
-  margin-bottom: 6px;
-}
-
-.analytics-value {
-  font-size: 20px;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  color: var(--text-primary);
-  font-variant-numeric: tabular-nums;
-  line-height: 1.15;
-}
-
-.analytics-sub {
-  margin-top: 4px;
-  font-size: 11.5px;
-  color: var(--text-secondary);
-  line-height: 1.4;
-}
-
-.analytics-note {
-  margin-top: 14px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border-color);
-  font-size: 12px;
-  color: var(--text-secondary);
-  line-height: 1.5;
-}
-
-@media (max-width: 760px) {
-  .analytics-item { padding: 12px 0; }
-  .analytics-item + .analytics-item {
-    border-left: none;
-    border-top: 1px solid var(--border-color);
-  }
 }
 
 /* Блок «все дропсы получены»: не просто сообщение, а следующий шаг */
@@ -2846,157 +2647,6 @@ body.no-animations * {
 
 .category-item.drops-completed .category-drops-status.too-late {
   opacity: 0.9;
-}
-
-/* Кнопки окна обновления должны ужиматься под свою подпись.
-   «Установить и перезагрузить» длиннее исходного «Установить», а при
-   nowrap и отступах в 36px кнопка вылезала за край окна.
-   Подпись переносится по словам, а не обрезается: в одну строку она не
-   влезает ни при каких отступах, а обрезанная подпись хуже двухстрочной.
-   Окно строится в updater.js с классом .update-actions. */
-.update-actions .update-btn {
-  white-space: normal;
-  min-height: 46px;
-  line-height: 1.25;
-  padding-left: 20px;
-  padding-right: 20px;
-  flex: 0 1 auto;
-  min-width: 0;
-  max-width: 100%;
-}
-
-.update-actions .update-btn span {
-  min-width: 0;
-  white-space: normal;
-  text-align: center;
-}
-
-/* Разметка в окне «что нового»: важные пункты выделены звёздочками */
-.whats-new-section strong {
-  color: var(--text-primary);
-  font-weight: 700;
-}
-
-.whats-new-section code {
-  padding: 1px 5px;
-  border-radius: var(--radius-sm);
-  background: rgba(124, 92, 255, 0.12);
-  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-  font-size: 0.92em;
-}
-
-/* ===== Шкала дропсов в сайдбаре =====
-   Деления показывают, где выдаётся каждая награда. Шкала — по времени
-   просмотра: прогресс внутри кампании общий, поэтому средний процент по
-   наградам ни на что не указывает, а на шкале времени отметка встаёт
-   ровно туда, где награду дадут. */
-/* Плеер — отдельный слой webview на z-index: 5, прикреплённый к body, а
-   мини-плеер в сайдбаре стоит прямо над блоком дропсов. Подсказка
-   раскрывается вверх и попадала ровно под него. Поднимаем весь блок над
-   слоем плеера: сам блок с плеером не пересекается, а подсказка — да. */
-#sidebar-drops-progress {
-  z-index: 20;
-}
-
-.drops-track {
-  position: relative;
-  height: 6px;
-  border-radius: var(--radius-sm);
-  background: rgba(124, 92, 255, 0.1);
-  overflow: hidden;
-}
-
-.drops-marks {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-
-.drops-mark {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 1px;
-  /* Тонкие и полупрозрачные: деления — подсказка, а не главный элемент
-     шкалы. Светлый оттенок при этом обязателен, тёмный сливается
-     с дорожкой и пропадает совсем */
-  background: rgba(255, 255, 255, 0.3);
-}
-
-/* Полученную награду отмечаем зелёным, чтобы отличать пройденные рубежи */
-.drops-mark.earned {
-  background: rgba(92, 255, 177, 0.45);
-}
-
-/* Последнее деление всегда упирается в край — сдвигаем внутрь,
-   иначе его срезает скругление дорожки */
-.drops-mark.last {
-  margin-left: -1px;
-}
-
-.drops-tip {
-  position: absolute;
-  left: 10px;
-  right: 10px;
-  bottom: calc(100% + 8px);
-  z-index: 40;
-  padding: 10px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  background: var(--card-bg, var(--bg-secondary));
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
-  opacity: 0;
-  visibility: hidden;
-  transform: translateY(4px);
-  transition: opacity 0.18s ease, transform 0.18s ease, visibility 0.18s;
-}
-
-#sidebar-drops-progress:hover .drops-tip {
-  opacity: 1;
-  visibility: visible;
-  transform: translateY(0);
-}
-
-.drops-tip-row {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-}
-
-.drops-tip img {
-  width: 30px;
-  height: 30px;
-  flex-shrink: 0;
-  border-radius: var(--radius-sm);
-  object-fit: cover;
-  background: rgba(124, 92, 255, 0.12);
-}
-
-.drops-tip-name {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-primary);
-  line-height: 1.25;
-  /* Названия наград бывают длинными, а сайдбар узкий */
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.drops-tip-left {
-  margin-top: 2px;
-  font-size: 11px;
-  color: #bda0ff;
-  font-weight: 700;
-}
-
-.drops-tip-note {
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid var(--border-color);
-  font-size: 10px;
-  color: var(--text-tertiary);
 }
 
 /* Прогноз в панели дропсов: сколько ещё сидеть и что успеется
@@ -3041,6 +2691,267 @@ body.no-animations * {
   background: rgba(240, 173, 78, 0.14);
   border: 1px solid rgba(240, 173, 78, 0.32);
   color: #f0ad4e;
+}
+
+/* Подсказка о выгодной категории, которой нет в списке */
+.suggestion {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(124, 92, 255, 0.35);
+  border-radius: var(--radius-md);
+  background: rgba(124, 92, 255, 0.08);
+}
+
+.suggestion-art {
+  width: 36px;
+  height: 50px;
+  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+}
+
+.suggestion-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.suggestion-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.suggestion-sub {
+  margin-top: 3px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.suggestion-add {
+  flex-shrink: 0;
+  padding: 8px 16px;
+  font-size: 12px;
+}
+
+/* Отказаться от подсказки должно быть так же просто, как согласиться */
+.suggestion-hide {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-tertiary);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.suggestion-hide:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+}
+
+/* ═════ НАСТРОЙКИ И АККАУНТЫ (SETTINGS → page-settings.css) ═════ */
+
+/* Settings Page Styles */
+.settings-container {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+/* Заголовок настроек стоит рядом с колонкой, а не внутри неё (оба лежат
+   прямо в #page-container), поэтому на широком окне висел у левого края,
+   отдельно от карточек. Та же ширина и тот же боковой отступ, что у
+   .settings-container, ставят его ровно над карточками. */
+.settings-header {
+  max-width: 800px;
+  margin-left: auto;
+  margin-right: auto;
+  padding: 0 20px;
+  box-sizing: border-box;
+}
+
+.settings-section {
+  background: var(--bg-secondary);
+  border-radius: var(--radius-md);
+  padding: 24px;
+  margin-bottom: 20px;
+  border: 1px solid var(--border-color);
+}
+
+.settings-section-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.settings-item:last-child {
+  border-bottom: none;
+}
+
+.settings-item-info {
+  flex: 1;
+  padding-right: 20px;
+}
+
+.settings-item-label {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.settings-item-description {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+/* Красная обводка для необратимых действий: сброс настроек и очистка
+   статистики должны выглядеть одинаково опасными */
+#reset-settings-btn,
+#clear-statistics-btn {
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+#reset-settings-btn:hover,
+#clear-statistics-btn:hover {
+  border-color: rgba(239, 68, 68, 0.6);
+  background: rgba(239, 68, 68, 0.05);
+  color: #ef4444;
+}
+
+/* Синяя обводка для кнопки экспорта */
+#export-settings-btn {
+  border-color: rgba(59, 130, 246, 0.3);
+}
+
+#export-settings-btn:hover {
+  border-color: rgba(59, 130, 246, 0.6);
+  background: rgba(59, 130, 246, 0.05);
+  color: #3b82f6;
+}
+
+.theme-light #reset-settings-btn,
+.theme-light #clear-statistics-btn {
+  border-color: rgba(239, 68, 68, 0.35);
+}
+
+.theme-light #reset-settings-btn:hover,
+.theme-light #clear-statistics-btn:hover {
+  border-color: rgba(239, 68, 68, 0.6);
+  background: rgba(239, 68, 68, 0.08);
+  color: #dc2626;
+}
+
+.theme-light #export-settings-btn {
+  border-color: rgba(59, 130, 246, 0.35);
+}
+
+.theme-light #export-settings-btn:hover {
+  border-color: rgba(59, 130, 246, 0.6);
+  background: rgba(59, 130, 246, 0.08);
+  color: #2563eb;
+}
+
+/* Пояснение об ограничении на странице аккаунтов */
+.accounts-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-color);
+  border-left: 2px solid var(--warning-color);
+  border-radius: var(--radius-ctl);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.accounts-notice b {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+/* Промежуток тихих часов в настройках */
+.quiet-range {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.quiet-range input[type="time"] {
+  padding: 5px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 12px;
+  color-scheme: dark;
+}
+
+.quiet-note {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+/* ═════ СТАТИСТИКА И КАЛЕНДАРЬ (STATS → page-stats.css) ═════ */
+
+/* ===== АНАЛИТИКА ===== */
+/* Сетка была рассчитана ровно на одну строку: нулевые отступы и
+   разделители слева. Стоило показателям не поместиться в строку, как
+   вторая наезжала на подписи первой, а разделитель доставался первому
+   элементу новой строки. Теперь раскладка не зависит от их числа. */
+.analytics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  column-gap: 10px;
+  row-gap: 10px;
+}
+
+.analytics-item {
+  padding: 12px 14px;
+  min-width: 0;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+}
+
+.analytics-note {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-color);
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+@media (max-width: 760px) {
+  .analytics-item { padding: 12px 0; }
+  .analytics-item + .analytics-item {
+    border-left: none;
+    border-top: 1px solid var(--border-color);
+  }
 }
 
 /* ===== Календарь кампаний ===== */
@@ -3176,67 +3087,6 @@ body.no-animations * {
   flex-shrink: 0;
   padding: 7px 14px;
   font-size: 12px;
-}
-
-/* Подсказка о выгодной категории, которой нет в списке */
-.suggestion {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 12px;
-  padding: 10px 12px;
-  border: 1px solid rgba(124, 92, 255, 0.35);
-  border-radius: var(--radius-md);
-  background: rgba(124, 92, 255, 0.08);
-}
-
-.suggestion-art {
-  width: 36px;
-  height: 50px;
-  flex-shrink: 0;
-  border-radius: var(--radius-sm);
-  object-fit: cover;
-}
-
-.suggestion-text {
-  flex: 1;
-  min-width: 0;
-}
-
-.suggestion-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.suggestion-sub {
-  margin-top: 3px;
-  font-size: 11px;
-  color: var(--text-secondary);
-}
-
-.suggestion-add {
-  flex-shrink: 0;
-  padding: 8px 16px;
-  font-size: 12px;
-}
-
-/* Отказаться от подсказки должно быть так же просто, как согласиться */
-.suggestion-hide {
-  flex-shrink: 0;
-  width: 26px;
-  height: 26px;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--text-tertiary);
-  font-size: 13px;
-  cursor: pointer;
-}
-
-.suggestion-hide:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--text-primary);
 }
 
 /* ===== Лента времени календаря =====
@@ -3403,121 +3253,9 @@ body.no-animations * {
   pointer-events: none;
 }
 
-.tl-hidden {
-  margin-top: 10px;
-  font-size: 11px;
-  color: var(--text-tertiary);
-}
-
-/* ===== Компактный режим =====
-   Переключатель существовал давно, но правила под него целились в классы,
-   которых после обновления оформления в разметке уже нет (.category-card),
-   а остальное трогало мелочи — со стороны режим не делал ничего.
-   Здесь ужимается то, что действительно занимает место: строки категорий,
-   отступы карточек и заголовки страниц. */
-body.compact-mode .card {
-  padding: 12px 14px;
-  margin-bottom: 10px;
-}
-
-body.compact-mode .page-header {
-  margin-bottom: 12px;
-}
-
-body.compact-mode .page-title {
-  font-size: 20px;
-}
-
-/* Подзаголовок страницы в компактном режиме — чистая трата высоты */
-body.compact-mode .page-subtitle {
-  display: none;
-}
-
-body.compact-mode .category-item {
-  padding: 6px 10px;
-  gap: 8px;
-}
-
-body.compact-mode .category-item .category-image img {
-  width: 34px;
-  height: 46px;
-}
-
-body.compact-mode .category-name {
-  font-size: 13px;
-}
-
-body.compact-mode .category-status {
-  font-size: 11px;
-}
-
-body.compact-mode .category-drag-handle {
-  display: none;
-}
-
-body.compact-mode .calendar-item {
-  padding: 6px 10px;
-}
-
-body.compact-mode .calendar-art {
-  width: 30px;
-  height: 41px;
-}
-
-body.compact-mode .calendar-group {
-  margin-bottom: 8px;
-}
-
-body.compact-mode .tl-track,
-body.compact-mode .tl-scale {
-  height: 16px;
-}
-
-body.compact-mode .analytics-item,
-body.compact-mode .stat-card {
-  padding: 10px 12px;
-}
-
-/* Промежуток тихих часов в настройках */
-.quiet-range {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 10px;
-  flex-wrap: wrap;
-}
-
-.quiet-range input[type="time"] {
-  padding: 5px 8px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  background: var(--bg-secondary);
-  color: var(--text-primary);
-  font-size: 12px;
-  color-scheme: dark;
-}
-
-.quiet-note {
-  font-size: 11px;
-  color: var(--text-tertiary);
-}
-
 /* ===== Упущенные награды =====
    Данные о них появились вместе с памятью о кампаниях: раньше они
    исчезали вместе с самой кампанией. */
-.missed-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.missed-title {
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--text-primary);
-}
 
 .missed-sum {
   font-size: 13px;
@@ -3576,20 +3314,87 @@ body.compact-mode .stat-card {
   white-space: nowrap;
 }
 
-/* Список подписок во время фонового обновления: старые данные остаются
-   на месте, а не пропадают ради спиннера */
-#subscriptions-list.refreshing {
-  opacity: 0.75;
-  transition: opacity 0.2s ease;
+/* ═════ ОКНО ОБНОВЛЕНИЯ И УВЕДОМЛЕНИЯ (NOTIFY → notifications.css) ═════ */
+
+/* ===== ОКНО ОБНОВЛЕНИЯ =====
+   Окно строит updater.js со своими стилями, здесь — дополняющие правила
+   его классов. Стили старых окон (.update-overlay, .update-modal,
+   .update-notification) удалены: такой разметки давно нет, а вместе с
+   ними лежали три копии правил .btn-primary/.btn-secondary, которые
+   перебивали основные. Вторичные кнопки из-за них были прозрачными
+   (фон из несуществующей переменной) и не откликались на наведение. */
+
+.update-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
 }
 
-/* ──────────────────────────────────────────────────────────────
-   Экономный режим графики.
+/* ───────────────────────── 6. Режимы ───────────────────────── */
+
+/* ── Компактный режим ──
+   Общие токены плотнее: карточки и строки списков уменьшаются везде, где
+   они построены на токенах. Свои плотные размеры страницы задают сами
+   в page-*.css (body.compact-mode …) */
+body.compact-mode {
+  --pad-card: 12px;
+  --row-h: 44px;
+}
+
+body.compact-mode .card {
+  margin-bottom: 10px;
+}
+
+body.compact-mode .page-header {
+  margin-bottom: 12px;
+}
+
+/* Статистика и календарь опираются на эти размеры и в компактном режиме:
+   page-stats.css их не повторяет (проверено сравнением вычисленных стилей) */
+body.compact-mode .calendar-item {
+  padding: 6px 10px;
+}
+
+body.compact-mode .calendar-art {
+  width: 30px;
+  height: 41px;
+}
+
+body.compact-mode .calendar-group {
+  margin-bottom: 8px;
+}
+
+body.compact-mode .tl-track,
+body.compact-mode .tl-scale {
+  height: 16px;
+}
+
+body.compact-mode .analytics-item,
+body.compact-mode .stat-card {
+  padding: 10px 12px;
+}
+
+/* ── Без анимаций ──
+   Индикаторы загрузки крутятся и здесь: неподвижное кольцо не говорит,
+   что приложение работает */
+body.no-animations *,
+body.no-animations *::before,
+body.no-animations *::after {
+  animation: none !important;
+  transition: none !important;
+}
+
+body.no-animations .spinner,
+body.no-animations .btn.is-loading::after {
+  animation: spin 0.8s linear infinite !important;
+}
+
+/* ── Экономный режим графики (включён по умолчанию) ──
    Аппаратное ускорение в нём выключено, и размытие, тени и вечные
    анимации рисует процессор. Убираем их: интерфейс тот же, нагрузка в
-   фоне меньше. Крутящиеся индикаторы загрузки оставляем — без них не
-   понять, что приложение работает.
-   ────────────────────────────────────────────────────────────── */
+   фоне меньше. Поэтому ни одна рамка и разделитель в оформлении не
+   строятся на box-shadow — только border или псевдоэлемент: тени здесь
+   снимаются все. Крутящиеся индикаторы загрузки оставляем. */
 body.low-graphics *,
 body.low-graphics *::before,
 body.low-graphics *::after {
@@ -3599,112 +3404,27 @@ body.low-graphics *::after {
   text-shadow: none !important;
 }
 
-body.low-graphics .drop-notification {
-  background-color: var(--bg-secondary, #16161c) !important;
-}
-
-body.low-graphics .update-progress-fill,
-body.low-graphics .update-notification-badge,
-body.low-graphics .progress-fill-animated::before,
 body.low-graphics .waiting-ring-outer,
 body.low-graphics .waiting-ring-inner,
 body.low-graphics .waiting-dot,
-body.low-graphics .pulse,
-body.low-graphics .glow,
-body.low-graphics .checkpoint-active {
+body.low-graphics .status-dot.is-live,
+body.low-graphics .skeleton {
   animation: none !important;
   filter: none !important;
 }
 
-/* Индикатор зачёта дропсов под шкалой в сайдбаре: зелёный — Twitch
-   подтверждает зачёт на этом канале, жёлтый — ждём ответа, красный —
-   канал не засчитывает и стрим будет сменён. */
-.drops-credit {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 8px;
-  font-size: 11px;
-  color: var(--text-secondary);
+/* Без тени выбранный сегмент держится на заливке — делаем её заметнее */
+body.low-graphics .segmented > button.active,
+body.low-graphics .segmented > button.is-active,
+body.low-graphics .segmented > button[aria-pressed="true"],
+body.low-graphics .segmented > button[aria-selected="true"] {
+  outline: 1px solid var(--border-color);
+  outline-offset: -1px;
 }
 
-.drops-credit-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #f5b942;
-  flex: none;
-}
-
-.drops-credit[data-state="waiting"] .drops-credit-dot {
-  animation: dropsCreditBlink 1.6s ease-in-out infinite;
-}
-
-.drops-credit[data-state="ok"] .drops-credit-dot {
-  background: #35d08a;
-}
-
-.drops-credit[data-state="none"] .drops-credit-dot {
-  background: #f0555f;
-}
-
-.drops-credit[data-state="none"] {
-  color: #f0555f;
-}
-
-@keyframes dropsCreditBlink {
-  50% { opacity: 0.35; }
-}
-
-body.low-graphics .drops-credit-dot {
-  animation: none !important;
-}
-
-/* Значок игрового режима в сайдбаре: пока запущена игра, стрим сидит на
-   минимуме, и пользователь видит, почему картинка стала хуже. */
-.game-mode-badge[hidden] {
-  display: none !important;
-}
-
-.game-mode-badge {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  margin-bottom: 6px;
-  border: 1px solid rgba(245, 185, 66, 0.45);
-  border-radius: var(--radius-md);
-  background: rgba(245, 185, 66, 0.1);
-  color: #f5b942;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-/* Текстовое поле в настройках (список своих игр) */
-.settings-input {
-  box-sizing: border-box;
-  padding: 8px 10px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm, 6px);
-  background: var(--bg-primary);
-  color: var(--text-primary);
-  font: inherit;
-  font-size: 13px;
-}
-
-.settings-input:focus {
-  outline: none;
-  border-color: var(--accent-color, #7c5cff);
-}
-
-/* Значок «Нет входа в Twitch»: красный вариант значка режима */
-.game-mode-badge.login-badge {
-  border-color: rgba(240, 85, 95, 0.45);
-  background: rgba(240, 85, 95, 0.1);
-  color: #f0555f;
-  cursor: pointer;
-}
-
-.game-mode-badge.login-badge:hover {
-  background: rgba(240, 85, 95, 0.18);
+/* Кольцо фокуса у полей в этом режиме — рамкой потолще, а не тенью */
+body.low-graphics .input-field:focus,
+body.low-graphics .settings-input:focus {
+  outline: 1px solid var(--accent);
+  outline-offset: 0;
 }

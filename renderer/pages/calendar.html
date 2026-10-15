@@ -1,44 +1,64 @@
 <div class="calendar-page">
   <div class="page-header">
-    <h1 class="page-title">Календарь кампаний</h1>
-    <p class="page-subtitle">Что заканчивается, что только начинается</p>
-  </div>
-
-  <div class="card">
-    <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
-      <span class="input-label">Показывать:</span>
-      <button class="btn btn-secondary calendar-filter active" data-filter="all">Все кампании</button>
-      <button class="btn btn-secondary calendar-filter" data-filter="mine">Только мои категории</button>
-      <button class="btn btn-secondary calendar-filter" data-filter="new">Которых у меня нет</button>
-
-      <button class="btn btn-primary" id="calendar-refresh" style="margin-left: auto;">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-          <path d="M4 12a8 8 0 0 1 13.7-5.7L20 8"/>
-          <path d="M20 4v4h-4"/>
-          <path d="M20 12a8 8 0 0 1-13.7 5.7L4 16"/>
-          <path d="M4 20v-4h4"/>
+    <h1 class="page-title">Календарь</h1>
+    <div class="page-actions">
+      <button type="button" class="btn btn-ghost btn-icon" id="calendar-refresh" title="Обновить" aria-label="Обновить список кампаний">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>
         </svg>
-        <span>Обновить</span>
       </button>
     </div>
-    <div id="calendar-summary" class="calendar-summary"></div>
+  </div>
+
+  <!-- Панель одной строкой: что показывать — слева, сводка — справа.
+       Отдельная карточка с подписью «Показывать:» занимала полэкрана -->
+  <div class="calendar-toolbar">
+    <div class="segmented calendar-filters" role="group" aria-label="Какие кампании показывать">
+      <button type="button" class="calendar-filter active" data-filter="all" aria-pressed="true">Все <span class="count" data-count="all"></span></button>
+      <button type="button" class="calendar-filter" data-filter="mine" aria-pressed="false" title="Игры из вашего списка категорий">Мои <span class="count" data-count="mine"></span></button>
+      <button type="button" class="calendar-filter" data-filter="new" aria-pressed="false" title="Игры, которых нет в вашем списке категорий">Новые <span class="count" data-count="new"></span></button>
+    </div>
+    <button type="button" class="btn btn-secondary btn-sm calendar-ended-chip" id="calendar-show-ended" aria-pressed="false" title="Показывать кампании, которые уже закончились">
+      <svg class="chip-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M20 6 9 17l-5-5"/>
+      </svg>
+      <span>Завершённые</span>
+    </button>
+    <div id="calendar-summary" class="calendar-summary" aria-live="polite"></div>
+  </div>
+
+  <!-- Неполные данные нельзя подавать как полный список -->
+  <div id="calendar-warn" class="calendar-warn" hidden>
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>
+    </svg>
+    <span id="calendar-warn-text"></span>
   </div>
 
   <div class="card" id="calendar-timeline-card">
-    <div class="calendar-timeline-head">
-      <span class="calendar-group-title">Лента времени</span>
-      <div class="calendar-range">
-        <button class="btn btn-secondary calendar-days active" data-days="7">7 дней</button>
-        <button class="btn btn-secondary calendar-days" data-days="14">14 дней</button>
-        <button class="btn btn-secondary calendar-days" data-days="30">30 дней</button>
+    <div class="card-header calendar-timeline-head">
+      <div class="card-title">Лента времени</div>
+      <div class="segmented calendar-range" role="group" aria-label="Сколько дней показывать">
+        <button type="button" class="calendar-days active" data-days="7" aria-pressed="true">7 дней</button>
+        <button type="button" class="calendar-days" data-days="14" aria-pressed="false">14 дней</button>
+        <button type="button" class="calendar-days" data-days="30" aria-pressed="false">30 дней</button>
       </div>
     </div>
-    <div id="calendar-timeline"></div>
-  </div>
-
-  <div id="calendar-body">
-    <div class="card" style="text-align: center; padding: 40px; color: var(--text-secondary);">
-      Загружаю кампании…
+    <!-- Скелетон ленты: место занято сразу, страница не прыгает,
+         когда кампании приходят -->
+    <div id="calendar-timeline">
+      <div class="tl-skeleton" aria-busy="true" aria-label="Загрузка">
+        <div class="skeleton" style="width: 34%"></div>
+        <div class="skeleton" style="width: 52%"></div>
+        <div class="skeleton" style="width: 41%"></div>
+        <div class="skeleton" style="width: 66%"></div>
+        <div class="skeleton" style="width: 58%"></div>
+        <div class="skeleton" style="width: 80%"></div>
+        <div class="skeleton" style="width: 72%"></div>
+        <div class="skeleton" style="width: 90%"></div>
+      </div>
     </div>
   </div>
+
+  <div id="calendar-body"></div>
 </div>

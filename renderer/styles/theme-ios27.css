@@ -1,0 +1,619 @@
+/* ===== ОФОРМЛЕНИЕ «iOS 27» =====
+ *
+ * Необязательный слой поверх классики: «жидкое стекло» — полупрозрачные
+ * нейтральные поверхности, блик по верхней кромке, глубина тенями,
+ * капсулы вместо прямоугольных кнопок, крупные скругления.
+ *
+ * Включается классом body.ui-ios27 (settings-manager.js, настройка
+ * uiStyle). Каждое правило файла начинается с body.ui-ios27: без класса
+ * ни один селектор не совпадает, и классика остаётся ровно такой, какой её
+ * рисуют themes.css, main.css и page-*.css.
+ *
+ * Как устроено. Классика целиком построена на токенах themes.css
+ * (--surface-0…3, --surface-overlay, --text-*, --radius-* …), поэтому
+ * основную работу делает переопределение токенов: карточки становятся
+ * стеклом, вложенные плитки — полупрозрачными «колодцами», всплывающие
+ * слои — плотным стеклом с размытием. Ниже — только то, чего токенами не
+ * сказать: капсулы, блик и тени, «линза» выбранного, iOS-переключатели.
+ *
+ * Цвет. Фон — чистый нейтральный почти чёрный (светлая — серый iOS), без
+ * цветных пятен и свечений: прежняя редакция заливала фон фиолетовыми и
+ * синими кругами, и на тёмной теме это смотрелось грязно. Цвет — только у
+ * акцента там, где он что-то значит: главная кнопка, включённое, прогресс,
+ * фокус; зелёный/янтарный/красный — статусы.
+ *
+ * Размытие. Только у слоёв, под которыми действительно что-то есть: окна,
+ * тосты, журнал, всплывающие списки и подсказки, прилипшие панели. У
+ * карточек в потоке под стеклом лишь ровный фон — размытие там ничего не
+ * меняет на экране, а видеокарту занимает всю ночь фарминга. К тому же
+ * backdrop-filter на предке делает его опорой для position: fixed, и
+ * плеер, график зрителей и подсказки съехали бы.
+ *
+ * Прозрачность — переменная --glass-alpha на <html> (0.25–0.9), её ставит
+ * settings-manager.js из настройки glassOpacity: чем меньше, тем прозрачнее
+ * карточки и тем сильнее размытие всплывающих слоёв (чтобы текст поверх
+ * страницы оставался читаемым).
+ *
+ * Экономный режим (body.low-graphics): main.css снимает размытие и все
+ * тени; здесь стекло становится плотнее, всплывающие слои — сплошными.
+ */
+
+/* ───────────────────────── 1. Токены ───────────────────────── */
+
+body.ui-ios27 {
+  /* Скругления щедрее классики: карточки 20, окна 26, кнопки — капсулы
+     (ниже). Почти всё берёт радиусы из токенов, и одна замена меняет
+     весь интерфейс */
+  --radius-xs: 6px;
+  --radius-sm: 8px;
+  --radius-ctl: 12px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-xl: 26px;
+
+  /* SF Pro, если установлен; на Windows его обычно нет, и ближе всего к
+     нему Segoe UI Variable — тот же оптический размер Text/Display */
+  --font-ui: "SF Pro Text", -apple-system, "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  --font-display: "SF Pro Display", -apple-system, "Segoe UI Variable Display", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+
+  /* Заголовки крупнее и плотнее — как «большие заголовки» iOS */
+  --fs-h1: 24px;     --lh-h1: 30px;
+  --fs-h2: 19px;     --lh-h2: 24px;
+  --fs-title: 16px;  --lh-title: 22px;
+  --ls-tight: -0.02em;
+
+  /* Пружина: нажатие чуть проседает и отыгрывает назад */
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+
+  --ga: var(--glass-alpha, 0.55);
+  /* Чем прозрачнее стекло, тем сильнее размытие под всплывающим слоем:
+     иначе на 0.25 текст окна спорил бы с текстом страницы под ним */
+  --glass-blur-float: blur(calc(38px - 16px * var(--ga))) saturate(160%);
+  --scrim-blur: blur(6px);
+}
+
+body.ui-ios27.theme-dark {
+  /* Фон окна — сплошной: им же вырезаются кольца вокруг значков */
+  --surface-0: #0e0e10;
+
+  /* Стекло. fill — карточки, float — всплывающие слои (плотнее: под ними
+     текст страницы), solid — его видимый цвет на фоне при обычной
+     прозрачности: кольца и вырезы, которым нужен непрозрачный цвет */
+  --glass-fill: rgba(40, 40, 44, var(--ga));
+  --glass-fill-float: rgba(32, 32, 35, calc(var(--ga) * 0.32 + 0.62));
+  --glass-solid: #1b1b1e;
+  --glass-solid-float: #222225;
+  --glass-stroke: rgba(255, 255, 255, 0.075);
+  --glass-stroke-float: rgba(255, 255, 255, 0.11);
+  /* Блик — светлая линия по верхней кромке; скругление само сводит её на
+     нет к углам, как отражение на краю толстого стекла */
+  --glass-edge: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  --glass-shadow: var(--glass-edge), 0 1px 2px rgba(0, 0, 0, 0.28), 0 18px 40px -22px rgba(0, 0, 0, 0.8);
+  --glass-shadow-float: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 28px 70px -12px rgba(0, 0, 0, 0.62), 0 4px 14px rgba(0, 0, 0, 0.3);
+
+  /* «Линза» — выбранное: пункт меню, сегмент. Светлее поверхности, без
+     акцентной заливки */
+  --lens-fill: rgba(255, 255, 255, 0.11);
+  --lens-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 1px 3px rgba(0, 0, 0, 0.35);
+  --seg-track: rgba(118, 118, 128, 0.2);
+  --thumb-shadow: 0 2px 6px rgba(0, 0, 0, 0.3), 0 0 0 0.5px rgba(0, 0, 0, 0.1);
+  /* Деления шкалы дропсов — вырез цветом подложки карточки */
+  --mark-cut: rgba(14, 14, 16, 0.85);
+
+  --surface-1: var(--glass-fill);
+  --surface-2: rgba(255, 255, 255, 0.055);
+  --surface-3: rgba(255, 255, 255, 0.1);
+  --surface-overlay: var(--glass-fill-float);
+
+  --text-primary: #f5f5f7;
+  --text-secondary: #a9a9b2;   /* 7:1 на карточке */
+  --text-tertiary: #8b8b94;    /* 5:1 на карточке */
+
+  /* Системные цвета iOS (тёмные) — только для статусов */
+  --success: #30d158;  --success-soft: rgba(48, 209, 88, 0.14);
+  --warning: #ff9f0a;  --warning-soft: rgba(255, 159, 10, 0.14);
+  --danger: #ff453a;   --danger-soft: rgba(255, 69, 58, 0.14);
+  --danger-strong: #d9302b; --danger-hover: #e3382f;   /* белый текст 4.8:1 */
+
+  --border-color: rgba(255, 255, 255, 0.075);
+  --border-strong: rgba(255, 255, 255, 0.13);
+  --hover-bg: rgba(255, 255, 255, 0.055);
+  --press-bg: rgba(255, 255, 255, 0.09);
+  --progress-bg: rgba(255, 255, 255, 0.1);
+  --toggle-bg: rgba(120, 120, 128, 0.36);
+  --scrim: rgba(0, 0, 0, 0.42);
+
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.35);
+  --shadow-pop: var(--glass-shadow-float);
+  --shadow-modal: var(--glass-shadow-float);
+
+  --scrollbar-thumb: rgba(255, 255, 255, 0.14);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.26);
+
+  /* Алиасы, которые в классике смотрят на сплошные поверхности */
+  --input-bg: rgba(118, 118, 128, 0.18);
+  --button-secondary-bg: rgba(255, 255, 255, 0.08);
+  --button-secondary-hover: rgba(255, 255, 255, 0.13);
+  --titlebar-bg: #121215;
+  --sidebar-bg: var(--glass-fill);
+
+  /* Нейтральный графит; единственное пятно — почти незаметный серый свет
+     сверху, чтобы фон не был мёртвой заливкой. Никаких цветных свечений */
+  background:
+    radial-gradient(1200px 600px at 50% -10%, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0) 60%),
+    linear-gradient(180deg, #131316 0%, #0b0b0d 100%);
+}
+
+body.ui-ios27.theme-light {
+  --surface-0: #f2f2f7;
+
+  /* Белое стекло на сером iOS-фоне. Нижняя граница плотности выше, чем в
+     тёмной: белое на почти белом при 0.25 исчезало бы совсем */
+  --glass-fill: rgba(255, 255, 255, calc(var(--ga) * 0.6 + 0.35));
+  --glass-fill-float: rgba(250, 250, 252, calc(var(--ga) * 0.28 + 0.66));
+  --glass-solid: #ffffff;
+  --glass-solid-float: #fafafc;
+  --glass-stroke: rgba(0, 0, 0, 0.05);
+  --glass-stroke-float: rgba(0, 0, 0, 0.08);
+  --glass-edge: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  --glass-shadow: var(--glass-edge), 0 1px 2px rgba(0, 0, 0, 0.04), 0 14px 34px -18px rgba(0, 0, 0, 0.18);
+  --glass-shadow-float: inset 0 1px 0 rgba(255, 255, 255, 0.95), 0 28px 70px -14px rgba(0, 0, 0, 0.22), 0 4px 14px rgba(0, 0, 0, 0.07);
+
+  --lens-fill: #ffffff;
+  --lens-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 0 0 0.5px rgba(0, 0, 0, 0.05);
+  --seg-track: rgba(118, 118, 128, 0.12);
+  --thumb-shadow: 0 2px 6px rgba(0, 0, 0, 0.16), 0 0 0 0.5px rgba(0, 0, 0, 0.06);
+  --mark-cut: rgba(255, 255, 255, 0.95);
+
+  --surface-1: var(--glass-fill);
+  --surface-2: rgba(118, 118, 128, 0.09);
+  --surface-3: rgba(118, 118, 128, 0.15);
+  --surface-overlay: var(--glass-fill-float);
+
+  --text-primary: #1d1d1f;
+  --text-secondary: #5c5c63;   /* 6.5:1 */
+  --text-tertiary: #6e6e75;    /* 4.6:1 на фоне окна */
+
+  /* Системные цвета iOS (светлые, доступные варианты) */
+  --success: #248a3d;  --success-soft: rgba(52, 199, 89, 0.14);
+  --warning: #b25000;  --warning-soft: rgba(255, 149, 0, 0.14);
+  --danger: #d70015;   --danger-soft: rgba(255, 59, 48, 0.1);
+  --danger-strong: #d70015; --danger-hover: #c00013;
+
+  --border-color: rgba(0, 0, 0, 0.07);
+  --border-strong: rgba(0, 0, 0, 0.12);
+  --hover-bg: rgba(0, 0, 0, 0.04);
+  --press-bg: rgba(0, 0, 0, 0.07);
+  --progress-bg: rgba(118, 118, 128, 0.18);
+  --toggle-bg: rgba(120, 120, 128, 0.24);
+  --scrim: rgba(0, 0, 0, 0.2);
+
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1);
+  --shadow-pop: var(--glass-shadow-float);
+  --shadow-modal: var(--glass-shadow-float);
+
+  --scrollbar-thumb: rgba(0, 0, 0, 0.16);
+  --scrollbar-thumb-hover: rgba(0, 0, 0, 0.28);
+
+  --input-bg: rgba(118, 118, 128, 0.1);
+  --button-secondary-bg: rgba(118, 118, 128, 0.12);
+  --button-secondary-hover: rgba(118, 118, 128, 0.18);
+  --titlebar-bg: #f4f4f8;
+  --sidebar-bg: var(--glass-fill);
+
+  background: linear-gradient(180deg, #f5f5f9 0%, #eeeef3 100%);
+}
+
+/* Экономный режим: размытия и теней нет (их снимает main.css) — стекло
+   держится на плотной заливке и рамке. Всплывающие слои сплошные: без
+   размытия даже малая прозрачность оставляла под окном призрак страницы */
+body.ui-ios27.theme-dark.low-graphics {
+  --glass-fill: rgba(38, 38, 42, calc(var(--ga) * 0.2 + 0.74));
+  --glass-fill-float: #202023;
+  --glass-stroke: rgba(255, 255, 255, 0.09);
+  --glass-stroke-float: rgba(255, 255, 255, 0.13);
+  --lens-fill: rgba(255, 255, 255, 0.12);
+  --scrim: rgba(0, 0, 0, 0.62);
+}
+
+body.ui-ios27.theme-light.low-graphics {
+  --glass-fill: rgba(255, 255, 255, calc(var(--ga) * 0.15 + 0.85));
+  --glass-fill-float: #fbfbfd;
+  --glass-stroke: rgba(0, 0, 0, 0.08);
+  --glass-stroke-float: rgba(0, 0, 0, 0.12);
+  --scrim: rgba(0, 0, 0, 0.32);
+}
+
+/* ───────────────────────── 2. Оболочка ───────────────────────── */
+
+/* Заголовок окна сливается с фоном: панели «парят» под ним */
+body.ui-ios27 .titlebar {
+  background: transparent;
+  border-bottom-color: transparent;
+}
+
+body.ui-ios27 .titlebar-drag {
+  padding-left: 18px;
+}
+
+body.ui-ios27 .titlebar-title {
+  font-family: var(--font-display);
+  letter-spacing: -0.01em;
+}
+
+body.ui-ios27 .titlebar-tools .titlebar-button {
+  border-radius: var(--radius-pill);
+}
+
+/* Боковая панель — отдельный стеклянный лист с отступом от краёв окна.
+   Внутренняя ширина та же, что в классике (191px): от неё зависят высота
+   мини-плеера 16:9, медиазапросы высоты окна в main.css и то, влезает ли
+   имя канала рядом с таймером */
+body.ui-ios27 .sidebar {
+  width: calc(var(--sidebar-w) + 1px);
+  margin: 0 0 8px 8px;
+  border: 1px solid var(--glass-stroke);
+  border-radius: 22px;
+  box-shadow: var(--glass-shadow);
+}
+
+body.ui-ios27 .nav-item {
+  transition: background var(--transition-fast), color var(--transition-fast), scale var(--dur-slow) var(--ease-spring);
+}
+
+body.ui-ios27 .nav-item:active {
+  scale: 0.98;
+}
+
+/* Выбранный пункт — светлая «линза» и значок цветом акцента, без полоски
+   и заливки: так выделяется пункт боковой панели в iOS */
+body.ui-ios27 .nav-item.active,
+body.ui-ios27.theme-light .nav-item.active {
+  background: var(--lens-fill);
+  box-shadow: var(--lens-shadow);
+  outline: none;
+  color: var(--text-primary);
+}
+
+body.ui-ios27 .nav-item.active::before {
+  content: none;
+}
+
+body.ui-ios27 .nav-item.active svg {
+  color: var(--accent-text);
+}
+
+body.ui-ios27 .nav-item.active:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Окно ниже 720px. Классика здесь укладывает меню, мини-плеер и
+   «Остановить» без единого лишнего пикселя, а отступы листа и его рамка
+   отнимают ~12px — меню уезжало под прокрутку. Возвращаем их за счёт
+   воздуха внутри панели */
+@media (max-height: 719px) {
+  body.ui-ios27 .sidebar {
+    padding-top: 6px;
+    padding-bottom: 6px;
+  }
+
+  body.ui-ios27 .nav-divider {
+    margin: 4px 10px;
+  }
+
+  body.ui-ios27 .sidebar-farming {
+    padding-top: 8px;
+  }
+}
+
+/* Карточка фарминга — плитка на стекле панели, без своей рамки.
+   Скругление концентрично листу: 22 − 8 (отступ) = 14 */
+body.ui-ios27 .farm-card {
+  background: var(--surface-2);
+  border-color: transparent;
+  border-radius: var(--radius-md);
+}
+
+body.ui-ios27 .drops-mark {
+  background: var(--mark-cut);
+}
+
+body.ui-ios27 #sidebar-mini-player-container {
+  border-color: var(--glass-stroke);
+}
+
+/* Страницы лежат прямо на фоне окна */
+body.ui-ios27 .content {
+  background: transparent;
+}
+
+body.ui-ios27 .page-title {
+  font-weight: 700;
+}
+
+/* ───────────────────────── 3. Поверхности ─────────────────────────
+   Фон им дают токены (--surface-1 = стекло); здесь рамка-кромка, блик
+   и мягкая тень, отделяющая лист от фона */
+
+body.ui-ios27 .card,
+body.ui-ios27 .kpi:not(.kpi-inline),
+body.ui-ios27 .settings-page .settings-section,
+body.ui-ios27 .settings-empty {
+  border-color: var(--glass-stroke);
+  box-shadow: var(--glass-shadow);
+}
+
+/* Всплывающие слои: плотное стекло, размытие страницы под ним, глубокая
+   тень. Окнам размывает страницу подложка (ниже), а не само окно: иначе
+   подложка стала бы «корнем» размытия, и окно видело бы под собой только
+   затемнение */
+body.ui-ios27 .dialog,
+body.ui-ios27 .whats-new,
+body.ui-ios27 .auth-modal-content,
+body.ui-ios27 .shutdown-dialog {
+  border-color: var(--glass-stroke-float);
+  box-shadow: var(--glass-shadow-float);
+}
+
+body.ui-ios27 .dialog-backdrop,
+body.ui-ios27 .whats-new-overlay,
+body.ui-ios27 .auth-modal-overlay,
+body.ui-ios27 .shutdown-overlay {
+  backdrop-filter: var(--scrim-blur);
+  -webkit-backdrop-filter: var(--scrim-blur);
+}
+
+body.ui-ios27 .toast,
+body.ui-ios27 .tooltip,
+body.ui-ios27 .viewers-chart-popover,
+body.ui-ios27 .category-undo {
+  border-color: var(--glass-stroke-float);
+  box-shadow: var(--glass-shadow-float);
+  backdrop-filter: var(--glass-blur-float);
+  -webkit-backdrop-filter: var(--glass-blur-float);
+}
+
+body.ui-ios27 .toast {
+  border-radius: 18px;
+}
+
+body.ui-ios27 .tooltip {
+  border-radius: var(--radius-ctl);
+}
+
+/* «Категория удалена — Вернуть» — капсула, как плашки iOS */
+body.ui-ios27 .category-undo {
+  border-radius: var(--radius-pill);
+}
+
+/* Журнал — лист, который выезжает справа и не прилипает к краям окна */
+body.ui-ios27 .journal-drawer {
+  top: 40px;
+  right: 10px;
+  bottom: 10px;
+  background: var(--glass-fill-float);
+  border: 1px solid var(--glass-stroke-float);
+  border-radius: 24px;
+  box-shadow: var(--glass-shadow-float);
+  overflow: hidden;
+  backdrop-filter: var(--glass-blur-float);
+  -webkit-backdrop-filter: var(--glass-blur-float);
+  transform: translateX(calc(100% + 24px));
+}
+
+body.ui-ios27 .journal-drawer.open {
+  transform: none;
+}
+
+/* Прилипший заголовок дня внутри листа: размывает строки под собой
+   (лист — корень размытия, страница сюда не попадает) */
+body.ui-ios27 .journal-day {
+  background: transparent;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+/* Кольца и галочки, которым нужен непрозрачный цвет карточки: на стекле
+   полупрозрачное кольцо окрашивалось цветом значка под ним */
+body.ui-ios27 .camp-tile-check,
+body.ui-ios27 .subs-live-dot {
+  border-color: var(--glass-solid);
+}
+
+body.ui-ios27 .subs-channel-head .subs-live-dot {
+  border-color: var(--glass-solid-float);
+}
+
+body.ui-ios27 .onboarding-step.is-done .onboarding-mark {
+  color: var(--glass-solid);
+}
+
+/* ───────────────────────── 4. Элементы управления ─────────────────────────
+   :where() держит специфичность на уровне компонента: правила страниц
+   (.farming-page .category-play-btn …) по-прежнему сильнее и сохраняют
+   свои размеры и плавное появление */
+
+/* Кнопки — капсулы; иконочные — круги. Нажатие — короткое проседание */
+body.ui-ios27 :where(.btn) {
+  border-radius: var(--radius-pill);
+  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast), scale var(--dur-slow) var(--ease-spring);
+}
+
+body.ui-ios27 :where(.btn):active:not(:disabled) {
+  scale: 0.97;
+}
+
+body.ui-ios27 :where(.btn-icon) {
+  border-radius: var(--radius-circle);
+}
+
+/* Цветные кнопки — ровная заливка и блик сверху, без цветного свечения */
+body.ui-ios27 :where(.btn-primary, .btn-danger) {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16);
+}
+
+body.ui-ios27 :where(.btn-secondary) {
+  border-color: var(--glass-stroke);
+  box-shadow: var(--glass-edge);
+}
+
+/* У кнопок блока фарминга появление и уход рисует JS (opacity и
+   transform) — переход перечислен заново, иначе он пропал бы */
+body.ui-ios27 .sidebar-farming > .btn {
+  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast),
+              opacity var(--dur-base) var(--ease-out), transform var(--dur-base) var(--ease-out), scale var(--dur-slow) var(--ease-spring);
+}
+
+body.ui-ios27 .dialog-close,
+body.ui-ios27 .whats-new-close {
+  border-radius: var(--radius-circle);
+}
+
+/* Поля — мягкая заливка без рамки, как текстовые поля iOS; рамка
+   появляется при наведении, кольцо акцента — при фокусе (main.css) */
+body.ui-ios27 :where(.input-field, .settings-input) {
+  border-color: transparent;
+}
+
+body.ui-ios27 .search-field > .input-field {
+  border-radius: var(--radius-pill);
+}
+
+/* Список системного select рисует Windows: полупрозрачный фон он
+   смешал бы с белым — пунктам нужен сплошной цвет */
+body.ui-ios27 select.input-field option {
+  background: var(--glass-solid-float);
+}
+
+/* Переключатели — пропорции iOS: дорожка 40×24, ручка 20 с тенью.
+   Ход ручки у большого тот же, что в классике (16px), у малого — свой */
+body.ui-ios27 .switch,
+body.ui-ios27 .settings-toggle {
+  width: 40px;
+  height: 24px;
+}
+
+body.ui-ios27 .switch::after,
+body.ui-ios27 .settings-slider::before {
+  width: 20px;
+  height: 20px;
+  box-shadow: var(--thumb-shadow);
+  transition: transform var(--dur-slow) var(--ease-spring), width var(--dur-base) var(--ease-out);
+}
+
+body.ui-ios27 .switch-sm,
+body.ui-ios27 .category-toggle-switch {
+  width: 34px;
+  height: 20px;
+}
+
+body.ui-ios27 .switch-sm::after,
+body.ui-ios27 .toggle-thumb {
+  width: 16px;
+  height: 16px;
+  box-shadow: var(--thumb-shadow);
+  transition: transform var(--dur-slow) var(--ease-spring);
+}
+
+body.ui-ios27 .switch-sm.is-on::after,
+body.ui-ios27 .switch-sm:checked::after,
+body.ui-ios27 .switch-sm[aria-checked="true"]::after,
+body.ui-ios27 [aria-pressed="true"] > .switch-sm::after,
+body.ui-ios27 .category-toggle-switch.checked .toggle-thumb {
+  transform: translateX(14px);
+}
+
+/* Нажатая ручка вытягивается, как в iOS. Включённая растёт влево —
+   сдвиг меньше на ту же величину */
+body.ui-ios27 .settings-toggle:active .settings-slider::before,
+body.ui-ios27 input.switch:not(.switch-sm):active::after {
+  width: 24px;
+}
+
+body.ui-ios27 .settings-toggle:active input:checked + .settings-slider::before,
+body.ui-ios27 input.switch:not(.switch-sm):checked:active::after {
+  transform: translateX(12px);
+}
+
+/* Сегменты — капсула-дорожка и светлая «линза» выбранного */
+body.ui-ios27 .segmented {
+  background: var(--seg-track);
+  border-color: transparent;
+  border-radius: var(--radius-pill);
+}
+
+body.ui-ios27 .segmented > button {
+  border-radius: var(--radius-pill);
+}
+
+body.ui-ios27 .segmented > button.active,
+body.ui-ios27 .segmented > button.is-active,
+body.ui-ios27 .segmented > button[aria-pressed="true"],
+body.ui-ios27 .segmented > button[aria-selected="true"],
+body.ui-ios27.theme-light .segmented > button.active,
+body.ui-ios27.theme-light .segmented > button.is-active,
+body.ui-ios27.theme-light .segmented > button[aria-pressed="true"],
+body.ui-ios27.theme-light .segmented > button[aria-selected="true"] {
+  background: var(--lens-fill);
+  box-shadow: var(--lens-shadow);
+  color: var(--text-primary);
+}
+
+/* Навигация настроек — та же линза, что у меню */
+body.ui-ios27 .settings-nav a,
+body.ui-ios27 .settings-nav a.active {
+  border-radius: var(--radius-ctl);
+}
+
+body.ui-ios27 .settings-nav a.active,
+body.ui-ios27.theme-light .settings-nav a.active {
+  background: var(--lens-fill);
+  box-shadow: var(--lens-shadow);
+}
+
+/* Ползунок: дорожка-капсула потолще и крупная белая ручка без рамки */
+body.ui-ios27 .settings-range {
+  height: 24px;
+}
+
+body.ui-ios27 .settings-range::-webkit-slider-runnable-track {
+  height: 6px;
+}
+
+body.ui-ios27 .settings-range::-webkit-slider-thumb {
+  width: 22px;
+  height: 22px;
+  margin-top: -8px;
+  border: 0;
+  box-shadow: var(--thumb-shadow);
+  transition: scale var(--dur-slow) var(--ease-spring);
+}
+
+body.ui-ios27 .settings-range:active::-webkit-slider-thumb {
+  transform: none;
+  scale: 1.1;
+}
+
+/* Метки — капсулы */
+body.ui-ios27 :where(.badge, .whats-new-version) {
+  border-radius: var(--radius-pill);
+}
+
+/* ───────────────────────── 5. Экономный режим ─────────────────────────
+   Без теней белые ручки и линзы на светлой теме теряют край — рамка */
+
+/* Белая линза на белой панели держится на тени; без неё пункт меню
+   выделяется серой подложкой (сегменты лежат на серой дорожке — им
+   белая линза подходит и так) */
+body.ui-ios27.theme-light.low-graphics .nav-item.active {
+  background: var(--surface-3);
+}
+
+body.ui-ios27.theme-light.low-graphics .switch::after,
+body.ui-ios27.theme-light.low-graphics .settings-slider::before,
+body.ui-ios27.theme-light.low-graphics .toggle-thumb,
+body.ui-ios27.theme-light.low-graphics .settings-range::-webkit-slider-thumb {
+  outline: 1px solid rgba(0, 0, 0, 0.1);
+  outline-offset: -1px;
+}

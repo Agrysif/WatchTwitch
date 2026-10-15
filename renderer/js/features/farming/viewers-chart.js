@@ -3,202 +3,174 @@
  *
  * Чистая отрисовка на canvas: получает историю замеров и рисует. Ничего
  * из состояния страницы фарминга ей не нужно, поэтому вынесена отдельно —
- * 160 строк работы с координатами только мешали читать логику фарминга.
+ * работа с координатами только мешала читать логику фарминга.
+ *
+ * Цвета берутся из токенов оформления (--accent, --text-*, --border-color),
+ * а не задаются здесь: раньше график был фиолетовым со свечением на любой
+ * теме, а на светлой подписи терялись. Фон — у самого элемента canvas
+ * (.viewers-chart-popover в page-farming.css).
  */
 window.drawViewersChart = function (ctx, history) {
   const canvas = ctx.canvas;
   const width = canvas.width;
   const height = canvas.height;
 
+  // Токены читаем при каждой отрисовке: тему могли сменить на лету
+  const styles = getComputedStyle(document.body);
+  const token = (name, fallback) => (styles.getPropertyValue(name) || '').trim() || fallback;
+  const accent = token('--accent', '#7c5cff');
+  const textPrimary = token('--text-primary', '#ececf0');
+  const textSecondary = token('--text-secondary', '#a3a7b1');
+  const textTertiary = token('--text-tertiary', '#858a95');
+  const border = token('--border-color', 'rgba(255, 255, 255, 0.08)');
+  const font = (weight, size) => `${weight} ${size}px "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif`;
+
+  // Цвет акцента с прозрачностью — для заливки под линией
+  const withAlpha = (color, alpha) => {
+    const hex = /^#([0-9a-f]{6})$/i.exec(color);
+    if (hex) {
+      const n = parseInt(hex[1], 16);
+      return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+    }
+    const rgb = /^rgba?\(([^)]+)\)$/i.exec(color);
+    if (rgb) {
+      const [r, g, b] = rgb[1].split(',').map(part => part.trim());
+      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    }
+    return color;
+  };
+
+  const padding = 16;
+
+  // Заголовок — обычным текстом, как у карточек
+  const drawTitle = () => {
+    ctx.font = font(600, 13);
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = textPrimary;
+    ctx.fillText('Зрители', padding, padding + 12);
+    ctx.font = font(400, 11);
+    ctx.fillStyle = textTertiary;
+    ctx.textAlign = 'right';
+    ctx.fillText('за время просмотра', width - padding, padding + 12);
+  };
+
+  ctx.clearRect(0, 0, width, height);
+  ctx.shadowBlur = 0;
+
   // Двух замеров ещё нет (стрим только сменился). Раньше функция просто
   // выходила, и на канвасе оставался график прошлого стрима — подсказка
   // показывала чужие цифры. Стираем и честно пишем, что данных мало.
   if (!Array.isArray(history) || history.length < 2) {
-    ctx.clearRect(0, 0, width, height);
-    ctx.font = '600 14px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    drawTitle();
+    ctx.font = font(400, 13);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillStyle = '#8f9099';
-    ctx.fillText('Мало данных', width / 2, height / 2);
+    ctx.fillStyle = textSecondary;
+    ctx.fillText('Мало данных — замер раз в полминуты', width / 2, height / 2 + 6);
     ctx.textBaseline = 'alphabetic';
     return;
   }
 
-  const outerPadding = 16;
-  const topArea = 34;
-  const bottomArea = 46;
-  const chartLeft = outerPadding + 8;
-  const chartRight = width - outerPadding - 8;
-  const chartTop = outerPadding + topArea;
-  const chartBottom = height - outerPadding - bottomArea;
-  
-  // Очищаем canvas
-  ctx.clearRect(0, 0, width, height);
-  
+  const topArea = 30;
+  const bottomArea = 52;
+  const chartLeft = padding;
+  const chartRight = width - padding;
+  const chartTop = padding + topArea;
+  const chartBottom = height - bottomArea;
+
   // Находим мин/макс
   const values = history.map(h => h.count);
   const min = Math.min(...values);
   const max = Math.max(...values);
   const range = max - min || 1;
-  
+
   // Функция для получения координат точки
   const getPoint = (i) => {
     const x = chartLeft + (i / (history.length - 1)) * (chartRight - chartLeft);
     const y = chartBottom - ((history[i].count - min) / range) * (chartBottom - chartTop);
     return { x, y };
   };
-  
-  // Создаем градиент для заливки
-  const gradient = ctx.createLinearGradient(0, chartTop, 0, chartBottom);
-  gradient.addColorStop(0, 'rgba(124, 92, 255, 0.35)');
-  gradient.addColorStop(0.6, 'rgba(124, 92, 255, 0.15)');
-  gradient.addColorStop(1, 'rgba(124, 92, 255, 0.02)');
-  
-  // Сетка
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)';
+
+  // Плавная кривая через все точки
+  const tracePath = () => {
+    for (let i = 0; i < history.length - 1; i++) {
+      const current = getPoint(i);
+      const next = getPoint(i + 1);
+      const cpX = current.x + (next.x - current.x) * 0.5;
+      ctx.bezierCurveTo(cpX, current.y, cpX, next.y, next.x, next.y);
+    }
+  };
+
+  drawTitle();
+
+  // Сетка — три тонкие линии
+  ctx.strokeStyle = border;
   ctx.lineWidth = 1;
-  for (let i = 0; i <= 3; i++) {
-    const y = chartTop + (i / 3) * (chartBottom - chartTop);
+  for (let i = 0; i <= 2; i++) {
+    const y = Math.round(chartTop + (i / 2) * (chartBottom - chartTop)) + 0.5;
     ctx.beginPath();
     ctx.moveTo(chartLeft, y);
     ctx.lineTo(chartRight, y);
     ctx.stroke();
   }
 
-  // Заливка под графиком с плавными кривыми
+  // Заливка под графиком — тот же акцент, почти прозрачный
+  const gradient = ctx.createLinearGradient(0, chartTop, 0, chartBottom);
+  gradient.addColorStop(0, withAlpha(accent, 0.22));
+  gradient.addColorStop(1, withAlpha(accent, 0));
   ctx.fillStyle = gradient;
   ctx.beginPath();
   ctx.moveTo(chartLeft, chartBottom);
-  
-  // Первая точка
   const firstPoint = getPoint(0);
   ctx.lineTo(firstPoint.x, firstPoint.y);
-  
-  // Рисуем плавные кривые через все точки
-  for (let i = 0; i < history.length - 1; i++) {
-    const current = getPoint(i);
-    const next = getPoint(i + 1);
-    
-    // Контрольные точки для сглаживания
-    const cpX = current.x + (next.x - current.x) * 0.5;
-    const cpY1 = current.y;
-    const cpY2 = next.y;
-    
-    ctx.bezierCurveTo(cpX, cpY1, cpX, cpY2, next.x, next.y);
-  }
-  
+  tracePath();
   ctx.lineTo(chartRight, chartBottom);
   ctx.closePath();
   ctx.fill();
-  
-  // Рисуем плавную линию
-  ctx.strokeStyle = '#7c5cff';
-  ctx.lineWidth = 3;
+
+  // Линия — 2px, без свечения
+  ctx.strokeStyle = accent;
+  ctx.lineWidth = 2;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
-  ctx.shadowColor = 'rgba(124, 92, 255, 0.5)';
-  ctx.shadowBlur = 8;
   ctx.beginPath();
-  
-  const startPoint = getPoint(0);
-  ctx.moveTo(startPoint.x, startPoint.y);
-  
-  // Рисуем плавные кривые
-  for (let i = 0; i < history.length - 1; i++) {
-    const current = getPoint(i);
-    const next = getPoint(i + 1);
-    
-    const cpX = current.x + (next.x - current.x) * 0.5;
-    const cpY1 = current.y;
-    const cpY2 = next.y;
-    
-    ctx.bezierCurveTo(cpX, cpY1, cpX, cpY2, next.x, next.y);
-  }
-  
+  ctx.moveTo(firstPoint.x, firstPoint.y);
+  tracePath();
   ctx.stroke();
-  ctx.shadowBlur = 0;
-  
-  // Заголовок со значком.
-  //
-  // Раньше здесь стоял эмодзи 📊: система подставляет под него свой
-  // цветной шрифт, и на тёмном фоне он выпадал из оформления. Рисуем
-  // столбики сами — тем же цветом, что и остальное.
-  const title = 'Зрители';
-  ctx.font = '700 16px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-  ctx.textAlign = 'left';
-  ctx.fillStyle = '#7c5cff';
 
-  const titleWidth = ctx.measureText(title).width;
-  const iconWidth = 14;
-  const iconGap = 7;
-  const blockLeft = (width - (iconWidth + iconGap + titleWidth)) / 2;
-  const baseline = outerPadding + 18;
-
-  // Три столбика разной высоты
-  const bars = [
-    { dx: 0, h: 6 },
-    { dx: 5, h: 10 },
-    { dx: 10, h: 14 }
-  ];
-  for (const bar of bars) {
-    ctx.fillRect(blockLeft + bar.dx, baseline - bar.h, 3, bar.h);
-  }
-
-  ctx.fillText(title, blockLeft + iconWidth + iconGap, baseline);
-
-  // Нижняя панель со значениями
-  const barWidth = width - outerPadding * 2;
-  // Панель со значениями была тесной: подпись и число почти слипались
-  const barHeight = 44;
-  const barX = outerPadding;
-  const barY = height - outerPadding - barHeight;
-  const segment = barWidth / 3;
-
-  const drawRoundRect = (x, y, w, h, r) => {
-    ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.lineTo(x + w - r, y);
-    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-    ctx.lineTo(x + w, y + h - r);
-    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-    ctx.lineTo(x + r, y + h);
-    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-    ctx.lineTo(x, y + r);
-    ctx.quadraticCurveTo(x, y, x + r, y);
-    ctx.closePath();
-  };
-
-  drawRoundRect(barX, barY, barWidth, barHeight, 10);
-  ctx.fillStyle = 'rgba(124, 92, 255, 0.1)';
+  // Последний замер — точкой
+  const last = getPoint(history.length - 1);
+  ctx.fillStyle = accent;
+  ctx.beginPath();
+  ctx.arc(last.x, last.y, 3, 0, Math.PI * 2);
   ctx.fill();
-  ctx.strokeStyle = 'rgba(124, 92, 255, 0.3)';
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
 
-  ctx.strokeStyle = 'rgba(124, 92, 255, 0.2)';
-  ctx.lineWidth = 1.5;
+  // Внизу — три числа через разделители, без рамки и цветной плашки
+  const statsTop = height - bottomArea + 12;
+  ctx.strokeStyle = border;
   ctx.beginPath();
-  ctx.moveTo(barX + segment, barY + 4);
-  ctx.lineTo(barX + segment, barY + barHeight - 4);
-  ctx.moveTo(barX + segment * 2, barY + 4);
-  ctx.lineTo(barX + segment * 2, barY + barHeight - 4);
+  ctx.moveTo(padding, statsTop - 0.5);
+  ctx.lineTo(width - padding, statsTop - 0.5);
   ctx.stroke();
 
   const current = history[history.length - 1];
+  const format = (n) => Number(n).toLocaleString('ru-RU');
   const stats = [
-    { label: 'Макс', value: max.toLocaleString(), color: '#848d9b' },
-    { label: 'Мин', value: min.toLocaleString(), color: '#848d9b' },
-    { label: 'Сейчас', value: current.count.toLocaleString(), color: '#35d08a' }
+    { label: 'Сейчас', value: format(current.count) },
+    { label: 'Максимум', value: format(max) },
+    { label: 'Минимум', value: format(min) }
   ];
+  const segment = (width - padding * 2) / stats.length;
 
   stats.forEach((item, i) => {
-    const cx = barX + segment * i + segment / 2;
-    ctx.textAlign = 'center';
-    ctx.font = '11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-    ctx.fillStyle = '#8f9099';
-    ctx.fillText(item.label, cx, barY + 16);
-    ctx.font = 'bold 15px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-    ctx.fillStyle = item.color;
-    ctx.fillText(item.value, cx, barY + 35);
+    const x = padding + segment * i;
+    ctx.textAlign = 'left';
+    ctx.font = font(400, 11);
+    ctx.fillStyle = textTertiary;
+    ctx.fillText(item.label, x, statsTop + 16);
+    ctx.font = font(600, 14);
+    ctx.fillStyle = textPrimary;
+    ctx.fillText(item.value, x, statsTop + 34);
   });
 };

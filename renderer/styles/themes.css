@@ -1,119 +1,213 @@
 /* ===== ТОКЕНЫ ОФОРМЛЕНИЯ =====
  *
- * Единая точка управления обликом. Раньше значения были рассыпаны по коду:
- * около 350 объявлений border-radius и сотни цветов, причём две трети —
- * инлайновыми стилями в HTML и в шаблонных строках JS, мимо CSS. Поменять
- * внешний вид точечной правкой было невозможно.
+ * Направление «Спокойный»: нейтральные серые поверхности, один акцент,
+ * цвет только со смыслом. Фиолетовый — главная кнопка, выбранное,
+ * заливка прогресса и фокус; зелёный — получено; янтарный — внимание;
+ * красный — ошибка или опасное действие. Целые блоки цветом не заливаются.
  *
- * Текущее направление — «Чёткий»: выраженные границы, плотная сетка,
- * мелкие скругления. Смысл в том, что каждый блок явно очерчен и взгляд
- * быстро находит нужное.
+ * Прежнее направление («Чёткий») держалось на заметных рамках и
+ * фиолетовых подложках; на снимках это читалось как шум, а третичный
+ * текст (#626b78 на #13161a, 3.36:1) не проходил даже AA.
+ *
+ * Старые имена (--bg-primary, --accent-color …) оставлены алиасами: на них
+ * ссылаются сотни инлайновых стилей в шаблонах JS и страницах, и тема
+ * iOS 27 переопределяет именно их.
  */
 :root {
-  /* Скругления */
-  --radius-sm: 4px;      /* значки, метки, мелкие элементы */
-  --radius-ctl: 6px;     /* кнопки, поля ввода */
-  --radius-md: 8px;      /* карточки, панели, модальные окна */
-  --radius-pill: 999px;  /* полосы прогресса */
-  --radius-circle: 50%;  /* аватары и индикаторы — остаются круглыми осознанно */
+  /* Шрифты. Segoe UI Variable есть в Windows 11 со всеми начертаниями;
+     IBM Plex Sans в проекте только 400, и полужирный был искусственным —
+     текст выглядел мутным */
+  --font-ui: "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  --font-display: "Segoe UI Variable Display", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", "Cascadia Mono", Consolas, monospace;
 
-  /* Плотность: направление «Чёткий» предполагает компактную сетку */
-  --pad-card: 14px;
-  --pad-control: 9px 13px;
+  /* Кегли и интерлиньяж */
+  --fs-caption: 11px;  --lh-caption: 14px;   /* мелкие метки, время в журнале */
+  --fs-small: 12px;    --lh-small: 16px;     /* подписи, мета */
+  --fs-body: 13px;     --lh-body: 20px;      /* основной текст */
+  --fs-strong: 14px;   --lh-strong: 20px;    /* заголовки строк */
+  --fs-title: 15px;    --lh-title: 20px;     /* заголовки карточек */
+  --fs-h2: 18px;       --lh-h2: 24px;        /* заголовки окон */
+  --fs-h1: 20px;       --lh-h1: 26px;        /* заголовок страницы */
+  --fs-metric: 24px;   --lh-metric: 28px;    /* крупные числа */
+  --fw-regular: 400; --fw-medium: 500; --fw-semibold: 600;
+  --ls-tight: -0.01em;  /* заголовки от 15px */
+
+  /* Отступы: сетка 4/8 */
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 24px; --space-6: 32px;
+
+  /* Скругления */
+  --radius-xs: 4px;      /* деления, мелкие метки */
+  --radius-sm: 6px;      /* бейджи, маленькие кнопки, обложки в строках */
+  --radius-ctl: 8px;     /* кнопки, поля */
+  --radius-md: 10px;     /* плитки внутри карточек, строки списков */
+  --radius-lg: 12px;     /* карточки */
+  --radius-xl: 16px;     /* модальные окна, заставка, окно награды */
+  --radius-pill: 999px;
+  --radius-circle: 50%;
+
+  /* Размеры элементов управления */
+  --ctl-h-sm: 28px; --ctl-h: 32px; --ctl-h-lg: 40px;
+  --row-h: 56px;     /* строка списка */
+  --sidebar-w: 208px;
+
+  /* Плотность (прежние имена; компактный режим уменьшает их) */
+  --pad-card: 16px;
+  --pad-control: 0 14px;
   --gap-tight: 8px;
   --gap-base: 12px;
 
-  /* Тени только функциональные — отделить всплывающий слой от фона.
-     Разделение блоков в этом направлении делают границы, а не свечения. */
-  --shadow-none: none;
-  --shadow-overlay: 0 12px 32px rgba(0, 0, 0, 0.5);
+  /* Движение: коротко и по делу */
+  --dur-fast: 120ms; --dur-base: 180ms; --dur-slow: 260ms;
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-fast: var(--dur-fast) var(--ease-out);
+  --transition-base: var(--dur-base) var(--ease-out);
 
-  --transition-fast: 0.12s ease;
-  --transition-base: 0.18s ease;
+  /* Слои */
+  --z-drawer: 9500; --z-modal: 10000; --z-toast: 10100; --z-tooltip: 10200;
 }
 
-/* Dark Theme */
 .theme-dark {
-  --bg-primary: #0a0b0d;
-  --bg-secondary: #13161a;
-  --bg-tertiary: #1a1e23;
-  --sidebar-bg: #0e1013;
-  --card-bg: #13161a;
-  --titlebar-bg: #0e1013;
+  /* Нативные элементы (выпадающие списки, поля времени, полосы
+     прокрутки по умолчанию) рисуются в тон теме */
+  color-scheme: dark;
 
-  --text-primary: #e4e8ee;
-  --text-secondary: #848d9b;
-  --text-tertiary: #626b78;
+  /* Поверхности: 0 — окно, 1 — карточки, 2 — поля, вторичные кнопки и
+     «колодцы» внутри карточек, 3 — наведение и нажатие на уровне 2,
+     overlay — всплывающие окна */
+  --surface-0: #0f1012;
+  --surface-1: #16171a;
+  --surface-2: #1d1f23;
+  --surface-3: #26282d;
+  --surface-overlay: #1b1c20;
 
-  --accent-color: #7c5cff;
-  --accent-hover: #6b49f0;
-  --accent-quiet: rgba(124, 92, 255, 0.15);
-  --accent-shadow: rgba(124, 92, 255, 0.2);
+  --text-primary: #ececf0;   /* 15.2:1 на surface-1 */
+  --text-secondary: #a3a7b1; /*  7.4:1 */
+  --text-tertiary: #858a95;  /*  5.2:1 */
+  --text-on-accent: #ffffff;
 
-  /* Границы заметные — на них держится вся структура интерфейса */
-  --border-color: rgba(255, 255, 255, 0.10);
-  --border-strong: rgba(255, 255, 255, 0.16);
+  --accent: #7c5cff;            /* заливки прогресса, переключатели, фокус, индикаторы */
+  --accent-strong: #6a4cf0;     /* фон главной кнопки: белый текст 5.4:1 */
+  --accent-hover: #7458f6;
+  --accent-press: #6243e6;
+  --accent-text: #a593ff;       /* акцентный ТЕКСТ и иконки на тёмном: 7:1 */
+  --accent-soft: rgba(124, 92, 255, 0.14);
+  --accent-line: rgba(124, 92, 255, 0.42);
+
+  --success: #3ccf8e;  --success-soft: rgba(60, 207, 142, 0.12);
+  --warning: #f2b143;  --warning-soft: rgba(242, 177, 67, 0.12);
+  --danger: #f2616b;   --danger-soft: rgba(242, 97, 107, 0.12);
+  --danger-strong: #cf3d47; --danger-hover: #db4852;  /* фон красной кнопки */
+
+  --border-color: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.14);
   --hover-bg: rgba(255, 255, 255, 0.05);
-
-  --button-secondary-bg: #1a1e23;
-  --button-secondary-hover: #222730;
-
-  --input-bg: #0e1013;
+  --press-bg: rgba(255, 255, 255, 0.08);
   --progress-bg: rgba(255, 255, 255, 0.08);
+  --toggle-bg: #3a3d44;
+  --scrim: rgba(0, 0, 0, 0.6);
 
-  --toggle-bg: #333a44;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-modal: 0 24px 64px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.3);
 
   --scrollbar-track: transparent;
-  --scrollbar-thumb: #2a3039;
-  --scrollbar-thumb-hover: #3a424e;
+  --scrollbar-thumb: #2c2f35;
+  --scrollbar-thumb-hover: #3a3e45;
 
-  --success-color: #35d08a;
-  --warning-color: #f0a83c;
-  --error-color: #f0555f;
+  /* Алиасы прежних имён */
+  --bg-primary: var(--surface-0);
+  --bg-secondary: var(--surface-1);
+  --bg-tertiary: var(--surface-2);
+  --card-bg: var(--surface-1);
+  --sidebar-bg: var(--surface-0);
+  --titlebar-bg: var(--surface-0);
+  --input-bg: var(--surface-2);
+  --button-secondary-bg: var(--surface-2);
+  --button-secondary-hover: var(--surface-3);
+  --accent-color: var(--accent);
+  --accent-quiet: var(--accent-soft);
+  --accent-shadow: rgba(124, 92, 255, 0.25);
+  --success-color: var(--success);
+  --warning-color: var(--warning);
+  --error-color: var(--danger);
+  --shadow-none: none;
+  --shadow-overlay: var(--shadow-pop);
 }
 
-/* Light Theme */
 .theme-light {
-  --bg-primary: #f5f6f8;
-  --bg-secondary: #ffffff;
-  --bg-tertiary: #eef0f4;
-  --sidebar-bg: #ffffff;
-  --card-bg: #ffffff;
-  --titlebar-bg: #ffffff;
+  color-scheme: light;
 
-  --text-primary: #12151a;
-  --text-secondary: #5a6472;
-  --text-tertiary: #858e9c;
+  /* Тёмный текст на светлом Chromium под Windows рисует заметно тоньше
+     светлого на тёмном: полужирный 600 здесь выглядел обычным, и заголовки
+     терялись. Bold на светлой теме по виду равен Semibold на тёмной */
+  --fw-semibold: 700;
 
-  --accent-color: #6b49f0;
-  --accent-hover: #5a37e0;
-  --accent-quiet: rgba(107, 73, 240, 0.10);
-  --accent-shadow: rgba(107, 73, 240, 0.18);
+  --surface-0: #f4f5f7;
+  --surface-1: #ffffff;
+  --surface-2: #f0f1f4;
+  --surface-3: #e6e8ec;
+  --surface-overlay: #ffffff;
 
-  --border-color: rgba(16, 20, 28, 0.12);
-  --border-strong: rgba(16, 20, 28, 0.20);
+  --text-primary: #15171c;   /* 17.9:1 */
+  --text-secondary: #545a66; /*  6.9:1 */
+  --text-tertiary: #6b717c;  /*  4.9:1 */
+  --text-on-accent: #ffffff;
+
+  --accent: #6a4cf0;
+  --accent-strong: #6a4cf0;
+  --accent-hover: #5b3fe0;
+  --accent-press: #5034d0;
+  --accent-text: #5b3fe0;
+  --accent-soft: rgba(106, 76, 240, 0.10);
+  --accent-line: rgba(106, 76, 240, 0.35);
+
+  --success: #17845a;  --success-soft: rgba(23, 132, 90, 0.10);
+  --warning: #9a6100;  --warning-soft: rgba(214, 140, 0, 0.12);
+  --danger: #c93a44;   --danger-soft: rgba(201, 58, 68, 0.08);
+  --danger-strong: #c93a44; --danger-hover: #b8323c;
+
+  --border-color: rgba(16, 20, 28, 0.10);
+  --border-strong: rgba(16, 20, 28, 0.18);
   --hover-bg: rgba(16, 20, 28, 0.04);
-
-  --button-secondary-bg: #eef0f4;
-  --button-secondary-hover: #e3e6ec;
-
-  --input-bg: #ffffff;
+  --press-bg: rgba(16, 20, 28, 0.07);
   --progress-bg: rgba(16, 20, 28, 0.09);
-
   --toggle-bg: #c8cdd6;
+  --scrim: rgba(16, 20, 28, 0.35);
+
+  --shadow-sm: 0 1px 2px rgba(16, 20, 28, 0.06);
+  --shadow-pop: 0 8px 24px rgba(16, 20, 28, 0.12), 0 1px 3px rgba(16, 20, 28, 0.08);
+  --shadow-modal: 0 24px 64px rgba(16, 20, 28, 0.18), 0 2px 8px rgba(16, 20, 28, 0.08);
 
   --scrollbar-track: transparent;
   --scrollbar-thumb: #c8cdd6;
   --scrollbar-thumb-hover: #aab1bd;
 
-  --success-color: #17a673;
-  --warning-color: #c47a10;
-  --error-color: #d63b45;
+  /* Те же алиасы, что у тёмной темы. Поля и вторичные кнопки на светлой
+     теме белые: серое поле на белой карточке выглядело неактивным */
+  --bg-primary: var(--surface-0);
+  --bg-secondary: var(--surface-1);
+  --bg-tertiary: var(--surface-2);
+  --card-bg: var(--surface-1);
+  --sidebar-bg: var(--surface-0);
+  --titlebar-bg: var(--surface-0);
+  --input-bg: var(--surface-1);
+  --button-secondary-bg: var(--surface-1);
+  --button-secondary-hover: var(--surface-2);
+  --accent-color: var(--accent);
+  --accent-quiet: var(--accent-soft);
+  --accent-shadow: rgba(106, 76, 240, 0.18);
+  --success-color: var(--success);
+  --warning-color: var(--warning);
+  --error-color: var(--danger);
+  --shadow-none: none;
+  --shadow-overlay: var(--shadow-pop);
 }
 
-/* Status Colors */
+/* Цвет состояния текстом */
 .status-online {
-  color: var(--success-color);
+  color: var(--success);
 }
 
 .status-offline {
@@ -121,35 +215,5 @@
 }
 
 .status-farming {
-  color: var(--accent-color);
-}
-
-/* Badge */
-.badge {
-  display: inline-block;
-  padding: 3px 8px;
-  border-radius: var(--radius-sm);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-}
-
-.badge-success {
-  background: rgba(53, 208, 138, 0.14);
-  color: var(--success-color);
-}
-
-.badge-warning {
-  background: rgba(240, 168, 60, 0.14);
-  color: var(--warning-color);
-}
-
-.badge-error {
-  background: rgba(240, 85, 95, 0.14);
-  color: var(--error-color);
-}
-
-.badge-info {
-  background: var(--accent-quiet);
-  color: var(--accent-color);
+  color: var(--accent-text);
 }

@@ -1,0 +1,727 @@
+/* ===== УВЕДОМЛЕНИЯ =====
+ *
+ * Владелец: NOTIFY. Здесь — тосты, подтверждения, окно обновления, окна
+ * входа (.auth-modal*), журнал событий и сводка «Пока вас не было».
+ *
+ * Подключается после main.css, themes.css и animations.css, поэтому
+ * перекрывает общие компоненты и прежние правила страниц из main.css без
+ * !important. Только токены themes.css (var(--surface-1), var(--accent-text)…),
+ * без готовых цветов. Рамки и разделители — border или псевдоэлемент, не
+ * box-shadow: экономный режим графики (включён по умолчанию) снимает все тени.
+ *
+ * Раньше эти правила вставлялись в документ из app.js и updater.js строкой
+ * <style>: их нельзя было найти поиском по стилям, и они шли после всех
+ * таблиц, перебивая и тему, и iOS 27.
+ */
+
+/* ───────────────────────── Тосты ─────────────────────────
+   Нейтральная плашка в правом нижнем углу: цвет — только у значка и
+   тонкой полосы времени. Тосты, целиком залитые зелёным и красным,
+   кричали громче содержимого страницы и сливались со статусами. */
+
+.toast-container {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: var(--z-toast);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  width: 360px;
+  max-width: calc(100vw - 32px);
+  pointer-events: none;
+}
+
+.toast {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 8px 10px 10px;
+  background: var(--surface-overlay);
+  color: var(--text-primary);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-pop);
+  font: var(--fw-regular) 13px/18px var(--font-ui);
+  word-wrap: break-word;
+  cursor: pointer;
+  pointer-events: auto;
+  opacity: 0;
+  transform: translateY(8px) scale(0.98);
+  transition: opacity var(--dur-base) var(--ease-out), transform var(--dur-base) var(--ease-out);
+}
+
+.toast-show {
+  opacity: 1;
+  transform: none;
+}
+
+.toast-leaving {
+  opacity: 0;
+  transform: translateY(4px);
+  transition-duration: var(--dur-fast);
+}
+
+.toast:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.toast-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-circle);
+}
+
+.toast-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.toast-info .toast-icon { background: var(--surface-3); color: var(--text-secondary); }
+.toast-success .toast-icon { background: var(--success-soft); color: var(--success); }
+.toast-warning .toast-icon { background: var(--warning-soft); color: var(--warning); }
+.toast-error .toast-icon { background: var(--danger-soft); color: var(--danger); }
+
+.toast-body {
+  flex: 1;
+  min-width: 0;
+  padding-top: 5px;
+}
+
+.toast-title {
+  font-weight: var(--fw-semibold);
+  color: var(--text-primary);
+}
+
+.toast-message {
+  color: var(--text-primary);
+}
+
+.toast-title + .toast-message {
+  margin-top: 1px;
+  color: var(--text-secondary);
+}
+
+/* Действие в тосте — текстовая кнопка: одна, короткая, акцентным текстом */
+.toast-action {
+  margin: 6px 0 0 -8px;
+  color: var(--accent-text);
+}
+
+.toast-action:hover {
+  color: var(--accent-text);
+}
+
+/* Счётчик повторов: одно и то же сообщение несколько раз подряд — одна
+   плашка с «×3» вместо стопки одинаковых */
+.toast-count {
+  flex: none;
+  margin-top: 4px;
+}
+
+.toast-count[hidden] {
+  display: none;
+}
+
+/* Крестик: у ошибки виден всегда (она не гаснет сама), у остальных — при
+   наведении, чтобы не отвлекать от текста */
+.toast-close {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  margin-top: 2px;
+  opacity: 0;
+  transition: opacity var(--transition-fast), background var(--transition-fast), color var(--transition-fast);
+}
+
+.toast-close svg {
+  width: 14px;
+  height: 14px;
+}
+
+.toast:hover .toast-close,
+.toast:focus-within .toast-close,
+.toast-error .toast-close {
+  opacity: 1;
+}
+
+/* Полоса времени: сколько тост ещё провисит. Цвет — тона тоста, но
+   приглушённый: это подсказка, а не сигнал */
+.toast-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--text-tertiary);
+  opacity: 0.45;
+  transform-origin: left;
+  pointer-events: none;
+}
+
+.toast-success .toast-progress { background: var(--success); }
+.toast-warning .toast-progress { background: var(--warning); }
+
+/* Наведение ставит тост на паузу — вместе с полосой */
+.toast.is-paused .toast-progress {
+  animation-play-state: paused !important;
+}
+
+@keyframes toast-progress {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+
+/* Без анимаций полоса стояла бы полной и ничего не значила */
+body.no-animations .toast-progress {
+  display: none;
+}
+
+/* ───────────────────── Подтверждения ─────────────────────
+   Окно строится на общих .dialog*. Здесь — только текст вопроса и
+   разметка, которую страницы передают в showCustomConfirmation. */
+
+.confirm-dialog .dialog-body {
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.confirm-dialog .dialog-body p {
+  margin: 0;
+}
+
+/* Свою разметку страницы приносят без заголовка окна: отступ сверху —
+   как у шапки, иначе текст прилипал к краю */
+.confirm-dialog.is-custom .dialog-body {
+  padding-top: 20px;
+}
+
+.confirm-dialog .dialog-foot .btn {
+  min-width: 96px;
+}
+
+/* Своя разметка страниц (выход из Twitch, сброс, отписка) свёрстана по
+   центру — кнопки под ней тоже по центру, иначе текст и действия
+   расходятся по разным осям */
+.confirm-dialog.is-custom .dialog-foot {
+  justify-content: center;
+}
+
+/* ───────────────────── Экран входа ─────────────────────
+   login-guard.js строит его на .whats-new*: окно уже «Что нового» — в нём
+   одна фраза и две кнопки */
+
+.whats-new.login-guard-dialog {
+  width: min(440px, 100%);
+}
+
+.login-guard-text {
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.login-guard-text b {
+  font-weight: var(--fw-semibold);
+  color: var(--text-primary);
+}
+
+.login-guard-dialog .whats-new-body {
+  padding-bottom: 4px;
+}
+
+/* ───────────────────── Окно обновления ─────────────────────
+   Строит updater.js на .dialog*. Свой логотип вместо глифа Twitch:
+   окно обновления приложения не должно выглядеть как окно Twitch. */
+
+#update-overlay {
+  display: none;
+}
+
+#update-overlay.show {
+  display: flex;
+}
+
+.update-window.dialog {
+  width: min(460px, 100%);
+}
+
+.update-head {
+  align-items: center;
+}
+
+/* Общее правило растягивает первый элемент шапки — у этого окна первым
+   идёт логотип, и он уезжал на середину */
+.update-head > .update-logo {
+  width: 40px;
+  height: 40px;
+  flex: none;
+  border-radius: 10px;
+}
+
+.update-head > .update-titles {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Части тела окна появляются и прячутся (заметки, загрузка, статус):
+   промежутки между видимыми — через gap, без висящих отступов */
+.update-window .dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-bottom: 8px;
+}
+
+.update-subtitle {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-secondary);
+}
+
+.update-notes {
+  max-height: 200px;
+  overflow-y: auto;
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--text-secondary);
+}
+
+.update-notes-title {
+  margin-bottom: 4px;
+  font-weight: var(--fw-semibold);
+  color: var(--text-primary);
+}
+
+.update-notes strong {
+  font-weight: var(--fw-semibold);
+  color: var(--text-primary);
+}
+
+.update-notes code {
+  padding: 1px 5px;
+  border-radius: var(--radius-xs);
+  background: var(--surface-3);
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+}
+
+.update-notes ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.update-notes li {
+  margin-bottom: 2px;
+}
+
+.update-notes li::marker {
+  color: var(--text-tertiary);
+}
+
+.update-progress-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.update-progress-label .num {
+  color: var(--text-primary);
+  font-weight: var(--fw-semibold);
+}
+
+.update-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.update-status:empty {
+  display: none;
+}
+
+.update-status svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+
+.update-status.success { color: var(--success); }
+.update-status.error { color: var(--danger); }
+
+/* Подпись кнопки длиннее при «Установить и перезагрузить»: кнопка
+   растёт под неё, а на узком окне подпись переносится, а не обрезается */
+.update-actions .btn {
+  min-width: 96px;
+}
+
+.update-actions .btn span {
+  white-space: normal;
+  text-align: center;
+}
+
+/* ───────────────────── Окна входа и выбора ─────────────────────
+   .auth-modal — общий каркас окон на страницах аккаунтов и фарминга
+   (вход, выбор категории, сведения об аккаунте). Перенесено из app.js
+   и переведено на токены. */
+
+.auth-modal {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  box-sizing: border-box;
+}
+
+.auth-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background: var(--scrim);
+  animation: fade-in var(--dur-base) var(--ease-out);
+}
+
+.auth-modal-content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 500px;
+  max-height: 85vh;
+  overflow: hidden;
+  background: var(--surface-overlay);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-modal);
+  animation: dialog-in var(--dur-slow) var(--ease-out);
+}
+
+.auth-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+  padding: 16px 16px 12px 20px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.auth-modal-header h2,
+.auth-modal-header h3 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--fs-h2);
+  line-height: var(--lh-h2);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--ls-tight);
+  color: var(--text-primary);
+}
+
+.close-modal:not(.btn) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: var(--ctl-h);
+  height: var(--ctl-h);
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-ctl);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.close-modal:not(.btn):hover {
+  background: var(--hover-bg);
+  color: var(--text-primary);
+}
+
+.close-modal:not(.btn):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.auth-modal-body {
+  flex: 1;
+  padding: 16px 20px 20px;
+  overflow-y: auto;
+}
+
+/* ───────────────────── Журнал событий ───────────────────── */
+
+.journal-drawer {
+  position: fixed;
+  top: 32px;
+  right: 0;
+  bottom: 0;
+  z-index: var(--z-drawer);
+  display: flex;
+  flex-direction: column;
+  width: min(380px, calc(100vw - 220px));
+  background: var(--surface-1);
+  border-left: 1px solid var(--border-strong);
+  box-shadow: var(--shadow-modal);
+  transform: translateX(100%);
+  visibility: hidden;
+  transition: transform var(--dur-slow) var(--ease-out), visibility 0s linear var(--dur-slow);
+  outline: none;
+}
+
+.journal-drawer.open {
+  transform: none;
+  visibility: visible;
+  transition: transform var(--dur-slow) var(--ease-out), visibility 0s;
+}
+
+.journal-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 10px 10px 16px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.journal-heading {
+  flex: 1;
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--fs-title);
+  line-height: var(--lh-title);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--ls-tight);
+  color: var(--text-primary);
+}
+
+.journal-list {
+  flex: 1;
+  overflow: auto;
+  padding: 0 8px 12px;
+}
+
+.journal-list .empty-state {
+  padding: 48px 16px;
+}
+
+.journal-day {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 12px 8px 4px;
+  background: var(--surface-1);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: var(--fw-semibold);
+  color: var(--text-secondary);
+}
+
+.journal-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 40px 18px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+}
+
+.journal-row:hover {
+  background: var(--hover-bg);
+}
+
+/* Новое с прошлого открытия — тонкая акцентная полоса слева */
+.journal-row.is-new::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.journal-time {
+  padding-top: 1px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.journal-icon {
+  display: flex;
+  align-items: center;
+  height: 20px;
+  color: var(--text-tertiary);
+}
+
+.journal-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.journal-row.tone-ok .journal-icon { color: var(--success); }
+.journal-row.tone-warn .journal-icon { color: var(--warning); }
+.journal-row.tone-error .journal-icon { color: var(--danger); }
+
+.journal-main {
+  min-width: 0;
+}
+
+.journal-title {
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.journal-repeat {
+  margin-left: 2px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.journal-detail {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.journal-art {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-xs);
+  object-fit: cover;
+  background: var(--surface-2);
+}
+
+.journal-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px 10px 16px;
+  border-top: 1px solid var(--border-color);
+}
+
+.journal-foot-note {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+/* Кнопка журнала, пока панель открыта, выглядит нажатой */
+.titlebar-journal.is-active {
+  background: var(--press-bg);
+  color: var(--text-primary);
+}
+
+/* ───────────────── Сводка «Пока вас не было» ───────────────── */
+
+.away-card {
+  padding: 12px 12px 12px 16px;
+}
+
+.away-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.away-title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--fs-title);
+  line-height: var(--lh-title);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--ls-tight);
+  color: var(--text-primary);
+}
+
+.away-duration {
+  font-weight: var(--fw-regular);
+  color: var(--text-secondary);
+}
+
+.away-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.away-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.away-thumbs {
+  display: flex;
+  gap: 4px;
+}
+
+.away-thumbs img {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-xs);
+  object-fit: cover;
+  background: var(--surface-2);
+}
+
+.away-thumbs-label {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.away-foot .away-open {
+  margin-left: auto;
+}
+
+/* ───────────────── Узкое окно ───────────────── */
+
+@media (max-width: 1100px) {
+  .toast-container {
+    width: 340px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast,
+  .toast-leaving {
+    transform: none;
+  }
+
+  .journal-drawer {
+    transition: visibility 0s;
+  }
+}

@@ -5,11 +5,45 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Награда получена</title>
   <style>
-    /* Радиус тот же, что в renderer/styles/themes.css. Окно уведомления эту
-       таблицу не подключает, и без своего объявления var(--radius-md) ничего
-       не значил: плашка и картинка награды выходили с острыми углами */
+    /* Окно о полученной награде — в углу экрана, поверх всего.
+     *
+     * Окно прозрачное и чуть больше карточки: вокруг неё место под тень,
+     * иначе тень обрезалась бы краем окна ровной линией. Цвета — свои
+     * переменные: themes.css это окно не грузит. Тема приходит от main
+     * вместе с данными (settings.theme).
+     *
+     * Раньше это была сплошная фиолетовая плашка с белым текстом и
+     * значком-«домиком»: она кричала громче, чем того стоит рядовая
+     * награда, а белое на фиолетовом читалось хуже, чем текст на карточке.
+     */
     :root {
-      --radius-md: 8px;
+      --card: #1b1c20;
+      --card-hover: #212227;
+      --border: rgba(255, 255, 255, 0.10);
+      --text: #ececf0;
+      --text-2: #a3a7b1;
+      --text-3: #858a95;
+      --success: #3ccf8e;
+      --accent: #7c5cff;
+      --art-bg: #26282d;
+      --badge-ring: #1b1c20;
+      --close-hover: rgba(255, 255, 255, 0.08);
+      --shadow: 0 8px 24px rgba(0, 0, 0, 0.38), 0 1px 3px rgba(0, 0, 0, 0.3);
+    }
+
+    body.theme-light {
+      --card: #ffffff;
+      --card-hover: #f7f8fa;
+      --border: rgba(16, 20, 28, 0.12);
+      --text: #15171c;
+      --text-2: #545a66;
+      --text-3: #6b717c;
+      --success: #17845a;
+      --accent: #6a4cf0;
+      --art-bg: #f0f1f4;
+      --badge-ring: #ffffff;
+      --close-hover: rgba(16, 20, 28, 0.06);
+      --shadow: 0 8px 24px rgba(16, 20, 28, 0.16), 0 1px 3px rgba(16, 20, 28, 0.1);
     }
 
     * {
@@ -18,266 +52,396 @@
       box-sizing: border-box;
     }
 
+    html,
     body {
-      width: 360px;
-      height: 100px;
+      width: 412px;
+      height: 128px;
       background: transparent;
       overflow: hidden;
-      font-family: 'Inter', 'Segoe UI', sans-serif;
-      -webkit-app-region: no-drag;
     }
 
-    .drop-notification {
-      background: rgba(124, 92, 255, 0.95);
-      backdrop-filter: blur(20px);
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      border-radius: var(--radius-md);
-      padding: 16px;
-      width: 100%;
-      height: 100%;
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.1);
+    body {
+      font-family: "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+      -webkit-app-region: no-drag;
+      -webkit-font-smoothing: antialiased;
+      user-select: none;
+    }
+
+    .card {
+      position: absolute;
+      left: 16px;
+      top: 8px;
+      width: 380px;
+      height: 96px;
       display: flex;
-      gap: 14px;
       align-items: center;
-      position: relative;
+      gap: 14px;
+      padding: 0 40px 0 14px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      box-shadow: var(--shadow);
       overflow: hidden;
       cursor: pointer;
-      transition: transform 0.2s;
-    }
-
-    .drop-notification:hover {
-      transform: scale(1.02);
-    }
-
-    .drop-notification::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: rgba(255, 255, 255, 0.1);
       opacity: 0;
-      transition: opacity 0.3s;
-      pointer-events: none;
+      transform: translateY(12px);
+      transition: background-color 120ms ease-out;
     }
 
-    .drop-notification:hover::before {
+    .card:hover {
+      background: var(--card-hover);
+    }
+
+    /* Появление и уход — короткие: окно сообщает, а не развлекает */
+    .card.is-in {
       opacity: 1;
+      transform: none;
+      transition: opacity 220ms cubic-bezier(0.2, 0.8, 0.2, 1), transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1), background-color 120ms ease-out;
     }
 
-    .drop-notification-icon {
-      width: 64px;
-      height: 64px;
-      border-radius: var(--radius-md);
+    body.closing .card {
+      opacity: 0;
+      transform: translateY(8px);
+      transition: opacity 160ms ease-in, transform 160ms ease-in;
+    }
+
+    .art {
+      position: relative;
+      flex: none;
+      width: 56px;
+      height: 56px;
+    }
+
+    .art-frame {
+      width: 56px;
+      height: 56px;
+      border-radius: 8px;
       overflow: hidden;
-      flex-shrink: 0;
-      background: rgba(0, 0, 0, 0.3);
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      display: grid;
+      place-items: center;
+      background: var(--art-bg);
+      color: var(--text-3);
     }
 
-    .drop-notification-icon img {
+    .art-frame img {
       width: 100%;
       height: 100%;
       object-fit: cover;
     }
 
-    .drop-notification-content {
+    .art-frame img[hidden],
+    .art-frame svg[hidden] {
+      display: none;
+    }
+
+    /* Отметка «получено» в углу картинки. В сводке вместо галочки — число */
+    .art-badge {
+      position: absolute;
+      right: -5px;
+      bottom: -5px;
+      min-width: 20px;
+      height: 20px;
+      padding: 0 4px;
+      display: grid;
+      place-items: center;
+      border-radius: 999px;
+      background: var(--success);
+      color: #fff;
+      border: 2px solid var(--badge-ring);
+      font: 700 11px/1 "Segoe UI Variable Text", "Segoe UI", sans-serif;
+      font-variant-numeric: tabular-nums;
+    }
+
+    body.theme-dark .art-badge {
+      color: #0f1012;
+    }
+
+    .art-badge svg {
+      width: 11px;
+      height: 11px;
+    }
+
+    .text {
       flex: 1;
       min-width: 0;
     }
 
-    .drop-notification-header {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 6px;
-    }
-
-    .drop-notification-title {
-      color: #ffffff;
-      font-size: 13px;
-      font-weight: 700;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-    }
-
-    .drop-notification-icon-svg {
-      width: 18px;
-      height: 18px;
-      filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.5));
-    }
-
-    .drop-notification-drop-name {
-      color: #ffffff;
-      font-size: 15px;
+    .eyebrow {
+      font-size: 12px;
+      line-height: 16px;
       font-weight: 600;
-      margin-bottom: 4px;
-      line-height: 1.3;
+      color: var(--success);
+    }
+
+    body.kind-test .eyebrow {
+      color: var(--text-2);
+    }
+
+    .name {
+      margin-top: 2px;
+      font-size: 14px;
+      line-height: 20px;
+      font-weight: 600;
+      color: var(--text);
+      white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      white-space: nowrap;
-      text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
     }
 
-    .drop-notification-game {
-      color: rgba(255, 255, 255, 0.85);
+    .meta {
+      margin-top: 1px;
       font-size: 12px;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+      line-height: 16px;
+      color: var(--text-2);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
-    .drop-notification-game-icon {
+    .meta:empty {
+      display: none;
+    }
+
+    /* Крестик виден при наведении: без курсора он только отвлекает */
+    .close {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      width: 24px;
+      height: 24px;
+      display: grid;
+      place-items: center;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--text-2);
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 120ms ease-out, background-color 120ms ease-out, color 120ms ease-out;
+    }
+
+    .card:hover .close {
+      opacity: 1;
+    }
+
+    .close:hover {
+      background: var(--close-hover);
+      color: var(--text);
+    }
+
+    .close svg {
       width: 14px;
       height: 14px;
     }
 
-    .drop-notification-progress {
+    /* Полоса времени: сколько окно ещё провисит. При наведении стоит */
+    .timebar {
       position: absolute;
-      bottom: 0;
       left: 0;
-      height: 3px;
-      background: rgba(255, 255, 255, 0.9);
-      border-radius: 0 0 12px 12px;
+      right: 0;
+      bottom: 0;
+      height: 2px;
+    }
+
+    .timebar-fill {
+      width: 100%;
+      height: 100%;
+      background: var(--accent);
+      opacity: 0.6;
       transform-origin: left;
-      animation: dropNotificationProgress 5s linear forwards;
-      box-shadow: 0 0 8px rgba(255, 255, 255, 0.5);
     }
 
-    @keyframes dropNotificationProgress {
-      from {
-        width: 100%;
+    @media (prefers-reduced-motion: reduce) {
+      .card,
+      body.closing .card {
+        transform: none;
       }
-      to {
-        width: 0%;
-      }
-    }
-
-    @keyframes slideIn {
-      from {
-        transform: translateX(400px);
-        opacity: 0;
-      }
-      to {
-        transform: translateX(0);
-        opacity: 1;
-      }
-    }
-
-    @keyframes slideOut {
-      from {
-        transform: translateX(0);
-        opacity: 1;
-      }
-      to {
-        transform: translateX(400px);
-        opacity: 0;
-      }
-    }
-
-    .drop-notification {
-      animation: slideIn 0.4s cubic-bezier(0.22, 1, 0.36, 1);
-    }
-
-    body.closing .drop-notification {
-      animation: slideOut 0.3s cubic-bezier(0.22, 1, 0.36, 1);
     }
   </style>
-  <link rel="stylesheet" href="styles/fonts.css">
 </head>
-<body>
-  <div class="drop-notification" onclick="closeNotification()">
-    <div class="drop-notification-icon">
-      <img id="drop-icon" src="" alt="Награда" crossorigin="anonymous">
-    </div>
-    <div class="drop-notification-content">
-      <div class="drop-notification-header">
-        <div class="drop-notification-title">
-          <svg class="drop-notification-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 2L2 7v11h6v-6h8v6h6V7L12 2z" fill="currentColor" stroke="none"/>
-            <circle cx="12" cy="11" r="2" fill="white"/>
-            <path d="M8 18v4M16 18v4" stroke="white" stroke-width="2"/>
-          </svg>
-          Награда получена!
-        </div>
-      </div>
-      <div class="drop-notification-drop-name" id="drop-name"></div>
-      <div class="drop-notification-game">
-        <svg class="drop-notification-game-icon" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+<body class="theme-dark kind-drop">
+  <div class="card" id="card" role="alert" aria-live="assertive">
+    <div class="art">
+      <div class="art-frame">
+        <img id="drop-icon" alt="" hidden>
+        <svg id="gift-placeholder" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="3" y="8" width="18" height="4" rx="1"/>
+          <path d="M12 8v13"/>
+          <path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"/>
+          <path d="M7.5 8a2.5 2.5 0 0 1 0-5C10 3 12 8 12 8s2-5 4.5-5a2.5 2.5 0 0 1 0 5"/>
         </svg>
-        <span id="game-name"></span>
       </div>
+      <span class="art-badge" id="art-badge" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+      </span>
     </div>
-    <div class="drop-notification-progress"></div>
+    <div class="text">
+      <div class="eyebrow" id="eyebrow">Награда получена</div>
+      <div class="name" id="drop-name"></div>
+      <div class="meta" id="game-name"></div>
+    </div>
+    <button type="button" class="close" id="close-btn" title="Закрыть" aria-label="Закрыть">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+    </button>
+    <div class="timebar" aria-hidden="true"><div class="timebar-fill" id="timebar"></div></div>
   </div>
 
   <script>
     // Node в этом окне нет: данные и закрытие идут через мост window.notif
-    // (preload-notification.js)
-    window.notif.onData((data) => {
-      const { dropName, gameName, dropIcon } = data || {};
-      
-      // Заполняем данные
-      document.getElementById('drop-name').textContent = dropName || '';
-      document.getElementById('game-name').textContent = gameName || '';
-      
-      // Устанавливаем картинку
-      const imgElement = document.getElementById('drop-icon');
-      if (dropIcon && dropIcon.length > 0 && dropIcon.startsWith('data:image/')) {
-        document.getElementById('gift-placeholder')?.remove();
-        imgElement.style.display = '';
-        console.log('[Notification] Setting img.src to base64 image');
-        imgElement.onload = function() {
-          console.log('[Notification] Image loaded! Width:', this.width, 'Height:', this.height);
+    // (preload-notification.js).
+    //
+    // Часы окна. Сколько жить, говорит main (lifeMs): он считает от
+    // создания окна, а его страховка закрывает окно через 6,5 с, если
+    // страница не справилась сама. Наведение ставит часы и полосу на паузу,
+    // а после ухода курсора окно живёт ещё хотя бы 2 с — дочитать.
+    var card = document.getElementById('card');
+    var bar = document.getElementById('timebar');
+    var life = { total: 6000, left: 6000, tickAt: 0, bornAt: 0, timer: null, anim: null, paused: false, started: false, closing: false };
+
+    function currentLeft() {
+      return life.paused ? life.left : Math.max(0, life.left - (performance.now() - life.tickAt));
+    }
+
+    function currentFraction() {
+      return life.total > 0 ? Math.min(1, currentLeft() / life.total) : 0;
+    }
+
+    function schedule(leftMs, fromFraction) {
+      clearTimeout(life.timer);
+      life.left = leftMs;
+      life.tickAt = performance.now();
+      life.paused = false;
+      // Имя ищется в момент вызова: проверка подменяет closeNotification и
+      // ждёт, что окно закроет страховка main
+      life.timer = setTimeout(function () { closeNotification(); }, leftMs);
+      if (life.anim) life.anim.cancel();
+      life.anim = bar.animate(
+        [{ transform: 'scaleX(' + fromFraction + ')' }, { transform: 'scaleX(0)' }],
+        { duration: Math.max(1, leftMs), easing: 'linear', fill: 'forwards' }
+      );
+    }
+
+    function startLife(lifeMs) {
+      life.started = true;
+      life.total = lifeMs;
+      life.bornAt = performance.now();
+      schedule(lifeMs, 1);
+    }
+
+    function pauseLife() {
+      if (!life.started || life.paused || life.closing) return;
+      life.left = currentLeft();
+      life.paused = true;
+      clearTimeout(life.timer);
+      if (life.anim) life.anim.pause();
+    }
+
+    // После ухода курсора — не меньше 2 с, чтобы дочитать, и не больше
+    // 3,5 с: страховка main после ухода курсора — 4 с, и окно, которое
+    // ещё «жило» бы дольше, она бы оборвала без анимации
+    function resumeLife() {
+      if (!life.started || !life.paused || life.closing) return;
+      var left = Math.min(Math.max(life.left, 2000), 3500);
+      schedule(left, Math.min(1, left / life.total));
+    }
+
+    // За окном в очереди ждут ещё награды: это живёт 3,5 с от появления
+    function shortenLife(maxLifeMs) {
+      if (!life.started || life.closing) return;
+      var cap = Math.max(800, maxLifeMs - (performance.now() - life.bornAt));
+      if (life.paused) {
+        life.left = Math.min(life.left, cap);
+        return;
+      }
+      if (cap < currentLeft()) schedule(cap, currentFraction());
+    }
+
+    function closeNotification() {
+      if (life.closing) return;
+      life.closing = true;
+      clearTimeout(life.timer);
+      document.body.classList.add('closing');
+      setTimeout(function () { window.notif.close(); }, 170);
+    }
+
+    function setImage(src) {
+      var img = document.getElementById('drop-icon');
+      var placeholder = document.getElementById('gift-placeholder');
+      if (typeof src === 'string' && src.indexOf('data:image/') === 0) {
+        img.onload = function () {
+          img.hidden = false;
+          placeholder.setAttribute('hidden', '');
         };
-        imgElement.onerror = function(e) {
-          console.error('[Notification] Image load error:', e);
-          this.style.display = 'none';
+        // Битая картинка — нейтральный подарок, а не значок «нет файла»
+        img.onerror = function () {
+          img.hidden = true;
+          placeholder.removeAttribute('hidden');
         };
-        imgElement.src = dropIcon;
-      } else {
-        console.warn('[Notification] No valid dropIcon, showing placeholder');
-        // Заменяем на SVG placeholder
-        const iconContainer = imgElement.parentElement;
-        imgElement.style.display = 'none';
-        if (!document.getElementById('gift-placeholder')) iconContainer.insertAdjacentHTML('beforeend', `
-          <svg id="gift-placeholder" viewBox="0 0 64 64" style="width: 100%; height: 100%;">
-            <defs>
-              <linearGradient id="giftGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" style="stop-color:#a855f7;stop-opacity:1" />
-                <stop offset="100%" style="stop-color:#ec4899;stop-opacity:1" />
-              </linearGradient>
-            </defs>
-            <rect x="12" y="28" width="40" height="28" rx="4" fill="url(#giftGradient)"/>
-            <rect x="30" y="28" width="4" height="28" fill="rgba(255,255,255,0.3)"/>
-            <rect x="12" y="36" width="40" height="4" fill="rgba(255,255,255,0.3)"/>
-            <path d="M32 8 L24 20 L28 20 L28 28 L36 28 L36 20 L40 20 Z" fill="url(#giftGradient)"/>
-            <circle cx="24" cy="16" r="4" fill="#fbbf24"/>
-            <circle cx="40" cy="16" r="4" fill="#fbbf24"/>
-          </svg>
-        `);
+        img.src = src;
+      }
+    }
+
+    window.notif.onData(function (data) {
+      data = data || {};
+      var kind = data.kind === 'summary' || data.kind === 'test' ? data.kind : 'drop';
+      document.body.className = (data.theme === 'light' ? 'theme-light' : 'theme-dark') + ' kind-' + kind +
+        (document.body.classList.contains('closing') ? ' closing' : '');
+
+      var eyebrow = data.eyebrow ||
+        (kind === 'summary' ? 'Награды получены' : (kind === 'test' ? 'Проверка уведомления' : 'Награда получена'));
+      var name = data.dropName || (kind === 'test' ? 'Так будет выглядеть награда' : '');
+      var meta = kind === 'drop'
+        ? [data.gameName, data.meta].filter(Boolean).join(' · ')
+        : (data.meta || data.gameName || (kind === 'test' ? 'WatchTwitch' : ''));
+
+      document.getElementById('eyebrow').textContent = eyebrow;
+      document.getElementById('drop-name').textContent = name;
+      document.getElementById('game-name').textContent = meta;
+      document.getElementById('drop-name').title = name;
+
+      // В сводке в углу картинки — сколько наград, а не галочка
+      var badge = document.getElementById('art-badge');
+      if (kind === 'summary' && data.count > 1) {
+        badge.textContent = data.count > 99 ? '99+' : String(data.count);
+      }
+
+      setImage(data.dropIcon);
+
+      if (!life.started) {
+        card.classList.add('is-in');
+        var lifeMs = Number(data.lifeMs);
+        startLife(lifeMs > 0 ? Math.min(lifeMs, 30000) : 6000);
       }
     });
 
-    // Закрываем через 5 секунд
-    setTimeout(() => {
-      closeNotification();
-    }, 5000);
-
-    function closeNotification() {
-      document.body.classList.add('closing');
-      setTimeout(() => {
-        window.notif.close();
-      }, 300);
+    if (window.notif.onQueue) {
+      window.notif.onQueue(function () { shortenLife(3500); });
     }
+
+    card.addEventListener('mouseenter', function () {
+      pauseLife();
+      window.notif.hold && window.notif.hold(true);
+    });
+    card.addEventListener('mouseleave', function () {
+      window.notif.hold && window.notif.hold(false);
+      resumeLife();
+    });
+
+    // Щелчок по карточке — открыть приложение на наградах. Окно уходит
+    // сразу: main выведет главное окно вперёд и закроет это сам
+    card.addEventListener('click', function () {
+      if (life.closing) return;
+      life.closing = true;
+      clearTimeout(life.timer);
+      document.body.classList.add('closing');
+      if (window.notif.open) window.notif.open();
+      else window.notif.close();
+    });
+
+    document.getElementById('close-btn').addEventListener('click', function (e) {
+      e.stopPropagation();
+      closeNotification();
+    });
   </script>
 </body>
 </html>
