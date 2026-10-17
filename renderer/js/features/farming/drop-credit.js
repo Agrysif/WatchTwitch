@@ -35,19 +35,49 @@ class DropCredit {
   }
 
   /**
+   * Сколько минуты в инвентаре могут стоять после прогрева, прежде чем
+   * решить «не засчитывает» без ответа о сессии. Twitch обновляет минуты раз
+   * в минуту; десять минут без единой — это не задержка
+   */
+  static get STALE_LIMIT_MS() {
+    return 10 * 60 * 1000;
+  }
+
+  /**
    * Вердикт по накопленным выборкам.
    *
    * samples — [{ at, session }] по времени; session = null, когда Twitch
    * ничего не засчитывает. startedAt — когда включили этот канал.
+   * staleForMs — сколько минуты в инвентаре не растут; hasWatchable — есть
+   * ли у игры награды, которые ещё можно получить просмотром.
    *
    *   'ok'      — зачёт идёт на нашем канале;
    *   'waiting' — рано судить: прогрев или мало выборок;
-   *   'none'    — за прогревом подряд нет зачёта — канал не подходит.
+   *   'none'    — за прогревом подряд нет зачёта — канал не подходит;
+   *   'idle'    — наград за просмотр не осталось, ждать зачёт не от чего.
    */
-  static evaluate({ startedAt, login, samples = [], now = Date.now(), progressGrew = false, progressStale = true }) {
+  static evaluate({ startedAt, login, samples = [], now = Date.now(), progressGrew = false, progressStale = true, staleForMs = 0, hasWatchable = true }) {
     // Минуты в инвентаре растут — зачёт есть, что бы ни ответил запрос о
     // сессии. Это страховка от ложного «не засчитывает».
     if (progressGrew) return { state: 'ok', reason: 'минуты просмотра растут', minutes: 0, required: 0 };
+
+    // Наград за просмотр у игры не осталось — зачёт ждать не от чего
+    if (!hasWatchable) return { state: 'idle', reason: 'награды за просмотр собраны' };
+
+    const warmedUp = now - (startedAt || now) >= DropCredit.WARMUP_MS;
+
+    // Запрос о сессии может не отвечать часами. Тогда решают минуты:
+    // после прогрева они стоят десять минут подряд — канал не засчитывает.
+    // Перебить это может только свежий ответ о сессии с нашим каналом:
+    // давний (до того, как запрос начал падать) держал бы «зачёт идёт»
+    // до утра, хотя минуты давно стоят
+    if (warmedUp && staleForMs >= DropCredit.STALE_LIMIT_MS) {
+      const latestSession = samples[samples.length - 1];
+      const fresh = !!latestSession && now - latestSession.at <= DropCredit.WARMUP_MS + 60000;
+      if (!fresh || !DropCredit.matchesChannel(latestSession.session, login)) {
+        return { state: 'none', reason: 'минуты не растут ' + Math.round(staleForMs / 60000) + ' мин' };
+      }
+    }
 
     const latest = samples[samples.length - 1];
     if (!latest) return { state: 'waiting', reason: 'жду первого ответа Twitch' };
@@ -132,6 +162,7 @@ class DropCredit {
         : 'Зачёт идёт';
     }
     if (verdict.state === 'none') return 'Не засчитывается';
+    if (verdict.state === 'idle') return 'Награды за просмотр собраны';
     return 'Жду зачёт от Twitch';
   }
 }

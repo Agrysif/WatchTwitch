@@ -1196,6 +1196,41 @@ function loadClass(relativePath, className, globals = {}) {
   check('пустой id — нет', log.hasKey(''), false);
 }
 
+// ─── Ночное зависание: награда не за просмотр, молчащий Twitch ───────
+{
+  const CV = loadClass('renderer/js/features/farming/campaign-value.js', 'CampaignValue');
+  const кампанияSM2 = { endsAt: '2099-01-01T00:00:00Z', drops: [{ name: 'Ultramarine', required: 0, progress: 0, claimed: false }] };
+  const юбилейная = { endsAt: '2099-01-01T00:00:00Z', drops: [
+    { name: '100 Accolades', required: 30, progress: 30, claimed: true },
+    { name: 'Infiltrator Helmet', required: 60, progress: 60, claimed: true }] };
+  check('награда за 0 минут — не за просмотр', CV.isWatchable(кампанияSM2.drops[0]), false);
+  check('кампания только с такой наградой — отработана', CV.evaluate(кампанияSM2).reason, 'done');
+  check('из игры, где осталась только она, надо уходить', CV.shouldLeave([юбилейная, кампанияSM2]), true);
+  check('«следующей награды» нет', CV.nextDrop([юбилейная, кампанияSM2]), null);
+  check('«все награды через 0 мин» не показывается', CV.minutesToFinish([юбилейная, кампанияSM2]), null);
+  // Порядок кампаний от Twitch любой: «всё собрано» (100 %) не должно
+  // зависеть от того, какая стоит первой
+  check('прогресс 100 %, когда первой идёт кампания за подписку', CV.progressPercent([кампанияSM2, юбилейная]), 100);
+  check('прогресс 100 % и в обратном порядке', CV.progressPercent([юбилейная, кампанияSM2]), 100);
+
+  const DC = loadClass('renderer/js/features/farming/drop-credit.js', 'DropCredit');
+  const t0 = 1_000_000_000;
+  const мин = 60000;
+  check('Twitch молчит, минуты стоят 10 мин — не засчитывает',
+    DC.evaluate({ startedAt: t0, login: 'fuplaayz', samples: [], now: t0 + 15 * мин, staleForMs: 11 * мин }).state, 'none');
+  check('Twitch молчит, минуты стоят 5 мин — ещё ждём',
+    DC.evaluate({ startedAt: t0, login: 'fuplaayz', samples: [], now: t0 + 15 * мин, staleForMs: 5 * мин }).state, 'waiting');
+  check('в прогреве не судим даже при стоящих минутах',
+    DC.evaluate({ startedAt: t0, login: 'fuplaayz', samples: [], now: t0 + 2 * мин, staleForMs: 11 * мин }).state, 'waiting');
+  check('сессия подтверждает наш канал — не «не засчитывает»',
+    DC.evaluate({ startedAt: t0, login: 'fuplaayz', samples: [{ at: t0 + 14 * мин, session: { channel: { name: 'FuPlaayz' } } }], now: t0 + 15 * мин, staleForMs: 11 * мин }).state, 'ok');
+  check('давний ответ о сессии не держит «зачёт идёт», когда минуты стоят',
+    DC.evaluate({ startedAt: t0, login: 'fuplaayz', samples: [{ at: t0 + 2 * мин, session: { channel: { name: 'FuPlaayz' } } }], now: t0 + 40 * мин, staleForMs: 30 * мин }).state, 'none');
+  check('наград за просмотр нет — состояние «собраны»',
+    DC.evaluate({ startedAt: t0, login: 'x', samples: [], now: t0 + 15 * мин, hasWatchable: false }).state, 'idle');
+  check('подпись «собраны»', DC.describe({ state: 'idle' }), 'Награды за просмотр собраны');
+}
+
 // ─── Итог ────────────────────────────────────────────────────────────
 console.log('');
 if (failures.length) {
