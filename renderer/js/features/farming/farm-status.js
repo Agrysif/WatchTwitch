@@ -135,6 +135,26 @@ class FarmStatus {
         sideDetail: sideDetail(true)
       };
     }
+    // Наград за просмотр у игры не осталось — ждать нечего; «первые минуты
+    // это обычно» здесь вводило в заблуждение. Куда дальше — тем же
+    // правилом, что у «Награды собраны»: ручную категорию приложение само
+    // не меняет, и обещать «перехожу» там нельзя
+    if (credit === 'idle') {
+      const next = (page?.categories || []).find(cat =>
+        cat.enabled !== false && cat.hasDrops && !cat.dropsCompleted && cat.id !== page?.currentCategory?.id);
+      const manual = typeof page?.isManualCategoryActive === 'function' && page.isManualCategoryActive();
+      const whatNext = next
+        ? (manual ? `можно перейти к «${next.name}»` : 'перехожу к следующей категории')
+        : 'других категорий с дропсами нет';
+      return {
+        state: 'credit-idle', tone: 'wait', live: false,
+        text: 'Награды за просмотр собраны', detail: whatNext,
+        channel, category,
+        pageText: 'Награды за просмотр собраны', pageDetail: whatNext,
+        sideText: channel,
+        sideDetail: sideDetail(false)
+      };
+    }
     return {
       state: 'credit-wait', tone: 'wait', live: false,
       text: `Смотрим ${channel}`, detail: 'жду подтверждения Twitch',

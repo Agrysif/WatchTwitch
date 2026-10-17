@@ -61,9 +61,20 @@ class CampaignValue {
     return Math.max(0, required - progress);
   }
 
-  /** Незабранные награды кампании. */
+  /**
+   * Награда выдаётся за просмотр. У наград за подписку, подарок или другое
+   * условие Twitch ставит требование 0 минут: просмотром их не получить.
+   * Раньше такая награда считалась «почти готовой» («время набрано»,
+   * «все награды через 0 мин»), и приложение всю ночь сидело в игре, где
+   * смотреть было уже нечего.
+   */
+  static isWatchable(drop) {
+    return Number(drop?.required) > 0;
+  }
+
+  /** Незабранные награды кампании, которые можно получить просмотром. */
   static unclaimedDrops(campaign) {
-    return (campaign?.drops || []).filter(d => !CampaignValue.isEarned(d));
+    return (campaign?.drops || []).filter(d => CampaignValue.isWatchable(d) && !CampaignValue.isEarned(d));
   }
 
   /**
@@ -236,7 +247,12 @@ class CampaignValue {
     if (!list.length) return 0;
 
     const next = CampaignValue.nextDrop(list, now);
-    const source = next?.campaign || list[0];
+    // Брать просмотром нечего — шкала по кампании, где награды за просмотр
+    // есть. Раньше бралась первая в списке, и если первой стояла кампания из
+    // одной награды за подписку (0 мин), выходило 0 %: «всё собрано» не
+    // наступало, и своя (не авто) категория без «умной смены» стояла до утра
+    const source = next?.campaign ||
+      list.find(c => (c?.drops || []).some(CampaignValue.isWatchable)) || list[0];
 
     return Math.floor(CampaignValue.timeline(source).percent);
   }

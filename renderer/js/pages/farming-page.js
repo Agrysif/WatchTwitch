@@ -383,10 +383,13 @@ class FarmingPage {
         ? campaign.timeBasedDrops
         : (Array.isArray(campaign.drops) ? campaign.drops : []);
       const totalDrops = drops.length;
+      // Награда за подписку или другое условие (0 минут) просмотром не
+      // берётся. Раньше она одна держала кампанию «незавершённой»: отметку
+      // «категория отработана» каждые полминуты снимало заново
       const completedDrops = drops.filter(drop => {
         const required = Number(drop.required) || Number(drop.requiredMinutes) || Number(drop.requiredMinutesWatched) || 0;
         const progress = Number(drop.progress) || 0;
-        return !!drop.claimed || !!drop.isClaimed || (required > 0 && progress >= required);
+        return !!drop.claimed || !!drop.isClaimed || required <= 0 || progress >= required;
       }).length;
 
       if (totalDrops > 0 && completedDrops >= totalDrops) {
@@ -4439,12 +4442,17 @@ class FarmingPage {
     // автосбор ещё забирает. У незаконченной — сколько осталось; точные
     // минуты «95 из 120» — в подсказке карточки: в узкую плитку обе
     // подписи не помещались и обрезались
-    const meta = isCompleted
+    const notWatchable = !isCompleted && !(Number(drop.required) > 0);
+    const meta = notWatchable
+      ? '<span>Не за просмотр</span>'
+      : isCompleted
       ? `<span>${drop.claimed ? 'Получено' : 'Можно забрать'}</span>`
       : (remaining > 0
         ? `<span>ещё ${this.esc(this.formatMinutes(remaining))}</span>`
         : `<span>${this.esc(drop.progress)} / ${this.esc(drop.required)} мин</span>`);
-    const tip = isCompleted
+    const tip = notWatchable
+      ? `${dropName} — выдаётся за подписку или другое условие, просмотром не получить`
+      : isCompleted
       ? dropName
       : `${dropName} — ${Number(drop.progress) || 0} из ${Number(drop.required) || 0} мин`;
 
@@ -6264,6 +6272,7 @@ class FarmingPage {
     this._creditSamples = [];
     this._creditProgress = [];
     this._creditStartedAt = Date.now();
+    this._creditLastGrowthAt = this._creditStartedAt;
     this._creditStrikes = 0;
     this.renderDropCredit({ state: 'waiting', reason: 'жду первого ответа Twitch' });
 
@@ -6276,44 +6285,83 @@ class FarmingPage {
       if (!this.isCurrentStream(snapshot) || !this.currentStream) return;
       if (window.DropCredit.normalizeLogin(this.currentStream.login) !== login) return;
 
+      // Запрос Twitch о текущей сессии зачёта часто отвечает ошибкой
+      // («service unavailable»). Раньше проверка на этом выходила, ничего не
+      // решив: приговор «не засчитывает» зрел час вместо восьми минут, а
+      // после возврата на канал не созревал вовсе — индикатор до утра
+      // показывал «жду». Теперь неудачный ответ просто не даёт выборки, а
+      // решение принимается и по минутам из инвентаря
       let response = null;
       try {
         response = await window.electronAPI.getDropSession(login);
       } catch (error) {
-        return;
+        response = null;
       }
-      if (!this.isCurrentStream(snapshot) || !response || response.ok === false) return;
+      if (!this.isCurrentStream(snapshot)) return;
 
-      this._creditSamples.push({ at: Date.now(), session: response.session || null });
-      if (this._creditSamples.length > 10) this._creditSamples.shift();
+      const sampled = !!(response && response.ok !== false);
+      if (sampled) {
+        this._creditSamples.push({ at: Date.now(), session: response.session || null });
+        if (this._creditSamples.length > 10) this._creditSamples.shift();
+      }
 
       // Страховка: сумма минут по кампаниям игры из инвентаря. Растёт —
       // значит зачёт идёт, и никакой другой ответ этого не перебьёт
       let progressGrew = false;
       let progressStale = true;
+      let inventoryKnown = false;
+      let hasWatchable = true;
       try {
         const inv = await window.electronAPI.fetchDropsInventory();
         if (!this.isCurrentStream(snapshot)) return;
         const matched = this.matchCampaignsForGame(inv?.campaigns || [], this.currentCategory?.name || '', this.currentCategory?.id);
-        const sum = matched.reduce((acc, c) => acc + (c.drops || []).reduce((a, d) => a + (Number(d.progress) || 0), 0), 0);
-        const prev = this._creditProgress;
-        progressGrew = prev.length > 0 && sum > Math.min(...prev.slice(-3));
-        // Пять проверок без роста — минуты и правда стоят
-        progressStale = prev.length >= 5 && sum <= Math.min(...prev.slice(-5));
-        prev.push(sum);
-        if (prev.length > 6) prev.shift();
+        // Судим только по кампаниям игры с наградами: у игры без кампаний
+        // (фарм баллов) минутам расти не с чего, и ни «не засчитывает», ни
+        // «награды собраны» про неё сказать нельзя
+        const withDrops = matched.filter(c => Array.isArray(c.drops) && c.drops.length > 0);
+        if (withDrops.length > 0) {
+          inventoryKnown = true;
+          // Есть ли что зарабатывать просмотром. Нет — ждать зачёт не от
+          // чего: из категории уводит проверка выгодности, а не смена стрима
+          hasWatchable = withDrops.some(c => window.CampaignValue.unclaimedDrops(c).length > 0);
+        }
+        // Сбойный ответ инвентаря (пустой список) в ряд сумм не пишем: ноль
+        // в ряду делал следующий нормальный ответ «ростом», а тот сбрасывал
+        // счёт стоящих минут — редкие сбои за ночь не давали приговору созреть
+        if (inventoryKnown) {
+          const sum = matched.reduce((acc, c) => acc + (c.drops || []).reduce((a, d) => a + (Number(d.progress) || 0), 0), 0);
+          const prev = this._creditProgress;
+          progressGrew = prev.length > 0 && sum > Math.min(...prev.slice(-3));
+          // Пять проверок без роста — минуты и правда стоят
+          progressStale = prev.length >= 5 && sum <= Math.min(...prev.slice(-5));
+          if (progressGrew) this._creditLastGrowthAt = Date.now();
+          prev.push(sum);
+          if (prev.length > 6) prev.shift();
+        }
       } catch (error) {
         // без инвентаря живём по ответу о сессии
       }
+
+      // Ни ответа о сессии, ни инвентаря — нового ничего: прежний вердикт
+      // остаётся. Иначе при сбое обоих запросов индикатор на минуту
+      // прыгал с «Зачёт идёт» на «Жду зачёт от Twitch»
+      if (!sampled && !inventoryKnown) return;
 
       const verdict = window.DropCredit.evaluate({
         startedAt: this._creditStartedAt,
         login,
         samples: this._creditSamples,
         progressGrew,
-        progressStale
+        progressStale,
+        // Сколько минуты стоят — по инвентарю, без ответа о сессии
+        staleForMs: inventoryKnown ? Date.now() - this._creditLastGrowthAt : 0,
+        hasWatchable: inventoryKnown ? hasWatchable : true
       });
       this.renderDropCredit(verdict);
+
+      if (verdict.state === 'ok' && this._noCreditStreak?.categoryId === this.currentCategory?.id) {
+        this._noCreditStreak = null;
+      }
 
       if (verdict.state !== 'none') {
         this._creditStrikes = 0;
@@ -6345,6 +6393,11 @@ class FarmingPage {
     text.textContent = window.DropCredit ? window.DropCredit.describe(verdict) : '';
   }
 
+  /** Сколько каналов подряд не засчитывают, прежде чем отложить категорию. */
+  static get NO_CREDIT_STREAMS_BEFORE_LEAVING() {
+    return 3;
+  }
+
   /** Twitch подтвердил: этот канал не засчитывает. Ищем другой в категории. */
   async onNoCredit(verdict) {
     // Без сессии ничего не переключаем: иначе остановленный фарминг мог
@@ -6360,6 +6413,46 @@ class FarmingPage {
     if (window.settings && window.settings.get('autoSwitchStreams') === false) {
       this.toastOnce('nocredit:' + login, 'Канал не засчитывает дропсы. Автопереключение выключено', 'warning');
       return;
+    }
+
+    // Несколько каналов подряд в одной категории не засчитывают — дело не в
+    // канале, а в категории (кампания привязана к другим стримерам, Twitch
+    // не ведёт зачёт). Раньше приложение часами перебирало два канала
+    // одной игры по кругу. Теперь после третьего отказа категория
+    // откладывается на два часа и фарминг идёт дальше
+    const categoryId = this.currentCategory.id;
+    if (!this._noCreditStreak || this._noCreditStreak.categoryId !== categoryId) {
+      this._noCreditStreak = { categoryId, count: 0 };
+    }
+    this._noCreditStreak.count += 1;
+    if (this._noCreditStreak.count >= FarmingPage.NO_CREDIT_STREAMS_BEFORE_LEAVING) {
+      const name = this.currentCategory.name;
+      this._noCreditStreak = null;
+      if (!this._noStreamsUntil) this._noStreamsUntil = new Map();
+      const now = Date.now();
+      const elsewhere = this.categories.some(cat => cat.enabled && cat.id !== categoryId &&
+        cat.hasDrops && !cat.dropsCompleted && !((this._noStreamsUntil.get(cat.id) || 0) > now));
+
+      if (this.isManualCategoryActive() || this.isSingleManualPlayLocked()) {
+        // Категорию, запущенную кнопкой Play, приложение само не меняет —
+        // предлагает перейти, а каналы внутри неё перебирает дальше. Раньше
+        // и для неё писалось «Категория отложена… перехожу к другой», а
+        // переход тут же отменяла защита ручного запуска
+        this.showSwitchOffer('noCredit');
+      } else if (elsewhere) {
+        this._noStreamsUntil.set(categoryId, now + 2 * 60 * 60 * 1000);
+        console.warn('[Зачёт] В категории не засчитывает ни один канал — откладываю на 2 ч:', name);
+        window.eventLog?.add?.({ type: 'warning', title: 'Категория отложена', detail: `${name}: Twitch не засчитывает минуты ни на одном канале`, game: name });
+        this.toastOnce('nocredit-cat:' + categoryId, `${name}: Twitch не засчитывает минуты — перехожу к другой категории`, 'warning');
+        await this.switchToNextEnabledCategory({ reason: 'noCredit' });
+        return;
+      } else {
+        // Перейти некуда: других категорий с дропсами нет или все отложены.
+        // Отложить единственную значило остановить фарминг с «никто не
+        // стримит» и через 15 минут вернуться в неё же — по кругу всю ночь.
+        // Перебираем каналы дальше: зачёт может появиться и позже
+        console.warn('[Зачёт] В категории не засчитывает ни один канал, перейти некуда — перебираю каналы:', name);
+      }
     }
 
     this.toastOnce('nocredit:' + login, 'Канал не засчитывает дропсы, ищу другой', 'warning');
@@ -7380,7 +7473,15 @@ class FarmingPage {
       for (const drop of (campaign.drops || [])) {
         const id = drop.dropInstanceID;
         if (!id) continue;                     // Twitch выдаёт его только у готовых наград
-        if (this._claimedIds.has(id)) {
+        // Второй ключ памяти этого запуска — id награды в кампании. Сам
+        // dropInstanceID у Twitch постоянен («пользователь#кампания#награда»):
+        // ночные «получения» раз в полчаса в логе были разными наградами
+        // кампании, а не повтором одной. Ключ по id награды страхует от
+        // ответа с другим хвостом. В журнал по-прежнему идёт dropInstanceID:
+        // его же пишут «Получить» на странице дропсов и в окне награды, и по
+        // нему журнал склеивает ручное и автоматическое получение
+        const key = drop.id ? 'drop:' + drop.id : id;
+        if (this._claimedIds.has(id) || this._claimedIds.has(key)) {
           drop.claimed = true;                 // устаревший ответ Twitch
           continue;
         }
@@ -7408,6 +7509,7 @@ class FarmingPage {
             // раньше (мы или на сайте), объявлять нечего
             drop.claimed = true;
             this._claimedIds.add(id);
+            this._claimedIds.add(key);
             this._claimRetry.delete(id);
             console.log('[Дропсы] Уже получена раньше:', name);
           } else if (result?.success && window.eventLog?.hasKey?.(id)) {
@@ -7416,10 +7518,12 @@ class FarmingPage {
             // Журнал помнит id наград 14 дней — объявлять второй раз незачем
             drop.claimed = true;
             this._claimedIds.add(id);
+            this._claimedIds.add(key);
             this._claimRetry.delete(id);
             console.log('[Дропсы] Уже объявлена раньше:', name);
           } else if (result?.success) {
             this._claimedIds.add(id);
+            this._claimedIds.add(key);
             window.chime?.dropClaimed();
             drop.claimed = true;
             this._claimRetry.delete(id);

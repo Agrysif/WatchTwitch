@@ -3432,3 +3432,10 @@ body.low-graphics .settings-input:focus {
   outline: 1px solid var(--accent);
   outline-offset: 0;
 }
+
+
+/* Зачёт ждать не от чего: награды за просмотр у игры собраны */
+.drops-credit[data-state="idle"] .drops-credit-dot {
+  background: var(--text-tertiary);
+  animation: none;
+}

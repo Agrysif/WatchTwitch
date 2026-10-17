@@ -22,7 +22,7 @@ function environment() {
     Storage: {},
   };
   vm.createContext(sandbox);
-  for (const file of ['features/farming/stream-picker.js', 'features/farming/drop-credit.js', 'pages/farming-page.js']) {
+  for (const file of ['features/farming/stream-picker.js', 'features/farming/campaign-value.js', 'features/farming/drop-credit.js', 'pages/farming-page.js']) {
     vm.runInContext(fs.readFileSync(path.join(root, 'renderer/js', file), 'utf8'), sandbox);
   }
   const page = Object.create(sandbox.window.FarmingPage.prototype);
@@ -163,6 +163,79 @@ const flush = () => new Promise(resolve => setImmediate(resolve));
     router.destroyCurrentPage('settings');
     check('Background farming retains its automation after navigation', timers.size === 3 && !aborted,
       `remaining automation timers=${timers.size}, player-dead listener aborted=${aborted}`);
+  }
+  {
+    // Twitch's session query keeps failing and inventory minutes stand still:
+    // the credit check must still reach "no credit" instead of waiting all night.
+    const { sandbox: s, page: p, timers } = environment();
+    const inventory = { dashboardComplete: true, campaigns: [{ game: { name: 'Game' }, drops: [{ id: 'd', required: 60, progress: 10 }] }] };
+    s.window.electronAPI = { getDropSession: async () => ({ ok: false, error: 'service unavailable' }), fetchDropsInventory: async () => inventory };
+    p.currentCategory = { id: 'g', name: 'Game' };
+    p.currentStream = { login: 'chan' };
+    p._lastMatchedCount = 1;
+    const verdicts = [];
+    p.renderDropCredit = v => verdicts.push(v.state);
+    let noCredit = 0;
+    p.onNoCredit = async () => { noCredit++; };
+    p.startDropCreditCheck('chan');
+    p._creditStartedAt = p._creditLastGrowthAt = Date.now() - 12 * 60 * 1000;
+    const tick = timers.get(p.dropCreditInterval);
+    await tick(); await tick();
+    check('Silent session query with standing minutes still ends in no-credit', noCredit === 1, `verdicts=${verdicts.join(',')}, onNoCredit=${noCredit}`);
+    inventory.campaigns[0].drops[0].progress = 11;
+    await tick();
+    check('Growing minutes keep credit ok without session answers', verdicts[verdicts.length - 1] === 'ok', `last=${verdicts[verdicts.length - 1]}`);
+  }
+  {
+    // A failed inventory answer (empty list) between normal ones must not look
+    // like growth: occasional failures kept "no credit" from ever maturing.
+    const { sandbox: s, page: p, timers } = environment();
+    let calls = 0;
+    const good = { dashboardComplete: true, campaigns: [{ game: { name: 'Game' }, drops: [{ id: 'd', required: 60, progress: 10 }] }] };
+    s.window.electronAPI = {
+      getDropSession: async () => ({ ok: false, error: 'service unavailable' }),
+      fetchDropsInventory: async () => (++calls % 2 === 0 ? { campaigns: [], error: true, dashboardComplete: false } : good)
+    };
+    p.currentCategory = { id: 'g', name: 'Game' };
+    p.currentStream = { login: 'chan' };
+    p._lastMatchedCount = 1;
+    const verdicts = [];
+    p.renderDropCredit = v => verdicts.push(v.state);
+    let noCredit = 0;
+    p.onNoCredit = async () => { noCredit++; };
+    p.startDropCreditCheck('chan');
+    p._creditStartedAt = p._creditLastGrowthAt = Date.now() - 12 * 60 * 1000;
+    const tick = timers.get(p.dropCreditInterval);
+    for (let i = 0; i < 3; i++) await tick();
+    check('Inventory failures do not fake growth or reset the no-credit verdict', noCredit === 1 && !verdicts.includes('ok'), `verdicts=${verdicts.join(',')}, onNoCredit=${noCredit}`);
+  }
+  {
+    // Third no-credit channel in a row: leave the category only when there is
+    // somewhere to go, and never leave one the user started with Play.
+    const run = async ({ manual = false, others = true } = {}) => {
+      const { sandbox: s, page: p } = environment();
+      s.window.sessionState = { startTime: Date.now() };
+      const journal = [];
+      s.window.eventLog = { add: e => journal.push(e.title) };
+      p.categories = [{ id: 'a', name: 'A', enabled: true, hasDrops: true }];
+      if (others) p.categories.push({ id: 'b', name: 'B', enabled: true, hasDrops: true });
+      p.currentCategory = p.categories[0];
+      p.currentStream = { login: 'a1' };
+      p._noStreamsUntil = new Map();
+      p.manualCategoryId = manual ? 'a' : null;
+      const calls = { stream: 0, category: 0, offer: 0 };
+      p.switchToNextStream = async () => { calls.stream++; return 'switched'; };
+      p.switchToNextEnabledCategory = async () => { calls.category++; return true; };
+      p.showSwitchOffer = () => { calls.offer++; };
+      for (let i = 0; i < 3; i++) await p.onNoCredit({ reason: 'test' });
+      return { ...calls, paused: p._noStreamsUntil.has('a'), journal: journal.join(',') };
+    };
+    const away = await run();
+    check('Three no-credit channels move to another category', away.category === 1 && away.stream === 2 && away.paused, JSON.stringify(away));
+    const alone = await run({ others: false });
+    check('With nowhere to go the app keeps trying channels instead of stopping', alone.category === 0 && alone.stream === 3 && !alone.paused && !alone.journal, JSON.stringify(alone));
+    const manual = await run({ manual: true });
+    check('Play-started category is not paused or announced as left', manual.category === 0 && manual.stream === 3 && manual.offer === 1 && !manual.paused && !manual.journal, JSON.stringify(manual));
   }
   console.log(`\nAudit: ${failures} reproduced failures.`);
   process.exitCode = failures ? 1 : 0;
