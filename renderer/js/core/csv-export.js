@@ -7,18 +7,30 @@
  * вопросов про кодировку и разделители.
  */
 class CsvExport {
+  /**
+   * Таблица для английского интерфейса. Excel с английскими настройками
+   * делит строку по запятой и ждёт десятичную точку: «;» и «50,0» он
+   * оставил бы одной колонкой текста.
+   */
+  static get english() {
+    return typeof tr === 'function' && tr.lang() === 'en';
+  }
+
   static get SEPARATOR() {
-    return ';';
+    return CsvExport.english ? ',' : ';';
   }
 
   static get HEADERS() {
-    return ['Дата', 'Начало', 'Минут', 'Категория', 'Канал', 'Баллы', 'Сундуки', 'Дропсы', 'Трафик, МБ'];
+    // Файл подключают и без окна (module.exports) — там перевода нет
+    const tr = typeof globalThis.tr === 'function' ? globalThis.tr : (text) => text;
+    return [tr('Дата'), tr('Начало'), tr('Минут'), tr('Категория'), tr('Канал'), tr('Баллы'), tr('Сундуки'), tr('Дропсы'), tr('Трафик, МБ')];
   }
 
   /** Поле CSV: кавычки удваиваются, значения с разделителями — в кавычках. */
   static escape(value) {
     const text = value === null || value === undefined ? '' : String(value);
-    if (/[";\n\r]/.test(text)) return '"' + text.replace(/"/g, '""') + '"';
+    const special = CsvExport.SEPARATOR === ',' ? /[",\n\r]/ : /[";\n\r]/;
+    if (special.test(text)) return '"' + text.replace(/"/g, '""') + '"';
     return text;
   }
 
@@ -29,6 +41,11 @@ class CsvExport {
   static formatDate(ts) {
     const d = new Date(ts);
     if (!Number.isFinite(d.getTime())) return '';
+    // В английской таблице — ГГГГ-ММ-ДД: такую дату Excel узнаёт при любых
+    // региональных настройках, а «05/09» в США и Британии — разные дни
+    if (CsvExport.english) {
+      return d.getFullYear() + '-' + CsvExport.pad(d.getMonth() + 1) + '-' + CsvExport.pad(d.getDate());
+    }
     return CsvExport.pad(d.getDate()) + '.' + CsvExport.pad(d.getMonth() + 1) + '.' + d.getFullYear();
   }
 
@@ -41,7 +58,7 @@ class CsvExport {
   /** Одна сессия → массив полей в порядке HEADERS. */
   static row(session) {
     const s = session || {};
-    const mb = Number(s.bandwidth) > 0 ? (Number(s.bandwidth) / 1048576).toFixed(1).replace('.', ',') : '0';
+    const mb = Number(s.bandwidth) > 0 ? (Number(s.bandwidth) / 1048576).toFixed(1).replace('.', CsvExport.english ? '.' : ',') : '0';
     return [
       CsvExport.formatDate(s.timestamp),
       CsvExport.formatTime(s.timestamp),

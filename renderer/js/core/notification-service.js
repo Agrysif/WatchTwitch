@@ -51,7 +51,7 @@ class NotificationService {
   /** Награду можно забрать. */
   notifyDropReady(dropName, gameName) {
     return this.showDesktopNotification(
-      'Награда готова',
+      tr('Награда готова'),
       `${dropName} · ${gameName}`
     );
   }
@@ -68,7 +68,7 @@ class NotificationService {
 
   /** Ошибка — системным уведомлением. */
   notifyError(message, details = '') {
-    return this.showDesktopNotification('Ошибка', details ? `${message}: ${details}` : message);
+    return this.showDesktopNotification(tr('Ошибка'), details ? `${message}: ${details}` : message);
   }
 
   toggleSound(enabled) {

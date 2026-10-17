@@ -286,6 +286,27 @@
     <div class="timebar" aria-hidden="true"><div class="timebar-fill" id="timebar"></div></div>
   </div>
 
+  <!-- Перевод: тот же tr(), что и в главном окне, со своим словарём -->
+  <script src="js/core/tr.js"></script>
+  <script src="js/locales/en/notification.js"></script>
+  <script>
+    // Язык задаёт main (?lang=…): это язык запуска. tr.js взял бы его из
+    // localStorage, а там уже может лежать язык, выбранный в настройках
+    // для следующего запуска. Без tr.js окно остаётся русским, но живым
+    (function () {
+      if (typeof window.tr !== 'function') {
+        window.tr = function (text) { return text; };
+        return;
+      }
+      try {
+        var lang = new URLSearchParams(location.search).get('lang');
+        if (lang === 'ru' || lang === 'en') window.WT_LANG = lang;
+      } catch (e) { /* без параметра — как решил tr.js */ }
+      document.documentElement.lang = window.WT_LANG === 'en' ? 'en' : 'ru';
+      window.tr.dom(document.documentElement);
+    })();
+  </script>
+
   <script>
     // Node в этом окне нет: данные и закрытие идут через мост window.notif
     // (preload-notification.js).
@@ -387,9 +408,11 @@
       document.body.className = (data.theme === 'light' ? 'theme-light' : 'theme-dark') + ' kind-' + kind +
         (document.body.classList.contains('closing') ? ' closing' : '');
 
-      var eyebrow = data.eyebrow ||
-        (kind === 'summary' ? 'Награды получены' : (kind === 'test' ? 'Проверка уведомления' : 'Награда получена'));
-      var name = data.dropName || (kind === 'test' ? 'Так будет выглядеть награда' : '');
+      // Строки от main уже переведены, здесь — только запасные
+      var eyebrow = data.eyebrow || (kind === 'summary'
+        ? tr('Награды получены')
+        : (kind === 'test' ? tr('Проверка уведомления') : tr('Награда получена')));
+      var name = data.dropName || (kind === 'test' ? tr('Так будет выглядеть награда') : '');
       var meta = kind === 'drop'
         ? [data.gameName, data.meta].filter(Boolean).join(' · ')
         : (data.meta || data.gameName || (kind === 'test' ? 'WatchTwitch' : ''));

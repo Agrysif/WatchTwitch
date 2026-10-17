@@ -129,16 +129,19 @@ class LoginGuard {
   show(account, { revoked = false } = {}) {
     if (this.overlay) return;
 
-    const user = account?.username ? ' <b>' + window.escapeHtml(account.username) + '</b>' : '';
+    // Фраза целиком, с именем подстановкой: в английском другой порядок слов
+    const user = account?.username ? '<b>' + window.escapeHtml(account.username) + '</b>' : '';
     const reason = revoked
-      ? 'Twitch завершил сеанс' + (user ? ' аккаунта' + user : '') + ' — войдите заново.'
+      ? (user
+          ? tr('Twitch завершил сеанс аккаунта {user} — войдите заново.', { user })
+          : tr('Twitch завершил сеанс — войдите заново.'))
       : (user
-          ? 'Twitch не узнаёт вход аккаунта' + user + ': сохранённый вход истёк.'
-          : 'Сохранённый вход в Twitch истёк.');
+          ? tr('Twitch не узнаёт вход аккаунта {user}: сохранённый вход истёк.', { user })
+          : tr('Сохранённый вход в Twitch истёк.'));
 
     // Утром по журналу видно, когда пропал вход, а сигнал «нужно
     // внимание» звучит и во время игры: без входа ночь фарминга пропадёт
-    window.eventLog?.add({ type: 'login', title: 'Нет входа в Twitch', detail: revoked ? 'Twitch завершил сеанс' : 'Сохранённый вход истёк' });
+    window.eventLog?.add({ type: 'login', title: tr('Нет входа в Twitch'), detail: revoked ? tr('Twitch завершил сеанс') : tr('Сохранённый вход истёк') });
     window.chime?.play('attention');
 
     const closeIcon = window.Icons?.get?.('close', 16) ||
@@ -153,21 +156,20 @@ class LoginGuard {
       <div class="whats-new login-guard-dialog" role="alertdialog" aria-modal="true" aria-labelledby="login-guard-title" aria-describedby="login-guard-text">
         <div class="whats-new-head">
           <div>
-            <div class="whats-new-eyebrow dialog-eyebrow is-warning">Награды не засчитываются</div>
-            <h2 class="whats-new-title" id="login-guard-title">Войдите в Twitch заново</h2>
+            <div class="whats-new-eyebrow dialog-eyebrow is-warning">${tr('Награды не засчитываются')}</div>
+            <h2 class="whats-new-title" id="login-guard-title">${tr('Войдите в Twitch заново')}</h2>
           </div>
-          <button class="whats-new-close" id="login-guard-close" title="Позже" aria-label="Позже">${closeIcon}</button>
+          <button class="whats-new-close" id="login-guard-close" title="${tr('Позже')}" aria-label="${tr('Позже')}">${closeIcon}</button>
         </div>
         <div class="whats-new-body">
           <p class="login-guard-text" id="login-guard-text">
             ${reason}
-            Стрим продолжит играть, но минуты и награды не засчитываются,
-            пока вы не войдёте снова.
+            ${tr('Стрим продолжит играть, но минуты и награды не засчитываются, пока вы не войдёте снова.')}
           </p>
         </div>
         <div class="dialog-foot">
-          <button class="btn btn-secondary" id="login-guard-later">Позже</button>
-          <button class="btn btn-primary" id="login-guard-login">Войти в Twitch</button>
+          <button class="btn btn-secondary" id="login-guard-later">${tr('Позже')}</button>
+          <button class="btn btn-primary" id="login-guard-login">${tr('Войти в Twitch')}</button>
         </div>
       </div>
     `;

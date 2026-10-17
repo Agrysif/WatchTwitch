@@ -54,16 +54,16 @@ class FarmStatus {
       if (window._farmingStarting || startBtn?.disabled) {
         return {
           state: 'starting', tone: 'busy', live: false,
-          text: 'Ищу стрим…', detail: 'перебираю категории очереди',
+          text: tr('Ищу стрим…'), detail: tr('перебираю категории очереди'),
           channel: '', category: '',
-          pageText: 'Ищу стрим…', pageDetail: 'перебираю категории очереди', sideText: 'Ищу стрим…', sideDetail: ''
+          pageText: tr('Ищу стрим…'), pageDetail: tr('перебираю категории очереди'), sideText: tr('Ищу стрим…'), sideDetail: ''
         };
       }
       return {
         state: 'idle', tone: 'idle', live: false,
-        text: 'Фарминг не запущен', detail: '',
+        text: tr('Фарминг не запущен'), detail: '',
         channel: '', category: '',
-        pageText: '', pageDetail: '', sideText: 'Фарминг идёт', sideDetail: ''
+        pageText: '', pageDetail: '', sideText: tr('Фарминг идёт'), sideDetail: ''
       };
     }
 
@@ -71,10 +71,10 @@ class FarmStatus {
     if (FarmStatus.isShown(doc.getElementById('login-badge'))) {
       return {
         state: 'login', tone: 'error', live: false,
-        text: 'Нет входа в Twitch', detail: 'минуты не идут',
+        text: tr('Нет входа в Twitch'), detail: tr('минуты не идут'),
         channel, category,
-        pageText: 'Нет входа в Twitch', pageDetail: 'минуты не идут — войдите на вкладке «Аккаунты»',
-        sideText: 'Нет входа',
+        pageText: tr('Нет входа в Twitch'), pageDetail: tr('минуты не идут — войдите на вкладке «Аккаунты»'),
+        sideText: tr('Нет входа'),
         sideDetail: sideDetail(true)
       };
     }
@@ -83,10 +83,10 @@ class FarmStatus {
     if (!channel || !page?.currentStream || !hasStream) {
       return {
         state: 'searching', tone: 'busy', live: false,
-        text: 'Ищу стрим…', detail: category ? `«${category}»` : '',
+        text: tr('Ищу стрим…'), detail: category ? tr('«{category}»', { category }) : '',
         channel: '', category,
-        pageText: 'Ищу стрим…', pageDetail: category,
-        sideText: 'Ищу стрим…',
+        pageText: tr('Ищу стрим…'), pageDetail: category,
+        sideText: tr('Ищу стрим…'),
         sideDetail: sideDetail(false)
       };
     }
@@ -99,14 +99,14 @@ class FarmStatus {
         cat.enabled !== false && cat.hasDrops && !cat.dropsCompleted && cat.id !== page?.currentCategory?.id);
       const manual = typeof page?.isManualCategoryActive === 'function' && page.isManualCategoryActive();
       const whatNext = next
-        ? (manual ? `можно перейти к «${next.name}»` : `дальше — «${next.name}»`)
-        : 'других категорий с дропсами нет';
+        ? (manual ? tr('можно перейти к «{category}»', { category: next.name }) : tr('дальше — «{category}»', { category: next.name }))
+        : tr('других категорий с дропсами нет');
       return {
         state: 'done', tone: 'ok', live: false,
-        text: 'Награды собраны', detail: whatNext,
+        text: tr('Награды собраны'), detail: whatNext,
         channel, category,
-        pageText: 'Награды категории собраны', pageDetail: whatNext,
-        sideText: 'Всё собрано',
+        pageText: tr('Награды категории собраны'), pageDetail: whatNext,
+        sideText: tr('Всё собрано'),
         sideDetail: sideDetail(true)
       };
     }
@@ -116,22 +116,22 @@ class FarmStatus {
     if (credit === 'ok') {
       return {
         state: 'credit-ok', tone: 'ok', live: true,
-        text: `Смотрим ${channel}`, detail: 'минуты засчитываются',
+        text: tr('Смотрим {channel}', { channel }), detail: tr('минуты засчитываются'),
         channel, category,
-        pageText: 'Минуты засчитываются', pageDetail: '',
+        pageText: tr('Минуты засчитываются'), pageDetail: '',
         sideText: channel,
         sideDetail: sideDetail(false)
       };
     }
     if (credit === 'none') {
       const autoSwitch = window.settings?.get?.('autoSwitchStreams') !== false;
-      const why = autoSwitch ? 'ищу другой стрим' : 'автопереключение выключено';
+      const why = autoSwitch ? tr('ищу другой стрим') : tr('автопереключение выключено');
       return {
         state: 'credit-none', tone: 'error', live: false,
-        text: 'Канал не засчитывает', detail: why,
+        text: tr('Канал не засчитывает'), detail: why,
         channel, category,
-        pageText: 'Канал не засчитывает', pageDetail: why,
-        sideText: 'Не засчитывает',
+        pageText: tr('Канал не засчитывает'), pageDetail: why,
+        sideText: tr('Не засчитывает'),
         sideDetail: sideDetail(true)
       };
     }
@@ -144,22 +144,22 @@ class FarmStatus {
         cat.enabled !== false && cat.hasDrops && !cat.dropsCompleted && cat.id !== page?.currentCategory?.id);
       const manual = typeof page?.isManualCategoryActive === 'function' && page.isManualCategoryActive();
       const whatNext = next
-        ? (manual ? `можно перейти к «${next.name}»` : 'перехожу к следующей категории')
-        : 'других категорий с дропсами нет';
+        ? (manual ? tr('можно перейти к «{category}»', { category: next.name }) : tr('перехожу к следующей категории'))
+        : tr('других категорий с дропсами нет');
       return {
         state: 'credit-idle', tone: 'wait', live: false,
-        text: 'Награды за просмотр собраны', detail: whatNext,
+        text: tr('Награды за просмотр собраны'), detail: whatNext,
         channel, category,
-        pageText: 'Награды за просмотр собраны', pageDetail: whatNext,
+        pageText: tr('Награды за просмотр собраны'), pageDetail: whatNext,
         sideText: channel,
         sideDetail: sideDetail(false)
       };
     }
     return {
       state: 'credit-wait', tone: 'wait', live: false,
-      text: `Смотрим ${channel}`, detail: 'жду подтверждения Twitch',
+      text: tr('Смотрим {channel}', { channel }), detail: tr('жду подтверждения Twitch'),
       channel, category,
-      pageText: 'Жду подтверждения от Twitch', pageDetail: 'первые минуты это обычно',
+      pageText: tr('Жду подтверждения от Twitch'), pageDetail: tr('первые минуты это обычно'),
       sideText: channel,
       sideDetail: sideDetail(false)
     };
@@ -227,7 +227,7 @@ class FarmStatus {
       const busy = status.state === 'starting';
       waiting.classList.toggle('is-busy', busy);
       waiting.setAttribute('aria-busy', String(busy));
-      setText(waiting.querySelector('.waiting-label'), busy ? 'Ищу стрим…' : 'Фарминг не запущен');
+      setText(waiting.querySelector('.waiting-label'), busy ? tr('Ищу стрим…') : tr('Фарминг не запущен'));
     }
 
     return status;

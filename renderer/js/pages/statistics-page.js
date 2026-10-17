@@ -117,7 +117,7 @@ class StatisticsPage {
     const endDate = document.getElementById('end-date')?.value;
 
     if (!startDate || !endDate) {
-      window.utils.showToast('Выберите обе даты', 'warning');
+      window.utils.showToast(tr('Выберите обе даты'), 'warning');
       return;
     }
 
@@ -127,13 +127,13 @@ class StatisticsPage {
     const start = this.parseLocalDate(startDate);
     const end = this.parseLocalDate(endDate);
     if (!start || !end) {
-      window.utils.showToast('Не удалось разобрать дату', 'error');
+      window.utils.showToast(tr('Не удалось разобрать дату'), 'error');
       return;
     }
     end.setHours(23, 59, 59, 999);
 
     if (start.getTime() > end.getTime()) {
-      window.utils.showToast('Дата начала не может быть позже даты окончания', 'error');
+      window.utils.showToast(tr('Дата начала не может быть позже даты окончания'), 'error');
       return;
     }
 
@@ -161,7 +161,7 @@ class StatisticsPage {
 
     const date = this.parseLocalDate(dateValue);
     if (!date) return;
-    const formatted = date.toLocaleDateString('ru-RU', {
+    const formatted = date.toLocaleDateString(tr.locale(), {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric'
@@ -245,7 +245,7 @@ class StatisticsPage {
     } catch (error) {
       console.error('Error loading statistics:', error);
       console.error('Error stack:', error.stack);
-      window.utils.showToast('Ошибка загрузки статистики: ' + error.message, 'error');
+      window.utils.showToast(tr('Ошибка загрузки статистики: {error}', { error: error.message }), 'error');
     }
   }
 
@@ -297,11 +297,11 @@ class StatisticsPage {
 
   /** 'Unknown' пишет фарминг, когда категория не определилась. */
   categoryLabel(name) {
-    return !name || name === 'Unknown' ? 'Без категории' : String(name);
+    return !name || name === 'Unknown' ? tr('Без категории') : String(name);
   }
 
   channelLabel(name) {
-    return !name || name === 'Unknown' ? 'Неизвестный канал' : String(name);
+    return !name || name === 'Unknown' ? tr('Неизвестный канал') : String(name);
   }
 
   /** Иконка из общего набора; до его загрузки — пустая строка. */
@@ -350,13 +350,18 @@ class StatisticsPage {
     const count = suspect.length;
     const minutes = suspect.reduce((sum, s) => sum + (Number(s.duration) || 0), 0);
 
+    // Одним шаблоном вместе с <b>: в английском другой порядок слов
+    const text = tr('<b>Не учтено в итогах: {count} {sessions}</b> — больше суток без отметок о просмотре, всего {duration}. Так их записывала старая версия приложения.', {
+      count,
+      sessions: this.pluralSessions(count),
+      duration: this.formatDuration(minutes)
+    });
     box.innerHTML = `
       ${this.icon('info', 16)}
       <div class="stats-excluded-text">
-        <b>Не учтено в итогах: ${count} ${this.pluralSessions(count)}</b> — больше суток без отметок
-        о просмотре, всего ${this.formatDuration(minutes)}. Так их записывала старая версия приложения.
+        ${text}
       </div>
-      <button class="btn btn-danger-ghost btn-sm stats-excluded-delete" type="button">Удалить</button>
+      <button class="btn btn-danger-ghost btn-sm stats-excluded-delete" type="button">${tr('Удалить')}</button>
     `;
     box.style.display = '';
 
@@ -368,7 +373,7 @@ class StatisticsPage {
       this.deleteSuspect()
         .catch(error => {
           console.error('[Статистика] Не удалось удалить сессии:', error);
-          window.utils.showToast('Не удалось удалить сессии', 'error');
+          window.utils.showToast(tr('Не удалось удалить сессии'), 'error');
         })
         .finally(() => { this._deletingSuspect = false; });
     }, { signal: this._abort.signal });
@@ -389,13 +394,13 @@ class StatisticsPage {
     // без инлайновых цветов: так текст читается и в светлой теме
     const one = count === 1;
     const confirmed = await window.utils.showCustomConfirmation(`
-      <h3 class="dialog-title">Удалить ${count} ${this.plural(count, 'сессию', 'сессии', 'сессий')}?</h3>
+      <h3 class="dialog-title">${tr('Удалить {count} {sessions}?', { count, sessions: this.plural(count, 'сессию', 'сессии', 'сессий') })}</h3>
       <p class="stats-confirm-text">
         ${one
-          ? 'Она пропадёт из списка и из экспорта. Вернуть её будет нельзя.'
-          : 'Они пропадут из списка и из экспорта. Вернуть их будет нельзя.'}
+          ? tr('Она пропадёт из списка и из экспорта. Вернуть её будет нельзя.')
+          : tr('Они пропадут из списка и из экспорта. Вернуть их будет нельзя.')}
       </p>
-    `, { confirmText: 'Удалить', cancelText: 'Отмена', confirmClass: 'btn-danger' });
+    `, { confirmText: tr('Удалить'), cancelText: tr('Отмена'), confirmClass: 'btn-danger' });
     if (!confirmed) return;
 
     // Перечитываем: пока окно было открыто, фарминг мог дописать текущую
@@ -410,7 +415,7 @@ class StatisticsPage {
       await Storage.updateStatistics({ sessions: keep });
     }
 
-    window.utils.showToast(`Удалено: ${removed} ${this.pluralSessions(removed)}`, 'success');
+    window.utils.showToast(tr('Удалено: {count} {sessions}', { count: removed, sessions: this.pluralSessions(removed) }), 'success');
     // Перерисует эту страницу и всех, кто показывает статистику
     window.dispatchEvent(new CustomEvent('statistics-updated'));
   }
@@ -432,11 +437,11 @@ class StatisticsPage {
     return many;
   }
 
-  /** Число по-русски: пробелы между разрядами и десятичная запятая. */
+  /** Число по правилам языка: по-русски — пробелы между разрядами и десятичная запятая. */
   formatNumber(value, maxDigits = 0, minDigits = 0) {
     const n = Number(value);
     if (!Number.isFinite(n)) return '—';
-    return new Intl.NumberFormat('ru-RU', {
+    return new Intl.NumberFormat(tr.locale(), {
       minimumFractionDigits: minDigits,
       maximumFractionDigits: maxDigits
     }).format(n);
@@ -468,7 +473,7 @@ class StatisticsPage {
         if (!MD.isMissed(drop)) continue;
         list.push({
           game,
-          name: drop.name || 'Награда',
+          name: drop.name || tr('Награда'),
           shortBy: (Number(drop.required) || 0) - (Number(drop.progress) || 0)
         });
       }
@@ -523,22 +528,21 @@ class StatisticsPage {
           <span class="missed-name" title="${esc(m.name)}">${esc(m.name)}</span>
           <span class="missed-game" title="${esc(m.game)}">${esc(m.game)}</span>
         </div>
-        <span class="missed-short ${m.shortBy <= CLOSE ? 'tone-warn' : ''}">не хватило ${this.formatShort(m.shortBy)}</span>
+        <span class="missed-short ${m.shortBy <= CLOSE ? 'tone-warn' : ''}">${tr('не хватило {time}', { time: this.formatShort(m.shortBy) })}</span>
       </div>
     `).join('');
 
     box.innerHTML = `
       <div class="card-header">
-        <div class="card-title">${this.icon('clock', 16)}<span>Упущенные награды</span></div>
+        <div class="card-title">${this.icon('clock', 16)}<span>${tr('Упущенные награды')}</span></div>
         <span class="missed-sum">${esc(window.MissedDrops.describe(result))}</span>
       </div>
       <div class="list missed-list">${rows}</div>
       <div class="missed-foot">
-        <span class="missed-note">Всего не хватило около ${this.formatDuration(result.shortMinutes)} просмотра ·
-          по кампаниям, которые приложение видело за последний месяц</span>
+        <span class="missed-note">${tr('Всего не хватило около {time} просмотра · по кампаниям, которые приложение видело за последний месяц', { time: this.formatDuration(result.shortMinutes) })}</span>
         ${items.length > LIMIT ? `
           <button type="button" class="btn btn-ghost btn-sm missed-more" aria-expanded="${expanded}">
-            ${expanded ? 'Свернуть' : `Показать все (${items.length})`}
+            ${expanded ? tr('Свернуть') : tr('Показать все ({count})', { count: items.length })}
             ${this.icon(expanded ? 'chevron-up' : 'chevron-down', 14)}
           </button>` : ''}
       </div>
@@ -590,26 +594,26 @@ class StatisticsPage {
 
     const items = [
       {
-        label: 'Наград в час',
+        label: tr('Наград в час'),
         value: totals.totalDrops > 0 ? this.formatNumber(dropsPerHour, 2) : '—',
         sub: hoursPerDrop
-          ? `примерно ${this.formatHours(hoursPerDrop)} на одну награду`
-          : 'награды пока не засчитывались'
+          ? tr('примерно {time} на одну награду', { time: this.formatHours(hoursPerDrop) })
+          : tr('награды пока не засчитывались')
       },
       {
-        label: 'Трафик в час',
+        label: tr('Трафик в час'),
         value: trafficPerHour > 0 ? this.formatBytes(trafficPerHour) : '—',
         sub: trafficPerHour > 0
-          ? `около ${this.formatBytes(trafficPerHour * 24)} за сутки фарминга`
-          : 'нет данных о расходе'
+          ? tr('около {size} за сутки фарминга', { size: this.formatBytes(trafficPerHour * 24) })
+          : tr('нет данных о расходе')
       },
       {
-        label: 'Баллов в час',
+        label: tr('Баллов в час'),
         value: pointsPerHour > 0 ? this.formatNumber(Math.round(pointsPerHour)) : '—',
-        sub: `за ${this.formatHours(hours)} просмотра`
+        sub: tr('за {time} просмотра', { time: this.formatHours(hours) })
       },
       {
-        label: 'Средняя сессия',
+        label: tr('Средняя сессия'),
         value: this.formatHours(totals.totalMinutes / sessions.length / 60),
         sub: `${sessions.length} ${this.pluralSessions(sessions.length)}`
       }
@@ -622,11 +626,11 @@ class StatisticsPage {
     if (saved) {
       const ratio = TE.ratio(totals.totalBandwidth, totals.totalMinutes);
       items.push({
-        label: 'Экономия трафика',
+        label: tr('Экономия трафика'),
         value: this.formatBytes(saved),
         sub: ratio
-          ? `в ${this.formatNumber(ratio, 1)} раза экономнее, чем в ${TE.BASELINE_LABEL}`
-          : `если бы смотрели в ${TE.BASELINE_LABEL}`
+          ? tr('в {ratio} раза экономнее, чем в {quality}', { ratio: this.formatNumber(ratio, 1), quality: TE.BASELINE_LABEL })
+          : tr('если бы смотрели в {quality}', { quality: TE.BASELINE_LABEL })
       });
     }
 
@@ -647,7 +651,12 @@ class StatisticsPage {
     if (note) {
       note.textContent = best
         // После «за» нужен винительный падеж: «за 1 сессию», а не «за 1 сессия»
-        ? `Больше всего времени уходит на «${best.name}» — ${this.formatHours(best.time / 60)} за ${best.streams} ${this.plural(best.streams, 'сессию', 'сессии', 'сессий')}.`
+        ? tr('Больше всего времени уходит на «{name}» — {time} за {count} {sessions}.', {
+          name: best.name,
+          time: this.formatHours(best.time / 60),
+          count: best.streams,
+          sessions: this.plural(best.streams, 'сессию', 'сессии', 'сессий')
+        })
         : '';
       note.hidden = !best;
     }
@@ -658,9 +667,9 @@ class StatisticsPage {
   /** Округлённые часы для выводов: «2,5 ч», «14 ч», «40 мин». */
   formatHours(hours) {
     if (!Number.isFinite(hours) || hours <= 0) return '—';
-    if (hours < 1) return Math.round(hours * 60) + ' мин';
-    if (hours < 10) return this.formatNumber(hours, 1) + ' ч';
-    return this.formatNumber(Math.round(hours)) + ' ч';
+    if (hours < 1) return tr('{minutes} мин', { minutes: Math.round(hours * 60) });
+    if (hours < 10) return tr('{hours} ч', { hours: this.formatNumber(hours, 1) });
+    return tr('{hours} ч', { hours: this.formatNumber(Math.round(hours)) });
   }
 
   pluralSessions(count) {
@@ -683,10 +692,10 @@ class StatisticsPage {
     if (subEl) {
       const parts = [];
       if (streams > 0) parts.push(`${this.formatNumber(streams)} ${this.pluralSessions(streams)}`);
-      if (excluded > 0) parts.push(`${excluded} не ${this.plural(excluded, 'учтена', 'учтены', 'учтено')}`);
+      if (excluded > 0) parts.push(tr('{count} не {word}', { count: excluded, word: this.plural(excluded, 'учтена', 'учтены', 'учтено') }));
       subEl.textContent = parts.join(' · ');
       subEl.title = excluded > 0
-        ? 'Сессии больше суток без отметок о просмотре в итоги не входят — подробности внизу страницы'
+        ? tr('Сессии больше суток без отметок о просмотре в итоги не входят — подробности внизу страницы')
         : '';
       subEl.hidden = parts.length === 0;
     }
@@ -733,7 +742,8 @@ class StatisticsPage {
   rowCoverUrl(boxUrl, categoryName) {
     const own = this.upscaleBoxArt(boxUrl, '52x72');
     if (own) return own;
-    if (!categoryName || categoryName === 'Без категории') return '';
+    // Сравнение с той же подписью, что даёт categoryLabel, — на языке интерфейса
+    if (!categoryName || categoryName === this.categoryLabel(null)) return '';
     return this.getDefaultCoverUrl(categoryName);
   }
 
@@ -750,8 +760,8 @@ class StatisticsPage {
 
     if (categories.length === 0) {
       container.innerHTML = this.emptyHtml(this.currentPeriod === 'all'
-        ? { icon: 'chart', title: 'Пока пусто', text: 'Здесь появятся игры, на которые уходит больше всего времени фарминга.' }
-        : { icon: 'chart', title: 'За этот период ничего нет', text: 'Выберите другой период — например, «Всё время».' });
+        ? { icon: 'chart', title: tr('Пока пусто'), text: tr('Здесь появятся игры, на которые уходит больше всего времени фарминга.') }
+        : { icon: 'chart', title: tr('За этот период ничего нет'), text: tr('Выберите другой период — например, «Всё время».') });
       return;
     }
 
@@ -778,12 +788,12 @@ class StatisticsPage {
             <div class="row-title" title="${esc(cat.name)}">${esc(cat.name)}</div>
             <div class="row-meta">
               <span>${this.formatNumber(cat.streams)} ${this.pluralSessions(cat.streams)}</span>
-              <span>в среднем ${this.formatDuration(avgSessionMins)}</span>
+              <span>${tr('в среднем {time}', { time: this.formatDuration(avgSessionMins) })}</span>
             </div>
           </div>
           <div class="top-cat-share">
             <div class="top-cat-time num">${this.formatDuration(cat.time)}</div>
-            <div class="progress progress-sm" role="img" aria-label="${percentage}% всего времени">
+            <div class="progress progress-sm" role="img" aria-label="${tr('{percent}% всего времени', { percent: percentage })}">
               <div class="progress-fill" style="width: ${Math.max(percentage, 1)}%"></div>
             </div>
             <div class="top-cat-pct num">${percentage}%</div>
@@ -801,16 +811,18 @@ class StatisticsPage {
     const date = new Date(timestamp);
     if (!Number.isFinite(date.getTime())) return '';
 
-    const time = date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+    // По-английски час без ведущего нуля: «8:36 PM», а не «08:36 PM»
+    const hour = tr.lang() === 'en' ? 'numeric' : '2-digit';
+    const time = date.toLocaleTimeString(tr.locale(), { hour, minute: '2-digit' });
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
     const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1).getTime();
     const at = date.getTime();
 
-    if (at >= today) return `сегодня, ${time}`;
-    if (at >= yesterday) return `вчера, ${time}`;
+    if (at >= today) return tr('сегодня, {time}', { time });
+    if (at >= yesterday) return tr('вчера, {time}', { time });
 
-    const day = date.toLocaleDateString('ru-RU', date.getFullYear() === now.getFullYear()
+    const day = date.toLocaleDateString(tr.locale(), date.getFullYear() === now.getFullYear()
       ? { day: '2-digit', month: '2-digit' }
       : { day: '2-digit', month: '2-digit', year: 'numeric' });
     return `${day}, ${time}`;
@@ -829,8 +841,8 @@ class StatisticsPage {
 
     if (recentSessions.length === 0) {
       container.innerHTML = this.emptyHtml(this.currentPeriod === 'all'
-        ? { icon: 'clock', title: 'Сессий пока нет', text: 'Запустите фарминг — каждая сессия появится здесь с длительностью, баллами и трафиком.' }
-        : { icon: 'clock', title: 'За этот период сессий нет', text: 'Выберите другой период — например, «Всё время».' });
+        ? { icon: 'clock', title: tr('Сессий пока нет'), text: tr('Запустите фарминг — каждая сессия появится здесь с длительностью, баллами и трафиком.') }
+        : { icon: 'clock', title: tr('За этот период сессий нет'), text: tr('Выберите другой период — например, «Всё время».') });
       return;
     }
 
@@ -868,14 +880,14 @@ class StatisticsPage {
               <span>${esc(this.sessionWhen(session.timestamp))}</span>
               ${chests > 0 ? `<span>${this.formatNumber(chests)} ${this.plural(chests, 'сундук', 'сундука', 'сундуков')}</span>` : ''}
               ${this.isSuspect(session)
-                ? '<span class="badge badge-warning" title="Больше суток без отметок о просмотре — в итоги не входит">не учтена в итогах</span>'
+                ? `<span class="badge badge-warning" title="${tr('Больше суток без отметок о просмотре — в итоги не входит')}">${tr('не учтена в итогах')}</span>`
                 : ''}
             </div>
           </div>
           <div class="session-nums">
-            <span class="session-num num" title="Длительность"><span class="visually-hidden">Длительность: </span>${duration}</span>
-            <span class="session-num num ${noPoints || points <= 0 ? 'is-zero' : ''}" title="Баллы канала"><span class="visually-hidden">Баллы: </span>${pointsText}</span>
-            <span class="session-num num ${bandwidth === '—' ? 'is-zero' : ''}" title="Трафик за сессию"><span class="visually-hidden">Трафик: </span>${bandwidth}</span>
+            <span class="session-num num" title="${tr('Длительность')}"><span class="visually-hidden">${tr('Длительность:')} </span>${duration}</span>
+            <span class="session-num num ${noPoints || points <= 0 ? 'is-zero' : ''}" title="${tr('Баллы канала')}"><span class="visually-hidden">${tr('Баллы:')} </span>${pointsText}</span>
+            <span class="session-num num ${bandwidth === '—' ? 'is-zero' : ''}" title="${tr('Трафик за сессию')}"><span class="visually-hidden">${tr('Трафик:')} </span>${bandwidth}</span>
           </div>
         </div>
       `;
@@ -961,16 +973,16 @@ class StatisticsPage {
     const hours = Math.floor(total / 60);
     const mins = total % 60;
 
-    if (hours === 0) return `${mins} мин`;
-    if (mins === 0) return `${this.formatNumber(hours)} ч`;
-    return `${this.formatNumber(hours)} ч ${mins} мин`;
+    if (hours === 0) return tr('{minutes} мин', { minutes: mins });
+    if (mins === 0) return tr('{hours} ч', { hours: this.formatNumber(hours) });
+    return tr('{hours} ч {minutes} мин', { hours: this.formatNumber(hours), minutes: mins });
   }
 
-  /** Единицы русские — в сайдбаре они уже такие, разнобой бросался в глаза. */
+  /** Единицы на языке интерфейса — как в сайдбаре, разнобой бросался в глаза. */
   formatBytes(bytes) {
-    if (!bytes || bytes <= 0) return '0 Б';
+    const units = [tr('Б'), tr('КБ'), tr('МБ'), tr('ГБ'), tr('ТБ')];
+    if (!bytes || bytes <= 0) return '0 ' + units[0];
 
-    const units = ['Б', 'КБ', 'МБ', 'ГБ', 'ТБ'];
     // Трафик в час бывает дробным и меньше байта: логарифм тогда
     // отрицательный, и без нижней границы единица была бы undefined
     const i = Math.max(0, Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024))));
@@ -1001,7 +1013,7 @@ class StatisticsPage {
       const stats = await Storage.getStatistics();
       const all = Array.isArray(stats?.sessions) ? stats.sessions : [];
       if (all.length === 0) {
-        window.utils.showToast('Сессий пока нет — экспортировать нечего', 'info');
+        window.utils.showToast(tr('Сессий пока нет — экспортировать нечего'), 'info');
         return;
       }
 
@@ -1009,7 +1021,7 @@ class StatisticsPage {
       // всё равно уходили все сессии, и таблица не сходилась со страницей
       const sessions = this.filterSessionsByPeriod(all);
       if (sessions.length === 0) {
-        window.utils.showToast('За выбранный период сессий нет', 'info');
+        window.utils.showToast(tr('За выбранный период сессий нет'), 'info');
         return;
       }
 
@@ -1024,10 +1036,10 @@ class StatisticsPage {
 
       URL.revokeObjectURL(url);
 
-      window.utils.showToast('Сессии выгружены в CSV: ' + sessions.length, 'success');
+      window.utils.showToast(tr('Сессии выгружены в CSV: {count}', { count: sessions.length }), 'success');
     } catch (error) {
       console.error('Export error:', error);
-      window.utils.showToast('Ошибка экспорта', 'error');
+      window.utils.showToast(tr('Ошибка экспорта'), 'error');
     }
   }
 }

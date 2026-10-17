@@ -44,36 +44,36 @@ class Chime {
     return [
       {
         id: 'drop',
-        label: 'Награда получена',
-        hint: 'Короткий восходящий аккорд',
+        label: tr('Награда получена'),
+        hint: tr('Короткий восходящий аккорд'),
         setting: 'soundDrop',
         defaultOn: true
       },
       {
         id: 'chest',
-        label: 'Сундук собран',
-        hint: 'Тихая «монетка». Сундуки бывают каждые 15 минут, поэтому по умолчанию выключено',
+        label: tr('Сундук собран'),
+        hint: tr('Тихая «монетка». Сундуки бывают каждые 15 минут, поэтому по умолчанию выключено'),
         setting: 'soundChest',
         defaultOn: false
       },
       {
         id: 'allDone',
-        label: 'Все награды собраны',
-        hint: 'Аккорд на завершение: фармить больше нечего',
+        label: tr('Все награды собраны'),
+        hint: tr('Аккорд на завершение: фармить больше нечего'),
         setting: 'soundAllDone',
         defaultOn: true
       },
       {
         id: 'attention',
-        label: 'Нужно внимание',
-        hint: 'Фарминг остановился, нет входа в Twitch или награда не забрана. Звучит и во время игры',
+        label: tr('Нужно внимание'),
+        hint: tr('Фарминг остановился, нет входа в Twitch или награда не забрана. Звучит и во время игры'),
         setting: 'soundAttention',
         defaultOn: true
       },
       {
         id: 'favourite',
-        label: 'Избранный канал в эфире',
-        hint: 'Одна мягкая нота',
+        label: tr('Избранный канал в эфире'),
+        hint: tr('Одна мягкая нота'),
         setting: 'soundFavourite',
         defaultOn: true
       }

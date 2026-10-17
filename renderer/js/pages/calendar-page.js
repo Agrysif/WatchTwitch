@@ -248,18 +248,18 @@ class CalendarPage {
    * среди обычного текста они читались как опечатка.
    */
   formatLeft(minutes) {
-    if (!Number.isFinite(minutes) || minutes <= 0) return 'завершена';
+    if (!Number.isFinite(minutes) || minutes <= 0) return tr('завершена');
 
     const days = Math.floor(minutes / 1440);
     if (days >= 1) {
       const hours = Math.floor((minutes - days * 1440) / 60);
-      return hours > 0 ? `${days} д ${hours} ч` : `${days} д`;
+      return hours > 0 ? tr('{d} д {h} ч', { d: days, h: hours }) : tr('{d} д', { d: days });
     }
 
     const hours = Math.floor(minutes / 60);
     const rest = Math.round(minutes % 60);
-    if (hours > 0) return rest > 0 ? `${hours} ч ${rest} мин` : `${hours} ч`;
-    return `${Math.max(1, rest)} мин`;
+    if (hours > 0) return rest > 0 ? tr('{h} ч {m} мин', { h: hours, m: rest }) : tr('{h} ч', { h: hours });
+    return tr('{m} мин', { m: Math.max(1, rest) });
   }
 
   /** Есть ли эта игра в списке категорий пользователя. */
@@ -344,9 +344,10 @@ class CalendarPage {
     }
 
     text.textContent = изПамяти >= total
-      ? 'Кампании из памяти приложения: свежий список Twitch присылает только после запуска стрима.'
-      : `${изПамяти} ${this.plural(изПамяти, 'кампания', 'кампании', 'кампаний')} из памяти приложения — ` +
-        'Twitch подтвердит их после запуска стрима.';
+      ? tr('Кампании из памяти приложения: свежий список Twitch присылает только после запуска стрима.')
+      : tr('{campaigns} из памяти приложения — Twitch подтвердит их после запуска стрима.', {
+          campaigns: `${изПамяти} ${this.plural(изПамяти, 'кампания', 'кампании', 'кампаний')}`
+        });
     warn.hidden = false;
   }
 
@@ -358,13 +359,19 @@ class CalendarPage {
     const summary = document.getElementById('calendar-summary');
     if (!summary) return;
 
-    const phrase = (n, when) => `${n} ${this.plural(n, 'кампания', 'кампании', 'кампаний')} ` +
-      `${this.plural(n, 'заканчивается', 'заканчиваются', 'заканчиваются')} ${when}`;
+    // Фраза целиком в каждой форме числа: в английском глагол и
+    // существительное согласуются иначе, и склейка кусков не переводится
+    const today = (n) => tr(this.plural(n, '{n} кампания заканчивается сегодня',
+      '{n} кампании заканчиваются сегодня', '{n} кампаний заканчиваются сегодня'), { n });
+    const tomorrow = (n) => tr(this.plural(n, '{n} кампания заканчивается завтра',
+      '{n} кампании заканчиваются завтра', '{n} кампаний заканчиваются завтра'), { n });
+    const week = (n) => tr(this.plural(n, '{n} кампания заканчивается на этой неделе',
+      '{n} кампании заканчиваются на этой неделе', '{n} кампаний заканчиваются на этой неделе'), { n });
 
     if (!groups) summary.textContent = '';
-    else if (groups.today.length > 0) summary.textContent = phrase(groups.today.length, 'сегодня');
-    else if (groups.tomorrow.length > 0) summary.textContent = phrase(groups.tomorrow.length, 'завтра');
-    else if (groups.week.length > 0) summary.textContent = phrase(groups.week.length, 'на этой неделе');
+    else if (groups.today.length > 0) summary.textContent = today(groups.today.length);
+    else if (groups.tomorrow.length > 0) summary.textContent = tomorrow(groups.tomorrow.length);
+    else if (groups.week.length > 0) summary.textContent = week(groups.week.length);
     else summary.textContent = '';
   }
 
@@ -400,19 +407,19 @@ class CalendarPage {
       body.innerHTML = `<div class="card calendar-empty">${this.campaigns.length === 0
         ? empty({
             icon: 'calendar',
-            title: 'Кампаний пока нет',
-            text: 'Twitch отдаёт список только после того, как в приложении запустится стрим. Запустите фарминг — и календарь наполнится.'
+            title: tr('Кампаний пока нет'),
+            text: tr('Twitch отдаёт список только после того, как в приложении запустится стрим. Запустите фарминг — и календарь наполнится.')
           })
         : empty({
             icon: 'filter',
-            title: 'Под этот фильтр ничего не подходит',
+            title: tr('Под этот фильтр ничего не подходит'),
             text: this.filter === 'mine'
-              ? 'Ни у одной игры из вашего списка сейчас нет кампаний.'
+              ? tr('Ни у одной игры из вашего списка сейчас нет кампаний.')
               : (this.filter === 'new'
-                  ? 'Все игры с кампаниями уже есть в вашем списке.'
-                  : 'Сейчас нет кампаний с наградами.'),
+                  ? tr('Все игры с кампаниями уже есть в вашем списке.')
+                  : tr('Сейчас нет кампаний с наградами.')),
             actionHtml: this.filter !== 'all'
-              ? '<button type="button" class="btn btn-secondary btn-sm" data-calendar-reset>Показать все кампании</button>'
+              ? `<button type="button" class="btn btn-secondary btn-sm" data-calendar-reset>${tr('Показать все кампании')}</button>`
               : ''
           })}</div>`;
 
@@ -525,8 +532,9 @@ class CalendarPage {
       const fullName = title ? `${game} — ${title}` : game;
 
       const hint = bar.upcoming
-        ? `${fullName} · начнётся ${new Date(bar.campaign.startsAt || bar.campaign.startAt).toLocaleString('ru-RU')}`
-        : `${fullName} · до конца ${this.formatLeft(value.minutesLeft)}${late ? ' · все награды уже не успеть' : ''}${bar.clippedEnd ? ' (уходит за край ленты)' : ''}`;
+        ? `${fullName} · ${tr('начнётся {date}', { date: new Date(bar.campaign.startsAt || bar.campaign.startAt).toLocaleString(tr.locale()) })}`
+        : `${fullName} · ${tr('до конца {time}', { time: this.formatLeft(value.minutesLeft) })}` +
+          `${late ? ` · ${tr('все награды уже не успеть')}` : ''}${bar.clippedEnd ? ` (${tr('уходит за край ленты')})` : ''}`;
 
       return `
         <div class="tl-row">
@@ -545,17 +553,17 @@ class CalendarPage {
     const total = layout.bars.length;
     const more = total > LIMIT
       ? `<button type="button" class="btn btn-ghost btn-sm tl-more" aria-expanded="${expanded}">
-          ${expanded ? 'Свернуть' : `Показать все (${total})`}
+          ${expanded ? tr('Свернуть') : tr('Показать все ({total})', { total })}
           ${this.icon(expanded ? 'chevron-up' : 'chevron-down', 14)}
         </button>`
       : '';
 
     // Легенда — только для того, что есть на ленте сейчас
     const keys = [
-      '<span class="tl-key"><i class="tl-swatch is-now"></i>сейчас</span>',
-      mixed ? '<span class="tl-key"><i class="tl-swatch is-mine"></i>в вашем списке</span>' : '',
-      legend.late ? '<span class="tl-key"><i class="tl-swatch is-late"></i>не успеть</span>' : '',
-      legend.upcoming ? '<span class="tl-key"><i class="tl-swatch is-upcoming"></i>ещё не началась</span>' : ''
+      `<span class="tl-key"><i class="tl-swatch is-now"></i>${tr('сейчас')}</span>`,
+      mixed ? `<span class="tl-key"><i class="tl-swatch is-mine"></i>${tr('в вашем списке')}</span>` : '',
+      legend.late ? `<span class="tl-key"><i class="tl-swatch is-late"></i>${tr('не успеть')}</span>` : '',
+      legend.upcoming ? `<span class="tl-key"><i class="tl-swatch is-upcoming"></i>${tr('ещё не началась')}</span>` : ''
     ].filter(Boolean).join('');
 
     host.classList.toggle('tl-mixed', mixed);
@@ -615,36 +623,38 @@ class CalendarPage {
     const upcoming = bucket === 'upcoming';
     const ended = bucket === 'ended';
 
+    const dayMonth = (raw) => new Date(raw).toLocaleDateString(tr.locale(), { day: 'numeric', month: 'long' });
     const when = upcoming
-      ? 'старт ' + new Date(campaign.startsAt || campaign.startAt)
-          .toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })
+      ? tr('старт {date}', { date: dayMonth(campaign.startsAt || campaign.startAt) })
       : (ended
-          ? 'закончилась ' + new Date(campaign.endsAt || campaign.endAt)
-              .toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })
-          : 'до конца ' + this.formatLeft(value.minutesLeft));
+          ? tr('закончилась {date}', { date: dayMonth(campaign.endsAt || campaign.endAt) })
+          : tr('до конца {time}', { time: this.formatLeft(value.minutesLeft) }));
 
     const drops = (campaign.drops || []).length;
     const left = CV.unclaimedDrops(campaign).length;
 
-    // После «из» число стоит в родительном падеже: из 1 награды, из 5 наград
-    const dropsWord = this.plural(drops, 'награды', 'наград', 'наград');
+    // После «из» число стоит в родительном падеже: из 1 награды, из 5 наград.
+    // Глагол согласуется с остатком, а существительное — со всеми наградами,
+    // поэтому формы выбираются в два шага, каждый — целой фразой
+    const ofDrops = tr(this.plural(drops, '{left} из {total} награды', '{left} из {total} наград', '{left} из {total} наград'),
+      { left, total: drops });
     const perHourText = value.perHour > 0
-      ? `${value.perHour} ${this.plural(value.perHour, 'награда', 'награды', 'наград')} за час`
+      ? tr('{rewards} за час', { rewards: `${value.perHour} ${this.plural(value.perHour, 'награда', 'награды', 'наград')}` })
       : '';
 
     // Всё уже получено — так и сказано, а не «осталось 0 из 4». У
     // закончившейся кампании ничего не «осталось» — только итог
     const dropsText = left === 0 && drops > 0
-      ? `<span class="tone-ok">все награды получены</span>`
+      ? `<span class="tone-ok">${tr('все награды получены')}</span>`
       : (ended
-          ? `<span>получено ${drops - left} из ${drops}</span>`
-          : `<span>${this.plural(left, 'осталась', 'осталось', 'осталось')} ${left} из ${drops} ${dropsWord}</span>`);
+          ? `<span>${tr('получено {done} из {total}', { done: drops - left, total: drops })}</span>`
+          : `<span>${tr(this.plural(left, 'осталась {rest}', 'осталось {rest}', 'осталось {rest}'), { rest: ofDrops })}</span>`);
 
     // Бейдж — одна главная оценка: «не успеть» важнее скорости
     const badge = ended
       ? ''
       : (!upcoming && value.reason === 'tooLate'
-          ? '<span class="badge badge-warning calendar-tag late">Не успеть</span>'
+          ? `<span class="badge badge-warning calendar-tag late">${tr('Не успеть')}</span>`
           : (!upcoming && perHourText
               ? `<span class="badge badge-success calendar-tag">${perHourText}</span>`
               : ''));
@@ -669,8 +679,8 @@ class CalendarPage {
         </div>
         <div class="calendar-action">
           ${mine
-            ? `<span class="badge calendar-owned">${this.icon('check', 12)}В списке</span>`
-            : `<button type="button" class="btn btn-secondary btn-sm calendar-add" data-add-game="${escape(game)}" data-add-game-id="${escape(campaign.game?.id || '')}">${this.icon('plus', 14)}<span>Добавить</span></button>`}
+            ? `<span class="badge calendar-owned">${this.icon('check', 12)}${tr('В списке')}</span>`
+            : `<button type="button" class="btn btn-secondary btn-sm calendar-add" data-add-game="${escape(game)}" data-add-game-id="${escape(campaign.game?.id || '')}">${this.icon('plus', 14)}<span>${tr('Добавить')}</span></button>`}
         </div>
       </div>
     `;
@@ -724,7 +734,7 @@ class CalendarPage {
         : ((await Storage.getCategories()) || []);
 
       if (categories.some(c => this.isSameCategoryGame(c, game, gameId))) {
-        window.utils?.showToast('Категория уже в списке', 'info');
+        window.utils?.showToast(tr('Категория уже в списке'), 'info');
         // Кнопка не должна залипать в ожидании: перерисовка покажет
         // «В списке» на месте кнопки
         this.categories = [...categories];
@@ -770,13 +780,13 @@ class CalendarPage {
         await Storage.saveCategories(next);
         this.categories = next;
         window.dispatchEvent(new CustomEvent('wt:categories-changed'));
-        window.utils?.showToast(`«${game}» добавлена в категории`, 'success');
+        window.utils?.showToast(tr('«{game}» добавлена в категории', { game }), 'success');
       }
 
       this.render();
     } catch (error) {
       console.error('[Календарь] Не удалось добавить категорию:', error);
-      window.utils?.showToast('Не удалось добавить категорию', 'error');
+      window.utils?.showToast(tr('Не удалось добавить категорию'), 'error');
       button.disabled = false;
       button.classList.remove('is-loading');
     }

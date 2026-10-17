@@ -48,11 +48,11 @@ window.drawViewersChart = function (ctx, history) {
     ctx.textAlign = 'left';
     ctx.textBaseline = 'alphabetic';
     ctx.fillStyle = textPrimary;
-    ctx.fillText('Зрители', padding, padding + 12);
+    ctx.fillText(tr('Зрители'), padding, padding + 12);
     ctx.font = font(400, 11);
     ctx.fillStyle = textTertiary;
     ctx.textAlign = 'right';
-    ctx.fillText('за время просмотра', width - padding, padding + 12);
+    ctx.fillText(tr('за время просмотра'), width - padding, padding + 12);
   };
 
   ctx.clearRect(0, 0, width, height);
@@ -67,7 +67,7 @@ window.drawViewersChart = function (ctx, history) {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = textSecondary;
-    ctx.fillText('Мало данных — замер раз в полминуты', width / 2, height / 2 + 6);
+    ctx.fillText(tr('Мало данных — замер раз в полминуты'), width / 2, height / 2 + 6);
     ctx.textBaseline = 'alphabetic';
     return;
   }
@@ -155,11 +155,11 @@ window.drawViewersChart = function (ctx, history) {
   ctx.stroke();
 
   const current = history[history.length - 1];
-  const format = (n) => Number(n).toLocaleString('ru-RU');
+  const format = (n) => Number(n).toLocaleString(tr.locale());
   const stats = [
-    { label: 'Сейчас', value: format(current.count) },
-    { label: 'Максимум', value: format(max) },
-    { label: 'Минимум', value: format(min) }
+    { label: tr('Сейчас'), value: format(current.count) },
+    { label: tr('Максимум'), value: format(max) },
+    { label: tr('Минимум'), value: format(min) }
   ];
   const segment = (width - padding * 2) / stats.length;
 

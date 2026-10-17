@@ -226,7 +226,7 @@ class CampaignValue {
     const marks = drops
       .map(drop => ({
         percent: Math.min(100, (Number(drop.required) / longest) * 100),
-        name: drop.name || drop.benefitName || 'Награда',
+        name: drop.name || drop.benefitName || tr('Награда'),
         earned: CampaignValue.isEarned(drop),
         minutesNeeded: CampaignValue.minutesNeeded(drop)
       }))
@@ -309,28 +309,31 @@ class CampaignValue {
    */
   static formatMinutes(minutes) {
     const total = Math.max(0, Math.round(Number(minutes) || 0));
-    if (total < 60) return `${total} мин`;
+    if (total < 60) return tr('{minutes} мин', { minutes: total });
     const hours = Math.floor(total / 60);
     const rest = total % 60;
-    return rest ? `${hours} ч ${rest} мин` : `${hours} ч`;
+    return rest ? tr('{hours} ч {minutes} мин', { hours, minutes: rest }) : tr('{hours} ч', { hours });
   }
 
   /** Короткое пояснение для интерфейса. */
   static describe(evaluation) {
     switch (evaluation.reason) {
       case 'done':
-        return 'Все награды получены';
+        return tr('Все награды получены');
       case 'expired':
-        return 'Кампания закончилась';
+        return tr('Кампания закончилась');
       case 'tooLate': {
         const need = Math.ceil(evaluation.minNeeded);
         const left = Math.max(0, Math.floor(evaluation.minutesLeft));
-        return `Не успеть: нужно ${CampaignValue.formatMinutes(need)}, осталось ${CampaignValue.formatMinutes(left)}`;
+        return tr('Не успеть: нужно {need}, осталось {left}', {
+          need: CampaignValue.formatMinutes(need),
+          left: CampaignValue.formatMinutes(left)
+        });
       }
       default:
         return evaluation.perHour > 0
-          ? `За час наград: ${evaluation.perHour}`
-          : 'Награда дальше часа просмотра';
+          ? tr('За час наград: {count}', { count: evaluation.perHour })
+          : tr('Награда дальше часа просмотра');
     }
   }
 }

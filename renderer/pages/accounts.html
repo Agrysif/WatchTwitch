@@ -1,8 +1,10 @@
 <!-- Страница «Аккаунты». Оформление — в styles/page-settings.css (раньше
-     здесь был свой <style> с фиолетовыми кнопками и рамками). -->
+     здесь был свой <style> с фиолетовыми кнопками и рамками).
+     Без data-i18n: текст переводит tr.dom по словарю locales/en, а
+     data-i18n поверх него ставил бы старые подписи из i18n.js -->
 <div class="accounts-page">
   <div class="page-header">
-    <h1 class="page-title" data-i18n="accounts.title">Аккаунты</h1>
+    <h1 class="page-title">Аккаунты</h1>
     <div class="page-actions">
       <!-- Скрывается, пока список пуст: тогда главная кнопка — в самом
            пустом состоянии, и двух одинаковых призывов на экране нет -->
@@ -10,7 +12,7 @@
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M5 12h14"/><path d="M12 5v14"/>
         </svg>
-        <span data-i18n="accounts.addAccount">Добавить аккаунт</span>
+        <span>Добавить аккаунт</span>
       </button>
       <!-- Кнопки «Войти через cookies» здесь больше нет: она сохраняла
            аккаунт-пустышку без настоящего cookie, и если он вставал первым,
@@ -26,7 +28,7 @@
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>
     </svg>
-    <span>Фарминг идёт под <b>первым аккаунтом</b> в списке. Остальные пока только хранятся — порядок меняется перетаскиванием.</span>
+    <span data-tr>Фарминг идёт под <b>первым аккаунтом</b> в списке. Остальные пока только хранятся — порядок меняется перетаскиванием.</span>
   </p>
 
   <div class="card accounts-card">
@@ -51,7 +53,7 @@
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
         </svg>
-        <span data-i18n="accounts.openBrowser">Открыть Twitch в браузере</span>
+        <span>Открыть Twitch в браузере</span>
       </button>
     </div>
   </details>

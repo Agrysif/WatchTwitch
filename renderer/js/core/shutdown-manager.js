@@ -38,12 +38,12 @@ class ShutdownManager {
 
   /** Все дропсы собраны, фармить больше нечего. */
   onDropsCompleted() {
-    this._maybeArm('drops', 'Все дропсы собраны');
+    this._maybeArm('drops', tr('Все дропсы собраны'));
   }
 
   /** Стрим закончился, а переключаться не на что или запрещено. */
   onStreamEnded() {
-    this._maybeArm('streamEnd', 'Стрим завершён');
+    this._maybeArm('streamEnd', tr('Стрим завершён'));
   }
 
   /**
@@ -88,7 +88,7 @@ class ShutdownManager {
       this.arm(
         settings.get('shutdownAction') || 'shutdown',
         Number(settings.get('shutdownDelayMinutes')) || 0,
-        `Прошло ${hours} ч фарминга`
+        tr('Прошло {hours} ч фарминга', { hours })
       );
     }, ms);
   }
@@ -119,24 +119,35 @@ class ShutdownManager {
    */
   describeSchedule() {
     const settings = this.settings;
-    if (!settings || !settings.get('enableShutdown')) return 'Выключение отключено';
+    const off = tr('Выключение отключено');
+    if (!settings || !settings.get('enableShutdown')) return off;
 
     const trigger = settings.get('shutdownTrigger') || 'drops';
     const delay = Number(settings.get('shutdownDelayMinutes')) || 0;
     const hours = Number(settings.get('shutdownTimerHours')) || 0;
 
-    const when = {
-      drops: 'когда будут собраны все дропсы',
-      streamEnd: 'когда завершится стрим',
-      any: 'когда собраны все дропсы или завершится стрим',
-      timer: `через ${hours} ч после начала фарминга`
-    }[trigger] || '';
-
-    const after = delay > 0
-      ? `, затем ещё ${delay} мин на отмену`
-      : ', с отсчётом в полминуты на отмену';
-
-    return `Сработает ${when}${after}. Отсчёт можно прервать.`;
+    // Фразы целиком, а не склейка «когда» + «после»: в английском другой
+    // порядок слов. Первая — с задержкой, вторая — без неё
+    const phrases = {
+      drops: [
+        tr('Сработает когда будут собраны все дропсы, затем ещё {delay} мин на отмену. Отсчёт можно прервать.', { delay }),
+        tr('Сработает когда будут собраны все дропсы, с отсчётом в полминуты на отмену. Отсчёт можно прервать.')
+      ],
+      streamEnd: [
+        tr('Сработает когда завершится стрим, затем ещё {delay} мин на отмену. Отсчёт можно прервать.', { delay }),
+        tr('Сработает когда завершится стрим, с отсчётом в полминуты на отмену. Отсчёт можно прервать.')
+      ],
+      any: [
+        tr('Сработает когда собраны все дропсы или завершится стрим, затем ещё {delay} мин на отмену. Отсчёт можно прервать.', { delay }),
+        tr('Сработает когда собраны все дропсы или завершится стрим, с отсчётом в полминуты на отмену. Отсчёт можно прервать.')
+      ],
+      timer: [
+        tr('Сработает через {hours} ч после начала фарминга, затем ещё {delay} мин на отмену. Отсчёт можно прервать.', { hours, delay }),
+        tr('Сработает через {hours} ч после начала фарминга, с отсчётом в полминуты на отмену. Отсчёт можно прервать.', { hours })
+      ]
+    };
+    const [withDelay, withoutDelay] = phrases[trigger] || phrases.drops;
+    return delay > 0 ? withDelay : withoutDelay;
   }
 
   _maybeArm(event, reasonText) {
@@ -192,25 +203,51 @@ class ShutdownManager {
       // окно не показалось — остаётся уведомление
     }
 
-    const when = totalSeconds < 60
-      ? `${totalSeconds} с`
-      : `${Math.round(totalSeconds / 60)} мин`;
+    const time = totalSeconds < 60
+      ? tr('{n} с', { n: totalSeconds })
+      : tr('{n} мин', { n: Math.round(totalSeconds / 60) });
 
     try {
       window.electronAPI?.showNotification?.(
-        this._countdownTitle(action).replace(/ через$/, ''),
-        `${this._countdownTitle(action)} ${when} — откройте WatchTwitch, чтобы отменить`
+        this._actionTitle(action),
+        this._announceText(action, time)
       );
     } catch (error) {
       // без уведомления отсчёт всё равно идёт в окне
     }
   }
 
-  /** Заголовок отсчёта: что произойдёт, без времени. */
+  /** Заголовок отсчёта: что произойдёт, без времени — цифры стоят под ним. */
   _countdownTitle(action) {
-    if (action === 'sleep') return 'Компьютер уйдёт в сон через';
-    if (action === 'hibernate') return 'Компьютер уйдёт в гибернацию через';
-    return 'Компьютер выключится через';
+    const titles = {
+      sleep: tr('Компьютер уйдёт в сон через'),
+      hibernate: tr('Компьютер уйдёт в гибернацию через'),
+      shutdown: tr('Компьютер выключится через')
+    };
+    return titles[action] || titles.shutdown;
+  }
+
+  /**
+   * Заголовок и текст уведомления. Раньше заголовок получался из подписи
+   * отсчёта отрезанием «через», а текст — склейкой; в английском оба
+   * способа ломают фразу, поэтому они записаны целиком.
+   */
+  _actionTitle(action) {
+    const titles = {
+      sleep: tr('Компьютер уйдёт в сон'),
+      hibernate: tr('Компьютер уйдёт в гибернацию'),
+      shutdown: tr('Компьютер выключится')
+    };
+    return titles[action] || titles.shutdown;
+  }
+
+  _announceText(action, time) {
+    const texts = {
+      sleep: tr('Компьютер уйдёт в сон через {time} — откройте WatchTwitch, чтобы отменить', { time }),
+      hibernate: tr('Компьютер уйдёт в гибернацию через {time} — откройте WatchTwitch, чтобы отменить', { time }),
+      shutdown: tr('Компьютер выключится через {time} — откройте WatchTwitch, чтобы отменить', { time })
+    };
+    return texts[action] || texts.shutdown;
   }
 
   cancel() {
@@ -228,14 +265,16 @@ class ShutdownManager {
     this.overlay = null;
 
     console.log('[Выключение] Отменено пользователем');
-    window.utils?.showToast('Выключение отменено', 'info');
+    window.utils?.showToast(tr('Выключение отменено'), 'info');
   }
 
   _actionLabel(action) {
-    const i18n = window.i18n;
-    if (action === 'sleep') return i18n ? i18n.t('settings.sleep') : 'Спящий режим';
-    if (action === 'hibernate') return i18n ? i18n.t('settings.hibernate') : 'Гибернация';
-    return i18n ? i18n.t('settings.shutdownPC') : 'Выключение компьютера';
+    const labels = {
+      sleep: tr('Спящий режим'),
+      hibernate: tr('Гибернация'),
+      shutdown: tr('Выключить компьютер')
+    };
+    return labels[action] || labels.shutdown;
   }
 
   _format(seconds) {
@@ -257,7 +296,7 @@ class ShutdownManager {
         <div class="shutdown-title"></div>
         <div class="shutdown-countdown" id="shutdown-countdown">${this._format(remaining)}</div>
         <div class="shutdown-reason"></div>
-        <button class="btn btn-primary" id="shutdown-cancel" style="margin-top: 18px;">Отменить</button>
+        <button class="btn btn-primary" id="shutdown-cancel" style="margin-top: 18px;">${tr('Отменить')}</button>
       </div>
     `;
     // Тексты — только как текст: причина собирается из названий категорий

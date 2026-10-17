@@ -1,16 +1,18 @@
 <div class="drops-page">
     <!-- Шапка: название слева, переключатель разделов и действия справа.
          #tabsContainer — вся правая группа: её показывает и прячет
-         drops-page.js через style.display вместе со входом в Twitch -->
+         drops-page.js через style.display вместе со входом в Twitch.
+         Подписи переводит tr.dom по словарю locales/en/drops.js; data-i18n
+         здесь нет: старый словарь i18n.js перебил бы перевод своим -->
     <div class="page-header">
-        <h1 class="page-title" data-i18n="drops.title">Дропсы</h1>
+        <h1 class="page-title">Дропсы</h1>
         <div id="tabsContainer" class="page-actions drops-header-actions" style="display: none;">
             <div class="segmented drops-tabs" role="tablist" aria-label="Раздел дропсов">
                 <button type="button" class="drops-tab-button active" data-tab="progress" role="tab" aria-selected="true" aria-controls="progressTab">
-                    <span class="drops-tab-text" data-i18n="drops.progress">Прогресс</span>
+                    <span class="drops-tab-text">Прогресс</span>
                 </button>
                 <button type="button" class="drops-tab-button" data-tab="inventory" role="tab" aria-selected="false" aria-controls="inventoryTab">
-                    <span class="drops-tab-text" data-i18n="drops.inventory">Инвентарь</span>
+                    <span class="drops-tab-text">Инвентарь</span>
                 </button>
             </div>
             <button type="button" id="refreshButton" class="btn btn-ghost btn-icon" title="Обновить" aria-label="Обновить">
@@ -33,7 +35,7 @@
             <p>Без входа нельзя посмотреть прогресс и забрать награды.</p>
             <button type="button" id="authButton" class="btn btn-primary">
                 <img src="../assets/logo.svg" alt="" class="drops-auth-logo" width="16" height="16">
-                <span data-i18n="drops.loginButton">Войти через Twitch</span>
+                <span>Войти через Twitch</span>
             </button>
         </div>
     </div>

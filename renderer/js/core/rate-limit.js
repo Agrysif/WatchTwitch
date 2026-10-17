@@ -58,10 +58,16 @@ class TwitchRateLimit {
     return pause;
   }
 
-  /** Короткое пояснение для лога. */
+  /**
+   * Короткое пояснение для лога. Оно же уходит в окно причиной отказа
+   * («Twitch не ответил: …»), поэтому переводится. Файл подключает главный
+   * процесс: там tr — это trMain из main.js, а без него текст остаётся
+   * русским, чтобы запрос к Twitch не упал на ReferenceError.
+   */
   describe(now = Date.now()) {
     const sec = Math.ceil(this.remainingMs(now) / 1000);
-    return sec > 0 ? 'Twitch просит подождать ещё ' + sec + ' с' : 'ограничений нет';
+    if (typeof tr !== 'function') return sec > 0 ? 'Twitch просит подождать ещё ' + sec + ' с' : 'ограничений нет'; // i18n-ignore
+    return sec > 0 ? tr('Twitch просит подождать ещё {sec} с', { sec }) : tr('ограничений нет');
   }
 }
 

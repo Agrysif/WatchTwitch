@@ -1,7 +1,9 @@
 <div class="farming-page">
   <!-- Заголовок без data-i18n: прежний ключ farming.title — «Фарминг дропсов»,
        и i18n.updatePage() вернул бы его при каждом переходе. Подзаголовок
-       убран: он повторял название раздела другими словами -->
+       убран: он повторял название раздела другими словами. Остальные подписи
+       тоже без data-i18n: их переводит tr.dom() по locales/en/farming.js, а
+       data-i18n поверх вернул бы старый перевод из i18n.js -->
   <div class="page-header">
     <h1 class="page-title">Фарминг</h1>
     <div class="page-actions"></div>
@@ -31,7 +33,7 @@
         <p class="waiting-sub"></p>
         <p class="waiting-hint">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 4.5v15a1 1 0 0 0 1.53.85l12-7.5a1 1 0 0 0 0-1.7l-12-7.5A1 1 0 0 0 6 4.5z"/></svg>
-          <span data-i18n="farming.startFarming">Начать фарминг</span>
+          <span>Начать фарминг</span>
         </p>
       </div>
     </div>
@@ -118,7 +120,7 @@
           <div class="farm-hero-actions">
             <button class="btn btn-secondary farm-next-stream" id="next-stream-btn" title="Переключиться на другой стрим этой же категории">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/></svg>
-              <span data-i18n="farming.anotherStream">Другой стрим</span>
+              <span>Другой стрим</span>
             </button>
             <div class="farm-cat-stepper" role="group" aria-label="Переключить категорию">
               <button class="btn btn-ghost btn-icon btn-sm" id="prev-category-btn" title="Предыдущая категория очереди" aria-label="Предыдущая категория">
@@ -183,7 +185,7 @@
          наград выше), но id остаются: к ним обращается farming-page.js -->
     <div id="drops-progress-container" class="drops-legacy" style="display: none;">
       <div class="drops-legacy-head">
-        <div class="card-title" data-i18n="farming.dropsProgress">Прогресс дропсов</div>
+        <div class="card-title">Прогресс дропсов</div>
         <div id="drops-overall-progress" class="drops-legacy-overall"></div>
       </div>
       <div id="drops-campaigns-list"></div>
@@ -198,7 +200,7 @@
       <div class="farm-queue-actions">
         <button class="btn btn-ghost btn-sm" id="drops-filter-btn" aria-pressed="false" title="Поднять наверх категории с идущими кампаниями">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11.53 2.3a.53.53 0 0 1 .95 0l2.31 4.68a2.12 2.12 0 0 0 1.6 1.16l5.16.76a.53.53 0 0 1 .3.9l-3.74 3.64a2.12 2.12 0 0 0-.61 1.88l.88 5.14a.53.53 0 0 1-.77.56l-4.62-2.43a2.12 2.12 0 0 0-1.97 0L6.4 21.01a.53.53 0 0 1-.77-.56l.88-5.14a2.12 2.12 0 0 0-.61-1.88L2.16 9.8a.53.53 0 0 1 .3-.91l5.16-.75a2.12 2.12 0 0 0 1.6-1.16z"/></svg>
-          <span data-i18n="farming.dropsFirst">Сначала с дропсами</span>
+          <span>Сначала с дропсами</span>
         </button>
         <!-- Режим включён или нет — показывает переключатель внутри кнопки
              (aria-pressed), подпись не меняется -->

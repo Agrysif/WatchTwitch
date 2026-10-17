@@ -56,12 +56,12 @@ class FarmingPage {
     // Те же цвета, что на странице «Дропсы»: окно награды одно на обе
     // страницы, и со старой кислотной палитрой отсюда оно выглядело иначе
     this.rarityTiers = [
-      { name: 'common', label: 'Обычный', minMinutes: 0, maxMinutes: 60, minViewers: 50000, color: '#8a93a3', glow: 'rgba(138, 147, 163, 0.4)' },
-      { name: 'uncommon', label: 'Необычный', minMinutes: 61, maxMinutes: 120, minViewers: 30000, color: '#35d08a', glow: 'rgba(53, 208, 138, 0.4)' },
-      { name: 'rare', label: 'Редкий', minMinutes: 121, maxMinutes: 240, minViewers: 15000, color: '#4aa3ff', glow: 'rgba(74, 163, 255, 0.4)' },
-      { name: 'epic', label: 'Эпический', minMinutes: 241, maxMinutes: 480, minViewers: 8000, color: '#7c5cff', glow: 'rgba(124, 92, 255, 0.4)' },
-      { name: 'legendary', label: 'Легендарный', minMinutes: 481, maxMinutes: 720, minViewers: 3000, color: '#f0a83c', glow: 'rgba(240, 168, 60, 0.4)' },
-      { name: 'mythic', label: 'Мифический', minMinutes: 721, maxMinutes: 99999, minViewers: 0, color: '#f0555f', glow: 'rgba(240, 85, 95, 0.4)' }
+      { name: 'common', label: tr('Обычный'), minMinutes: 0, maxMinutes: 60, minViewers: 50000, color: '#8a93a3', glow: 'rgba(138, 147, 163, 0.4)' },
+      { name: 'uncommon', label: tr('Необычный'), minMinutes: 61, maxMinutes: 120, minViewers: 30000, color: '#35d08a', glow: 'rgba(53, 208, 138, 0.4)' },
+      { name: 'rare', label: tr('Редкий'), minMinutes: 121, maxMinutes: 240, minViewers: 15000, color: '#4aa3ff', glow: 'rgba(74, 163, 255, 0.4)' },
+      { name: 'epic', label: tr('Эпический'), minMinutes: 241, maxMinutes: 480, minViewers: 8000, color: '#7c5cff', glow: 'rgba(124, 92, 255, 0.4)' },
+      { name: 'legendary', label: tr('Легендарный'), minMinutes: 481, maxMinutes: 720, minViewers: 3000, color: '#f0a83c', glow: 'rgba(240, 168, 60, 0.4)' },
+      { name: 'mythic', label: tr('Мифический'), minMinutes: 721, maxMinutes: 99999, minViewers: 0, color: '#f0555f', glow: 'rgba(240, 85, 95, 0.4)' }
     ];
     
     // Учёт баллов канала.
@@ -598,7 +598,7 @@ class FarmingPage {
     }
 
     if (addedCount > 0) {
-      window.utils.showToast(`Автодобавлено новых категорий с дропсами: ${addedCount}`, 'success');
+      window.utils.showToast(tr('Автодобавлено новых категорий с дропсами: {count}', { count: addedCount }), 'success');
     }
 
     // Фарминг отсюда НЕ запускаем. Этот метод вызывается только из init(),
@@ -715,7 +715,7 @@ class FarmingPage {
               category.enabled = true;
               category.disabledByCompletion = false;
               console.log('[Дропсы] Новая кампания, категория снова в работе:', category.name);
-              window.utils?.showToast(`${category.name}: новая кампания дропсов`, 'success');
+              window.utils?.showToast(tr('{name}: новая кампания дропсов', { name: category.name }), 'success');
             }
           } else if (!skippedCampaign) {
             category.dropsCompleted = false;
@@ -808,7 +808,7 @@ class FarmingPage {
         this.categories = kept;
         await this.saveCategories();
         this.renderCategories();
-        window.utils?.showToast(`Удалено авто‑категорий без дропсов: ${beforeCount - kept.length}`, 'info');
+        window.utils?.showToast(tr('Удалено авто‑категорий без дропсов: {count}', { count: beforeCount - kept.length }), 'info');
       }
 
       // Автоскан: добавляем новые категории с дропсами, пока включён автофарм
@@ -845,13 +845,13 @@ class FarmingPage {
   // Ручное обновление
   async manualUpdateCategories() {
     if (this.categories.length === 0) {
-      window.utils.showToast('Нет категорий для обновления', 'warning');
+      window.utils.showToast(tr('Нет категорий для обновления'), 'warning');
       return;
     }
     
-    window.utils.showToast('Обновление данных...', 'info');
+    window.utils.showToast(tr('Обновление данных...'), 'info');
     await this.updateCategoriesData();
-    window.utils.showToast('Данные обновлены', 'success');
+    window.utils.showToast(tr('Данные обновлены'), 'success');
   }
 
   setupEventListeners() {
@@ -1365,12 +1365,12 @@ class FarmingPage {
 
     try {
       // Загружаем все категории Twitch
-      window.utils.showToast('Загрузка категорий...', 'info');
+      window.utils.showToast(tr('Загрузка категорий...'), 'info');
       const categories = await window.electronAPI.fetchTwitchCategories();
       console.log('Categories loaded:', categories.length);
       
       if (!categories || categories.length === 0) {
-        window.utils.showToast('Не удалось загрузить категории', 'error');
+        window.utils.showToast(tr('Не удалось загрузить категории'), 'error');
         return;
       }
 
@@ -1399,16 +1399,16 @@ class FarmingPage {
         <div class="dialog dialog-lg category-picker-dialog" role="dialog" aria-modal="true" aria-labelledby="category-picker-title">
           <div class="dialog-head">
             <div>
-              <h2 class="dialog-title" id="category-picker-title">Добавить категорию</h2>
+              <h2 class="dialog-title" id="category-picker-title">${tr('Добавить категорию')}</h2>
             </div>
-            <button class="dialog-close close-modal" type="button" title="Закрыть (Esc)" aria-label="Закрыть">
+            <button class="dialog-close close-modal" type="button" title="${tr('Закрыть (Esc)')}" aria-label="${tr('Закрыть')}">
               ${icon('close', 16)}
             </button>
           </div>
           <div class="category-picker-search">
             <label class="search-field">
               ${icon('search', 16)}
-              <input type="text" class="input-field" id="category-search" placeholder="Поиск по названию игры" autocomplete="off" aria-label="Поиск категории">
+              <input type="text" class="input-field" id="category-search" placeholder="${tr('Поиск по названию игры')}" autocomplete="off" aria-label="${tr('Поиск категории')}">
             </label>
           </div>
           <div class="dialog-body category-list" id="category-list">
@@ -1492,13 +1492,13 @@ class FarmingPage {
       
     } catch (error) {
       console.error('Error loading categories:', error);
-      window.utils.showToast('Ошибка загрузки категорий', 'error');
+      window.utils.showToast(tr('Ошибка загрузки категорий'), 'error');
     }
   }
   
   renderCategoryItems(categories, allCategories) {
     if (categories.length === 0) {
-      return '<div class="picker-empty">Ничего не найдено — проверьте название</div>';
+      return `<div class="picker-empty">${tr('Ничего не найдено — проверьте название')}</div>`;
     }
 
     const icon = (name, size) => window.Icons?.get(name, size) ?? '';
@@ -1510,7 +1510,7 @@ class FarmingPage {
       // кампания (проверяются первые десять игр списка)
       const meta = [
         cat.viewersCount ? `<span>${this.esc(this.viewersLabel(cat.viewersCount))}</span>` : '',
-        cat.hasDrops ? '<span class="tone-ok">Дропсы</span>' : ''
+        cat.hasDrops ? `<span class="tone-ok">${tr('Дропсы')}</span>` : ''
       ].filter(Boolean).join('');
 
       return `
@@ -1521,7 +1521,7 @@ class FarmingPage {
             <div class="game-item-viewers row-meta">${meta}</div>
           </div>
           ${isAdded
-            ? '<div class="game-item-added">Уже в очереди</div>'
+            ? `<div class="game-item-added">${tr('Уже в очереди')}</div>`
             : `<span class="game-item-add" aria-hidden="true">${icon('plus', 16)}</span>`}
         </div>
       `;
@@ -1547,7 +1547,7 @@ class FarmingPage {
       this.normalizeGameKey(cat.name) === this.normalizeGameKey(category.name));
 
     if (isDuplicate()) {
-      window.utils.showToast(`${category.name} уже добавлена`, 'warning');
+      window.utils.showToast(tr('{name} уже добавлена', { name: category.name }), 'warning');
       return false;
     }
 
@@ -1579,7 +1579,7 @@ class FarmingPage {
     await this.setCategoryDeleted(category.name, false);
     await this.saveCategories();
     this.renderCategories();
-    window.utils.showToast(`${category.name} добавлена`, 'success');
+    window.utils.showToast(tr('{name} добавлена', { name: category.name }), 'success');
     return true;
   }
 
@@ -1606,12 +1606,12 @@ class FarmingPage {
         const n = removable.length;
         const word = window.utils.plural
           ? window.utils.plural(n, 'авто-категория', 'авто-категории', 'авто-категорий')
-          : 'авто-категорий';
+          : tr('авто-категорий');
         const ok = await window.utils.showConfirmation(
-          'Отключить автофарм?',
-          `Будет убрано из списка: ${n} ${word}. Закреплённые останутся.`,
+          tr('Отключить автофарм?'),
+          tr('Будет убрано из списка: {n} {word}. Закреплённые останутся.', { n, word }),
           // Действие убирает категории из очереди — кнопка красная и с глаголом
-          { confirmText: 'Отключить', confirmClass: 'btn-danger' }
+          { confirmText: tr('Отключить'), confirmClass: 'btn-danger' }
         );
         if (!ok || this._destroyed) return;
       }
@@ -1633,7 +1633,7 @@ class FarmingPage {
       await this.saveCategories();
       this.renderCategories();
       this.updateAutoDropsButtonState();
-      window.utils.showToast('Автофарм дропсов отключен', 'info');
+      window.utils.showToast(tr('Автофарм дропсов отключен'), 'info');
 
       // Раньше фарм удалённой категории продолжался: плеер играл игру,
       // которой в списке уже не было. Уходим в оставшиеся категории, а
@@ -1653,10 +1653,10 @@ class FarmingPage {
 
   async addAllDropsCategories() {
     try {
-      window.utils.showToast('Загружаем категории с дропсами...', 'info');
+      window.utils.showToast(tr('Загружаем категории с дропсами...'), 'info');
       const allCategories = await window.electronAPI.fetchTwitchCategories();
       if (!allCategories || allCategories.length === 0) {
-        window.utils.showToast('Не удалось загрузить категории', 'error');
+        window.utils.showToast(tr('Не удалось загрузить категории'), 'error');
         return;
       }
 
@@ -1755,7 +1755,7 @@ class FarmingPage {
       }
 
       if (addedCount === 0) {
-        window.utils.showToast('Не найдено новых категорий с незавершенными дропсами', 'warning');
+        window.utils.showToast(tr('Не найдено новых категорий с незавершенными дропсами'), 'warning');
         return;
       }
 
@@ -1763,7 +1763,7 @@ class FarmingPage {
       this.renderCategories();
       this.updateAutoDropsButtonState();
       // «Добавлено 21 категорий» — так выходило у самодельного склонения
-      window.utils.showToast(`Добавлено категорий с незавершёнными дропсами: ${addedCount}`, 'success');
+      window.utils.showToast(tr('Добавлено категорий с незавершёнными дропсами: {count}', { count: addedCount }), 'success');
       // Запускаем, только если фарминг не идёт. Раньше запуск шёл всегда:
       // включение «Фарм всех дропсов» посреди сессии начинало её заново —
       // таймер прыгал в ноль, баллы и дропсы за прошедшие часы пропадали
@@ -1772,7 +1772,7 @@ class FarmingPage {
       }, 1000);
     } catch (error) {
       console.error('Error adding all drops categories:', error);
-      window.utils.showToast('Ошибка при добавлении категорий', 'error');
+      window.utils.showToast(tr('Ошибка при добавлении категорий'), 'error');
     }
   }
 
@@ -1807,8 +1807,8 @@ class FarmingPage {
     if (this.categories.length === 0) {
       const empty = {
         icon: 'list',
-        title: 'Очередь пуста',
-        text: 'Добавьте игру или включите «Автофарм всех дропсов» — приложение само соберёт игры с кампаниями.'
+        title: tr('Очередь пуста'),
+        text: tr('Добавьте игру или включите «Автофарм всех дропсов» — приложение само соберёт игры с кампаниями.')
       };
       container.innerHTML = typeof window.DOMHelpers?.emptyState === 'function'
         ? window.DOMHelpers.emptyState(empty).replace('class="empty-state"', 'class="empty-state no-categories"')
@@ -1894,18 +1894,18 @@ class FarmingPage {
       // Подписи групп: «Закреплённые» над закреплёнными и прежний ключ
       // «Остальные категории» над остальными
       const pinnedHead = (pinnedCount > 0 && index === 0)
-        ? '<div class="pinned-divider pinned-head"><span>Закреплённые</span></div>'
+        ? `<div class="pinned-divider pinned-head"><span>${tr('Закреплённые')}</span></div>`
         : '';
       const divider = (pinnedCount > 0 && index === pinnedCount)
-        ? `<div class="pinned-divider"><span>${this.i18n.t('farming.pinnedDivider')}</span></div>`
+        ? `<div class="pinned-divider"><span>${tr('Остальные категории')}</span></div>`
         : '';
       const tagsHtml = cat.tags && cat.tags.length > 0
         ? `<span class="category-tag">${this.esc(cat.tags[0])}</span>`
         : '';
       // «Авто» — тихий бейдж с рамкой, без заливки акцентом
-      const autoBadge = cat.autoDrops ? `<span class="category-tag category-auto-tag" title="Добавлена автофармом">${this.i18n.t('farming.auto')}</span>` : '';
+      const autoBadge = cat.autoDrops ? `<span class="category-tag category-auto-tag" title="${tr('Добавлена автофармом')}">${tr('Авто')}</span>` : '';
       const isCurrentCard = currentId !== null && String(cat.id) === currentId;
-      const currentBadge = isCurrentCard ? '<span class="category-current-badge">Сейчас</span>' : '';
+      const currentBadge = isCurrentCard ? `<span class="category-current-badge">${tr('Сейчас')}</span>` : '';
 
       // Безнадёжная кампания — это не «всё собрано», а «уже не успеть»:
       // награды есть, но времени до конца кампании на них не хватит
@@ -1926,10 +1926,10 @@ class FarmingPage {
       // карточку.
       const dropsStatusHtml = cat.hasDrops ? (
         tooLate
-          ? `<span class="category-drops-status too-late" title="${this.esc(skipHint)}">Не успеть</span>`
+          ? `<span class="category-drops-status too-late" title="${this.esc(skipHint)}">${tr('Не успеть')}</span>`
           : cat.dropsCompleted
-            ? `<span class="category-drops-status completed"${skipHint ? ` title="${this.esc(skipHint)}"` : ''}>${this.i18n.t('farming.dropsCompleted')}</span>`
-            : `<span class="category-drops-status active">Дропсы ${cat.dropsProgressPercent !== undefined ? this.esc(cat.dropsProgressPercent) + '%' : 'идут'}<span class="category-time-left${endingSoon ? ' is-soon' : ''}">${cat.dropsEndsAt ? this.formatTimeRemaining(cat.dropsEndsAt) : ''}</span></span>`
+            ? `<span class="category-drops-status completed"${skipHint ? ` title="${this.esc(skipHint)}"` : ''}>${tr('Дропсы получены')}</span>`
+            : `<span class="category-drops-status active">${cat.dropsProgressPercent !== undefined ? tr('Дропсы {percent}%', { percent: this.esc(cat.dropsProgressPercent) }) : tr('Дропсы идут')}<span class="category-time-left${endingSoon ? ' is-soon' : ''}">${cat.dropsEndsAt ? this.formatTimeRemaining(cat.dropsEndsAt) : ''}</span></span>`
       ) : '';
 
       const isDisabled = cat.enabled === false;
@@ -1940,8 +1940,8 @@ class FarmingPage {
       ${pinnedHead}${divider}
       <div class="category-item ${isDisabled ? 'disabled' : ''} ${isCompleted ? 'drops-completed' : ''} ${cat.pinned ? 'pinned' : ''} ${isCurrentCard ? 'current' : ''}" draggable="true" data-category-id="${this.esc(cat.id)}">
         <div class="category-priority" aria-hidden="true">${index + 1}</div>
-        <div class="category-drag-handle" title="Перетащите, чтобы изменить порядок" aria-hidden="true">${icon('grip', 16)}</div>
-        <div class="category-image" title="Стримы категории">
+        <div class="category-drag-handle" title="${tr('Перетащите, чтобы изменить порядок')}" aria-hidden="true">${icon('grip', 16)}</div>
+        <div class="category-image" title="${tr('Стримы категории')}">
           <img src="${this.esc(this.boxArtSrc(cat.boxArtURL, '52x72', cat.id))}" alt="" onerror="this.onerror=null;this.src=window.DROP_PLACEHOLDER||'';">
         </div>
         <div class="category-info">
@@ -1954,19 +1954,19 @@ class FarmingPage {
             ${tagsHtml}
           </div>
         </div>
-        <button class="category-play-btn" data-category-id="${this.esc(cat.id)}" title="Смотреть эту категорию" aria-label="Смотреть ${name}">
+        <button class="category-play-btn" data-category-id="${this.esc(cat.id)}" title="${tr('Смотреть эту категорию')}" aria-label="${tr('Смотреть {name}', { name })}">
           ${icon('play', 16)}
         </button>
         <button class="category-pin-btn ${cat.pinned ? 'active' : ''}" data-category-id="${this.esc(cat.id)}"
-                title="${cat.pinned ? 'Открепить' : 'Закрепить наверху очереди'}" aria-label="${cat.pinned ? 'Открепить' : 'Закрепить'} ${name}" aria-pressed="${cat.pinned ? 'true' : 'false'}">
+                title="${cat.pinned ? tr('Открепить') : tr('Закрепить наверху очереди')}" aria-label="${cat.pinned ? tr('Открепить {name}', { name }) : tr('Закрепить {name}', { name })}" aria-pressed="${cat.pinned ? 'true' : 'false'}">
           ${icon('pin', 16)}
         </button>
-        <label class="category-toggle-switch ${!isDisabled ? 'checked' : ''}" data-category-id="${this.esc(cat.id)}" title="${isDisabled ? 'Выключена — приложение её пропускает' : 'Включена в очередь'}">
-          <input type="checkbox" ${!isDisabled ? 'checked' : ''} data-category-id="${this.esc(cat.id)}" aria-label="Фармить ${name}">
+        <label class="category-toggle-switch ${!isDisabled ? 'checked' : ''}" data-category-id="${this.esc(cat.id)}" title="${isDisabled ? tr('Выключена — приложение её пропускает') : tr('Включена в очередь')}">
+          <input type="checkbox" ${!isDisabled ? 'checked' : ''} data-category-id="${this.esc(cat.id)}" aria-label="${tr('Фармить {name}', { name })}">
           <span class="toggle-track"></span>
           <span class="toggle-thumb"></span>
         </label>
-        <button class="category-remove" data-category-id="${this.esc(cat.id)}" title="Убрать из очереди" aria-label="Убрать ${name}">
+        <button class="category-remove" data-category-id="${this.esc(cat.id)}" title="${tr('Убрать из очереди')}" aria-label="${tr('Убрать {name}', { name })}">
           ${icon('close', 16)}
         </button>
       </div>
@@ -1996,7 +1996,7 @@ class FarmingPage {
     const count = document.getElementById('farm-queue-count');
     if (count) {
       count.textContent = total > 0 ? String(total) : '';
-      count.title = total > 0 ? `Включено ${enabled} из ${total}` : '';
+      count.title = total > 0 ? tr('Включено {enabled} из {total}', { enabled, total }) : '';
     }
 
     this.updateWaitingSub();
@@ -2017,18 +2017,21 @@ class FarmingPage {
 
     let text;
     if (total === 0) {
-      text = 'Очередь пуста — добавьте категорию или включите автофарм всех дропсов';
+      text = tr('Очередь пуста — добавьте категорию или включите автофарм всех дропсов');
     } else if (enabled.length === 0) {
-      text = 'Все категории очереди выключены — включите хотя бы одну';
+      text = tr('Все категории очереди выключены — включите хотя бы одну');
     } else {
-      text = `В очереди ${enabled.length} ${this.plural(enabled.length, 'категория', 'категории', 'категорий')}`;
-      if (withDrops === 1) text += ', у одной идёт кампания';
-      else if (withDrops > 1) text += `, у ${withDrops} идут кампании`;
+      // Фраза целиком, а не склейка кусков: в английском другой порядок слов
+      const count = enabled.length;
+      const word = this.plural(count, 'категория', 'категории', 'категорий');
+      if (withDrops === 1) text = tr('В очереди {count} {word}, у одной идёт кампания', { count, word });
+      else if (withDrops > 1) text = tr('В очереди {count} {word}, у {withDrops} идут кампании', { count, word, withDrops });
+      else text = tr('В очереди {count} {word}', { count, word });
       // Полный список кампаний Twitch отдаёт только после первого стрима за
       // запуск приложения. На новом компьютере без пояснения казалось, что
       // автофарм сломан
       if (this._campaignsComplete === false) {
-        text += '. Twitch пока показал не все кампании — полный список придёт через несколько секунд после запуска, можно начинать';
+        text = tr('{text}. Twitch пока показал не все кампании — полный список придёт через несколько секунд после запуска, можно начинать', { text });
       }
     }
     if (sub.textContent !== text) sub.textContent = text;
@@ -2079,23 +2082,23 @@ class FarmingPage {
     const steps = [
       {
         done: facts.hasAccount,
-        title: 'Войдите в Twitch',
-        sub: 'Без входа Twitch не засчитывает минуты просмотра',
-        actions: '<button type="button" class="btn btn-secondary btn-sm" data-onboarding="login">Войти</button>'
+        title: tr('Войдите в Twitch'),
+        sub: tr('Без входа Twitch не засчитывает минуты просмотра'),
+        actions: `<button type="button" class="btn btn-secondary btn-sm" data-onboarding="login">${tr('Войти')}</button>`
       },
       {
         done: this.categories.length > 0,
-        title: 'Выберите игры',
-        sub: 'Добавьте категорию вручную или включите автофарм всех игр с кампаниями',
-        actions: '<button type="button" class="btn btn-secondary btn-sm" data-onboarding="add">Добавить</button>'
-          + '<button type="button" class="btn btn-secondary btn-sm" data-onboarding="auto">Автофарм</button>'
+        title: tr('Выберите игры'),
+        sub: tr('Добавьте категорию вручную или включите автофарм всех игр с кампаниями'),
+        actions: `<button type="button" class="btn btn-secondary btn-sm" data-onboarding="add">${tr('Добавить')}</button>`
+          + `<button type="button" class="btn btn-secondary btn-sm" data-onboarding="auto">${tr('Автофарм')}</button>`
       },
       {
         done: facts.hasSession || !!this.sessionStartTime,
-        title: 'Начните фарминг',
-        sub: 'Дальше приложение само переключает стримы и категории',
+        title: tr('Начните фарминг'),
+        sub: tr('Дальше приложение само переключает стримы и категории'),
         // Вторичная: главная кнопка запуска уже есть на заглушке ниже
-        actions: '<button type="button" class="btn btn-secondary btn-sm" data-onboarding="start">Начать</button>'
+        actions: `<button type="button" class="btn btn-secondary btn-sm" data-onboarding="start">${tr('Начать')}</button>`
       }
     ];
 
@@ -2113,17 +2116,17 @@ class FarmingPage {
     const check = window.Icons?.get('check', 14) ?? '✓';
     const close = window.Icons?.get('close', 16) ?? '✕';
     slot.innerHTML = `
-      <section class="card farm-onboarding" aria-label="Начало работы">
+      <section class="card farm-onboarding" aria-label="${tr('Начало работы')}">
         <div class="card-header">
-          <div class="card-title">Начало работы</div>
-          <button type="button" class="btn btn-ghost btn-icon btn-sm" data-onboarding="hide" title="Скрыть подсказку" aria-label="Скрыть подсказку">${close}</button>
+          <div class="card-title">${tr('Начало работы')}</div>
+          <button type="button" class="btn btn-ghost btn-icon btn-sm" data-onboarding="hide" title="${tr('Скрыть подсказку')}" aria-label="${tr('Скрыть подсказку')}">${close}</button>
         </div>
         <ol class="onboarding-steps">
           ${steps.map((step, index) => `
             <li class="onboarding-step${step.done ? ' is-done' : ''}">
               <span class="onboarding-mark" aria-hidden="true">${step.done ? check : index + 1}</span>
               <div class="onboarding-text">
-                <div class="onboarding-title">${step.title}${step.done ? '<span class="visually-hidden"> — готово</span>' : ''}</div>
+                <div class="onboarding-title">${step.title}${step.done ? `<span class="visually-hidden"> ${tr('— готово')}</span>` : ''}</div>
                 <div class="onboarding-sub">${step.sub}</div>
               </div>
               ${step.done ? '' : `<div class="onboarding-actions">${step.actions}</div>`}
@@ -2289,8 +2292,8 @@ class FarmingPage {
 
     window.utils.showToast(
       category.pinned
-        ? `${category.name} закреплена`
-        : `${category.name} откреплена`,
+        ? tr('{name} закреплена', { name: category.name })
+        : tr('{name} откреплена', { name: category.name }),
       'success'
     );
   }
@@ -2307,7 +2310,7 @@ class FarmingPage {
         
         if (category) {
           console.log('Manual play category:', category.name);
-          window.utils.showToast(`Запуск категории ${category.name}...`, 'info');
+          window.utils.showToast(tr('Запуск категории {name}...', { name: category.name }), 'info');
 
           // Текущую сессию НЕ останавливаем. Раньше здесь стоял stopFarming:
           // смена категории начинала новую сессию (таймер в ноль, баллы и
@@ -2369,7 +2372,7 @@ class FarmingPage {
     if (!category) return;
 
     const displayName = info.displayName || streamLogin;
-    window.utils.showToast(`Запускаю ${displayName}…`, 'info');
+    window.utils.showToast(tr('Запускаю {name}…', { name: displayName }), 'info');
 
     const stream = await this.resolveChosenStream(category, { ...info, login: streamLogin });
     if (!stream || this._destroyed) return;
@@ -2400,11 +2403,11 @@ class FarmingPage {
     }
 
     if (stats === null) {
-      window.utils?.showToast(`${name} сейчас не в эфире`, 'warning');
+      window.utils?.showToast(tr('{name} сейчас не в эфире', { name }), 'warning');
       return null;
     }
     if (stats && stats.gameName && !this.isSameGame(stats.gameName, category.name, stats.gameId, category.id)) {
-      window.utils?.showToast(`${name} сейчас стримит другую игру: ${stats.gameName}`, 'warning');
+      window.utils?.showToast(tr('{name} сейчас стримит другую игру: {game}', { name, game: stats.gameName }), 'warning');
       return null;
     }
 
@@ -2414,7 +2417,7 @@ class FarmingPage {
     // быть кампании, которых Twitch ещё не показал
     const allowed = await this.allowedChannelsFor(category.name);
     if (allowed.length > 0 && !allowed.soft && !allowed.includes(login)) {
-      window.utils?.showToast('Этот канал не засчитывает дропсы кампании', 'warning');
+      window.utils?.showToast(tr('Этот канал не засчитывает дропсы кампании'), 'warning');
     }
 
     return {
@@ -2443,13 +2446,14 @@ class FarmingPage {
    */
   formatViewersCount(count) {
     if (!count) return '—';
-    if (count < 10000) return Number(count).toLocaleString('ru-RU');
+    if (count < 10000) return Number(count).toLocaleString(tr.locale());
     try {
-      return new Intl.NumberFormat('ru-RU', { notation: 'compact', maximumFractionDigits: 1 }).format(count);
+      return new Intl.NumberFormat(tr.locale(), { notation: 'compact', maximumFractionDigits: 1 }).format(count);
     } catch (error) {
+      const millions = (count / 1000000).toFixed(1);
       return count >= 1000000
-        ? (count / 1000000).toFixed(1).replace('.', ',') + ' млн'
-        : Math.round(count / 1000) + ' тыс.';
+        ? tr('{n} млн', { n: tr.lang() === 'en' ? millions : millions.replace('.', ',') })
+        : tr('{n} тыс.', { n: Math.round(count / 1000) });
     }
   }
 
@@ -2461,6 +2465,7 @@ class FarmingPage {
   plural(n, one, few, many) {
     if (typeof window.DOMHelpers?.plural === 'function') return window.DOMHelpers.plural(n, one, few, many);
     if (typeof window.utils?.plural === 'function') return window.utils.plural(n, one, few, many);
+    if (typeof window.tr?.plural === 'function') return window.tr.plural(n, one, few, many);
     const value = Number(n) || 0;
     if (!Number.isInteger(value)) return few;
     const tens = Math.abs(value) % 100;
@@ -2474,7 +2479,7 @@ class FarmingPage {
   /** «зритель / зрителя / зрителей» к числу из formatViewersCount. */
   viewersWord(count) {
     // После «44 тыс.» и «1,2 млн» всегда «зрителей»
-    if (!count || count >= 10000) return 'зрителей';
+    if (!count || count >= 10000) return tr('зрителей');
     return this.plural(count, 'зритель', 'зрителя', 'зрителей');
   }
 
@@ -2496,7 +2501,7 @@ class FarmingPage {
    * «Ожидание» при остановленном фарминге сбивала с толку.
    */
   getWaitingStateMarkup() {
-    const action = this.esc(this.i18n?.t ? this.i18n.t('farming.startFarming') : 'Начать фарминг');
+    const action = this.esc(tr('Начать фарминг'));
     // Та же разметка, что в farming.html. Пояснение (.waiting-sub) дописывает
     // updateWaitingSub сразу после вставки — см. stopFarming
     return `
@@ -2506,7 +2511,7 @@ class FarmingPage {
           <span class="waiting-ring waiting-ring-inner"></span>
           <span class="waiting-dot"></span>
         </div>
-        <p class="waiting-label">Фарминг не запущен</p>
+        <p class="waiting-label">${tr('Фарминг не запущен')}</p>
         <p class="waiting-sub"></p>
         <p class="waiting-hint">${window.Icons?.get('play', 14) ?? ''}<span>${action}</span></p>
       </div>
@@ -2541,12 +2546,12 @@ class FarmingPage {
     // Через общий notifyFarmingEvent: он молчит в тихие часы и при
     // выключенных уведомлениях Windows. Прямой вызов всплывал и ночью
     window.notifyFarmingEvent?.(
-      this.i18n.t('farming.completed'),
-      'Все доступные дропсы собраны'
+      tr('Завершено'),
+      tr('Все доступные дропсы собраны')
     );
     // Журнал и звук: событие запоминается и тогда, когда уведомление
     // молчит (тихие часы); тихие часы звук глушит сам chime.js
-    window.eventLog?.add({ type: 'all-done', title: 'Все награды собраны' });
+    window.eventLog?.add({ type: 'all-done', title: tr('Все награды собраны') });
     window.chime?.play?.('allDone');
 
     window.shutdownManager?.onDropsCompleted();
@@ -2600,7 +2605,7 @@ class FarmingPage {
           // одним тостом — иначе на каждую категорию выходило по три
           if (!options.quiet) {
             const word = this.plural(allowed.length, 'канала', 'каналов', 'каналов');
-            window.utils?.showToast(`Кампания засчитывается только у ${allowed.length} ${word}, никто не в эфире`, 'warning');
+            window.utils?.showToast(tr('Кампания засчитывается только у {n} {word}, никто не в эфире', { n: allowed.length, word }), 'warning');
           }
           return null;
         }
@@ -2799,13 +2804,13 @@ class FarmingPage {
     const keepTail = () => {
       const current = this.sessionStartTime && this.currentStream && this.currentCategory &&
         this.currentCategory.id !== category.id ? this.currentCategory : null;
-      return current ? ` — продолжаю «${current.name}»` : '';
+      return current ? ' ' + tr('— продолжаю «{name}»', { name: current.name }) : '';
     };
 
     const accounts = await Storage.getAccounts();
     if (!this.isStreamOperationCurrent(revision)) return;
     if (accounts.length === 0) {
-      window.utils.showToast('Добавьте хотя бы один аккаунт', 'warning');
+      window.utils.showToast(tr('Добавьте хотя бы один аккаунт'), 'warning');
       return false;
     }
 
@@ -2828,20 +2833,20 @@ class FarmingPage {
         if (!this.isStreamOperationCurrent(revision)) return;
       } catch (error) {
         console.error('[Фарминг] Не удалось получить стримы:', error);
-        window.utils.showToast(`Не удалось запустить ${category.name}: ${error?.message || 'ошибка сети'}${keepTail()}`, 'error');
+        window.utils.showToast(tr('Не удалось запустить {name}: {error}{tail}', { name: category.name, error: error?.message || tr('ошибка сети'), tail: keepTail() }), 'error');
         return false;
       }
 
       if (streams === null) {
-        window.utils.showToast(`Twitch не ответил по категории ${category.name}${keepTail()}`, 'error');
+        window.utils.showToast(tr('Twitch не ответил по категории {name}{tail}', { name: category.name, tail: keepTail() }), 'error');
         return false;
       }
 
       if (!Array.isArray(streams) || streams.length === 0) {
         const tail = keepTail();
         window.utils.showToast(tail
-          ? `В «${category.name}» сейчас никто не стримит${tail}`
-          : `Нет стримов для ${category.name}`, 'warning');
+          ? tr('В «{name}» сейчас никто не стримит{tail}', { name: category.name, tail })
+          : tr('Нет стримов для {name}', { name: category.name }), 'warning');
         return false;
       }
 
@@ -2850,7 +2855,7 @@ class FarmingPage {
       if (!this.isStreamOperationCurrent(revision)) return;
 
       if (!stream || !stream.login) {
-        window.utils.showToast(`Не удалось выбрать стрим в ${category.name}${keepTail()}`, 'error');
+        window.utils.showToast(tr('Не удалось выбрать стрим в {name}{tail}', { name: category.name, tail: keepTail() }), 'error');
         return false;
       }
     }
@@ -2859,7 +2864,7 @@ class FarmingPage {
     console.log('Starting stream:', stream.displayName, streamUrl);
     // Для выбранного пользователем канала тост «Запускаю…» уже показан
     if (!chosenByUser) {
-      window.utils.showToast(`Запуск стрима: ${stream.displayName}`, 'success');
+      window.utils.showToast(tr('Запуск стрима: {name}', { name: stream.displayName }), 'success');
     }
 
     // Смена категории внутри идущей сессии: время прежней записываем
@@ -2892,7 +2897,7 @@ class FarmingPage {
     const newSession = !!window.sessionState && !window.sessionState.isActive();
     if (newSession) {
       window.sessionState.start({ categoryName: category.name, streamLogin: stream.login });
-      window.eventLog?.add({ type: 'start', title: 'Фарминг запущен', detail: category.name });
+      window.eventLog?.add({ type: 'start', title: tr('Фарминг запущен'), detail: category.name });
     }
 
     // Открываем стрим
@@ -3036,8 +3041,9 @@ class FarmingPage {
           
           await this.saveCategories();
           
-          const status = category.enabled ? 'включена' : 'отключена';
-          window.utils.showToast(`${category.name} ${status}`, 'success');
+          window.utils.showToast(category.enabled
+            ? tr('{name} включена', { name: category.name })
+            : tr('{name} отключена', { name: category.name }), 'success');
 
           // Список сразу не пересортировываем: выключенная карточка уезжала
           // вниз, к выключенным, и чтобы вернуть тумблер, её приходилось
@@ -3084,7 +3090,7 @@ class FarmingPage {
    */
   async addChannelToFarming(channelLogin, info = {}) {
     const login = window.StreamPicker.normalizeLogin(channelLogin).trim();
-    if (!login) return { ok: false, reason: 'Не указан канал' };
+    if (!login) return { ok: false, reason: tr('Не указан канал') };
     const name = info.displayName || login;
 
     try {
@@ -3096,19 +3102,19 @@ class FarmingPage {
         .then(() => Storage.getAccounts())
         .catch(() => null);
       if (Array.isArray(accounts) && accounts.length === 0) {
-        return { ok: false, reason: 'Добавьте хотя бы один аккаунт' };
+        return { ok: false, reason: tr('Добавьте хотя бы один аккаунт') };
       }
 
       let stats;
       try {
         stats = await window.electronAPI.getStreamStats(login);
       } catch (error) {
-        return { ok: false, reason: 'Twitch не ответил, попробуйте позже' };
+        return { ok: false, reason: tr('Twitch не ответил, попробуйте позже') };
       }
-      if (!stats) return { ok: false, reason: `${name} сейчас не в эфире` };
+      if (!stats) return { ok: false, reason: tr('{name} сейчас не в эфире', { name }) };
 
       const gameName = stats.gameName;
-      if (!gameName) return { ok: false, reason: `Не удалось узнать, во что играет ${name}` };
+      if (!gameName) return { ok: false, reason: tr('Не удалось узнать, во что играет {name}', { name }) };
 
       let category = this.categories.find(c => this.isSameGame(c.name, gameName, c.id, stats.gameId)) || null;
 
@@ -3116,9 +3122,9 @@ class FarmingPage {
       if (category?.hasDrops !== true) {
         const checked = await window.electronAPI.checkCategoryDrops(gameName);
         if (checked === null || checked === undefined) {
-          return { ok: false, reason: 'Twitch не ответил, попробуйте позже' };
+          return { ok: false, reason: tr('Twitch не ответил, попробуйте позже') };
         }
-        if (!checked) return { ok: false, reason: `У игры «${gameName}» сейчас нет дропсов` };
+        if (!checked) return { ok: false, reason: tr('У игры «{game}» сейчас нет дропсов', { game: gameName }) };
       }
 
       if (!category) {
@@ -3177,10 +3183,10 @@ class FarmingPage {
       this.updateAutoFarmButton();
       return started === true
         ? { ok: true, category: category.name }
-        : { ok: false, reason: `Не удалось запустить ${name}` };
+        : { ok: false, reason: tr('Не удалось запустить {name}', { name }) };
     } catch (error) {
       console.error('Error adding channel to farming:', error);
-      return { ok: false, reason: 'Ошибка при запуске канала' };
+      return { ok: false, reason: tr('Ошибка при запуске канала') };
     }
   }
 
@@ -3299,7 +3305,7 @@ class FarmingPage {
     if (enabledCategories.length === 0) {
       if (this.isSingleManualPlayLocked()) {
         console.log('[ManualPlayLock] No next categories, keeping current category active');
-        window.utils.showToast('Оставляем текущую категорию активной до ручной остановки', 'info');
+        window.utils.showToast(tr('Оставляем текущую категорию активной до ручной остановки'), 'info');
         return true;
       }
 
@@ -3309,7 +3315,7 @@ class FarmingPage {
       // «все дропсы собраны»: раньше здесь срабатывало уведомление о
       // завершении и автовыключение компьютера.
       if (reason === 'disabled') {
-        window.utils.showToast('Других включённых категорий нет — фарминг остановлен', 'info');
+        window.utils.showToast(tr('Других включённых категорий нет — фарминг остановлен'), 'info');
         this.stopFarming(false);
         return false;
       }
@@ -3336,7 +3342,7 @@ class FarmingPage {
       // играть: всю ночь качался трафик, шла сессия в статистике, а
       // интерфейс показывал фарм, хотя приложение ничего не фармило.
       console.log('[Категории] Переключаться некуда — фарминг завершён');
-      window.utils.showToast('Все категории отработаны — фарминг остановлен', 'info');
+      window.utils.showToast(tr('Все категории отработаны — фарминг остановлен'), 'info');
       this.stopFarming(false);
       this.onAllCategoriesCompleted();
       return false;
@@ -3362,7 +3368,7 @@ class FarmingPage {
         const accounts = await Storage.getAccounts();
         if (!this.isStreamOperationCurrent(revision)) return;
         if (!accounts || accounts.length === 0) {
-          window.utils.showToast('Нет аккаунтов для запуска стрима', 'error');
+          window.utils.showToast(tr('Нет аккаунтов для запуска стрима'), 'error');
           if (!keepCurrent) this.stopFarming(false);
           return false;
         }
@@ -3425,21 +3431,24 @@ class FarmingPage {
         await this.saveActiveSession(stream, nextCategory);
         if (!this.isStreamOperationCurrent(revision)) return;
 
-        const skippedNote = skippedOffline.length > 0
-          ? `. Пропущено ${skippedOffline.length} ${this.plural(skippedOffline.length, 'категория', 'категории', 'категорий')}: никто не в эфире`
-          : '';
-        window.utils.showToast(`Переключено на ${nextCategory.name} — ${stream.displayName}${skippedNote}`, 'success');
+        const skipped = skippedOffline.length;
+        const names = { category: nextCategory.name, stream: stream.displayName };
+        window.utils.showToast(skipped > 0
+          ? tr('Переключено на {category} — {stream}. Пропущено {count} {word}: никто не в эфире', {
+            ...names, count: skipped, word: this.plural(skipped, 'категория', 'категории', 'категорий')
+          })
+          : tr('Переключено на {category} — {stream}', names), 'success');
         // Утром в журнале должно быть видно, почему сменилась игра
         window.eventLog?.add({
           type: 'switch',
-          title: 'Переход к ' + nextCategory.name,
+          title: tr('Переход к {name}', { name: nextCategory.name }),
           detail: ({
-            done: options.detail || 'награды прежней категории собраны',
-            noDrops: 'в прежней категории нет дропсов',
-            offline: 'стрим закончился',
-            gameChanged: 'стример сменил игру',
-            noCredit: 'канал не засчитывал минуты',
-            disabled: 'прежняя категория выключена'
+            done: options.detail || tr('награды прежней категории собраны'),
+            noDrops: tr('в прежней категории нет дропсов'),
+            offline: tr('стрим закончился'),
+            gameChanged: tr('стример сменил игру'),
+            noCredit: tr('канал не засчитывал минуты'),
+            disabled: tr('прежняя категория выключена')
           })[reason] || stream.displayName,
           game: nextCategory.name
         });
@@ -3482,7 +3491,7 @@ class FarmingPage {
     const now = Date.now();
     if (!this._twitchDownToastAt || now - this._twitchDownToastAt > 10 * 60 * 1000) {
       this._twitchDownToastAt = now;
-      window.utils?.showToast('Twitch не отвечает — повторю через минуту', 'warning');
+      window.utils?.showToast(tr('Twitch не отвечает — повторю через минуту'), 'warning');
     }
 
     const snapshot = this.streamSnapshot();
@@ -3505,11 +3514,11 @@ class FarmingPage {
    */
   stopWhenNothingLive() {
     const minutes = Math.round(FarmingPage.AUTO_RESTART_MS / 60000);
-    const text = `Сейчас никто не стримит категории с дропсами. Попробую снова через ${minutes} мин`;
+    const text = tr('Сейчас никто не стримит категории с дропсами. Попробую снова через {minutes} мин', { minutes });
     console.warn('[Категории] Стримов с дропсами сейчас нет — останавливаюсь, повтор через', minutes, 'мин');
-    window.utils?.showToast(`Фарминг остановлен. ${text}`, 'warning');
-    window.notifyFarmingEvent?.('Фарминг остановлен', text);
-    window.eventLog?.add({ type: 'error', title: 'Фарминг остановлен', detail: text });
+    window.utils?.showToast(tr('Фарминг остановлен. {text}', { text }), 'warning');
+    window.notifyFarmingEvent?.(tr('Фарминг остановлен'), text);
+    window.eventLog?.add({ type: 'error', title: tr('Фарминг остановлен'), detail: text });
     window.chime?.play?.('attention');
     this.stopFarming(false);
     this.scheduleAutoRestart();
@@ -3718,7 +3727,7 @@ class FarmingPage {
   showUndoRemove(category, index) {
     const host = document.getElementById('categories-list')?.parentElement;
     if (!host) {
-      window.utils.showToast('Категория удалена', 'success');
+      window.utils.showToast(tr('Категория удалена'), 'success');
       return;
     }
 
@@ -3732,9 +3741,9 @@ class FarmingPage {
     // текстом (page-farming.css, .category-undo)
     bar.innerHTML = `
       <span class="category-undo-text"></span>
-      <button type="button" class="btn btn-ghost btn-sm category-undo-btn">Вернуть</button>
+      <button type="button" class="btn btn-ghost btn-sm category-undo-btn">${tr('Вернуть')}</button>
     `;
-    bar.querySelector('.category-undo-text').textContent = `«${category.name}» удалена`;
+    bar.querySelector('.category-undo-text').textContent = tr('«{name}» удалена', { name: category.name });
 
     const close = () => {
       clearTimeout(this._undoTimer);
@@ -3753,7 +3762,7 @@ class FarmingPage {
       await this.setCategoryDeleted(category.name, false);
       await this.saveCategories();
       this.renderCategories();
-      window.utils.showToast(`«${category.name}» возвращена`, 'success');
+      window.utils.showToast(tr('«{name}» возвращена', { name: category.name }), 'success');
     });
 
     host.appendChild(bar);
@@ -3789,7 +3798,7 @@ class FarmingPage {
       if (Date.now() - startedAt < STALE_MS) {
         console.log('[Фарминг] Запуск уже идёт — повторное нажатие пропущено');
         // Нажатие (кнопка, горячая клавиша) не должно пропадать молча
-        if (!options.auto) this.toastOnce('start-busy', 'Поиск стрима ещё идёт…', 'info', 5000);
+        if (!options.auto) this.toastOnce('start-busy', tr('Поиск стрима ещё идёт…'), 'info', 5000);
         return;
       }
       console.warn('[Фарминг] Прошлый запуск завис, снимаю защёлку');
@@ -3806,7 +3815,7 @@ class FarmingPage {
       return await this._startFarming();
     } catch (error) {
       console.error('[Фарминг] Запуск не удался:', error);
-      window.utils?.showToast('Не удалось запустить: ' + (error?.message || 'неизвестная ошибка'), 'error');
+      window.utils?.showToast(tr('Не удалось запустить: {error}', { error: error?.message || tr('неизвестная ошибка') }), 'error');
     } finally {
       window._farmingStarting = false;
       window._farmingStartingAt = 0;
@@ -3834,7 +3843,7 @@ class FarmingPage {
       btn.style.opacity = '0.7';
       if (label) {
         if (!this._startButtonLabel) this._startButtonLabel = label.textContent;
-        label.textContent = 'Ищем стрим…';
+        label.textContent = tr('Ищем стрим…');
       }
 
       // Поиск ограничен и по числу категорий, и по времени. Дольше срока
@@ -3865,14 +3874,14 @@ class FarmingPage {
 
     const revision = this.beginStreamOperation();
     if (this.categories.length === 0) {
-      window.utils.showToast('Добавьте хотя бы одну категорию', 'warning');
+      window.utils.showToast(tr('Добавьте хотя бы одну категорию'), 'warning');
       return;
     }
 
     const accounts = await Storage.getAccounts();
     if (!this.isStreamOperationCurrent(revision)) return;
     if (accounts.length === 0) {
-      window.utils.showToast('Добавьте хотя бы один аккаунт', 'warning');
+      window.utils.showToast(tr('Добавьте хотя бы один аккаунт'), 'warning');
       if (window.router) {
         window.router.navigate('accounts');
       }
@@ -3882,7 +3891,7 @@ class FarmingPage {
     // Проверяем, есть ли хотя бы один активный аккаунт (OAuth)
     const activeAccounts = accounts.filter(acc => acc.loginMethod === 'oauth');
     if (activeAccounts.length === 0) {
-      window.utils.showToast('Для работы требуется OAuth авторизация', 'error');
+      window.utils.showToast(tr('Для работы требуется OAuth авторизация'), 'error');
       
       // Показываем модальное окно с инструкцией
       const modal = document.createElement('div');
@@ -3891,24 +3900,24 @@ class FarmingPage {
         <div class="auth-modal-overlay"></div>
         <div class="auth-modal-content farm-login-dialog">
           <div class="auth-modal-header">
-            <h3>Нужен вход через Twitch</h3>
+            <h3>${tr('Нужен вход через Twitch')}</h3>
           </div>
           <div class="auth-modal-body">
             <p class="farm-login-lead">
-              Для корректной работы фарминга необходимо авторизоваться через Twitch OAuth.
+              ${tr('Для корректной работы фарминга необходимо авторизоваться через Twitch OAuth.')}
             </p>
             <div class="farm-login-steps">
-              <div class="section-label">Что нужно сделать</div>
+              <div class="section-label">${tr('Что нужно сделать')}</div>
               <ol>
-                <li>Перейдите на вкладку "Аккаунты"</li>
-                <li>Нажмите "Войти через Twitch"</li>
-                <li>Авторизуйтесь в браузере</li>
-                <li>Вернитесь в приложение и запустите фарминг</li>
+                <li>${tr('Перейдите на вкладку "Аккаунты"')}</li>
+                <li>${tr('Нажмите "Войти через Twitch"')}</li>
+                <li>${tr('Авторизуйтесь в браузере')}</li>
+                <li>${tr('Вернитесь в приложение и запустите фарминг')}</li>
               </ol>
             </div>
             <div class="farm-login-actions">
-              <button class="btn btn-secondary" id="close-modal">Закрыть</button>
-              <button class="btn btn-primary" id="go-to-accounts">Перейти к аккаунтам</button>
+              <button class="btn btn-secondary" id="close-modal">${tr('Закрыть')}</button>
+              <button class="btn btn-primary" id="go-to-accounts">${tr('Перейти к аккаунтам')}</button>
             </div>
           </div>
         </div>
@@ -3936,7 +3945,7 @@ class FarmingPage {
     // Проверяем вход в Twitch
     const loggedInAccounts = activeAccounts.filter(acc => acc.twitchLoggedIn);
     if (loggedInAccounts.length === 0) {
-      window.utils.showToast('Требуется вход в Twitch', 'error');
+      window.utils.showToast(tr('Требуется вход в Twitch'), 'error');
       
       // Показываем модальное окно с инструкцией
       const modal = document.createElement('div');
@@ -3945,25 +3954,25 @@ class FarmingPage {
         <div class="auth-modal-overlay"></div>
         <div class="auth-modal-content farm-login-dialog">
           <div class="auth-modal-header">
-            <h3>Нужен вход в Twitch</h3>
+            <h3>${tr('Нужен вход в Twitch')}</h3>
           </div>
           <div class="auth-modal-body">
             <p class="farm-login-lead">
-              Для фарминга дропсов и баллов канала необходимо войти в Twitch через приложение.
+              ${tr('Для фарминга дропсов и баллов канала необходимо войти в Twitch через приложение.')}
             </p>
             <div class="farm-login-steps">
-              <div class="section-label">Что нужно сделать</div>
+              <div class="section-label">${tr('Что нужно сделать')}</div>
               <ol>
-                <li>Перейдите на вкладку "Аккаунты"</li>
-                <li>Найдите свой аккаунт</li>
-                <li>Нажмите кнопку "Войти в Twitch" (иконка Twitch)</li>
-                <li>Войдите в аккаунт в открывшемся окне</li>
-                <li>Нажмите "Проверить авторизацию"</li>
+                <li>${tr('Перейдите на вкладку "Аккаунты"')}</li>
+                <li>${tr('Найдите свой аккаунт')}</li>
+                <li>${tr('Нажмите кнопку "Войти в Twitch" (иконка Twitch)')}</li>
+                <li>${tr('Войдите в аккаунт в открывшемся окне')}</li>
+                <li>${tr('Нажмите "Проверить авторизацию"')}</li>
               </ol>
             </div>
             <div class="farm-login-actions">
-              <button class="btn btn-secondary" id="close-modal">Закрыть</button>
-              <button class="btn btn-primary" id="go-to-accounts">Перейти к аккаунтам</button>
+              <button class="btn btn-secondary" id="close-modal">${tr('Закрыть')}</button>
+              <button class="btn btn-primary" id="go-to-accounts">${tr('Перейти к аккаунтам')}</button>
             </div>
           </div>
         </div>
@@ -3988,7 +3997,7 @@ class FarmingPage {
       return;
     }
 
-    window.utils.showToast('Ищем стрим с дропсами...', 'info');
+    window.utils.showToast(tr('Ищем стрим с дропсами...'), 'info');
 
     await this.refreshCategoryValues();
     if (!this.isStreamOperationCurrent(revision)) return;
@@ -4014,7 +4023,7 @@ class FarmingPage {
       .filter(c => c.hasDrops); // стартуем по категории с дропсами
     
     if (enabledCategories.length === 0) {
-      window.utils.showToast('Нет активных категорий с дропсами', 'warning');
+      window.utils.showToast(tr('Нет активных категорий с дропсами'), 'warning');
       return;
     }
     
@@ -4080,11 +4089,11 @@ class FarmingPage {
     }
 
     if (!category) {
-      const list = (names) => `${names.slice(0, 3).join(', ')}${names.length > 3 ? ' и др.' : ''}`;
+      const list = (names) => `${names.slice(0, 3).join(', ')}${names.length > 3 ? ' ' + tr('и др.') : ''}`;
       const parts = [];
-      if (skipped.length > 0) parts.push(`Нет стримов с дропсами: ${list(skipped)}`);
-      if (unanswered.length > 0) parts.push(`Twitch не ответил по категориям: ${list(unanswered)}`);
-      window.utils.showToast(parts.join('. ') || 'Не нашлось стрима с дропсами', 'warning');
+      if (skipped.length > 0) parts.push(tr('Нет стримов с дропсами: {list}', { list: list(skipped) }));
+      if (unanswered.length > 0) parts.push(tr('Twitch не ответил по категориям: {list}', { list: list(unanswered) }));
+      window.utils.showToast(parts.join('. ') || tr('Не нашлось стрима с дропсами'), 'warning');
       return;
     }
     
@@ -4092,13 +4101,13 @@ class FarmingPage {
     const stream = await this.pickPreferredStream(streams, category.name);
     if (!this.isStreamOperationCurrent(revision)) return;
     if (!stream?.login) {
-      window.utils.showToast('В категории ' + category.name + ' нет подходящего стрима', 'warning');
+      window.utils.showToast(tr('В категории {name} нет подходящего стрима', { name: category.name }), 'warning');
       return;
     }
     const streamUrl = `https://www.twitch.tv/${stream.login}`;
     
     console.log('Starting stream:', stream.displayName, streamUrl);
-    window.utils.showToast(`Запуск стрима: ${stream.displayName}`, 'success');
+    window.utils.showToast(tr('Запуск стрима: {name}', { name: stream.displayName }), 'success');
     
     // Сохраняем текущую категорию и стрим
     this.currentCategory = category;
@@ -4113,7 +4122,7 @@ class FarmingPage {
     const newSession = !!window.sessionState && !window.sessionState.isActive();
     if (newSession) {
       window.sessionState.start({ categoryName: category.name, streamLogin: stream.login });
-      window.eventLog?.add({ type: 'start', title: 'Фарминг запущен', detail: category.name });
+      window.eventLog?.add({ type: 'start', title: tr('Фарминг запущен'), detail: category.name });
     }
 
     // Открываем стрим в фоновом окне с аккаунтом
@@ -4252,7 +4261,8 @@ class FarmingPage {
       const totalDrops = campaign.drops.length;
       const completedDrops = campaign.drops.filter(d => d.progress >= 100).length;
       
-      return `
+      // Русское в разметке ниже, кроме tr(), — только HTML-комментарий
+      return /* i18n-ignore */ `
         <div style="margin-bottom: 16px; padding: 16px; background: var(--bg-primary); border-radius: var(--radius-md); border: 1px solid var(--border-color);">
           <div style="display: flex; gap: 12px; margin-bottom: 12px;">
             <img src="${this.esc(campaign.imageUrl)}" 
@@ -4264,11 +4274,13 @@ class FarmingPage {
               <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 8px;">${this.esc(campaign.game)}</div>
               <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
                 <span style="font-size: 12px; padding: 4px 8px; background: ${campaign.isActive ? 'rgba(53, 208, 138, 0.15)' : 'rgba(239, 68, 68, 0.15)'}; color: ${campaign.isActive ? '#35d08a' : '#ef4444'}; border-radius: var(--radius-sm); font-weight: 600;">
-                  ${campaign.isActive ? 'Активно' : 'Завершено'}
+                  ${campaign.isActive ? tr('Активно') : tr('Завершено')}
                 </span>
                 ${campaign.isActive ? `
                   <span style="font-size: 12px; color: var(--text-secondary);">
-                    ${campaign.daysRemaining > 0 ? `${campaign.daysRemaining}д ` : ''}${campaign.hoursRemaining % 24}ч до конца
+                    ${campaign.daysRemaining > 0
+                      ? tr('{days}д {hours}ч до конца', { days: campaign.daysRemaining, hours: campaign.hoursRemaining % 24 })
+                      : tr('{hours}ч до конца', { hours: campaign.hoursRemaining % 24 })}
                   </span>
                 ` : ''}
               </div>
@@ -4302,7 +4314,7 @@ class FarmingPage {
                 <div style="flex: 1; min-width: 0;">
                   <div style="font-size: 13px; font-weight: 600; color: var(--text-primary); margin-bottom: 4px;">${this.esc(drop.name)}</div>
                   <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 6px;">
-                    Смотреть ${this.esc(drop.requiredMinutes)} мин
+                    ${tr('Смотреть {minutes} мин', { minutes: this.esc(drop.requiredMinutes) })}
                   </div>
                   <div style="height: 6px; background: var(--bg-primary); border-radius: var(--radius-sm); overflow: hidden;">
                     <div style="height: 100%; width: ${drop.progress || 0}%; background: var(--accent-color); transition: width 0.5s ease;"></div>
@@ -4325,7 +4337,7 @@ class FarmingPage {
     
     const overallEl = document.getElementById('drops-overall-progress');
     if (overallEl) {
-      overallEl.textContent = `${completedDrops} / ${totalDrops} получено`;
+      overallEl.textContent = tr('{done} / {total} получено', { done: completedDrops, total: totalDrops });
     }
   }
 
@@ -4388,16 +4400,16 @@ class FarmingPage {
     if (!endsAt) return '';
 
     const diff = new Date(endsAt) - new Date();
-    if (diff <= 0) return 'Завершена';
+    if (diff <= 0) return tr('Завершена');
 
     const days = Math.floor(diff / (1000 * 60 * 60 * 24));
     const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
     const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
 
     // Единицы через пробел: «3 д 4 ч», а не «3д 4ч»
-    if (days > 0) return hours > 0 ? `${days} д ${hours} ч` : `${days} д`;
-    if (hours > 0) return minutes > 0 ? `${hours} ч ${minutes} мин` : `${hours} ч`;
-    return `${minutes} мин`;
+    if (days > 0) return hours > 0 ? tr('{days} д {hours} ч', { days, hours }) : tr('{days} д', { days });
+    if (hours > 0) return minutes > 0 ? tr('{hours} ч {minutes} мин', { hours, minutes }) : tr('{hours} ч', { hours });
+    return tr('{minutes} мин', { minutes });
   }
 
   /**
@@ -4415,7 +4427,7 @@ class FarmingPage {
       ? 100
       : (drop.required > 0 ? Math.min(100, Math.floor((drop.progress / drop.required) * 100)) : 0);
     const remaining = Math.max(0, (Number(drop.required) || 0) - (Number(drop.progress) || 0));
-    const dropName = drop.benefitName || drop.name || 'Награда';
+    const dropName = drop.benefitName || drop.name || tr('Награда');
     const icon = (name, size) => window.Icons?.get(name, size) ?? '';
 
     const dropData = encodeURIComponent(JSON.stringify({
@@ -4444,17 +4456,17 @@ class FarmingPage {
     // подписи не помещались и обрезались
     const notWatchable = !isCompleted && !(Number(drop.required) > 0);
     const meta = notWatchable
-      ? '<span>Не за просмотр</span>'
+      ? `<span>${tr('Не за просмотр')}</span>`
       : isCompleted
-      ? `<span>${drop.claimed ? 'Получено' : 'Можно забрать'}</span>`
+      ? `<span>${drop.claimed ? tr('Получено') : tr('Можно забрать')}</span>`
       : (remaining > 0
-        ? `<span>ещё ${this.esc(this.formatMinutes(remaining))}</span>`
-        : `<span>${this.esc(drop.progress)} / ${this.esc(drop.required)} мин</span>`);
+        ? `<span>${tr('ещё {time}', { time: this.esc(this.formatMinutes(remaining)) })}</span>`
+        : `<span>${tr('{progress} / {required} мин', { progress: this.esc(drop.progress), required: this.esc(drop.required) })}</span>`);
     const tip = notWatchable
-      ? `${dropName} — выдаётся за подписку или другое условие, просмотром не получить`
+      ? tr('{name} — выдаётся за подписку или другое условие, просмотром не получить', { name: dropName })
       : isCompleted
       ? dropName
-      : `${dropName} — ${Number(drop.progress) || 0} из ${Number(drop.required) || 0} мин`;
+      : tr('{name} — {progress} из {required} мин', { name: dropName, progress: Number(drop.progress) || 0, required: Number(drop.required) || 0 });
 
     return `
       <div class="drop-progress-card drop-card-clickable${isCompleted ? ' is-earned' : ''}"
@@ -4464,7 +4476,7 @@ class FarmingPage {
         <div class="drop-tile-top">
           ${art}
           ${isCompleted
-            ? `<span class="drop-tile-check" aria-label="Получено">${icon('check-circle', 16)}</span>`
+            ? `<span class="drop-tile-check" aria-label="${tr('Получено')}">${icon('check-circle', 16)}</span>`
             : `<span class="drop-tile-pct">${dropPercent}%</span>`}
         </div>
         <div class="drop-tile-name">${this.esc(dropName)}</div>
@@ -4499,8 +4511,8 @@ class FarmingPage {
       <div class="drops-panel-campaign">
         ${campaign.game?.boxArtURL ? `<img class="drops-panel-campaign-art" src="${this.esc(campaign.game.boxArtURL)}" alt="">` : ''}
         <span class="drops-panel-campaign-name" title="${this.esc(campaignTitle)}">${this.esc(campaignTitle)}</span>
-        ${notStarted ? '<span class="badge badge-warning">Не начата</span>' : ''}
-        <span class="drops-panel-campaign-meta">${[timeLeft, `${completed} из ${total}`].filter(Boolean).map(part => this.esc(part)).join(' · ')}</span>
+        ${notStarted ? `<span class="badge badge-warning">${tr('Не начата')}</span>` : ''}
+        <span class="drops-panel-campaign-meta">${[timeLeft, tr('{done} из {total}', { done: completed, total })].filter(Boolean).map(part => this.esc(part)).join(' · ')}</span>
       </div>
     ` : '';
 
@@ -4560,24 +4572,26 @@ class FarmingPage {
     const foot = allDone
       ? `<div class="drops-done">
            ${icon('check-circle', 16)}
-           <span class="drops-done-text">Все награды кампании получены</span>
+           <span class="drops-done-text">${tr('Все награды кампании получены')}</span>
            <div class="drops-done-actions" id="drops-done-actions"></div>
          </div>`
       : pendingClaim
-        ? 'Награда готова — забираю'
+        ? tr('Награда готова — забираю')
         // «1 из 4 наград получено» вместо «1/4 Дропсов получено»
-        : `${completedDrops} из ${totalDrops} ${this.plural(totalDrops, 'награды', 'наград', 'наград')} получено`;
+        : tr('{done} из {total} {word} получено', {
+          done: completedDrops, total: totalDrops, word: this.plural(totalDrops, 'награды', 'наград', 'наград')
+        });
 
     return `
       <div class="drops-panel">
         <div class="drops-panel-head">
-          <div class="card-title">Награды кампании ${countBadge}</div>
+          <div class="card-title">${tr('Награды кампании')} ${countBadge}</div>
           <div class="drops-panel-meta">
-            ${timeRemaining ? `<span class="${endingSoon ? 'tone-warn' : ''}" title="До конца кампании">до конца ${this.esc(timeRemaining)}</span>` : ''}
+            ${timeRemaining ? `<span class="${endingSoon ? 'tone-warn' : ''}" title="${tr('До конца кампании')}">${tr('до конца {time}', { time: this.esc(timeRemaining) })}</span>` : ''}
             <span class="drops-panel-pct">${overallPercent}%</span>
           </div>
         </div>
-        <div class="progress progress-lg${overallPercent === 100 ? ' is-complete' : ''}" role="progressbar" aria-label="Прогресс кампании" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${overallPercent}">
+        <div class="progress progress-lg${overallPercent === 100 ? ' is-complete' : ''}" role="progressbar" aria-label="${tr('Прогресс кампании')}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${overallPercent}">
           <div class="progress-fill" style="width: ${overallPercent}%"></div>
         </div>
         ${this.buildForecastMarkup(campaigns)}
@@ -4605,13 +4619,14 @@ class FarmingPage {
     }
 
     const drop = next.drop;
-    const name = drop.benefitName || drop.name || 'Награда';
+    const name = drop.benefitName || drop.name || tr('Награда');
     const required = Number(drop.required) || 0;
     const progress = Number(drop.progress) || 0;
     const percent = required > 0 ? Math.min(100, Math.floor(progress / required * 100)) : 0;
     const left = Math.max(0, Math.ceil(next.minutesNeeded));
+    // В английском — «8:05 PM» без ведущего нуля, в русском — «08:05», как было
     const clock = new Date(Date.now() + left * 60000)
-      .toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+      .toLocaleTimeString(tr.locale(), { hour: tr.lang() === 'en' ? 'numeric' : '2-digit', minute: '2-digit' });
     const image = drop.imageURL || drop.image || '';
     const icon = (n, size) => window.Icons?.get(n, size) ?? '';
 
@@ -4622,11 +4637,11 @@ class FarmingPage {
       <div class="farm-next-name" title="${this.esc(name)}">${this.esc(name)}</div>
       <div class="farm-next-pct">${percent}%</div>
       <div class="farm-next-when${left > 0 ? '' : ' is-ready'}">${left > 0
-        ? `Следующая награда через ${this.esc(this.formatMinutes(left))} · к ${this.esc(clock)}`
-        : 'Время набрано — награду забирает автосбор'}</div>
+        ? tr('Следующая награда через {time} · к {clock}', { time: this.esc(this.formatMinutes(left)), clock: this.esc(clock) })
+        : tr('Время набрано — награду забирает автосбор')}</div>
       <div class="progress progress-sm" aria-hidden="true"><div class="progress-fill" style="width: ${percent}%"></div></div>
     `;
-    box.setAttribute('aria-label', `Следующая награда: ${name}, ${percent}%`);
+    box.setAttribute('aria-label', tr('Следующая награда: {name}, {percent}%', { name, percent }));
     box.hidden = false;
   }
 
@@ -4794,9 +4809,9 @@ class FarmingPage {
                 'Palia',
                 'https://static-cdn.jtvnw.net/ttv-boxart/1239948690_IGDB-285x380.jpg'
               );
-              window.utils.showToast('Тестовое уведомление отправлено', 'info');
+              window.utils.showToast(tr('Тестовое уведомление отправлено'), 'info');
             } else {
-              window.utils.showToast('Включите "Режим разработчика" в настройках', 'warning');
+              window.utils.showToast(tr('Включите "Режим разработчика" в настройках'), 'warning');
             }
           });
         }
@@ -4843,7 +4858,7 @@ class FarmingPage {
               this._manualDoneShownFor = this.currentCategory.id;
               console.log('[Ручной запуск] Все награды получены, категорию не меняем:', this.currentCategory.name);
               window.utils?.showToast(
-                `«${this.currentCategory.name}»: все награды получены. Категория запущена вручную — переключите, когда захотите`,
+                tr('«{name}»: все награды получены. Категория запущена вручную — переключите, когда захотите', { name: this.currentCategory.name }),
                 'success'
               );
             }
@@ -4937,15 +4952,15 @@ class FarmingPage {
 
     // Причина — настоящая. Раньше предложение всегда говорило «дропсов
     // нет», даже когда стример ушёл в другую игру или кампания отработана
-    const name = `«${categoryName}»`;
+    const name = categoryName;
     const titles = {
-      noDrops: `В категории ${name} дропсов нет`,
-      offline: `Стрим в ${name} закончился`,
-      gameChanged: `Стример ушёл из ${name} в другую игру`,
-      noCredit: `Канал в ${name} не засчитывает дропсы`,
-      done: `${name}: ${detail || 'кампания отработана'}`
+      noDrops: tr('В категории «{name}» дропсов нет', { name }),
+      offline: tr('Стрим в «{name}» закончился', { name }),
+      gameChanged: tr('Стример ушёл из «{name}» в другую игру', { name }),
+      noCredit: tr('Канал в «{name}» не засчитывает дропсы', { name }),
+      done: tr('«{name}»: {detail}', { name, detail: detail || tr('кампания отработана') })
     };
-    const title = titles[reason] || `В ${name} сейчас брать нечего`;
+    const title = titles[reason] || tr('В «{name}» сейчас брать нечего', { name });
 
     // Нейтральная строка с одной главной кнопкой («Перейти»); значок
     // предупреждения — единственный цветной элемент
@@ -4956,15 +4971,15 @@ class FarmingPage {
           <div class="switch-offer-title">${window.Icons?.get('info', 16) ?? ''}<span>${this.esc(title)}</span></div>
           <div class="switch-offer-sub">
             ${candidate
-              ? `Категория запущена вручную, поэтому сами её не переключаем. Дропсы есть в «${this.esc(candidate.name)}».`
-              : 'Категория запущена вручную и останется активной. Других категорий с дропсами сейчас нет.'}
+              ? tr('Категория запущена вручную, поэтому сами её не переключаем. Дропсы есть в «{name}».', { name: this.esc(candidate.name) })
+              : tr('Категория запущена вручную и останется активной. Других категорий с дропсами сейчас нет.')}
           </div>
         </div>
         <div class="switch-offer-actions">
-          <button class="btn btn-secondary btn-sm" id="switch-offer-stay">${candidate ? 'Остаться' : 'Понятно'}</button>
+          <button class="btn btn-secondary btn-sm" id="switch-offer-stay">${candidate ? tr('Остаться') : tr('Понятно')}</button>
           ${candidate ? `
             <button class="btn btn-primary btn-sm" id="switch-offer-go" data-category-id="${this.esc(candidate.id)}">
-              Перейти в «${this.esc(candidate.name)}»
+              ${tr('Перейти в «{name}»', { name: this.esc(candidate.name) })}
             </button>
           ` : ''}
         </div>
@@ -5070,8 +5085,8 @@ class FarmingPage {
     this.renderCategories();
     
     window.utils.showToast(removedFromList
-      ? `${categoryName} убрана из списка: дропсов нет`
-      : `${categoryName} выключена: дропсов нет`, 'warning');
+      ? tr('{name} убрана из списка: дропсов нет', { name: categoryName })
+      : tr('{name} выключена: дропсов нет', { name: categoryName }), 'warning');
 
     // Переключаемся на следующую доступную категорию. Если переключаться
     // некуда, фарминг останавливает сам switchToNextEnabledCategory —
@@ -5107,10 +5122,10 @@ class FarmingPage {
     this.updateAutoFarmButton();
 
     if (showToast) {
-      window.utils.showToast('Фарминг остановлен', 'info');
+      window.utils.showToast(tr('Фарминг остановлен'), 'info');
       // Тост показывается только при остановке кнопкой — это и есть
       // «остановил пользователь»; остальные пути пишут в журнал сами
-      if (this.sessionStartTime) window.eventLog?.add({ type: 'stop', title: 'Фарминг остановлен' });
+      if (this.sessionStartTime) window.eventLog?.add({ type: 'stop', title: tr('Фарминг остановлен') });
     }
     if (!preserveSession) {
       saves.push(Storage.delete('activeSession'));
@@ -5366,8 +5381,8 @@ class FarmingPage {
   }
 
   formatBytes(bytes) {
-    if (!bytes || bytes <= 0) return '0 Б';
-    const units = ['Б', 'КБ', 'МБ', 'ГБ', 'ТБ'];
+    if (!bytes || bytes <= 0) return tr('0 Б');
+    const units = [tr('Б'), tr('КБ'), tr('МБ'), tr('ГБ'), tr('ТБ')];
     const i = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
     return `${(bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
   }
@@ -5431,7 +5446,7 @@ class FarmingPage {
     const escape = (text) => this.esc(text);
 
     if (!next) {
-      tip.innerHTML = '<div class="drops-tip-name">Незабранных наград нет</div>';
+      tip.innerHTML = `<div class="drops-tip-name">${tr('Незабранных наград нет')}</div>`;
       tip.setAttribute('aria-hidden', 'false');
       return timeline;
     }
@@ -5444,11 +5459,11 @@ class FarmingPage {
       <div class="drops-tip-row">
         ${icon ? `<img src="${escape(icon)}" alt="" onerror="this.style.visibility='hidden'">` : ''}
         <div>
-          <div class="drops-tip-name">${escape(next.drop.name || next.drop.benefitName || 'Награда')}</div>
-          <div class="drops-tip-left">${left > 0 ? `осталось ${this.formatMinutes(left)}` : 'готова к получению'}</div>
+          <div class="drops-tip-name">${escape(next.drop.name || next.drop.benefitName || tr('Награда'))}</div>
+          <div class="drops-tip-left">${left > 0 ? tr('осталось {time}', { time: this.formatMinutes(left) }) : tr('готова к получению')}</div>
         </div>
       </div>
-      <div class="drops-tip-note">Собрано ${collected} из ${timeline.marks.length} · чёрточки — рубежи выдачи</div>
+      <div class="drops-tip-note">${tr('Собрано {done} из {total} · чёрточки — рубежи выдачи', { done: collected, total: timeline.marks.length })}</div>
     `;
     tip.setAttribute('aria-hidden', 'false');
 
@@ -5473,15 +5488,15 @@ class FarmingPage {
     if (minutes === null) return '';
 
     const clock = (fromNow) => new Date(now + fromNow * 60000)
-      .toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+      .toLocaleTimeString(tr.locale(), { hour: tr.lang() === 'en' ? 'numeric' : '2-digit', minute: '2-digit' });
 
     const reachable = CV.reachableCount(campaigns, now);
     // Строка текста с часами вместо цветных плашек: «Все награды через
     // 4 ч 25 мин · к 07:01 · до выключения успеется всё»
     const parts = [`
       ${window.Icons?.get('clock', 14) ?? ''}
-      <span class="drops-forecast-main">Все награды через ${this.formatMinutes(minutes)}</span>
-      <span class="drops-forecast-clock">к ${clock(minutes)}</span>
+      <span class="drops-forecast-main">${tr('Все награды через {time}', { time: this.formatMinutes(minutes) })}</span>
+      <span class="drops-forecast-clock">${tr('к {clock}', { clock: clock(minutes) })}</span>
     `];
 
     // Если заведено автовыключение по таймеру — сразу видно, что из
@@ -5493,9 +5508,9 @@ class FarmingPage {
 
       parts.push(`
         <span class="drops-forecast-note ${enough ? 'ok' : 'short'}">
-          До выключения в ${clock(untilShutdown)} ${enough
-            ? 'успеется всё'
-            : `успеется ${willGet} из ${reachable}`}
+          ${enough
+            ? tr('До выключения в {clock} успеется всё', { clock: clock(untilShutdown) })
+            : tr('До выключения в {clock} успеется {count} из {total}', { clock: clock(untilShutdown), count: willGet, total: reachable })}
         </span>
       `);
     }
@@ -5527,8 +5542,8 @@ class FarmingPage {
     const total = Math.max(0, Math.round(minutes));
     const hours = Math.floor(total / 60);
     const rest = total % 60;
-    if (hours > 0) return rest > 0 ? `${hours} ч ${rest} мин` : `${hours} ч`;
-    return `${rest} мин`;
+    if (hours > 0) return rest > 0 ? tr('{hours} ч {minutes} мин', { hours, minutes: rest }) : tr('{hours} ч', { hours });
+    return tr('{minutes} мин', { minutes: rest });
   }
 
   /**
@@ -5596,7 +5611,7 @@ class FarmingPage {
     // экран не прыгает, когда приходят данные
     const tile = '<div class="skeleton drops-panel-skeleton-tile"></div>';
     horizontal.innerHTML = `
-      <div class="drops-panel is-loading" aria-busy="true" aria-label="Загрузка наград">
+      <div class="drops-panel is-loading" aria-busy="true" aria-label="${tr('Загрузка наград')}">
         <div class="skeleton skeleton-title"></div>
         <div class="skeleton drops-panel-skeleton-bar"></div>
         <div class="drop-tiles">${tile.repeat(4)}</div>
@@ -5709,7 +5724,8 @@ class FarmingPage {
       // Устанавливаем низкое качество при загрузке плеера
       player.addEventListener('dom-ready', () => {
         // Пробуем установить качество через JavaScript injection
-        player.executeJavaScript(`
+        // Русское внутри строки — только комментарии кода для страницы Twitch
+        player.executeJavaScript(/* i18n-ignore */ `
           setTimeout(() => {
             try {
               // Пытаемся найти кнопку настроек качества
@@ -5759,7 +5775,7 @@ class FarmingPage {
       document.getElementById('stream-channel').textContent = stream.displayName;
       // Просто название игры: подпись «Игра:» лишняя — рядом обложка
       document.getElementById('stream-game').textContent = category.name;
-      document.getElementById('stream-title').textContent = stream.title || 'Без названия';
+      document.getElementById('stream-title').textContent = stream.title || tr('Без названия');
       
       // Теги стрима. Видимостью управляет CSS через :not(:empty),
       // поэтому здесь достаточно записать текст или очистить его.
@@ -5948,10 +5964,10 @@ class FarmingPage {
     const icon = (name, size) => window.Icons?.get(name, size) ?? '';
     // Метрики — тихими числами в строку, без цветных плиток
     const kpis = [
-      channelDetails.followers ? ['Подписчиков', this.esc(this.formatFollowers(channelDetails.followers))] : null,
-      streamStats.viewers ? ['Зрителей', this.esc(formatViewers(streamStats.viewers))] : null,
-      streamStats.uptime ? ['В эфире', this.esc(streamStats.uptime)] : null,
-      streamStats.points ? ['Баллы канала', this.esc(Number(streamStats.points).toLocaleString('ru-RU'))] : null
+      channelDetails.followers ? [tr('Подписчиков'), this.esc(this.formatFollowers(channelDetails.followers))] : null,
+      streamStats.viewers ? [tr('Зрителей'), this.esc(formatViewers(streamStats.viewers))] : null,
+      streamStats.uptime ? [tr('В эфире'), this.esc(streamStats.uptime)] : null,
+      streamStats.points ? [tr('Баллы канала'), this.esc(Number(streamStats.points).toLocaleString(tr.locale()))] : null
     ].filter(Boolean);
 
     modalContent.innerHTML = `
@@ -5959,14 +5975,14 @@ class FarmingPage {
         <img class="stream-detail-avatar" src="${this.esc(profileImageUrl)}" alt=""
              onerror="this.onerror=null; this.src='https://static-cdn.jtvnw.net/user-default-pictures-uv/cdd517fe-def4-11e9-948e-784f43822e80-profile_image-300x300.png';">
         <div>
-          <div class="dialog-eyebrow">Сейчас смотрим</div>
+          <div class="dialog-eyebrow">${tr('Сейчас смотрим')}</div>
           <h2 class="dialog-title" id="stream-detail-title">${this.esc(stream.displayName)}</h2>
           <div class="row-meta">
             <span>@${this.esc(stream.login)}</span>
-            ${channelDetails.isLive ? '<span class="tone-ok">в эфире</span>' : ''}
+            ${channelDetails.isLive ? `<span class="tone-ok">${tr('в эфире')}</span>` : ''}
           </div>
         </div>
-        <button id="close-stream-modal" class="dialog-close" type="button" title="Закрыть (Esc)" aria-label="Закрыть">${icon('close', 16)}</button>
+        <button id="close-stream-modal" class="dialog-close" type="button" title="${tr('Закрыть (Esc)')}" aria-label="${tr('Закрыть')}">${icon('close', 16)}</button>
       </div>
 
       <div class="dialog-body">
@@ -5980,12 +5996,12 @@ class FarmingPage {
           </div>` : ''}
 
         <div class="stream-detail-section">
-          <div class="section-label">${icon('monitor', 14)} Название стрима</div>
-          <div id="stream-title-text" class="stream-detail-title" title="Нажмите, чтобы скопировать">${this.esc(stream.title || 'Без названия')}</div>
+          <div class="section-label">${icon('monitor', 14)} ${tr('Название стрима')}</div>
+          <div id="stream-title-text" class="stream-detail-title" title="${tr('Нажмите, чтобы скопировать')}">${this.esc(stream.title || tr('Без названия'))}</div>
         </div>
 
         <div class="stream-detail-section">
-          <div class="section-label">${icon('gamepad', 14)} Категория</div>
+          <div class="section-label">${icon('gamepad', 14)} ${tr('Категория')}</div>
           <div class="stream-detail-category">
             <img class="row-art" src="${this.esc(this.boxArtSrc(category.boxArtURL, '60x84', category.id))}" alt=""
                  onerror="this.onerror=null;this.src=window.DROP_PLACEHOLDER||'';">
@@ -5993,7 +6009,7 @@ class FarmingPage {
               <div class="row-title">${this.esc(category.name)}</div>
               <div class="row-meta">
                 ${category.viewersCount ? `<span>${this.esc(this.viewersLabel(category.viewersCount))}</span>` : ''}
-                ${category.hasDrops ? '<span class="tone-ok">Дропсы доступны</span>' : ''}
+                ${category.hasDrops ? `<span class="tone-ok">${tr('Дропсы доступны')}</span>` : ''}
               </div>
             </div>
           </div>
@@ -6001,7 +6017,7 @@ class FarmingPage {
 
         ${channelDetails.description ? `
           <div class="stream-detail-section">
-            <div class="section-label">${icon('info', 14)} О канале</div>
+            <div class="section-label">${icon('info', 14)} ${tr('О канале')}</div>
             <div class="stream-detail-about">${this.esc(channelDetails.description)}</div>
           </div>` : ''}
       </div>
@@ -6009,7 +6025,7 @@ class FarmingPage {
       <div class="dialog-foot">
         <button id="open-stream-on-twitch" class="btn btn-secondary" type="button">
           ${icon('external', 16)}
-          <span>Открыть на Twitch</span>
+          <span>${tr('Открыть на Twitch')}</span>
         </button>
       </div>
     `;
@@ -6024,10 +6040,10 @@ class FarmingPage {
     const titleEl = modal.querySelector('#stream-title-text');
     if (titleEl) {
       titleEl.addEventListener('click', () => {
-        navigator.clipboard.writeText(stream.title || 'Без названия').then(() => {
-          window.utils.showToast('Название скопировано', 'success');
+        navigator.clipboard.writeText(stream.title || tr('Без названия')).then(() => {
+          window.utils.showToast(tr('Название скопировано'), 'success');
         }).catch(() => {
-          window.utils.showToast('Ошибка копирования', 'error');
+          window.utils.showToast(tr('Ошибка копирования'), 'error');
         });
       });
     }
@@ -6101,11 +6117,11 @@ class FarmingPage {
         if (stats === null) {
           this._offlineStatChecks = (this._offlineStatChecks || 0) + 1;
           const uptimeEl = document.getElementById('stream-uptime');
-          if (uptimeEl) uptimeEl.textContent = 'не в эфире';
+          if (uptimeEl) uptimeEl.textContent = tr('не в эфире');
           if (this._offlineStatChecks >= 2) {
             this._offlineStatChecks = 0;
             console.warn('[Стрим] Канал закончил эфир:', channelLogin);
-            this.onPlayerDead({ channel: channelLogin, reason: 'канал закончил эфир' });
+            this.onPlayerDead({ channel: channelLogin, reason: 'канал закончил эфир' }); // i18n-ignore: причина только для журнала консоли
           }
           return;
         }
@@ -6149,10 +6165,10 @@ class FarmingPage {
                   // просмотр не той игры. Переключать запрещено, но сказать
                   // об этом нужно — один раз на канал, а не каждую минуту
                   this.toastOnce('game:' + channelLogin,
-                    'Стример сменил игру, дропсы не идут. Автопереключение выключено', 'warning');
+                    tr('Стример сменил игру, дропсы не идут. Автопереключение выключено'), 'warning');
                   return;
                 }
-                window.utils?.showToast('Стример сменил игру — переключаюсь', 'info');
+                window.utils?.showToast(tr('Стример сменил игру — переключаюсь'), 'info');
                 try {
                   // Пытаемся найти другой стрим в той же категории
                   const streams = await window.electronAPI.getStreamsWithDrops(expectedCategory);
@@ -6274,7 +6290,7 @@ class FarmingPage {
     this._creditStartedAt = Date.now();
     this._creditLastGrowthAt = this._creditStartedAt;
     this._creditStrikes = 0;
-    this.renderDropCredit({ state: 'waiting', reason: 'жду первого ответа Twitch' });
+    this.renderDropCredit({ state: 'waiting', reason: 'жду первого ответа Twitch' }); // i18n-ignore: код причины, текст даёт DropCredit.explain
 
     if (!window.DropCredit || !window.electronAPI?.getDropSession) return;
 
@@ -6389,7 +6405,9 @@ class FarmingPage {
     if (!box || !text) return;
 
     box.dataset.state = verdict?.state || 'waiting';
-    box.title = verdict?.reason || '';
+    // reason — русский код причины (DropCredit сравнивает по нему), на
+    // экран — его пояснение на языке интерфейса
+    box.title = window.DropCredit?.explain ? window.DropCredit.explain(verdict) : (verdict?.reason || '');
     text.textContent = window.DropCredit ? window.DropCredit.describe(verdict) : '';
   }
 
@@ -6411,7 +6429,7 @@ class FarmingPage {
     // Тосты — один раз на канал: проверка повторяется каждые две минуты,
     // и раньше одно и то же сообщение висело всю ночь
     if (window.settings && window.settings.get('autoSwitchStreams') === false) {
-      this.toastOnce('nocredit:' + login, 'Канал не засчитывает дропсы. Автопереключение выключено', 'warning');
+      this.toastOnce('nocredit:' + login, tr('Канал не засчитывает дропсы. Автопереключение выключено'), 'warning');
       return;
     }
 
@@ -6442,8 +6460,8 @@ class FarmingPage {
       } else if (elsewhere) {
         this._noStreamsUntil.set(categoryId, now + 2 * 60 * 60 * 1000);
         console.warn('[Зачёт] В категории не засчитывает ни один канал — откладываю на 2 ч:', name);
-        window.eventLog?.add?.({ type: 'warning', title: 'Категория отложена', detail: `${name}: Twitch не засчитывает минуты ни на одном канале`, game: name });
-        this.toastOnce('nocredit-cat:' + categoryId, `${name}: Twitch не засчитывает минуты — перехожу к другой категории`, 'warning');
+        window.eventLog?.add?.({ type: 'warning', title: tr('Категория отложена'), detail: tr('{name}: Twitch не засчитывает минуты ни на одном канале', { name }), game: name });
+        this.toastOnce('nocredit-cat:' + categoryId, tr('{name}: Twitch не засчитывает минуты — перехожу к другой категории', { name }), 'warning');
         await this.switchToNextEnabledCategory({ reason: 'noCredit' });
         return;
       } else {
@@ -6455,7 +6473,7 @@ class FarmingPage {
       }
     }
 
-    this.toastOnce('nocredit:' + login, 'Канал не засчитывает дропсы, ищу другой', 'warning');
+    this.toastOnce('nocredit:' + login, tr('Канал не засчитывает дропсы, ищу другой'), 'warning');
     const result = await this.switchToNextStream({ quiet: true });
 
     // Других стримов в категории нет — пробуем другие категории (у ручной
@@ -6554,26 +6572,26 @@ class FarmingPage {
    */
   async switchToNextStream(options = {}) {
     if (!this.currentCategory || !this.currentStream) {
-      window.utils.showToast('Нет активного стрима', 'warning');
+      window.utils.showToast(tr('Нет активного стрима'), 'warning');
       return 'none';
     }
 
     const revision = this.beginStreamOperation();
     const snapshot = this.streamSnapshot();
     try {
-      if (!options.quiet) window.utils.showToast('Ищем следующий стрим...', 'info');
+      if (!options.quiet) window.utils.showToast(tr('Ищем следующий стрим...'), 'info');
 
       // Получаем стримы текущей категории
       const streams = await window.electronAPI.getStreamsWithDrops(this.currentCategory.name);
       if (!this.isStreamOperationCurrent(revision) || !this.isCurrentStream(snapshot)) return;
 
       if (!Array.isArray(streams)) {
-        window.utils.showToast('Twitch не отвечает, попробуйте позже', 'warning');
+        window.utils.showToast(tr('Twitch не отвечает, попробуйте позже'), 'warning');
         return 'error';
       }
 
       if (streams.length === 0) {
-        if (!options.quiet) window.utils.showToast('Нет доступных стримов', 'warning');
+        if (!options.quiet) window.utils.showToast(tr('Нет доступных стримов'), 'warning');
         return 'none';
       }
 
@@ -6587,14 +6605,14 @@ class FarmingPage {
       if (!this.isStreamOperationCurrent(revision) || !this.isCurrentStream(snapshot)) return;
 
       if (nextStream && nextStream.login === this.currentStream?.login) {
-        if (!options.quiet) window.utils.showToast('Других стримов в этой категории нет', 'warning');
+        if (!options.quiet) window.utils.showToast(tr('Других стримов в этой категории нет'), 'warning');
         return 'none';
       }
 
       if (nextStream) {
         // Переключаемся на следующий стрим
         await this.switchToStream(nextStream);
-        window.utils.showToast(`Переключено на ${nextStream.displayName}`, 'success');
+        window.utils.showToast(tr('Переключено на {name}', { name: nextStream.displayName }), 'success');
         return 'switched';
       }
 
@@ -6603,7 +6621,7 @@ class FarmingPage {
       return 'none';
     } catch (error) {
       console.error('Error switching stream:', error);
-      window.utils.showToast('Ошибка переключения стрима', 'error');
+      window.utils.showToast(tr('Ошибка переключения стрима'), 'error');
       return 'error';
     }
   }
@@ -6614,12 +6632,12 @@ class FarmingPage {
     const activeCategories = this.categories.filter(c => c.enabled !== false);
     
     if (activeCategories.length < 2) {
-      window.utils.showToast('Добавьте больше активных категорий', 'warning');
+      window.utils.showToast(tr('Добавьте больше активных категорий'), 'warning');
       return;
     }
 
     if (!this.currentCategory || !this.sessionStartTime) {
-      window.utils.showToast('Нет активной категории', 'warning');
+      window.utils.showToast(tr('Нет активной категории'), 'warning');
       return;
     }
 
@@ -6635,7 +6653,7 @@ class FarmingPage {
       const prevIndex = currentIndex > 0 ? currentIndex - 1 : activeCategories.length - 1;
       const prevCategory = activeCategories[prevIndex];
       
-      window.utils.showToast(`Ищем стримы в ${prevCategory.name}...`, 'info');
+      window.utils.showToast(tr('Ищем стримы в {name}...', { name: prevCategory.name }), 'info');
       
       // Получаем стримы для предыдущей категории
       const streams = await window.electronAPI.getStreamsWithDrops(prevCategory.name);
@@ -6643,12 +6661,12 @@ class FarmingPage {
 
       // Не ответил — не то же самое, что «стримов нет»
       if (!Array.isArray(streams)) {
-        window.utils.showToast(`Twitch не ответил по категории ${prevCategory.name}`, 'warning');
+        window.utils.showToast(tr('Twitch не ответил по категории {name}', { name: prevCategory.name }), 'warning');
         return;
       }
       
       if (streams.length === 0) {
-        window.utils.showToast('Нет доступных стримов', 'warning');
+        window.utils.showToast(tr('Нет доступных стримов'), 'warning');
         return;
       }
       
@@ -6656,7 +6674,7 @@ class FarmingPage {
       const stream = await this.pickPreferredStream(streams, prevCategory.name);
       if (!this.isStreamOperationCurrent(revision)) return;
       if (!stream?.login) {
-        window.utils.showToast('В категории ' + prevCategory.name + ' нет подходящего стрима', 'warning');
+        window.utils.showToast(tr('В категории {name} нет подходящего стрима', { name: prevCategory.name }), 'warning');
         return;
       }
       this.currentCategory = prevCategory;
@@ -6680,10 +6698,10 @@ class FarmingPage {
       await this.saveActiveSession(stream, prevCategory);
       if (!this.isStreamOperationCurrent(revision)) return;
 
-      window.utils.showToast(`Переключено на ${prevCategory.name}`, 'success');
+      window.utils.showToast(tr('Переключено на {name}', { name: prevCategory.name }), 'success');
     } catch (error) {
       console.error('Error switching to prev category:', error);
-      window.utils.showToast('Ошибка переключения категории', 'error');
+      window.utils.showToast(tr('Ошибка переключения категории'), 'error');
     }
   }
 
@@ -6693,12 +6711,12 @@ class FarmingPage {
     const activeCategories = this.categories.filter(c => c.enabled !== false);
     
     if (activeCategories.length < 2) {
-      window.utils.showToast('Добавьте больше активных категорий', 'warning');
+      window.utils.showToast(tr('Добавьте больше активных категорий'), 'warning');
       return;
     }
 
     if (!this.currentCategory || !this.sessionStartTime) {
-      window.utils.showToast('Нет активной категории', 'warning');
+      window.utils.showToast(tr('Нет активной категории'), 'warning');
       return;
     }
 
@@ -6714,7 +6732,7 @@ class FarmingPage {
       const nextIndex = (currentIndex + 1) % activeCategories.length;
       const nextCategory = activeCategories[nextIndex];
       
-      window.utils.showToast(`Ищем стримы в ${nextCategory.name}...`, 'info');
+      window.utils.showToast(tr('Ищем стримы в {name}...', { name: nextCategory.name }), 'info');
       
       // Получаем стримы для следующей категории
       const streams = await window.electronAPI.getStreamsWithDrops(nextCategory.name);
@@ -6722,12 +6740,12 @@ class FarmingPage {
 
       // Не ответил — не то же самое, что «стримов нет»
       if (!Array.isArray(streams)) {
-        window.utils.showToast(`Twitch не ответил по категории ${nextCategory.name}`, 'warning');
+        window.utils.showToast(tr('Twitch не ответил по категории {name}', { name: nextCategory.name }), 'warning');
         return;
       }
       
       if (streams.length === 0) {
-        window.utils.showToast('Нет доступных стримов', 'warning');
+        window.utils.showToast(tr('Нет доступных стримов'), 'warning');
         return;
       }
       
@@ -6735,7 +6753,7 @@ class FarmingPage {
       const stream = await this.pickPreferredStream(streams, nextCategory.name);
       if (!this.isStreamOperationCurrent(revision)) return;
       if (!stream?.login) {
-        window.utils.showToast('В категории ' + nextCategory.name + ' нет подходящего стрима', 'warning');
+        window.utils.showToast(tr('В категории {name} нет подходящего стрима', { name: nextCategory.name }), 'warning');
         return;
       }
       this.currentCategory = nextCategory;
@@ -6755,10 +6773,10 @@ class FarmingPage {
       await this.saveActiveSession(stream, nextCategory);
       if (!this.isStreamOperationCurrent(revision)) return;
 
-      window.utils.showToast(`Переключено на ${nextCategory.name}`, 'success');
+      window.utils.showToast(tr('Переключено на {name}', { name: nextCategory.name }), 'success');
     } catch (error) {
       console.error('Error switching to next category:', error);
-      window.utils.showToast('Ошибка переключения категории', 'error');
+      window.utils.showToast(tr('Ошибка переключения категории'), 'error');
     }
   }
 
@@ -6770,20 +6788,20 @@ class FarmingPage {
     const grid = document.getElementById('player-chat-grid');
 
     if (!playerContainer || !chatContainer || !chatSlot || !grid) {
-      window.utils.showToast('Чат не найден', 'error');
+      window.utils.showToast(tr('Чат не найден'), 'error');
       return;
     }
 
     // Проверяем видим ли контейнер плеера (значит стрим активен)
     if (playerContainer.style.display === 'none') {
-      window.utils.showToast('Нет активного стрима', 'warning');
+      window.utils.showToast(tr('Нет активного стрима'), 'warning');
       return;
     }
 
     const channel = this.currentStream?.login;
     
     if (!channel) {
-      window.utils.showToast('Нет активного стрима', 'warning');
+      window.utils.showToast(tr('Нет активного стрима'), 'warning');
       return;
     }
     
@@ -6806,7 +6824,7 @@ class FarmingPage {
         chatContainer.style.transform = 'translateX(0)';
       }, 10);
       
-      window.utils.showToast('Чат показан', 'info');
+      window.utils.showToast(tr('Чат показан'), 'info');
     } else {
       // Скрываем чат с анимацией (но не выгружаем, чтобы автосбор продолжал работать)
       chatContainer.style.opacity = '0';
@@ -6821,7 +6839,7 @@ class FarmingPage {
         window.chatManager?.detach();
       }, 300); // Ждем завершения анимации
       
-      window.utils.showToast('Чат скрыт', 'info');
+      window.utils.showToast(tr('Чат скрыт'), 'info');
     }
   }
   
@@ -6831,13 +6849,13 @@ class FarmingPage {
   
   toggleNotifications() {
     if (!this.currentStream) {
-      window.utils.showToast('Нет активного стрима', 'warning');
+      window.utils.showToast(tr('Нет активного стрима'), 'warning');
       return;
     }
     
     const channelUrl = `https://www.twitch.tv/${this.currentStream.login}`;
     window.electronAPI.openExternal(channelUrl);
-    window.utils.showToast('Откройте страницу канала для настройки уведомлений', 'info');
+    window.utils.showToast(tr('Откройте страницу канала для настройки уведомлений'), 'info');
   }
 
   async switchToStream(stream) {
@@ -6878,7 +6896,8 @@ class FarmingPage {
     
     // Ждем загрузки страницы
     const checkMatureContent = () => {
-      player.executeJavaScript(`
+      // Русское внутри строки — только комментарии кода для страницы Twitch
+      player.executeJavaScript(/* i18n-ignore */ `
         (function() {
           // Ищем кнопку "Continue Watching" или "Start Watching"
           const selectors = [
@@ -7032,14 +7051,14 @@ class FarmingPage {
     );
 
     if (!next) {
-      box.innerHTML = '<span class="drops-done-hint">Других категорий с дропсами сейчас нет</span>';
+      box.innerHTML = `<span class="drops-done-hint">${tr('Других категорий с дропсами сейчас нет')}</span>`;
       return;
     }
 
     box.innerHTML = `
       <button class="btn btn-primary btn-sm" id="drops-next-category">
         ${window.Icons?.get('play', 14) ?? ''}
-        <span>Перейти к «${this.esc(next.name)}»</span>
+        <span>${tr('Перейти к «{name}»', { name: this.esc(next.name) })}</span>
       </button>
     `;
 
@@ -7127,11 +7146,13 @@ class FarmingPage {
         <img class="suggestion-art" src="${escape(this.boxArtSrc(лучшая.game?.boxArtURL, '52x72', лучшая.game?.id))}"
              alt="" onerror="this.style.visibility='hidden'">
         <div class="suggestion-text">
-          <div class="suggestion-title">${escape(game)} — ${value.perHour} ${this.plural(value.perHour, 'награда', 'награды', 'наград')} за час</div>
-          <div class="suggestion-sub">Игры нет в очереди · до конца кампании ${window.CampaignCalendar.formatLeft(value.minutesLeft)}</div>
+          <div class="suggestion-title">${tr('{game} — {count} {word} за час', {
+            game: escape(game), count: value.perHour, word: this.plural(value.perHour, 'награда', 'награды', 'наград')
+          })}</div>
+          <div class="suggestion-sub">${tr('Игры нет в очереди · до конца кампании {time}', { time: window.CampaignCalendar.formatLeft(value.minutesLeft) })}</div>
         </div>
-        <button class="btn btn-secondary btn-sm suggestion-add" id="suggestion-add">${window.Icons?.get('plus', 14) ?? ''}<span>Добавить</span></button>
-        <button class="btn btn-ghost btn-icon btn-sm suggestion-hide" id="suggestion-hide" title="Не предлагать эту игру" aria-label="Не предлагать эту игру">${window.Icons?.get('close', 14) ?? '✕'}</button>
+        <button class="btn btn-secondary btn-sm suggestion-add" id="suggestion-add">${window.Icons?.get('plus', 14) ?? ''}<span>${tr('Добавить')}</span></button>
+        <button class="btn btn-ghost btn-icon btn-sm suggestion-hide" id="suggestion-hide" title="${tr('Не предлагать эту игру')}" aria-label="${tr('Не предлагать эту игру')}">${window.Icons?.get('close', 14) ?? '✕'}</button>
       </div>
     `;
 
@@ -7198,10 +7219,10 @@ class FarmingPage {
       const box = document.getElementById('category-suggestion');
       if (box) box.innerHTML = '';
 
-      window.utils?.showToast('«' + game + '» добавлена в категории', 'success');
+      window.utils?.showToast(tr('«{game}» добавлена в категории', { game }), 'success');
     } catch (error) {
       console.error('[Подсказка] Не удалось добавить категорию:', error);
-      window.utils?.showToast('Не удалось добавить категорию', 'error');
+      window.utils?.showToast(tr('Не удалось добавить категорию'), 'error');
     }
   }
 
@@ -7340,7 +7361,7 @@ class FarmingPage {
     this._exhaustedCategoryId = null;
 
     this.updateAutoFarmButton();
-    window.utils?.showToast('Дальше категории переключаются автоматически', 'success');
+    window.utils?.showToast(tr('Дальше категории переключаются автоматически'), 'success');
   }
 
   async checkCategoryStillWorthwhile(matched) {
@@ -7381,7 +7402,7 @@ class FarmingPage {
     const tooLate = evaluations.find(e => e.reason === 'tooLate');
     const reason = tooLate
       ? CV.describe(tooLate)
-      : (evaluations.every(e => e.reason === 'done') ? 'Все награды получены' : 'Кампания закончилась');
+      : (evaluations.every(e => e.reason === 'done') ? tr('Все награды получены') : tr('Кампания закончилась'));
 
     console.log('[Дропсы] Смысла продолжать нет:', this.currentCategory.name, '—', reason);
 
@@ -7397,8 +7418,9 @@ class FarmingPage {
       this.saveCategories().catch(() => {});
     }
 
-    window.notifyFarmingEvent?.('Категория отработана', `${this.currentCategory.name}: ${reason}`);
-    window.utils?.showToast(`${this.currentCategory.name}: ${reason}`, 'warning');
+    const doneText = tr('{name}: {reason}', { name: this.currentCategory.name, reason });
+    window.notifyFarmingEvent?.(tr('Категория отработана'), doneText);
+    window.utils?.showToast(doneText, 'warning');
 
     // Категорию, запущенную вручную, приложение не меняет само — как и
     // при отсутствии дропсов, только предлагаем переключиться
@@ -7428,18 +7450,16 @@ class FarmingPage {
       this._endWarned.add(campaign.id);
 
       const minutes = Math.max(1, Math.round(left / 60000));
-      const name = campaign.name || campaign.game?.name || 'Кампания';
+      const name = campaign.name || campaign.game?.name || tr('Кампания');
 
       console.log('[Дропсы] Кампания заканчивается через', minutes, 'мин:', name);
-      window.notifyFarmingEvent(
-        'Кампания скоро закончится',
-        `${name}: ${minutes} мин, не собрано наград — ${unclaimed.length}`
-      );
-      window.utils?.showToast(`${name}: осталось ${minutes} мин, наград не собрано ${unclaimed.length}`, 'warning');
+      const detail = tr('{name}: {minutes} мин, не собрано наград — {count}', { name, minutes, count: unclaimed.length });
+      window.notifyFarmingEvent(tr('Кампания скоро закончится'), detail);
+      window.utils?.showToast(tr('{name}: осталось {minutes} мин, наград не собрано {count}', { name, minutes, count: unclaimed.length }), 'warning');
       window.eventLog?.add({
         type: 'warning',
-        title: 'Кампания скоро закончится',
-        detail: `${name}: ${minutes} мин, не собрано наград — ${unclaimed.length}`,
+        title: tr('Кампания скоро закончится'),
+        detail,
         game: campaign.game?.name || campaign.game?.displayName || ''
       });
     }
@@ -7497,7 +7517,7 @@ class FarmingPage {
 
         this._claimAttempted.add(id);
 
-        const name = drop.benefitName || drop.name || 'Награда';
+        const name = drop.benefitName || drop.name || tr('Награда');
         console.log('[Дропсы] Забираю награду:', name);
 
         let failure = null;
@@ -7527,20 +7547,20 @@ class FarmingPage {
             window.chime?.dropClaimed();
             drop.claimed = true;
             this._claimRetry.delete(id);
-            window.utils?.showToast(`Награда получена: ${name}`, 'success');
+            window.utils?.showToast(tr('Награда получена: {name}', { name }), 'success');
             const game = campaign.game?.name || campaign.name || '';
             window.eventLog?.add({ type: 'drop', title: name, game, icon: drop.imageURL, key: id });
             // «2 из 4» — сколько наград кампании уже получено, вместе с этой
             const drops = campaign.drops || [];
             const extra = drops.length > 1
-              ? { meta: `${drops.filter(d => this.isDropEarned(d)).length} из ${drops.length}` }
+              ? { meta: tr('{done} из {total}', { done: drops.filter(d => this.isDropEarned(d)).length, total: drops.length }) }
               : undefined;
             window.showDropNotification?.(name, game, drop.imageURL, extra);
           } else {
-            failure = result?.error || 'нет ответа';
+            failure = result?.error || 'нет ответа'; // i18n-ignore: только для журнала консоли
           }
         } catch (error) {
-          failure = error?.message || 'ошибка запроса';
+          failure = error?.message || 'ошибка запроса'; // i18n-ignore: только для журнала консоли
         } finally {
           this._claimAttempted.delete(id);
         }
@@ -7570,18 +7590,18 @@ class FarmingPage {
     console.warn('[Дропсы] Не удалось забрать:', name, error, '— повтор через', delay, 'мин');
 
     if (attempts === 1) {
-      window.utils?.showToast(`Не удалось забрать «${name}» — повторю через ${delay} мин`, 'warning');
+      window.utils?.showToast(tr('Не удалось забрать «{name}» — повторю через {delay} мин', { name, delay }), 'warning');
       // В журнал — первая неудача и окончательная; промежуточные повторы
       // по одной и той же награде его бы только засорили. Повтор ещё
       // впереди — это «внимание», а не ошибка: error зажигал бы точку журнала
       // и попадал в «проблемы» сводки, хотя чаще всего второй заход удаётся
-      window.eventLog?.add({ type: 'warning', title: 'Награда не получена', detail: `${name} — повторю через ${delay} мин` });
+      window.eventLog?.add({ type: 'warning', title: tr('Награда не получена'), detail: tr('{name} — повторю через {delay} мин', { name, delay }) });
     }
     if (attempts === FarmingPage.CLAIM_ATTEMPTS_BEFORE_GIVING_UP) {
-      window.notifyFarmingEvent?.('Награда не получена', `${name}: забрать не удалось — заберите вручную`);
-      window.utils?.showToast(`«${name}»: забрать не удалось — заберите вручную`, 'warning');
+      window.notifyFarmingEvent?.(tr('Награда не получена'), tr('{name}: забрать не удалось — заберите вручную', { name }));
+      window.utils?.showToast(tr('«{name}»: забрать не удалось — заберите вручную', { name }), 'warning');
       // Звук — только когда автосбор сдался: дальше нужен человек
-      window.eventLog?.add({ type: 'error', title: 'Награда не получена', detail: `${name}: заберите вручную на странице «Дропсы»` });
+      window.eventLog?.add({ type: 'error', title: tr('Награда не получена'), detail: tr('{name}: заберите вручную на странице «Дропсы»', { name }) });
       window.chime?.play?.('attention');
     }
   }
@@ -7697,16 +7717,16 @@ class FarmingPage {
       // считаем — сторож плеера сам оживит канал, когда сеть вернётся.
       if (await this.isConfirmedOffline(login)) {
         if (this._destroyed || this.currentStream?.login !== login) return;
-        this.finishStreamEnded(`${name} закончил эфир, автопереключение выключено`);
+        this.finishStreamEnded(tr('{name} закончил эфир, автопереключение выключено', { name }));
         return;
       }
       console.log('[Плеер] Стрим недоступен, но автопереключение выключено в настройках');
-      this.toastOnce('dead:' + login, 'Стрим недоступен. Автопереключение выключено', 'warning');
+      this.toastOnce('dead:' + login, tr('Стрим недоступен. Автопереключение выключено'), 'warning');
       return;
     }
 
     console.warn('[Плеер] Стрим не оживить, переключаюсь:', detail.reason || '');
-    this.toastOnce('dead:' + login, 'Стрим недоступен, переключение...', 'warning');
+    this.toastOnce('dead:' + login, tr('Стрим недоступен, переключение...'), 'warning');
     const result = await this.switchToNextStream({ quiet: true });
     if (result !== 'none') return;
     if (this._destroyed || this.currentStream?.login !== login) return;
@@ -7720,7 +7740,7 @@ class FarmingPage {
     // Переключиться некуда. Если фарминг ещё идёт (ручная категория —
     // ей показано предложение), останавливаем его здесь
     if (this.sessionStartTime && this.currentStream?.login === login) {
-      this.finishStreamEnded(`${name}: стрим недоступен, других стримов нет`);
+      this.finishStreamEnded(tr('{name}: стрим недоступен, других стримов нет', { name }));
       return;
     }
     window.shutdownManager?.onStreamEnded();
@@ -7743,9 +7763,9 @@ class FarmingPage {
    */
   finishStreamEnded(text) {
     console.warn('[Плеер] Стрим закончился, переключиться некуда:', text);
-    window.utils?.showToast(`${text}. Фарминг остановлен`, 'warning');
-    window.notifyFarmingEvent?.('Фарминг остановлен', text);
-    window.eventLog?.add({ type: 'error', title: 'Фарминг остановлен', detail: text });
+    window.utils?.showToast(tr('{text}. Фарминг остановлен', { text }), 'warning');
+    window.notifyFarmingEvent?.(tr('Фарминг остановлен'), text);
+    window.eventLog?.add({ type: 'error', title: tr('Фарминг остановлен'), detail: text });
     window.chime?.play?.('attention');
     this.stopFarming(false);
     window.shutdownManager?.onStreamEnded();
@@ -7761,18 +7781,18 @@ class FarmingPage {
     const endDate = new Date(endsAt);
     const diff = endDate - now;
 
-    if (!(diff > 0)) return 'завершена';
+    if (!(diff > 0)) return tr('завершена');
 
     const days = Math.floor(diff / (1000 * 60 * 60 * 24));
     const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
 
     if (days > 0) {
-      return hours > 0 ? `${days} д ${hours} ч` : `${days} д`;
+      return hours > 0 ? tr('{days} д {hours} ч', { days, hours }) : tr('{days} д', { days });
     } else if (hours > 0) {
-      return `${hours} ч`;
+      return tr('{hours} ч', { hours });
     } else {
       const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-      return `${minutes} мин`;
+      return tr('{minutes} мин', { minutes });
     }
   }
 

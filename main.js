@@ -8,6 +8,13 @@ const crypto = require('crypto');
 const url = require('url');
 const { pathToFileURL } = require('url');
 const { autoUpdater } = require('electron-updater');
+const i18nMain = require('./i18n-main');
+const { trMain } = i18nMain;
+
+// Общие модули из renderer/js/core (network-limit, game-mode, rate-limit)
+// подключаются и здесь. В окне у них есть tr() из tr.js, а в main его нет:
+// строка в tr() уронила бы главный процесс, поэтому здесь его роль — trMain
+if (typeof globalThis.tr !== 'function') globalThis.tr = trMain;
 
 /**
  * https.request с обязательным таймаутом.
@@ -25,7 +32,7 @@ const rawHttpsRequest = https.request.bind(https);
 function httpsRequestWithTimeout(...args) {
   const req = rawHttpsRequest(...args);
   req.setTimeout(REQUEST_IDLE_TIMEOUT_MS, () => {
-    req.destroy(new Error('таймаут: сервер молчит ' + (REQUEST_IDLE_TIMEOUT_MS / 1000) + ' с'));
+    req.destroy(new Error(trMain('таймаут: сервер молчит {sec} с', { sec: REQUEST_IDLE_TIMEOUT_MS / 1000 })));
   });
 
   // Ответ, оборванный чистым закрытием соединения. Прокси или антивирус
@@ -40,7 +47,7 @@ function httpsRequestWithTimeout(...args) {
     res.on('close', () => {
       if (res.complete || failed) return;
       failed = true;
-      req.emit('error', new Error('обрыв ответа: соединение закрыто посреди передачи'));
+      req.emit('error', new Error(trMain('обрыв ответа: соединение закрыто посреди передачи')));
     });
   });
   return req;
@@ -324,7 +331,10 @@ function openSettingsStore() {
 function failSettingsStore(configPath, error) {
   console.error('[Настройки] Файл настроек недоступен:', error);
   try {
-    dialog.showErrorBox('WatchTwitch', 'Не удалось открыть файл настроек:\n' + configPath + '\n\n' + (error?.message || error));
+    dialog.showErrorBox('WatchTwitch', trMain('Не удалось открыть файл настроек:\n{path}\n\n{error}', {
+      path: configPath,
+      error: error?.message || error
+    }));
   } catch (e) { /* показать некому — остаётся лог */ }
   app.exit(1);
   throw error;
@@ -334,9 +344,10 @@ function failSettingsStore(configPath, error) {
 function announceSettingsRecovery() {
   if (!settingsRecovery) return;
   const body = settingsRecovery.restored
-    ? 'Файл настроек был повреждён. Восстановлена копия с прошлого запуска.'
-    : 'Файл настроек был повреждён, настройки сброшены.' +
-      (settingsRecovery.corruptPath ? ' Испорченный файл сохранён в папке приложения.' : '');
+    ? trMain('Файл настроек был повреждён. Восстановлена копия с прошлого запуска.')
+    : (settingsRecovery.corruptPath
+      ? trMain('Файл настроек был повреждён, настройки сброшены. Испорченный файл сохранён в папке приложения.')
+      : trMain('Файл настроек был повреждён, настройки сброшены.'));
   settingsRecovery = null;
   try {
     new Notification({ title: 'WatchTwitch', body }).show();
@@ -346,6 +357,7 @@ function announceSettingsRecovery() {
 }
 
 const store = openSettingsStore();
+i18nMain.setup({ store, app });
 
 /**
  * Токены и cookie Twitch на диске — только зашифрованными.
@@ -482,7 +494,7 @@ app.commandLine.appendSwitch('log-level', '3');
 const processLabels = new Map();
 
 ipcMain.handle('open-logs-folder', async () => {
-  if (!logFilePath) return { success: false, error: 'лог не ведётся' };
+  if (!logFilePath) return { success: false, error: trMain('лог не ведётся') };
   const error = await shell.openPath(path.dirname(logFilePath));
   return error ? { success: false, error } : { success: true };
 });
@@ -611,7 +623,7 @@ function twitchPost(postData, headers, options = {}) {
     req.on('error', (e) => resolve({ ok: false, statusCode: 0, error: e.message }));
     req.setTimeout(15000, () => {
       req.destroy();
-      resolve({ ok: false, statusCode: 0, error: 'таймаут' });
+      resolve({ ok: false, statusCode: 0, error: trMain('таймаут') });
     });
 
     req.write(postData);
@@ -697,7 +709,7 @@ async function withTwitchBurstSlot(task) {
  * поэтому одна строка.
  */
 function twitchUnavailable(reason) {
-  const error = new Error('Twitch не ответил: ' + reason);
+  const error = new Error(trMain('Twitch не ответил: {reason}', { reason }));
   error.stack = error.message;
   return error;
 }
@@ -846,7 +858,7 @@ function checkRunningGame() {
     // Без стрима значок «игровой режим» не должен висеть до следующего
     // запуска: игру могли давно закрыть. При старте стрима опрос
     // повторится сразу (см. setupTrafficMonitoring)
-    if (gameModeState.active) setGameModeState(null, 'стрим остановлен');
+    if (gameModeState.active) setGameModeState(null, 'стрим остановлен'); // i18n-ignore: причина только для лога
     return;
   }
 
@@ -1022,8 +1034,8 @@ function refreshStreamLimits() {
 
   if (applied > 0) {
     const kbps = conditions.downloadThroughput > 0
-      ? Math.round(conditions.downloadThroughput * 8 / 1000) + ' кбит/с'
-      : 'без ограничения';
+      ? Math.round(conditions.downloadThroughput * 8 / 1000) + ' кбит/с' // i18n-ignore: лог
+      : 'без ограничения'; // i18n-ignore: лог
     console.log('[Скорость] Потолок загрузки:', kbps, '| плееров:', applied);
   }
 
@@ -1380,7 +1392,7 @@ ipcMain.handle('fetch-release-notes', async (event, version = null) => {
       res.on('end', () => {
         if (res.statusCode !== 200) {
           console.warn('[Заметки] GitHub ответил', res.statusCode);
-          resolve({ success: false, error: 'Код ответа ' + res.statusCode });
+          resolve({ success: false, error: trMain('Код ответа {code}', { code: res.statusCode }) });
           return;
         }
 
@@ -1403,7 +1415,7 @@ ipcMain.handle('fetch-release-notes', async (event, version = null) => {
               }))
           });
         } catch (e) {
-          resolve({ success: false, error: 'Не удалось разобрать ответ' });
+          resolve({ success: false, error: trMain('Не удалось разобрать ответ') });
         }
       });
     });
@@ -1415,7 +1427,7 @@ ipcMain.handle('fetch-release-notes', async (event, version = null) => {
 
     req.setTimeout(10000, () => {
       req.destroy();
-      resolve({ success: false, error: 'Превышено время ожидания' });
+      resolve({ success: false, error: trMain('Превышено время ожидания') });
     });
 
     req.end();
@@ -1663,8 +1675,9 @@ function createSplashWindow() {
     }
   });
 
-  // Версия — в углу заставки: по снимку экрана сразу видно, что запущено
-  splashWindow.loadFile('splash.html', { query: { v: app.getVersion() } });
+  // Версия — в углу заставки: по снимку экрана сразу видно, что запущено.
+  // Язык — тот же, что у трея: заставка переводит свои строки сама
+  splashWindow.loadFile('splash.html', { query: { v: app.getVersion(), lang: trMain.lang() } });
   splashWindow.webContents.on('did-finish-load', () => applySplashStage());
   splashWindow.center();
 }
@@ -1791,8 +1804,16 @@ function createMainWindow() {
   });
 
   mainWindow.loadFile('renderer/index.html');
-  setSplashStage(1, 'Загружаю интерфейс…', 40);
-  mainWindow.webContents.once('did-finish-load', () => setSplashStage(2, 'Восстанавливаю сессию…', 75));
+  setSplashStage(1, trMain('Загружаю интерфейс…'), 40);
+  mainWindow.webContents.once('did-finish-load', () => setSplashStage(2, trMain('Восстанавливаю сессию…'), 75));
+  // Трей и уведомления — на языке окна. WT_LANG ставит tr.js при загрузке;
+  // спрашиваем после каждой: перезагруженное окно берёт язык заново
+  const contents = mainWindow.webContents;
+  contents.on('did-finish-load', () => {
+    contents.executeJavaScript('window.WT_LANG')
+      .then((value) => { if (i18nMain.noteRendererLanguage(value)) refreshTrayLanguage(); })
+      .catch(() => { /* окно уже закрывается — язык остаётся прежним */ });
+  });
   trackWindowState(mainWindow);
   trackMainWindowFocus(mainWindow);
 
@@ -1826,7 +1847,7 @@ function createMainWindow() {
     if (rendererLogSeen.size > 300) rendererLogSeen.clear();
     rendererLogSeen.set(text, { at: now, repeats: 0 });
 
-    const repeats = seen?.repeats ? ' (за минуту повторов: ' + seen.repeats + ')' : '';
+    const repeats = seen?.repeats ? ' (за минуту повторов: ' + seen.repeats + ')' : ''; // i18n-ignore: лог
     if (level === 'error') console.error(text + repeats);
     else console.warn(text + repeats);
   });
@@ -1845,7 +1866,7 @@ function createMainWindow() {
     const splashWait = (launchedByAutostart || !splashShownAt)
       ? 0
       : Math.max(0, SPLASH_MIN_MS - (Date.now() - splashShownAt));
-    setSplashStage(3, 'Готово', 100);
+    setSplashStage(3, trMain('Готово'), 100);
 
     setTimeout(() => {
       // Главное окно показывается, пока заставка гаснет поверх него:
@@ -1903,8 +1924,8 @@ function createMainWindow() {
       // Показываем уведомление при первом сворачивании
       if (!store.get('trayNotificationShown', false)) {
         new Notification({
-          title: 'WatchTwitch свёрнут в трей',
-          body: 'Приложение работает в фоне. Нажмите на значок в трее, чтобы открыть окно.'
+          title: trMain('WatchTwitch свёрнут в трей'),
+          body: trMain('Приложение работает в фоне. Нажмите на значок в трее, чтобы открыть окно.')
         }).show();
         store.set('trayNotificationShown', true);
       }
@@ -1960,6 +1981,74 @@ function trackMainWindowFocus(win) {
   win.on('blur', () => { mainWindowBlurAt = Date.now(); });
 }
 
+/**
+ * Меню трея. Собирается заново, если язык окна разошёлся с догадкой main
+ * (см. refreshTrayLanguage).
+ */
+function buildTrayMenu() {
+  // Окна может уже не быть: его закрыли насовсем, а процесс ещё жив, пока
+  // работают служебные окна. Раньше клик по трею тогда падал с TypeError
+  return Menu.buildFromTemplate([
+    {
+      label: trMain('Показать/Скрыть'),
+      click: () => {
+        if (!mainWindow || mainWindow.isDestroyed()) return;
+        if (mainWindow.isVisible() && !mainWindow.isMinimized()) {
+          mainWindow.hide();
+        } else {
+          bringMainWindowToFront();
+        }
+      }
+    },
+    { type: 'separator' },
+    {
+      label: trMain('Открыть настройки'),
+      click: () => {
+        if (!bringMainWindowToFront()) return;
+        sendToMain('navigate-to-page', 'settings');
+      }
+    },
+    { type: 'separator' },
+    {
+      label: trMain('Выход'),
+      click: () => {
+        app.isQuitting = true;
+        app.quit();
+      }
+    }
+  ]);
+}
+
+// Последнее состояние фарминга от окна: по нему подпись трея
+// перерисовывается при смене языка
+let lastTrayStatus = null;
+
+/** Подпись значка в трее: идёт ли фарминг и далеко ли до награды. */
+function trayTooltip(status) {
+  if (!status?.active) return trMain('WatchTwitch — фарминг остановлен');
+
+  const lines = ['WatchTwitch'];
+  if (status.category) lines[0] += ' — ' + status.category;
+
+  const details = [];
+  if (Number.isFinite(status.percent)) details.push(trMain('дропсы {percent}%', { percent: Math.round(status.percent) }));
+  if (status.nextIn) details.push(trMain('следующая через {time}', { time: status.nextIn }));
+  if (details.length) lines.push(details.join(' · '));
+
+  return lines.join('\n');
+}
+
+/** Окно работает на другом языке, чем угадал main: трей — на язык окна. */
+function refreshTrayLanguage() {
+  try {
+    if (!tray || tray.isDestroyed?.()) return;
+    tray.setContextMenu(buildTrayMenu());
+    tray.setToolTip(trayTooltip(lastTrayStatus));
+  } catch (error) {
+    console.warn('[Трей] Не удалось сменить язык:', error.message);
+  }
+}
+
 function createTray() {
   try {
     const candidates = [
@@ -1975,40 +2064,8 @@ function createTray() {
 
     tray = new Tray(iconPath);
 
-    // Окна может уже не быть: его закрыли насовсем, а процесс ещё жив, пока
-    // работают служебные окна. Раньше клик по трею тогда падал с TypeError
-    const contextMenu = Menu.buildFromTemplate([
-      {
-        label: 'Показать/Скрыть',
-        click: () => {
-          if (!mainWindow || mainWindow.isDestroyed()) return;
-          if (mainWindow.isVisible() && !mainWindow.isMinimized()) {
-            mainWindow.hide();
-          } else {
-            bringMainWindowToFront();
-          }
-        }
-      },
-      { type: 'separator' },
-      {
-        label: 'Открыть настройки',
-        click: () => {
-          if (!bringMainWindowToFront()) return;
-          sendToMain('navigate-to-page', 'settings');
-        }
-      },
-      { type: 'separator' },
-      {
-        label: 'Выход',
-        click: () => {
-          app.isQuitting = true;
-          app.quit();
-        }
-      }
-    ]);
-
-    tray.setToolTip('WatchTwitch — фарминг остановлен');
-    tray.setContextMenu(contextMenu);
+    tray.setToolTip(trayTooltip(lastTrayStatus));
+    tray.setContextMenu(buildTrayMenu());
 
     // Клик прячет окно, только если оно было впереди. Нажатие на трей само
     // снимает с окна фокус, поэтому «впереди» — это фокус, потерянный
@@ -2037,6 +2094,7 @@ function createTray() {
 ipcMain.on('tray-status', (event, status) => {
   try {
     const active = !!status?.active;
+    lastTrayStatus = status || null;
 
     if (mainWindow && !mainWindow.isDestroyed()) {
       // Значение вне [0..1] убирает полосу; именно так её и гасим
@@ -2045,20 +2103,7 @@ ipcMain.on('tray-status', (event, status) => {
 
     if (!tray || tray.isDestroyed?.()) return;
 
-    if (!active) {
-      tray.setToolTip('WatchTwitch — фарминг остановлен');
-      return;
-    }
-
-    const lines = ['WatchTwitch'];
-    if (status.category) lines[0] += ' — ' + status.category;
-
-    const details = [];
-    if (Number.isFinite(status.percent)) details.push('дропсы ' + Math.round(status.percent) + '%');
-    if (status.nextIn) details.push('следующая через ' + status.nextIn);
-    if (details.length) lines.push(details.join(' · '));
-
-    tray.setToolTip(lines.join('\n'));
+    tray.setToolTip(trayTooltip(status));
   } catch (error) {
     console.warn('[Трей] Не удалось обновить состояние:', error.message);
   }
@@ -2076,9 +2121,9 @@ ipcMain.on('tray-status', (event, status) => {
  * false — поэтому о каждой неудаче сообщаем в журнал.
  */
 const SHORTCUTS = [
-  { accelerator: 'Control+Alt+F', action: 'toggle-farming', title: 'запуск и остановка' },
-  { accelerator: 'Control+Alt+N', action: 'next-stream', title: 'другой стрим' },
-  { accelerator: 'Control+Alt+W', action: 'toggle-window', title: 'показать или скрыть окно' }
+  { accelerator: 'Control+Alt+F', action: 'toggle-farming', title: 'запуск и остановка' }, // i18n-ignore: подписи только для лога
+  { accelerator: 'Control+Alt+N', action: 'next-stream', title: 'другой стрим' }, // i18n-ignore: подписи только для лога
+  { accelerator: 'Control+Alt+W', action: 'toggle-window', title: 'показать или скрыть окно' } // i18n-ignore: подписи только для лога
 ];
 
 // Сочетания, которые не удалось занять при последней регистрации. Раньше
@@ -2199,7 +2244,7 @@ function createLoopbackServer(handler) {
       servers.push(v4);
       v4.on('error', (err) => {
         if (!listening) onError(err);
-        else console.warn('[Вход] Сервер входа:', err?.code || err?.message);
+        else console.warn('[Вход] Сервер входа:', err?.code || err?.message); // i18n-ignore: лог
       });
       v4.listen(port, '127.0.0.1', () => {
         const v6 = http.createServer(handler);
@@ -2224,9 +2269,14 @@ function startAuthServer(onListening) {
   let cancel = null;
   const promise = new Promise((resolvePromise, rejectPromise) => {
     // Прежняя попытка завершается явно: её сервер закрывается, а вызов из
-    // окна получает ответ вместо вечного ожидания
+    // окна получает ответ вместо вечного ожидания.
+    //
+    // Ошибки входа уходят окну по-русски и в английском режиме: окно
+    // (friendlyLoginError в accounts-page.js) по русским буквам отличает
+    // готовую фразу от служебного текста вроде «listen EADDRINUSE» и
+    // переводит её само
     if (cancelAuthAttempt) {
-      cancelAuthAttempt(new Error('Открыта новая вкладка входа — завершите вход в ней'));
+      cancelAuthAttempt(new Error('Открыта новая вкладка входа — завершите вход в ней')); // i18n-ignore: переводит окно
     }
     // Сервер удачной попытки живёт ещё 2 секунды, пока браузер дочитывает
     // страницу, и держит порт: новая попытка в это время получила бы
@@ -2275,7 +2325,7 @@ function startAuthServer(onListening) {
         if (!isKnownAuthState(state) || (!code && !error)) {
           console.warn('[Вход] Ответ браузера без верной метки входа — пропускаю');
           res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
-          res.end('Ссылка входа устарела. Вернитесь в WatchTwitch и нажмите «Войти через Twitch» ещё раз.');
+          res.end(trMain('Ссылка входа устарела. Вернитесь в WatchTwitch и нажмите «Войти через Twitch» ещё раз.'));
           return;
         }
 
@@ -2283,7 +2333,10 @@ function startAuthServer(onListening) {
           // На странице и в приложении — понятная фраза, а не код из адреса
           // возврата («access_denied»). Сам код в страницу не подставляем:
           // это текст из адресной строки, и разметку в нём браузер выполнил бы
-          const message = error === 'access_denied' ? 'Вход отменён в браузере' : 'Twitch отклонил вход';
+          const denied = error === 'access_denied';
+          const message = denied ? 'Вход отменён в браузере' : 'Twitch отклонил вход'; // i18n-ignore: окну — по-русски, см. выше
+          const shown = denied ? trMain('Вход отменён в браузере') : trMain('Twitch отклонил вход');
+          const heading = trMain('Ошибка авторизации');
           console.warn('[Вход] Twitch вернул ошибку:', String(error).slice(0, 100));
           res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
           res.end(`<!DOCTYPE html>
@@ -2291,7 +2344,7 @@ function startAuthServer(onListening) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Ошибка авторизации</title>
+  <title>${heading}</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -2328,8 +2381,8 @@ function startAuthServer(onListening) {
         <line x1="9" y1="9" x2="15" y2="15"></line>
       </svg>
     </div>
-    <h1>Ошибка авторизации</h1>
-    <p>${message}</p>
+    <h1>${heading}</h1>
+    <p>${shown}</p>
   </div>
 </body>
 </html>`);
@@ -2386,14 +2439,15 @@ function startAuthServer(onListening) {
                 }
               });
 
-              // Показываем страницу успеха
+              // Показываем страницу успеха. .glow-bg в ней — переливающийся
+              // светящийся фон
               res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
               res.end(`<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Авторизация успешна</title>
+  <title>${trMain('Авторизация успешна')}</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -2466,7 +2520,6 @@ function startAuthServer(onListening) {
       font-size: 14px;
       margin-top: 20px;
     }
-    /* Переливающийся светящийся фон */
     .glow-bg {
       position: fixed;
       inset: -60px;
@@ -2496,13 +2549,13 @@ function startAuthServer(onListening) {
         <polyline points="20 6 9 17 4 12"></polyline>
       </svg>
     </div>
-    <h1>Авторизация успешна!</h1>
-    <p>Добро пожаловать в WatchTwitch</p>
+    <h1>${trMain('Авторизация успешна!')}</h1>
+    <p>${trMain('Добро пожаловать в WatchTwitch')}</p>
     <div class="user-info">
       <img src="${escapeHtmlText(user.profile_image_url)}" alt="Avatar">
       <span>${escapeHtmlText(user.display_name)}</span>
     </div>
-    <div class="countdown">Можете закрыть эту вкладку</div>
+    <div class="countdown">${trMain('Можете закрыть эту вкладку')}</div>
   </div>
 </body>
 </html>`);
@@ -2515,12 +2568,12 @@ function startAuthServer(onListening) {
 
               resolve(tokenData);
             } else {
-              throw new Error('Не удалось получить access token');
+              throw new Error('Не удалось получить access token'); // i18n-ignore: окно заменяет его общей фразой
             }
           } catch (error) {
             console.warn('[Вход] Обмен кода на токен не удался:', error?.message || error);
             res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
-            res.end('Ошибка авторизации');
+            res.end(trMain('Ошибка авторизации'));
             reject(error);
           }
         }
@@ -2533,7 +2586,7 @@ function startAuthServer(onListening) {
 
     timer = setTimeout(() => {
       console.warn('[Вход] Браузер не вернул ответ за 3 минуты — ожидание снято');
-      reject(new Error('Вход не завершён — нажмите «Войти через Twitch» ещё раз'));
+      reject(new Error('Вход не завершён — нажмите «Войти через Twitch» ещё раз')); // i18n-ignore: переводит окно
     }, AUTH_WAIT_MS);
 
     // Технический текст — в журнал, пользователю — что делать. Раньше в
@@ -2544,8 +2597,8 @@ function startAuthServer(onListening) {
     }, (err) => {
       console.warn('[Вход] Сервер входа не запустился:', err?.code || err?.message || err);
       reject(new Error(err?.code === 'EADDRINUSE'
-        ? 'Порт 3000 занят другой программой — закройте её и повторите вход'
-        : 'Не удалось начать вход — попробуйте ещё раз'));
+        ? 'Порт 3000 занят другой программой — закройте её и повторите вход' // i18n-ignore: переводит окно
+        : 'Не удалось начать вход — попробуйте ещё раз')); // i18n-ignore: переводит окно
     });
   });
   promise.cancel = cancel;
@@ -2650,11 +2703,11 @@ async function refreshAccessTokenOnce() {
     console.warn('[OAuth] Twitch отклонил refresh-токен (' + response.status + '): ' +
       String(tokenData?.message || '').slice(0, 120) + ' — вход удалён');
     store.delete('oauth');
-    throw new Error('Twitch отклонил refresh-токен');
+    throw new Error('Twitch отклонил refresh-токен'); // i18n-ignore: не показывается, getValidAccessToken отдаёт null
   }
 
   console.warn('[OAuth] Токен не обновлён, Twitch ответил', response.status, '— попробую позже');
-  throw new Error('Twitch не ответил: ' + response.status);
+  throw new Error(trMain('Twitch не ответил: {reason}', { reason: response.status }));
 }
 
 async function getValidAccessToken() {
@@ -2724,7 +2777,7 @@ ipcMain.handle('get-stream-stats', async (event, channelLogin) => {
     root = Array.isArray(parsed) ? parsed[0] : parsed;
   } catch (e) {
     console.warn('[Стрим] Ошибка разбора статистики:', e.message);
-    throw twitchUnavailable('ответ не разобран');
+    throw twitchUnavailable(trMain('ответ не разобран'));
   }
 
   const user = root?.data?.user;
@@ -2733,7 +2786,7 @@ ipcMain.handle('get-stream-stats', async (event, channelLogin) => {
     // Пустой stream рядом с ошибкой — не «офлайн», а «не знаю»
     if (root?.errors?.length || !root?.data) {
       console.warn('[Стрим] Ошибка Twitch:', String(root?.errors?.[0]?.message || 'нет данных').slice(0, 120));
-      throw twitchUnavailable('ошибка GraphQL');
+      throw twitchUnavailable(trMain('ошибка GraphQL'));
     }
     return null;
   }
@@ -2764,7 +2817,7 @@ function calculateUptime(createdAt) {
   const hours = Math.floor(diff / 3600);
   const minutes = Math.floor((diff % 3600) / 60);
 
-  return hours + 'ч ' + minutes + 'м';
+  return trMain('{h}ч {m}м', { h: hours, m: minutes });
 }
 // Получить auth_token из cookies
 async function getAuthToken() {
@@ -3014,6 +3067,31 @@ app.on('before-quit', (event) => {
   saveBeforeExit().then(() => app.quit());
 });
 
+/**
+ * Перезапуск по просьбе окна: так применяется смена языка интерфейса.
+ *
+ * Выход — тот же, что у «Выхода» в трее: isQuitting не даёт окну
+ * спрятаться в трей вместо закрытия, а before-quit дожидается сохранения
+ * сессии. Новый экземпляр Electron запускает, когда этот завершится
+ * целиком, поэтому блокировка второго экземпляра ему не мешает.
+ * --autostart не передаём: перезапуск попросил человек, и окно должно
+ * появиться, а не остаться в трее.
+ */
+let relaunchRequested = false;
+
+ipcMain.handle('app-relaunch', () => {
+  // Установка обновления уже разбирает приложение и перезапустит его сама
+  if (installingUpdate) return false;
+  if (relaunchRequested) return true;
+  relaunchRequested = true;
+  console.log('[Выход] Перезапуск по просьбе окна');
+  app.relaunch({ args: process.argv.slice(1).filter(arg => arg !== '--autostart') });
+  app.isQuitting = true;
+  // Сначала ответ окну, потом выход
+  setImmediate(() => app.quit());
+  return true;
+});
+
 // IPC обработчики
 ipcMain.on('minimize-window', () => {
   mainWindow.minimize();
@@ -3093,6 +3171,8 @@ ipcMain.handle('settings-merge', (event, partial) => {
   // Автозапуск принадлежит main: в окне у него значение по умолчанию false,
   // и слияние раньше молча затирало им включённый автозапуск
   const { autostart, ...rest } = partial;
+  // settings.language здесь — язык следующего запуска: main прочитает его
+  // при старте (i18n-main.js), а язык этого запуска узнаёт у самого окна
   store.set('settings', { ...current, ...rest });
   return true;
 });
@@ -3138,7 +3218,7 @@ function denyStoreKey(action, key) {
 
 ipcMain.handle('store-get', (event, key) => {
   if (!storeKeyAllowed(event, key, false)) {
-    denyStoreKey('чтение', key);
+    denyStoreKey('чтение', key); // i18n-ignore: лог
     return undefined;
   }
   if (key === 'accounts') return mapAccountSecrets(store.get('accounts'), openSecret);
@@ -3147,16 +3227,16 @@ ipcMain.handle('store-get', (event, key) => {
 
 ipcMain.handle('store-set', (event, key, value) => {
   if (!storeKeyAllowed(event, key, true)) {
-    denyStoreKey('запись', key);
-    throw new Error('Ключ недоступен окну');
+    denyStoreKey('запись', key); // i18n-ignore: лог
+    throw new Error('Ключ недоступен окну'); // i18n-ignore: ошибка для кода окна, не для человека
   }
   store.set(key, key === 'accounts' ? mapAccountSecrets(value, sealSecret) : value);
 });
 
 ipcMain.handle('store-delete', (event, key) => {
   if (!storeKeyAllowed(event, key, true)) {
-    denyStoreKey('удаление', key);
-    throw new Error('Ключ недоступен окну');
+    denyStoreKey('удаление', key); // i18n-ignore: лог
+    throw new Error('Ключ недоступен окну'); // i18n-ignore: ошибка для кода окна, не для человека
   }
   store.delete(key);
 });
@@ -3285,20 +3365,32 @@ function notificationText(value, max) {
   return String(value).replace(/\s+/g, ' ').trim().slice(0, max);
 }
 
+/**
+ * Перевод строк окна о награде. trMain — только через typeof (см. выше про
+ * песочницу теста): без него строки остаются русскими.
+ */
+function dropText(ru, params) {
+  if (typeof trMain === 'function') return trMain(ru, params);
+  return ru.replace(/\{(\w+)\}/g, (match, key) => (params && key in params ? String(params[key]) : match));
+}
+
 /** «награда / награды / наград» по числу. */
 function dropsWord(n) {
+  if (typeof trMain === 'function') return trMain.plural(n, 'награда', 'награды', 'наград');
   const tens = Math.abs(n) % 100;
   const ones = tens % 10;
-  if (tens > 10 && tens < 20) return 'наград';
-  if (ones === 1) return 'награда';
-  if (ones >= 2 && ones <= 4) return 'награды';
-  return 'наград';
+  if (tens > 10 && tens < 20) return 'наград'; // i18n-ignore: запасной путь без trMain, только в тесте
+  if (ones === 1) return 'награда'; // i18n-ignore: запасной путь без trMain, только в тесте
+  if (ones >= 2 && ones <= 4) return 'награды'; // i18n-ignore: запасной путь без trMain, только в тесте
+  return 'наград'; // i18n-ignore: запасной путь без trMain, только в тесте
 }
 
 /** «Получена 21 награда», «Получено 4 награды»: глагол — по числу. */
 function receivedDropsTitle(n) {
-  const verb = n % 10 === 1 && n % 100 !== 11 ? 'Получена' : 'Получено';
-  return verb + ' ' + n + ' ' + dropsWord(n);
+  const params = { n, word: dropsWord(n) };
+  return n % 10 === 1 && n % 100 !== 11
+    ? dropText('Получена {n} {word}', params)
+    : dropText('Получено {n} {word}', params);
 }
 
 function dropNotificationTheme() {
@@ -3423,7 +3515,11 @@ function createDropNotification(dropName, gameName, dropIcon, extra = {}) {
   });
 
   dropNotificationWindow = notificationWindow;
-  notificationWindow.loadFile('renderer/notification.html');
+  // Язык окна — язык этого запуска. Сама страница взяла бы его из
+  // localStorage, а там уже может лежать язык, выбранный в настройках для
+  // следующего запуска
+  const lang = typeof trMain === 'function' ? trMain.lang() : 'ru';
+  notificationWindow.loadFile('renderer/notification.html', { query: { lang } });
 
   // Часы окна. Ссылку держим свою, а не глобальную: окно живёт несколько
   // секунд и закрывается само, обработчик 'closed' обнуляет
@@ -3514,10 +3610,13 @@ function buildDropSummary(items, total, eyebrow) {
   const prefix = games.length === 1 ? games[0] + ' · ' : '';
   // Строка одна, около 45 знаков: второе название — только если влезает,
   // иначе обрезанное многоточием оно ничего не говорит
+  const more = (list, n) => dropText('{list} и ещё {n}', { list, n });
   const shown = names.slice(0, 1);
-  if (names[1] && (prefix + names[0] + ', ' + names[1] + ' и ещё 99').length <= 46) shown.push(names[1]);
+  if (names[1] && (prefix + more(names[0] + ', ' + names[1], 99)).length <= 46) shown.push(names[1]);
   const rest = total - shown.length;
-  const list = shown.join(', ') + (rest > 0 ? (shown.length ? ' и ещё ' : '') + rest : '');
+  const list = rest > 0
+    ? (shown.length ? more(shown.join(', '), rest) : String(rest))
+    : shown.join(', ');
   return {
     kind: 'summary',
     dropName: receivedDropsTitle(total),
@@ -3622,9 +3721,10 @@ function flushDropsAfterGame() {
   const total = items.length + dropsWhilePlayingExtra;
   dropsWhilePlaying = [];
   dropsWhilePlayingExtra = 0;
+  const eyebrow = dropText('Пока вы играли');
   const item = total === 1
-    ? { ...items[0], eyebrow: 'Пока вы играли' }
-    : buildDropSummary(items, total, 'Пока вы играли');
+    ? { ...items[0], eyebrow }
+    : buildDropSummary(items, total, eyebrow);
   enqueueDropNotification(item);
 }
 
@@ -3840,8 +3940,8 @@ function streamHasDropsSignal(node) {
   return title.includes(' drops') ||
     title.startsWith('drops') ||
     title.includes('[drops') ||
-    title.includes('дропс') ||
-    title.includes('дропы');
+    title.includes('дропс') || // i18n-ignore: ищется в названиях стримов
+    title.includes('дропы'); // i18n-ignore: ищется в названиях стримов
 }
 
 /**
@@ -3934,7 +4034,7 @@ ipcMain.handle('get-category-overview', async (event, categoryName) => {
     'Client-ID': 'kimne78kx3ncx6brgo4mv6wki5h1ko',
     'Content-Type': 'application/json',
     'Content-Length': Buffer.byteLength(postData)
-  }, { attempts: 2 }), '[Сводка категории]');
+  }, { attempts: 2 }), '[Сводка категории]'); // i18n-ignore: метка лога
   if (!parsed) return null;
 
   const { game, edges } = parsed;
@@ -3979,7 +4079,7 @@ ipcMain.handle('get-streams-with-drops', async (event, categoryName) => {
     'Client-ID': 'kimne78kx3ncx6brgo4mv6wki5h1ko',
     'Content-Type': 'application/json',
     'Content-Length': Buffer.byteLength(postData)
-  }), '[Стримы]');
+  }), '[Стримы]'); // i18n-ignore: метка лога
   if (!parsed) return null;
 
   const { edges } = parsed;
@@ -4576,8 +4676,9 @@ ipcMain.handle('fetch-drops-inventory', async (event, options) => getDropsInvent
 ipcMain.handle('get-drop-session', async (event, channelLogin) => {
   const login = String(channelLogin || '').replace(/^@/, '').toLowerCase().replace(/[^a-z0-9_]/g, '');
   const authToken = await getCookieAuthToken();
-  if (!authToken) return { ok: false, error: 'нет cookie-токена' };
-  if (!login) return { ok: false, error: 'не указан канал' };
+  // Причины отказа окно не показывает: ему важен только ok
+  if (!authToken) return { ok: false, error: 'нет cookie-токена' }; // i18n-ignore: не показывается
+  if (!login) return { ok: false, error: 'не указан канал' }; // i18n-ignore: не показывается
 
   const gqlHeaders = (postData) => {
     const headers = {
@@ -4599,7 +4700,7 @@ ipcMain.handle('get-drop-session', async (event, channelLogin) => {
     try {
       const parsed = JSON.parse(res.data);
       const root = Array.isArray(parsed) ? parsed[0] : parsed;
-      if (root?.errors?.length) return { error: root.errors[0]?.message || 'ошибка GraphQL', data: root.data };
+      if (root?.errors?.length) return { error: root.errors[0]?.message || 'ошибка GraphQL', data: root.data }; // i18n-ignore: не показывается
       return { data: root?.data };
     } catch (e) {
       return { error: e.message };
@@ -4625,7 +4726,7 @@ ipcMain.handle('get-drop-session', async (event, channelLogin) => {
     return data?.user?.id || null;
   }, id => (id ? 6 * 60 * 60 * 1000 : 15 * 1000));
 
-  if (!channelId) return { ok: false, error: 'канал не найден' };
+  if (!channelId) return { ok: false, error: 'канал не найден' }; // i18n-ignore: не показывается
 
   return cachedTwitchCall('dropSession:' + login, async () => {
     // Та же операция и те же переменные, что у сайта Twitch: без channelID
@@ -4668,7 +4769,7 @@ ipcMain.handle('check-category-drops', async (event, categoryName) => {
     'Client-ID': 'kimne78kx3ncx6brgo4mv6wki5h1ko',
     'Content-Type': 'application/json',
     'Content-Length': Buffer.byteLength(postData)
-  }, { attempts: 2 })), '[Дропсы категории]');
+  }, { attempts: 2 })), '[Дропсы категории]'); // i18n-ignore: метка лога
   if (!parsed) return null;
 
   // Запасной путь: эвристика по тегам и названиям стримов
@@ -4740,7 +4841,7 @@ ipcMain.handle('get-channel-points', async (event, channelLogin) => {
   // и «заработано за стрим» раздувалось на тысячи.
   if (typeof balance !== 'number') {
     if (error) console.warn('[Баллы] Баланса нет в ответе:', String(error).slice(0, 120));
-    return { points: null, error: error ? String(error) : 'нет баланса' };
+    return { points: null, error: error ? String(error) : 'нет баланса' }; // i18n-ignore: окно не показывает, только пропускает опрос
   }
   const points = balance;
   const claimId = community.channel?.self?.communityPoints?.availableClaim?.id || null;
@@ -4819,7 +4920,7 @@ ipcMain.handle('shutdown-computer', async (event, action) => {
  */
 ipcMain.handle('claim-drop', async (event, dropInstanceID) => {
   if (!dropInstanceID) {
-    return { success: false, error: 'Не указана награда' };
+    return { success: false, error: trMain('Не указана награда') };
   }
 
   const cookieToken = await getCookieAuthToken();
@@ -4827,7 +4928,7 @@ ipcMain.handle('claim-drop', async (event, dropInstanceID) => {
   const token = cookieToken || oauth?.accessToken;
 
   if (!token) {
-    return { success: false, error: 'Требуется вход в Twitch. Откройте стрим в приложении.' };
+    return { success: false, error: trMain('Требуется вход в Twitch. Откройте стрим в приложении.') };
   }
 
   console.log('[Награда] Получаю', dropInstanceID, '| токен:', cookieToken ? 'cookie' : 'OAuth');
@@ -4888,19 +4989,19 @@ async function claimDropById(dropInstanceID, token) {
   // Пользователю — понятная фраза, служебный текст Twitch — только в лог.
   // Раньше в тост уходили «код ответа 503», английские сообщения GraphQL и
   // голые статусы вроде «Twitch ответил: UNKNOWN»
-  const REJECTED = 'Twitch не принял запрос — попробуйте позже';
+  const REJECTED = trMain('Twitch не принял запрос — попробуйте позже');
 
   const send = async (body) => {
     const res = await twitchPost(body, buildHeaders(body));
 
     if (!res.ok) {
       if (res.statusCode === 401 || res.statusCode === 403) {
-        return { success: false, error: 'Twitch отклонил авторизацию. Откройте стрим в приложении и повторите.' };
+        return { success: false, error: trMain('Twitch отклонил авторизацию. Откройте стрим в приложении и повторите.') };
       }
       console.warn('[Награда] Twitch не ответил:', res.error || ('код ответа ' + res.statusCode));
       return {
         success: false,
-        error: res.statusCode === 0 ? 'Нет связи с Twitch — попробуйте позже' : REJECTED
+        error: res.statusCode === 0 ? trMain('Нет связи с Twitch — попробуйте позже') : REJECTED
       };
     }
 
@@ -4919,7 +5020,7 @@ async function claimDropById(dropInstanceID, token) {
       }
 
       if (errors.length > 0) {
-        const message = String(errors[0]?.message || 'ошибка Twitch');
+        const message = String(errors[0]?.message || 'ошибка Twitch'); // i18n-ignore: лог
         console.warn('[Награда] Ошибка Twitch:', message.slice(0, 200));
         return { success: false, error: REJECTED, staleHash: /PersistedQueryNotFound/i.test(message) };
       }
@@ -4927,14 +5028,14 @@ async function claimDropById(dropInstanceID, token) {
       // Неожиданный статус: сам код — в лог, по нему и разбираться
       if (status) {
         console.warn('[Награда] Twitch не выдал награду, статус:', status);
-        return { success: false, error: 'Twitch не выдал награду — попробуйте позже' };
+        return { success: false, error: trMain('Twitch не выдал награду — попробуйте позже') };
       }
 
       // Ответ пустой: Twitch не признал эту награду. Обычно её уже забрали
       // на сайте либо кампания закончилась, а список в приложении устарел.
       return {
         success: false,
-        error: 'Twitch не подтвердил награду — возможно, её уже забрали или кампания закончилась. Обновите список.',
+        error: trMain('Twitch не подтвердил награду — возможно, её уже забрали или кампания закончилась. Обновите список.'),
         stale: true
       };
     } catch (e) {
@@ -4964,7 +5065,7 @@ ipcMain.handle('claim-all-drops', async () => {
 
   const authToken = await getCookieAuthToken();
   if (!authToken) {
-    return { success: false, claimed: 0, total: 0, error: 'Требуется вход в Twitch. Откройте стрим в приложении.' };
+    return { success: false, claimed: 0, total: 0, error: trMain('Требуется вход в Twitch. Откройте стрим в приложении.') };
   }
 
   const postData = JSON.stringify([{
@@ -5007,7 +5108,7 @@ ipcMain.handle('claim-all-drops', async () => {
       const list = root?.data?.currentUser?.inventory?.dropCampaignsInProgress;
       // Нет инвентаря — «не знаю», а не «наград нет»
       if (root?.data?.currentUser) campaigns = Array.isArray(list) ? list : [];
-      else console.warn('[Награды] Инвентарь не получен:', String(root?.errors?.[0]?.message || 'нет данных').slice(0, 120));
+      else console.warn('[Награды] Инвентарь не получен:', String(root?.errors?.[0]?.message || 'нет данных').slice(0, 120)); // i18n-ignore: лог
     } catch (e) {
       console.warn('[Награды] Ответ инвентаря не разобран:', e.message);
     }
@@ -5017,8 +5118,8 @@ ipcMain.handle('claim-all-drops', async () => {
 
   if (!campaigns) {
     const error = res.statusCode === 401
-      ? 'Twitch не принял вход — войдите в Twitch заново'
-      : 'Twitch не ответил, попробуйте позже';
+      ? trMain('Twitch не принял вход — войдите в Twitch заново')
+      : trMain('Twitch не ответил, попробуйте позже');
     return { success: false, claimed: 0, total: 0, error };
   }
 
@@ -5034,14 +5135,14 @@ ipcMain.handle('claim-all-drops', async () => {
   }
 
   if (drops.length === 0) {
-    return { success: true, claimed: 0, total: 0, message: 'Нет доступных наград для получения' };
+    return { success: true, claimed: 0, total: 0, message: trMain('Нет доступных наград для получения') };
   }
 
   let claimed = 0;
   for (const dropInstanceID of drops) {
     const outcome = await claimDropById(dropInstanceID, authToken);
     if (outcome.success) claimed++;
-    else console.warn('[Награды] Не удалось забрать', dropInstanceID + ':', outcome.error);
+    else console.warn('[Награды] Не удалось забрать', dropInstanceID + ':', outcome.error); // i18n-ignore: лог
 
     // Небольшая задержка между получениями
     await new Promise(r => setTimeout(r, 500));
@@ -5050,14 +5151,14 @@ ipcMain.handle('claim-all-drops', async () => {
   if (claimed > 0) invalidateTwitchCache('inventory');
 
   if (claimed === 0) {
-    return { success: false, claimed: 0, total: drops.length, error: 'Twitch не выдал ни одной награды — заберите их вручную' };
+    return { success: false, claimed: 0, total: drops.length, error: trMain('Twitch не выдал ни одной награды — заберите их вручную') };
   }
 
   return {
     success: true,
     claimed,
     total: drops.length,
-    message: `Получено наград: ${claimed}/${drops.length}`
+    message: trMain('Получено наград: {claimed}/{total}', { claimed, total: drops.length })
   };
 });
 
@@ -5217,7 +5318,7 @@ async function isFollowingChannel(login) {
 
 ipcMain.handle('unsubscribe-channel', async (event, authToken, channelLogin) => {
   if (!channelLogin) {
-    return { success: false, error: 'Не указан канал' };
+    return { success: false, error: trMain('Не указан канал') };
   }
 
   const { BrowserWindow } = require('electron');
@@ -5243,7 +5344,7 @@ ipcMain.handle('unsubscribe-channel', async (event, authToken, channelLogin) => 
     const followedBefore = await isFollowingChannel(channelLogin);
 
     if (followedBefore === null) {
-      return finish({ success: false, error: 'Канал не найден или Twitch не ответил' });
+      return finish({ success: false, error: trMain('Канал не найден или Twitch не ответил') });
     }
 
     if (followedBefore === false) {
@@ -5255,7 +5356,8 @@ ipcMain.handle('unsubscribe-channel', async (event, authToken, channelLogin) => 
     await worker.loadURL(`https://www.twitch.tv/${channelLogin}`);
 
     // Страница Twitch собирается скриптами, кнопка появляется не сразу
-    const clicked = await worker.webContents.executeJavaScript(`
+    // Подписи кнопок ищутся на странице Twitch — их не переводим
+    const clicked = await worker.webContents.executeJavaScript(/* i18n-ignore: текст страницы Twitch */ `
       (async function () {
         const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
@@ -5317,7 +5419,7 @@ ipcMain.handle('unsubscribe-channel', async (event, authToken, channelLogin) => 
       console.warn('[Unsubscribe] Кнопка не найдена на странице');
       return finish({
         success: false,
-        error: 'Не удалось найти кнопку подписки на странице канала'
+        error: trMain('Не удалось найти кнопку подписки на странице канала')
       });
     }
 
@@ -5338,7 +5440,7 @@ ipcMain.handle('unsubscribe-channel', async (event, authToken, channelLogin) => 
     console.warn('[Unsubscribe] Подписка осталась после нажатия');
     return finish({
       success: false,
-      error: 'Twitch не подтвердил отписку. Похоже, изменилась страница канала.'
+      error: trMain('Twitch не подтвердил отписку. Похоже, изменилась страница канала.')
     });
   } catch (error) {
     console.error('[Unsubscribe] Ошибка:', error.message);

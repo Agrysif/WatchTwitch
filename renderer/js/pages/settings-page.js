@@ -44,11 +44,11 @@ class SettingsPage {
 
   static get FALLBACK_SOUND_EVENTS() {
     return [
-      { id: 'drop', label: 'Награда получена', hint: 'Восходящий аккорд из трёх нот', setting: 'soundDrop', defaultOn: true },
-      { id: 'chest', label: 'Сундук собран', hint: 'Короткая «монетка». Сундуки бывают каждые 15 минут', setting: 'soundChest', defaultOn: false },
-      { id: 'allDone', label: 'Все награды собраны', hint: 'Фарминг закончил всё, что было в списке', setting: 'soundAllDone', defaultOn: true },
-      { id: 'attention', label: 'Нужно вмешаться', hint: 'Фарминг остановился, нет входа в Twitch или награда не забрана', setting: 'soundAttention', defaultOn: true },
-      { id: 'favourite', label: 'Избранный канал в эфире', hint: 'Стример из избранного начал трансляцию', setting: 'soundFavourite', defaultOn: true }
+      { id: 'drop', label: tr('Награда получена'), hint: tr('Восходящий аккорд из трёх нот'), setting: 'soundDrop', defaultOn: true },
+      { id: 'chest', label: tr('Сундук собран'), hint: tr('Короткая «монетка». Сундуки бывают каждые 15 минут'), setting: 'soundChest', defaultOn: false },
+      { id: 'allDone', label: tr('Все награды собраны'), hint: tr('Фарминг закончил всё, что было в списке'), setting: 'soundAllDone', defaultOn: true },
+      { id: 'attention', label: tr('Нужно вмешаться'), hint: tr('Фарминг остановился, нет входа в Twitch или награда не забрана'), setting: 'soundAttention', defaultOn: true },
+      { id: 'favourite', label: tr('Избранный канал в эфире'), hint: tr('Стример из избранного начал трансляцию'), setting: 'soundFavourite', defaultOn: true }
     ];
   }
 
@@ -68,10 +68,6 @@ class SettingsPage {
     this._renderAbort = new AbortController();
 
     const i18n = window.i18n;
-    const en = i18n?.currentLang === 'en';
-    // Тексты пишутся здесь же по-русски, короче прежних; для английского
-    // берём готовую строку перевода, если она есть
-    const T = (ru, enText) => (en && enText ? enText : ru);
     const esc = window.escapeHtml;
     const I = (name, size = 16) => window.Icons?.get(name, size) ?? '';
     // Значки меню разделов, которых нет в общем наборе: «монитор» там уже
@@ -127,7 +123,7 @@ class SettingsPage {
     const segmented = (id, current, options, labelledBy) => `
       <div class="segmented" id="${id}" role="group" aria-labelledby="${labelledBy}" data-value="${current}">
         ${options.map(o => `
-          <button type="button" data-value="${o.value}" class="${o.value === current ? 'active' : ''}" aria-pressed="${o.value === current}">
+          <button type="button" data-value="${o.value}" class="${o.value === current ? 'active' : ''}" aria-pressed="${o.value === current}"${o.noTr ? ' data-no-tr' : ''}>
             ${o.icon ? I(o.icon, 14) : ''}<span>${o.label}</span>
           </button>`).join('')}
       </div>`;
@@ -139,14 +135,14 @@ class SettingsPage {
       </section>`;
 
     const sections = [
-      { id: 'set-farming', icon: 'play', title: T('Фарминг', i18n.t('settings.farming')) },
-      { id: 'set-notify', icon: 'bell', title: T('Уведомления и звук', 'Notifications & sound') },
-      { id: 'set-perf', icon: 'gamepad', title: T('Игры и нагрузка', 'Games & performance') },
-      { id: 'set-window', icon: 'window', title: T('Окно и запуск', 'Window & startup') },
-      { id: 'set-shutdown', icon: 'power', title: T('Автовыключение', 'Auto shutdown') },
-      { id: 'set-look', icon: 'palette', title: T('Оформление', 'Appearance') },
-      { id: 'set-data', icon: 'folder', title: T('Данные', 'Data') },
-      { id: 'set-about', icon: 'info', title: T('О программе', 'About') }
+      { id: 'set-farming', icon: 'play', title: tr('Фарминг') },
+      { id: 'set-notify', icon: 'bell', title: tr('Уведомления и звук') },
+      { id: 'set-perf', icon: 'gamepad', title: tr('Игры и нагрузка') },
+      { id: 'set-window', icon: 'window', title: tr('Окно и запуск') },
+      { id: 'set-shutdown', icon: 'power', title: tr('Автовыключение') },
+      { id: 'set-look', icon: 'palette', title: tr('Оформление') },
+      { id: 'set-data', icon: 'folder', title: tr('Данные') },
+      { id: 'set-about', icon: 'info', title: tr('О программе') }
     ];
     const titleOf = (id) => sections.find(s => s.id === id).title;
 
@@ -155,48 +151,45 @@ class SettingsPage {
     const farmingHtml = [
       item({
         id: 'setting-auto-claim',
-        label: T('Автоматически забирать награды', i18n.t('settings.autoClaimDrops')),
-        desc: T('Награда забирается сама, как только Twitch её выдал', i18n.t('settings.autoClaimDropsDesc')),
+        label: tr('Автоматически забирать награды'),
+        desc: tr('Награда забирается сама, как только Twitch её выдал'),
         control: toggle('setting-auto-claim', get('autoClaimDrops'))
       }),
       item({
         id: 'setting-auto-switch',
-        label: T('Автопереключение стримов', i18n.t('settings.autoSwitchStreams')),
-        desc: T('Эфир закончился, канал не засчитывает минуты или стример сменил игру — перейти на другой стрим',
-          i18n.t('settings.autoSwitchStreamsDesc')),
+        label: tr('Автопереключение стримов'),
+        desc: tr('Эфир закончился, канал не засчитывает минуты или стример сменил игру — перейти на другой стрим'),
         control: toggle('setting-auto-switch', get('autoSwitchStreams'))
       }),
       item({
         id: 'setting-smart-switch',
-        label: T('Выбирать категорию по выгоде', i18n.t('settings.smartCategorySwitch')),
-        desc: T('Пропускать кампании, которые уже не успеть, и идти туда, где за час больше наград',
-          i18n.t('settings.smartCategorySwitchDesc')),
+        label: tr('Выбирать категорию по выгоде'),
+        desc: tr('Пропускать кампании, которые уже не успеть, и идти туда, где за час больше наград'),
         control: toggle('setting-smart-switch', get('smartCategorySwitch') !== false)
       }),
       item({
         id: 'setting-suggest',
-        label: T('Подсказывать выгодные категории', i18n.t('settings.suggestCategories')),
-        desc: T('Показывать на «Фарминге» игры с дропсами, которых нет в вашем списке', i18n.t('settings.suggestCategoriesDesc')),
+        label: tr('Подсказывать выгодные категории'),
+        desc: tr('Показывать на «Фарминге» игры с дропсами, которых нет в вашем списке'),
         control: toggle('setting-suggest', get('suggestCategories') !== false)
       }),
       item({
         id: 'setting-quality',
-        label: T('Качество стрима', i18n.t('settings.streamQuality')),
-        desc: T('Для зачёта минут хватает 160p. Выше качество — больше трафика', i18n.t('settings.streamQualityDesc')),
+        label: tr('Качество стрима'),
+        desc: tr('Для зачёта минут хватает 160p. Выше качество — больше трафика'),
         control: `
           <select class="input-field" id="setting-quality" aria-describedby="setting-quality-desc">
-            <option value="160p30" ${quality === '160p30' ? 'selected' : ''}>${i18n.t('settings.lowest')} (160p)</option>
+            <option value="160p30" ${quality === '160p30' ? 'selected' : ''}>${tr('Минимальное (160p)')}</option>
             <option value="360p30" ${quality === '360p30' ? 'selected' : ''}>360p</option>
             <option value="480p30" ${quality === '480p30' ? 'selected' : ''}>480p</option>
           </select>`
       }),
       item({
         id: 'setting-background-chat',
-        label: T('Фоновый чат Twitch', 'Background Twitch chat'),
-        desc: T('Включите, только если сундуки перестали собираться. Без чата — на 190 МБ памяти меньше',
-          'Turn on only if bonus chests stopped being collected. Without chat the app uses about 190 MB less memory'),
+        label: tr('Фоновый чат Twitch'),
+        desc: tr('Включите, только если сундуки перестали собираться. Без чата — на 190 МБ памяти меньше'),
         control: toggle('setting-background-chat', get('backgroundChat') === true),
-        keywords: 'сундук баллы память chat'
+        keywords: tr('сундук баллы память chat')
       })
     ].join('');
 
@@ -209,19 +202,22 @@ class SettingsPage {
     const soundEvents = SettingsPage.soundEvents();
     // Название сигнала «нужно вмешаться» — из того же списка событий, что и
     // строка выше: подпись про игру не должна называть его иначе
-    const attentionLabel = soundEvents.find(ev => ev.id === 'attention')?.label || T('Нужно вмешаться', 'Needs attention');
+    // Подписи событий приходят из chime.js; tr() на случай, если там они
+    // остались русскими: уже переведённую строку он вернёт как есть
+    const attentionLabel = tr(soundEvents.find(ev => ev.id === 'attention')?.label) || tr('Нужно вмешаться');
     const soundEventsHtml = soundEvents.map(ev => {
       const id = `setting-sound-${String(ev.id).replace(/[^a-zA-Z0-9_-]/g, '')}`;
       const enabled = ev.defaultOn ? get(ev.setting) !== false : get(ev.setting) === true;
+      const label = tr(ev.label) || ev.id;
       return item({
         id,
-        label: esc(ev.label || ev.id),
-        desc: esc(ev.hint || ''),
+        label: esc(label),
+        desc: esc(tr(ev.hint) || ''),
         sub: true,
         parent: 'setting-sound',
         control: `
           <button type="button" class="btn btn-ghost btn-icon btn-sm settings-preview" data-preview="${esc(ev.id)}"
-                  title="${T('Прослушать', 'Play')}" aria-label="${T('Прослушать', 'Play')}: ${esc(ev.label || ev.id)}">${I('play', 14)}</button>
+                  title="${tr('Прослушать')}" aria-label="${tr('Прослушать: {name}', { name: esc(label) })}">${I('play', 14)}</button>
           ${toggle(id, enabled, `data-sound-key="${esc(ev.setting)}" data-default-on="${ev.defaultOn ? '1' : '0'}"`)}`
       });
     }).join('');
@@ -229,48 +225,47 @@ class SettingsPage {
     const notifyHtml = [
       item({
         id: 'setting-toast',
-        label: T('Всплывающие сообщения в окне', i18n.t('settings.toastNotifications')),
-        desc: T('Короткие сообщения в углу окна. Ошибки и ответы на нажатия видны всегда', i18n.t('settings.toastNotificationsDesc')),
+        label: tr('Всплывающие сообщения в окне'),
+        desc: tr('Короткие сообщения в углу окна. Ошибки и ответы на нажатия видны всегда'),
         control: toggle('setting-toast', get('toastNotifications'))
       }),
       item({
         id: 'setting-system-notifications',
-        label: T('Уведомления Windows', i18n.t('settings.systemNotifications')),
-        desc: T('Сообщения в углу экрана, пока окно свёрнуто или в трее: фарминг остановился, нужен вход, кампания заканчивается',
-          i18n.t('settings.systemNotificationsDesc')),
+        label: tr('Уведомления Windows'),
+        desc: tr('Сообщения в углу экрана, пока окно свёрнуто или в трее: фарминг остановился, нужен вход, кампания заканчивается'),
         control: toggle('setting-system-notifications', systemOn)
       }),
       item({
         id: 'setting-notify-drop',
-        label: T('О полученных наградах', i18n.t('settings.notifyOnDropClaimed')),
-        desc: T('Карточка с картинкой награды. Во время игры — одна сводка после неё', i18n.t('settings.notifyOnDropClaimedDesc')),
+        label: tr('О полученных наградах'),
+        desc: tr('Карточка с картинкой награды. Во время игры — одна сводка после неё'),
         control: toggle('setting-notify-drop', get('notifyOnDropClaimed')),
         sub: true, parent: 'setting-system-notifications', mode: 'dim'
       }),
       item({
         id: 'setting-favourite-live',
-        label: T('О выходе избранных каналов', i18n.t('settings.notifyFavouriteLive')),
-        desc: T('Избранный стример начал эфир — и есть ли по его игре дропсы', i18n.t('settings.notifyFavouriteLiveDesc')),
+        label: tr('О выходе избранных каналов'),
+        desc: tr('Избранный стример начал эфир — и есть ли по его игре дропсы'),
         control: toggle('setting-favourite-live', get('notifyFavouriteLive') !== false),
         sub: true, parent: 'setting-system-notifications', mode: 'dim'
       }),
       item({
         labelId: 'test-notification-label', descId: 'test-notification-desc',
-        label: T('Пробное уведомление', 'Test notification'),
-        desc: T('Покажет, как выглядит окно о награде', 'Shows what a reward notification looks like'),
-        control: `<button type="button" class="btn btn-secondary btn-sm" id="test-notification-btn" aria-describedby="test-notification-label test-notification-desc">${I('bell', 14)}<span>${T('Показать', 'Show')}</span></button>`,
-        sub: true, keywords: 'проверить тест'
+        label: tr('Пробное уведомление'),
+        desc: tr('Покажет, как выглядит окно о награде'),
+        control: `<button type="button" class="btn btn-secondary btn-sm" id="test-notification-btn" aria-describedby="test-notification-label test-notification-desc">${I('bell', 14)}<span>${tr('Показать')}</span></button>`,
+        sub: true, keywords: tr('проверить тест')
       }),
       item({
         id: 'setting-sound',
-        label: T('Звуки', 'Sounds'),
-        desc: T('Короткие сигналы о наградах и о том, что нужно вмешаться', 'Short chimes for rewards and for problems that need you'),
+        label: tr('Звуки'),
+        desc: tr('Короткие сигналы о наградах и о том, что нужно вмешаться'),
         control: toggle('setting-sound', get('soundEnabled')),
-        keywords: 'звук сигнал громкость колокольчик sound'
+        keywords: tr('звук сигнал громкость колокольчик sound')
       }),
       item({
         id: 'setting-sound-volume',
-        label: T('Громкость', 'Volume'),
+        label: tr('Громкость'),
         sub: true, parent: 'setting-sound',
         control: `
           <input type="range" class="ios-range settings-range" id="setting-sound-volume" min="0" max="1" step="0.05" value="${soundVolume}">
@@ -279,28 +274,27 @@ class SettingsPage {
       soundEventsHtml,
       item({
         id: 'setting-sound-in-game',
-        label: T('Звуки во время игры', 'Sounds while gaming'),
-        desc: T(`Обычно в игре приложение молчит. Сигнал «${esc(attentionLabel)}» звучит всегда`,
-          `Normally the app stays silent while you play. The “${esc(attentionLabel)}” chime always plays`),
+        label: tr('Звуки во время игры'),
+        desc: tr('Обычно в игре приложение молчит. Сигнал «{name}» звучит всегда', { name: esc(attentionLabel) }),
         control: toggle('setting-sound-in-game', get('soundInGame') === true),
         sub: true, parent: 'setting-sound'
       }),
       item({
         id: 'setting-quiet',
-        label: T('Тихие часы', i18n.t('settings.quietHours')),
-        desc: T('Ночью без звуков и уведомлений — фарминг идёт сам, будить незачем', i18n.t('settings.quietHoursDesc')),
+        label: tr('Тихие часы'),
+        desc: tr('Ночью без звуков и уведомлений — фарминг идёт сам, будить незачем'),
         control: toggle('setting-quiet', get('quietHours') !== false),
-        keywords: 'ночь тишина'
+        keywords: tr('ночь тишина')
       }),
       item({
         labelId: 'quiet-range-label',
-        label: T('Промежуток', 'Time range'),
+        label: tr('Промежуток'),
         desc: '', live: true, descId: 'quiet-note',
         control: `
           <div class="quiet-range" role="group" aria-labelledby="quiet-range-label">
-            <input type="time" id="setting-quiet-from" value="${esc(get('quietFrom') || '23:00')}" aria-label="${T('С', 'From')}">
+            <input type="time" id="setting-quiet-from" value="${esc(get('quietFrom') || '23:00')}" aria-label="${tr('С')}">
             <span aria-hidden="true">—</span>
-            <input type="time" id="setting-quiet-to" value="${esc(get('quietTo') || '09:00')}" aria-label="${T('До', 'To')}">
+            <input type="time" id="setting-quiet-to" value="${esc(get('quietTo') || '09:00')}" aria-label="${tr('До')}">
           </div>`,
         sub: true, parent: 'setting-quiet'
       })
@@ -310,20 +304,18 @@ class SettingsPage {
     const perfHtml = [
       item({
         id: 'setting-game-mode',
-        label: T('Игровой режим', 'Game mode'),
-        desc: T('Пока запущена игра, стрим уходит в 160p с потолком скорости — пинг не прыгает. Overwatch, CS2, VALORANT, Dota 2 и десятки других узнаются сами',
-          'While a game is running the stream drops to 160p with a speed cap so your ping stays flat. Overwatch, CS2, VALORANT, Dota 2 and dozens more are detected automatically'),
+        label: tr('Игровой режим'),
+        desc: tr('Пока запущена игра, стрим уходит в 160p с потолком скорости — пинг не прыгает. Overwatch, CS2, VALORANT, Dota 2 и десятки других узнаются сами'),
         control: toggle('setting-game-mode', get('gameMode') !== false),
-        keywords: 'игра пинг процесс exe'
+        keywords: tr('игра пинг процесс exe')
       }),
       item({
         id: 'setting-game-processes',
-        label: T('Свои игры', 'Your games'),
-        desc: T('Имена файлов .exe через запятую — их видно в Диспетчере задач на вкладке «Подробности»',
-          'Comma-separated .exe names — see Task Manager, “Details” tab'),
+        label: tr('Свои игры'),
+        desc: tr('Имена файлов .exe через запятую — их видно в Диспетчере задач на вкладке «Подробности»'),
         control: `
           <input type="text" id="setting-game-processes" class="settings-input" spellcheck="false" autocomplete="off"
-                 placeholder="${T('например, mygame.exe, other.exe', 'e.g. mygame.exe, other.exe')}"
+                 placeholder="${tr('например, mygame.exe, other.exe')}"
                  aria-describedby="setting-game-processes-desc game-processes-note"
                  value="${esc(String(get('gameModeProcesses') || ''))}">
           <div class="settings-note" id="game-processes-note" data-live></div>`,
@@ -331,18 +323,18 @@ class SettingsPage {
       }),
       item({
         id: 'setting-limit-speed',
-        label: T('Не мешать играм и связи', i18n.t('settings.limitStreamSpeed')),
-        desc: T('Растягивать загрузку стрима: рывки видео не забивают канал и не подбрасывают пинг', i18n.t('settings.limitStreamSpeedDesc')),
+        label: tr('Не мешать играм и связи'),
+        desc: tr('Растягивать загрузку стрима: рывки видео не забивают канал и не подбрасывают пинг'),
         control: toggle('setting-limit-speed', get('limitStreamSpeed') !== false),
         extra: '<div class="settings-note" id="limit-note" data-live></div>',
-        keywords: 'скорость пинг сеть интернет'
+        keywords: tr('скорость пинг сеть интернет')
       }),
       item({
         id: 'setting-low-graphics',
-        label: T('Экономный режим графики', i18n.t('settings.lowGraphics')),
-        desc: T('Не занимать видеокарту ради видео в 160p. Сработает после перезапуска', i18n.t('settings.lowGraphicsDesc')),
+        label: tr('Экономный режим графики'),
+        desc: tr('Не занимать видеокарту ради видео в 160p. Сработает после перезапуска'),
         control: toggle('setting-low-graphics', get('lowGraphics') !== false),
-        keywords: 'видеокарта gpu ускорение память'
+        keywords: tr('видеокарта gpu ускорение память')
       })
     ].join('');
 
@@ -351,32 +343,32 @@ class SettingsPage {
     const windowHtml = [
       item({
         id: 'setting-autostart',
-        label: T('Запускать вместе с Windows', i18n.t('settings.autostart')),
-        desc: T('Приложение откроется само после включения компьютера', i18n.t('settings.autostartDesc')),
+        label: tr('Запускать вместе с Windows'),
+        desc: tr('Приложение откроется само после включения компьютера'),
         control: toggle('setting-autostart', get('autostart')),
-        keywords: 'автозапуск'
+        keywords: tr('автозапуск')
       }),
       item({
         id: 'setting-minimize-tray',
-        label: T('Сворачивать в трей', i18n.t('settings.minimizeToTray')),
-        desc: T('Крестик прячет окно в трей, фарминг продолжается', i18n.t('settings.minimizeToTrayDesc')),
+        label: tr('Сворачивать в трей'),
+        desc: tr('Крестик прячет окно в трей, фарминг продолжается'),
         control: toggle('setting-minimize-tray', get('minimizeToTray')),
-        keywords: 'закрыть крестик'
+        keywords: tr('закрыть крестик')
       }),
       item({
         id: 'setting-shortcuts',
-        label: T('Горячие клавиши', i18n.t('settings.globalShortcuts')),
-        desc: T('Работают поверх других окон, даже в игре', 'Work on top of other windows, even in games'),
+        label: tr('Горячие клавиши'),
+        desc: tr('Работают поверх других окон, даже в игре'),
         control: toggle('setting-shortcuts', get('globalShortcuts') !== false),
         cls: 'is-top',
         extra: `
           <div class="settings-keys">
-            ${combo('Ctrl', 'Alt', 'F')}<span>${T('запустить или остановить фарминг', 'start or stop farming')}</span>
-            ${combo('Ctrl', 'Alt', 'N')}<span>${T('другой стрим', 'next stream')}</span>
-            ${combo('Ctrl', 'Alt', 'W')}<span>${T('показать или скрыть окно', 'show or hide the window')}</span>
+            ${combo('Ctrl', 'Alt', 'F')}<span>${tr('запустить или остановить фарминг')}</span>
+            ${combo('Ctrl', 'Alt', 'N')}<span>${tr('другой стрим')}</span>
+            ${combo('Ctrl', 'Alt', 'W')}<span>${tr('показать или скрыть окно')}</span>
           </div>
           <div class="settings-note tone-warn" id="shortcuts-note" data-live></div>`,
-        keywords: 'ctrl alt клавиатура сочетание'
+        keywords: tr('ctrl alt клавиатура сочетание')
       })
     ].join('');
 
@@ -384,37 +376,37 @@ class SettingsPage {
     const shutdownOn = !!get('enableShutdown');
     // Подпись под переключателем: пока он выключен — что он делает вообще,
     // включён — что и когда произойдёт (сводку пишет shutdownManager)
-    const shutdownIdle = T('Выключить или усыпить компьютер, когда фарминг закончит работу', i18n.t('settings.enableShutdownDesc'));
+    const shutdownIdle = tr('Выключить или усыпить компьютер, когда фарминг закончит работу');
     const sel = (key, value) => String(get(key)) === String(value) ? 'selected' : '';
     const shutdownHtml = [
       item({
         id: 'setting-shutdown',
-        label: T('Выключать компьютер после фарминга', i18n.t('settings.enableShutdown')),
+        label: tr('Выключать компьютер после фарминга'),
         desc: shutdownOn && window.shutdownManager ? esc(window.shutdownManager.describeSchedule()) : shutdownIdle,
         live: true, descId: 'shutdown-summary', descAttrs: `data-idle="${esc(shutdownIdle)}"`,
         control: toggle('setting-shutdown', shutdownOn, '', 'shutdown-summary'),
-        keywords: 'выключение сон гибернация таймер'
+        keywords: tr('выключение сон гибернация таймер')
       }),
       item({
         id: 'setting-shutdown-action',
-        label: T('Что сделать', i18n.t('settings.shutdownAction')),
+        label: tr('Что сделать'),
         control: `
           <select class="input-field" id="setting-shutdown-action">
-            <option value="shutdown" ${sel('shutdownAction', 'shutdown')}>${i18n.t('settings.shutdownPC')}</option>
-            <option value="sleep" ${sel('shutdownAction', 'sleep')}>${i18n.t('settings.sleep')}</option>
-            <option value="hibernate" ${sel('shutdownAction', 'hibernate')}>${i18n.t('settings.hibernate')}</option>
+            <option value="shutdown" ${sel('shutdownAction', 'shutdown')}>${tr('Выключить компьютер')}</option>
+            <option value="sleep" ${sel('shutdownAction', 'sleep')}>${tr('Спящий режим')}</option>
+            <option value="hibernate" ${sel('shutdownAction', 'hibernate')}>${tr('Гибернация')}</option>
           </select>`,
         sub: true, parent: 'setting-shutdown', cls: 'shutdown-option'
       }),
       item({
         id: 'setting-shutdown-trigger',
-        label: T('Когда', i18n.t('settings.shutdownTrigger')),
+        label: tr('Когда'),
         control: `
           <select class="input-field" id="setting-shutdown-trigger">
-            <option value="drops" ${sel('shutdownTrigger', 'drops')}>${i18n.t('settings.triggerDrops')}</option>
-            <option value="streamEnd" ${sel('shutdownTrigger', 'streamEnd')}>${i18n.t('settings.triggerStreamEnd')}</option>
-            <option value="any" ${sel('shutdownTrigger', 'any')}>${i18n.t('settings.triggerAny')}</option>
-            <option value="timer" ${sel('shutdownTrigger', 'timer')}>${i18n.t('settings.triggerTimer')}</option>
+            <option value="drops" ${sel('shutdownTrigger', 'drops')}>${tr('Все дропсы собраны')}</option>
+            <option value="streamEnd" ${sel('shutdownTrigger', 'streamEnd')}>${tr('Стрим завершён')}</option>
+            <option value="any" ${sel('shutdownTrigger', 'any')}>${tr('Любое из событий')}</option>
+            <option value="timer" ${sel('shutdownTrigger', 'timer')}>${tr('По таймеру')}</option>
           </select>`,
         sub: true, parent: 'setting-shutdown', cls: 'shutdown-option'
       }),
@@ -422,22 +414,22 @@ class SettingsPage {
       // меняла, но стояла и сбивала с толку
       item({
         id: 'setting-shutdown-timer',
-        label: T('Через сколько часов', i18n.t('settings.shutdownTimer')),
-        desc: T('Отсчёт идёт от начала фарминга', i18n.t('settings.shutdownTimerDesc')),
+        label: tr('Через сколько часов'),
+        desc: tr('Отсчёт идёт от начала фарминга'),
         control: `
           <select class="input-field" id="setting-shutdown-timer" aria-describedby="setting-shutdown-timer-desc">
-            ${[1, 2, 3, 4, 6, 8, 12].map(h => `<option value="${h}" ${sel('shutdownTimerHours', h)}>${h} ${i18n.t('settings.hoursShort')}</option>`).join('')}
+            ${[1, 2, 3, 4, 6, 8, 12].map(h => `<option value="${h}" ${sel('shutdownTimerHours', h)}>${tr('{n} ч', { n: h })}</option>`).join('')}
           </select>`,
         sub: true, parent: 'setting-shutdown', parentValue: 'setting-shutdown-trigger:timer', cls: 'shutdown-option'
       }),
       item({
         id: 'setting-shutdown-delay',
-        label: T('Задержка', i18n.t('settings.shutdownDelay')),
-        desc: T('Сколько ждать перед выключением — отсчёт можно отменить', i18n.t('settings.shutdownDelayDesc')),
+        label: tr('Задержка'),
+        desc: tr('Сколько ждать перед выключением — отсчёт можно отменить'),
         control: `
           <select class="input-field" id="setting-shutdown-delay" aria-describedby="setting-shutdown-delay-desc">
-            <option value="0" ${sel('shutdownDelayMinutes', 0)}>${i18n.t('settings.delayNow')}</option>
-            ${[5, 15, 30, 60].map(m => `<option value="${m}" ${sel('shutdownDelayMinutes', m)}>${m} ${i18n.t('farming.min')}</option>`).join('')}
+            <option value="0" ${sel('shutdownDelayMinutes', 0)}>${tr('Сразу')}</option>
+            ${[5, 15, 30, 60].map(m => `<option value="${m}" ${sel('shutdownDelayMinutes', m)}>${tr('{n} мин', { n: m })}</option>`).join('')}
           </select>`,
         sub: true, parent: 'setting-shutdown', cls: 'shutdown-option'
       })
@@ -446,64 +438,71 @@ class SettingsPage {
     // ── 6. Оформление ──
     const theme = get('theme') === 'light' ? 'light' : 'dark';
     const uiStyle = get('uiStyle') === 'ios27' ? 'ios27' : 'classic';
-    const lang = en ? 'en' : 'ru';
+    // Язык показываем выбранный, а не действующий: он сменится только
+    // после перезапуска, и сегмент не должен «отскакивать» назад
+    const lang = (i18n?.pendingLang || i18n?.currentLang) === 'en' ? 'en' : 'ru';
     const glass = settings.constructor.clampGlassOpacity(get('glassOpacity'));
     const lookHtml = [
       item({
         labelId: 'theme-label',
-        label: T('Тема', i18n.t('settings.theme')),
+        label: tr('Тема'),
         control: segmented('theme-select', theme, [
-          { value: 'dark', label: i18n.t('settings.dark'), icon: 'moon' },
-          { value: 'light', label: i18n.t('settings.light'), icon: 'sun' }
+          { value: 'dark', label: tr('Тёмная'), icon: 'moon' },
+          { value: 'light', label: tr('Светлая'), icon: 'sun' }
         ], 'theme-label'),
-        keywords: 'тёмная светлая dark light'
+        keywords: tr('тёмная светлая dark light')
       }),
       item({
         labelId: 'ui-style-label',
-        label: T('Оформление', 'Style'),
-        desc: T('iOS 27 — полупрозрачное стекло. Размытие работает при выключенном экономном режиме графики',
-          'iOS 27 is translucent glass. Blur needs the low graphics mode turned off'),
+        label: tr('Оформление'),
+        desc: tr('iOS 27 — полупрозрачное стекло. Размытие работает при выключенном экономном режиме графики'),
         control: segmented('ui-style-select', uiStyle, [
-          { value: 'classic', label: T('Классика', 'Classic') },
+          { value: 'classic', label: tr('Классика') },
           { value: 'ios27', label: 'iOS 27' }
         ], 'ui-style-label'),
-        keywords: 'ios стекло классика вид'
+        keywords: tr('ios стекло классика вид')
       }),
       `<div class="settings-item is-sub" id="glass-opacity-item" data-parent-value="ui-style-select:ios27">
         <div class="settings-item-info">
-          <label class="settings-item-label" for="setting-glass-opacity">${T('Прозрачность стекла', 'Glass opacity')}</label>
-          <div class="settings-item-description">${T('Левее — прозрачнее, правее — плотнее', 'Left is clearer, right is denser')}</div>
+          <label class="settings-item-label" for="setting-glass-opacity">${tr('Прозрачность стекла')}</label>
+          <div class="settings-item-description">${tr('Левее — прозрачнее, правее — плотнее')}</div>
         </div>
         <div class="settings-item-control glass-opacity-control">
           <div class="glass-opacity-stack">
-            <input type="range" class="ios-range settings-range" id="setting-glass-opacity" min="0.25" max="0.9" step="0.05" value="${glass}">
+            <input type="range" class="ios-range settings-range" id="setting-glass-opacity" min="0.25" max="0.9" step="0.05" value="${glass.toFixed(2)}">
             <div class="glass-opacity-scale" aria-hidden="true">
-              <span>${T('Прозрачнее', 'Clearer')}</span>
-              <span>${T('Плотнее', 'Denser')}</span>
+              <span>${tr('Прозрачнее')}</span>
+              <span>${tr('Плотнее')}</span>
             </div>
           </div>
         </div>
       </div>`,
       item({
         id: 'setting-compact',
-        label: T('Компактный режим', i18n.t('settings.compactMode')),
-        desc: T('Плотнее строки и карточки — больше помещается на экран', i18n.t('settings.compactModeDesc')),
+        label: tr('Компактный режим'),
+        desc: tr('Плотнее строки и карточки — больше помещается на экран'),
         control: toggle('setting-compact', get('compactMode'))
       }),
       item({
         id: 'setting-animations',
-        label: T('Анимации', i18n.t('settings.animations')),
-        desc: T('Плавные появления и переходы', i18n.t('settings.animationsDesc')),
+        label: tr('Анимации'),
+        desc: tr('Плавные появления и переходы'),
         control: toggle('setting-animations', get('animationsEnabled'))
       }),
       item({
         labelId: 'language-label',
-        label: T('Язык', i18n.t('settings.language')),
+        label: tr('Язык'),
+        // Под сегментом — напоминание, что выбранный язык ждёт перезапуска.
+        // Оно на выбранном языке, поэтому перевод разметки (tr.dom) его
+        // не трогает — как и название «Русский»
+        desc: this.languageNote(lang), live: true, descId: 'language-note', descAttrs: 'data-no-tr',
         control: segmented('language-select', lang, [
-          { value: 'ru', label: 'Русский' },
+          // Название языка — на нём самом: русский ищут по слову «Русский»
+          // и в английском интерфейсе
+          { value: 'ru', label: 'Русский', noTr: true }, // i18n-ignore
           { value: 'en', label: 'English' }
         ], 'language-label'),
-        keywords: 'language english русский'
+        keywords: tr('language english русский')
       })
     ].join('');
 
@@ -511,100 +510,96 @@ class SettingsPage {
     const dataHtml = [
       item({
         labelId: 'backup-label',
-        label: T('Резервная копия', 'Backup'),
-        desc: T('Категории с порядком и закреплениями, подписки, статистика и настройки. Аккаунты не сохраняются — после переноса войдите заново',
-          'Categories with order and pins, subscriptions, statistics and settings. Accounts are not saved — sign in again after moving'),
+        label: tr('Резервная копия'),
+        desc: tr('Категории с порядком и закреплениями, подписки, статистика и настройки. Аккаунты не сохраняются — после переноса войдите заново'),
         stacked: true,
         control: `
-          <button type="button" class="btn btn-secondary btn-sm" id="backup-export-btn">${I('download', 14)}<span>${T('Сохранить копию', 'Save backup')}</span></button>
-          <button type="button" class="btn btn-secondary btn-sm" id="backup-import-btn">${I('upload', 14)}<span>${T('Восстановить', 'Restore')}</span></button>
-          <button type="button" class="btn btn-ghost btn-sm" id="export-settings-btn">${I('copy', 14)}<span>${T('Копировать настройки', i18n.t('settings.exportSettings'))}</span></button>
+          <button type="button" class="btn btn-secondary btn-sm" id="backup-export-btn">${I('download', 14)}<span>${tr('Сохранить копию')}</span></button>
+          <button type="button" class="btn btn-secondary btn-sm" id="backup-import-btn">${I('upload', 14)}<span>${tr('Восстановить')}</span></button>
+          <button type="button" class="btn btn-ghost btn-sm" id="export-settings-btn">${I('copy', 14)}<span>${tr('Копировать настройки')}</span></button>
           <input type="file" id="backup-file-input" accept="application/json,.json" hidden>`,
-        keywords: 'перенос экспорт импорт буфер обмена'
+        keywords: tr('перенос экспорт импорт буфер обмена')
       }),
       item({
         labelId: 'journal-label',
-        label: T('Журнал событий', 'Event log'),
-        desc: T('Награды, сундуки, смены категорий и ошибки за последние две недели',
-          'Rewards, chests, category switches and errors from the last two weeks'),
-        control: `<button type="button" class="btn btn-secondary btn-sm" id="journal-open-btn">${I('journal', 14)}<span>${T('Открыть', i18n.t('settings.open'))}</span></button>`,
-        keywords: 'история лог'
+        label: tr('Журнал событий'),
+        desc: tr('Награды, сундуки, смены категорий и ошибки за последние две недели'),
+        control: `<button type="button" class="btn btn-secondary btn-sm" id="journal-open-btn">${I('journal', 14)}<span>${tr('Открыть')}</span></button>`,
+        keywords: tr('история лог')
       }),
       item({
         labelId: 'ics-label',
-        label: T('Сроки кампаний в календарь', 'Campaign dates to calendar'),
-        desc: T('Файл .ics для телефона или почты: когда заканчиваются кампании ваших игр, с напоминанием за час',
-          'An .ics file for your phone or mail: when campaigns of your games end, with a reminder an hour before'),
-        control: `<button type="button" class="btn btn-secondary btn-sm" id="ics-export-btn">${I('calendar', 14)}<span>${T('Сохранить .ics', 'Save .ics')}</span></button>`,
-        keywords: 'ics календарь напоминание'
+        label: tr('Сроки кампаний в календарь'),
+        desc: tr('Файл .ics для телефона или почты: когда заканчиваются кампании ваших игр, с напоминанием за час'),
+        control: `<button type="button" class="btn btn-secondary btn-sm" id="ics-export-btn">${I('calendar', 14)}<span>${tr('Сохранить .ics')}</span></button>`,
+        keywords: tr('ics календарь напоминание')
       }),
       item({
         labelId: 'logs-label',
-        label: T('Логи приложения', 'App logs'),
-        desc: T('Пригодятся, если ночью что-то пошло не так', 'Useful if something went wrong overnight'),
-        control: `<button type="button" class="btn btn-secondary btn-sm" id="open-logs-btn">${I('folder', 14)}<span>${T('Открыть папку', 'Open folder')}</span></button>`,
-        keywords: 'журнал работы log'
+        label: tr('Логи приложения'),
+        desc: tr('Пригодятся, если ночью что-то пошло не так'),
+        control: `<button type="button" class="btn btn-secondary btn-sm" id="open-logs-btn">${I('folder', 14)}<span>${tr('Открыть папку')}</span></button>`,
+        keywords: tr('журнал работы log')
       }),
       `<div class="settings-danger" role="group" aria-labelledby="danger-title">
-        <div class="settings-danger-title" id="danger-title">${T('Опасная зона', 'Danger zone')}</div>
+        <div class="settings-danger-title" id="danger-title">${tr('Опасная зона')}</div>
         ${item({
           labelId: 'clear-stats-label',
-          label: T('Очистить статистику', i18n.t('settings.clearStatistics')),
-          desc: T('Удалит все сессии и итоги. Вернуть нельзя', 'Deletes all sessions and totals. This cannot be undone'),
-          control: `<button type="button" class="btn btn-danger-ghost btn-sm" id="clear-statistics-btn">${I('trash', 14)}<span>${T('Очистить…', 'Clear…')}</span></button>`
+          label: tr('Очистить статистику'),
+          desc: tr('Удалит все сессии и итоги. Вернуть нельзя'),
+          control: `<button type="button" class="btn btn-danger-ghost btn-sm" id="clear-statistics-btn">${I('trash', 14)}<span>${tr('Очистить…')}</span></button>`
         })}
         ${item({
           labelId: 'reset-label',
-          label: T('Сбросить настройки', i18n.t('settings.resetSettings')),
-          desc: T('Все настройки вернутся к стандартным. Категории, аккаунты и статистика останутся', i18n.t('settings.resetSettingsConfirmDesc')),
-          control: `<button type="button" class="btn btn-danger-ghost btn-sm" id="reset-settings-btn">${I('refresh', 14)}<span>${T('Сбросить…', 'Reset…')}</span></button>`
+          label: tr('Сбросить настройки'),
+          desc: tr('Все настройки вернутся к стандартным. Категории, аккаунты и статистика останутся'),
+          control: `<button type="button" class="btn btn-danger-ghost btn-sm" id="reset-settings-btn">${I('refresh', 14)}<span>${tr('Сбросить…')}</span></button>`
         })}
       </div>`
     ].join('');
 
     // ── 8. О программе ──
-    const ext = I('external', 14);
     const aboutHtml = [
       item({
         labelId: 'version-label',
-        label: T('Версия', i18n.t('settings.appVersion')),
+        label: tr('Версия'),
         desc: '—', live: true, descId: 'setting-app-version',
         control: `
-          <button type="button" class="btn btn-ghost btn-sm" id="whats-new-btn">${I('sparkles', 14)}<span>${T('Что нового', i18n.t('settings.whatsNew'))}</span></button>
-          <button type="button" class="btn btn-secondary btn-sm" id="check-updates-btn">${I('refresh', 14)}<span>${T('Проверить обновления', i18n.t('settings.checkUpdates'))}</span></button>`,
-        keywords: 'обновление update'
+          <button type="button" class="btn btn-ghost btn-sm" id="whats-new-btn">${I('sparkles', 14)}<span>${tr('Что нового')}</span></button>
+          <button type="button" class="btn btn-secondary btn-sm" id="check-updates-btn">${I('refresh', 14)}<span>${tr('Проверить обновления')}</span></button>`,
+        keywords: tr('обновление update')
       }),
       item({
         labelId: 'links-label',
-        label: T('Проект', 'Project'),
-        desc: T('Исходный код, новости и поддержка разработки', 'Source code, news and supporting development'),
+        label: tr('Проект'),
+        desc: tr('Исходный код, новости и поддержка разработки'),
         control: `
-          <button type="button" class="btn btn-ghost btn-sm" id="github-link-btn" title="${T('Исходный код и документация', i18n.t('settings.githubDesc'))}">GitHub ${ext}</button>
-          <button type="button" class="btn btn-ghost btn-sm" id="telegram-link-btn" title="${T('Новости и поддержка', i18n.t('settings.telegramDesc'))}">Telegram ${ext}</button>
-          <button type="button" class="btn btn-ghost btn-sm" id="boosty-link-btn" title="Boosty">${T('Поддержать', 'Support')} ${ext}</button>`,
-        keywords: 'github telegram boosty донат поддержать'
+          <button type="button" class="btn btn-ghost btn-sm" id="github-link-btn" title="${tr('Исходный код и документация')}">GitHub ${I('external', 14)}</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="telegram-link-btn" title="${tr('Новости и поддержка')}">Telegram ${I('external', 14)}</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="boosty-link-btn" title="Boosty">${tr('Поддержать')} ${I('external', 14)}</button>`,
+        keywords: tr('github telegram boosty донат поддержать')
       }),
       // Процессы свёрнуты: список нужен раз в сто лет, а опрашивать его при
       // каждом открытии настроек незачем
-      `<div class="settings-block settings-details-wrap" data-keywords="${T('процессы диагностика память cpu диспетчер', 'processes diagnostics memory cpu')}">
+      `<div class="settings-block settings-details-wrap" data-keywords="${tr('процессы диагностика память cpu диспетчер')}">
         <details class="settings-details" id="processes-details">
           <summary class="settings-details-summary">
             <span class="settings-item-info">
-              <span class="settings-item-label">${T('Процессы приложения', 'App processes')}</span>
-              <span class="settings-item-description" id="processes-summary" data-live>${T('Сколько памяти и процессора занимает каждая часть', 'Memory and CPU used by each part')}</span>
+              <span class="settings-item-label">${tr('Процессы приложения')}</span>
+              <span class="settings-item-description" id="processes-summary" data-live>${tr('Сколько памяти и процессора занимает каждая часть')}</span>
             </span>
             <span class="settings-details-chevron" aria-hidden="true">${I('chevron-down', 16)}</span>
           </summary>
           <div class="settings-details-body">
             <div id="processes-list" class="process-list"></div>
-            <button type="button" class="btn btn-ghost btn-sm" id="refresh-processes-btn">${I('refresh', 14)}<span>${T('Обновить', 'Refresh')}</span></button>
+            <button type="button" class="btn btn-ghost btn-sm" id="refresh-processes-btn">${I('refresh', 14)}<span>${tr('Обновить')}</span></button>
           </div>
         </details>
       </div>`,
       item({
         id: 'setting-developer-mode',
-        label: T('Режим разработчика', i18n.t('settings.developerMode')),
-        desc: T('Тест уведомлений: Shift + клик по «Дропсов получено»', i18n.t('settings.developerModeDesc')),
+        label: tr('Режим разработчика'),
+        desc: tr('Тест уведомлений: Shift + клик по «Дропсов получено»'),
         control: toggle('setting-developer-mode', get('developerMode'))
       })
     ].join('');
@@ -624,21 +619,21 @@ class SettingsPage {
     container.innerHTML = `
       <div class="settings-page">
         <div class="page-header settings-header">
-          <h1 class="page-title">${i18n.t('settings.title')}</h1>
+          <h1 class="page-title">${tr('Настройки')}</h1>
           <div class="page-actions">
             <div class="search-field settings-search" role="search">
               ${I('search', 16)}
               <input type="search" class="input-field" id="settings-search" autocomplete="off" spellcheck="false"
-                     placeholder="${T('Поиск по настройкам', 'Search settings')}" aria-label="${T('Поиск по настройкам', 'Search settings')}"
+                     placeholder="${tr('Поиск по настройкам')}" aria-label="${tr('Поиск по настройкам')}"
                      title="Ctrl+F">
               <button type="button" class="btn btn-ghost btn-icon btn-sm settings-search-clear" id="settings-search-clear"
-                      hidden title="${T('Очистить', 'Clear')}" aria-label="${T('Очистить поиск', 'Clear search')}">${I('close', 14)}</button>
+                      hidden title="${tr('Очистить')}" aria-label="${tr('Очистить поиск')}">${I('close', 14)}</button>
             </div>
           </div>
         </div>
 
         <div class="settings-layout">
-          <nav class="settings-nav" aria-label="${T('Разделы настроек', 'Settings sections')}">
+          <nav class="settings-nav" aria-label="${tr('Разделы настроек')}">
             ${sections.map((s, index) => `
               <a href="#${s.id}" data-section="${s.id}" class="${index === 0 ? 'active' : ''}"${index === 0 ? ' aria-current="true"' : ''}>
                 ${navIcon(s.icon)}<span>${s.title}</span>
@@ -650,8 +645,8 @@ class SettingsPage {
 
             <div class="empty-state settings-empty" id="settings-empty" hidden>
               ${I('search', 40)}
-              <h3>${T('Ничего не нашлось', 'Nothing found')}</h3>
-              <p>${T('Попробуйте другое слово — например, «звук», «трей» или «качество»', 'Try another word — for example “sound”, “tray” or “quality”')}</p>
+              <h3>${tr('Ничего не нашлось')}</h3>
+              <p>${tr('Попробуйте другое слово — например, «звук», «трей» или «качество»')}</p>
             </div>
           </div>
         </div>
@@ -743,9 +738,9 @@ class SettingsPage {
           return;
         }
         window.electronAPI?.showDropNotification?.(
-          en() ? 'Test notification' : 'Проверка уведомления', 'WatchTwitch', '', { kind: 'test' });
+          tr('Проверка уведомления'), 'WatchTwitch', '', { kind: 'test' });
         if (settings.get('notifications') === false) {
-          window.utils.showToast('Уведомления Windows сейчас выключены — окно не появится', 'info');
+          window.utils.showToast(tr('Уведомления Windows сейчас выключены — окно не появится'), 'info');
         }
       }, { signal: this._abort.signal });
     }
@@ -757,7 +752,7 @@ class SettingsPage {
       minimizeTrayToggle.addEventListener('change', async (e) => {
         settings.set('minimizeToTray', e.target.checked);
         window.utils.showToast(
-          e.target.checked ? i18n.t('settings.minimizeToTrayOn') : i18n.t('settings.minimizeToTrayOff'),
+          e.target.checked ? tr('Крестик будет сворачивать в трей') : tr('Крестик закрывает приложение'),
           'info'
         );
       });
@@ -777,14 +772,14 @@ class SettingsPage {
         settings.set('backgroundChat', e.target.checked);
         if (!e.target.checked) {
           window.chatManager?.unload();
-          window.utils.showToast('Фоновый чат выключен, сундуки собираются запросом', 'info');
+          window.utils.showToast(tr('Фоновый чат выключен, сундуки собираются запросом'), 'info');
         } else {
           const login = window.farmingPage?.currentStream?.login;
           if (login) {
             window.farmingPage?.startBonusAutoCollector?.();
             window.chatManager?.load(login);
           }
-          window.utils.showToast('Фоновый чат включён', 'info');
+          window.utils.showToast(tr('Фоновый чат включён'), 'info');
         }
       });
     }
@@ -797,9 +792,9 @@ class SettingsPage {
     if (lowGraphicsToggle) {
       lowGraphicsToggle.addEventListener('change', (e) => {
         settings.set('lowGraphics', e.target.checked);
-        const состояние = (e.target.checked ? i18n.t('settings.enabled') : i18n.t('settings.disabled')).toLowerCase();
-        window.utils.showToast(
-          `${i18n.t('settings.lowGraphics')}: ${состояние}. Вступит в силу после перезапуска приложения`, 'info');
+        window.utils.showToast(tr(e.target.checked
+          ? 'Экономный режим графики: включено. Вступит в силу после перезапуска приложения'
+          : 'Экономный режим графики: выключено. Вступит в силу после перезапуска приложения'), 'info');
       });
     }
 
@@ -808,9 +803,9 @@ class SettingsPage {
     if (gameToggle) {
       gameToggle.addEventListener('change', (e) => {
         settings.set('gameMode', e.target.checked);
-        window.utils.showToast(e.target.checked
+        window.utils.showToast(tr(e.target.checked
           ? 'Игровой режим включён: игра замечается в течение 20 секунд'
-          : 'Игровой режим выключен', 'info');
+          : 'Игровой режим выключен'), 'info');
       });
     }
     const gameProcesses = document.getElementById('setting-game-processes');
@@ -835,9 +830,8 @@ class SettingsPage {
     const обновитьИгры = () => {
       if (!gameProcessesNote) return;
       const { names } = разобратьИгры(settings.get('gameModeProcesses'));
-      gameProcessesNote.textContent = names.length
-        ? 'Отслеживаются: ' + names.join(', ')
-        : '';
+      gameProcessesNote.textContent = '';
+      if (names.length) gameProcessesNote.textContent = tr('Отслеживаются: {list}', { list: names.join(', ') });
     };
     обновитьИгры();
 
@@ -849,14 +843,14 @@ class SettingsPage {
 
         const { names, подозрительные } = разобратьИгры(text);
         if (names.length === 0) {
-          window.utils.showToast('Список своих игр очищен', 'info');
+          window.utils.showToast(tr('Список своих игр очищен'), 'info');
         } else if (подозрительные.length > 0) {
           window.utils.showToast(
-            'Похоже на название игры, а не на имя процесса: ' + подозрительные.join(', ') +
-            '. Нужно имя файла .exe — его видно в Диспетчере задач, вкладка «Подробности»',
+            tr('Похоже на название игры, а не на имя процесса: {list}. Нужно имя файла .exe — его видно в Диспетчере задач, вкладка «Подробности»',
+              { list: подозрительные.join(', ') }),
             'warning');
         } else {
-          window.utils.showToast('Будут отслеживаться: ' + names.join(', '), 'success');
+          window.utils.showToast(tr('Будут отслеживаться: {list}', { list: names.join(', ') }), 'success');
         }
       });
     }
@@ -867,10 +861,12 @@ class SettingsPage {
 
     const обновитьПотолок = () => {
       if (!limitNote) return;
-      limitNote.textContent = settings.get('limitStreamSpeed') === false
-        ? 'Выключено — стрим качается на полной скорости'
-        : (window.NetworkLimit?.describe(
-            settings.get('preferredStreamQuality'), settings.get('streamSpeedHeadroom')) || '');
+      if (settings.get('limitStreamSpeed') === false) {
+        limitNote.textContent = tr('Выключено — стрим качается на полной скорости');
+        return;
+      }
+      limitNote.textContent = window.NetworkLimit?.describe(
+        settings.get('preferredStreamQuality'), settings.get('streamSpeedHeadroom')) || '';
     };
     обновитьПотолок();
 
@@ -895,7 +891,7 @@ class SettingsPage {
       const включено = settings.get('quietHours') !== false;
       quietNote.textContent = включено
         ? window.QuietHours.describe(settings.get('quietFrom'), settings.get('quietTo'))
-        : 'Выключено';
+        : tr('Выключено');
     };
     обновитьПодпись();
 
@@ -913,7 +909,7 @@ class SettingsPage {
       input.addEventListener('change', () => {
         if (window.QuietHours.toMinutes(input.value) === null) {
           input.value = settings.get(key);
-          window.utils.showToast('Время указано неверно', 'warning');
+          window.utils.showToast(tr('Время указано неверно'), 'warning');
           return;
         }
         settings.set(key, input.value);
@@ -954,7 +950,7 @@ class SettingsPage {
       shortcutsNote.textContent = failed
         .map(item => String(item?.accelerator ?? item)
           .replace(/^(CommandOrControl|CmdOrCtrl|Control)\+/i, 'Ctrl+'))
-        .map(key => `${key} ${i18n.t('settings.shortcutBusy')}`)
+        .map(key => tr('{key} занято другой программой', { key }))
         .join('; ');
     };
     обновитьКлавиши();
@@ -1009,9 +1005,9 @@ class SettingsPage {
         settings.set('autostart', e.target.checked);
         // Реальный автозапуск включает main-процесс через системный API
         window.electronAPI?.setAutostart?.(e.target.checked);
-        window.utils?.showToast(e.target.checked
+        window.utils?.showToast(tr(e.target.checked
           ? 'Приложение будет запускаться вместе с Windows'
-          : 'Автозапуск выключен', 'info');
+          : 'Автозапуск выключен'), 'info');
       }, { signal: this._abort.signal });
     }
 
@@ -1022,7 +1018,7 @@ class SettingsPage {
         settings.set('preferredStreamQuality', e.target.value);
         обновитьПотолок();
         setTimeout(() => window.electronAPI?.refreshStreamLimit?.(), 300);
-        window.utils.showToast(i18n.t('settings.qualityApplied'), 'info');
+        window.utils.showToast(tr('Качество применится при следующем запуске стрима'), 'info');
       }, { signal: this._abort.signal });
     }
 
@@ -1043,7 +1039,7 @@ class SettingsPage {
         refreshSummary();
 
         window.utils.showToast(
-          e.target.checked ? i18n.t('settings.shutdownEnabled') : i18n.t('settings.shutdownDisabled'),
+          e.target.checked ? tr('Автовыключение включено') : tr('Автовыключение выключено'),
           e.target.checked ? 'warning' : 'info'
         );
       }, { signal: this._abort.signal });
@@ -1119,15 +1115,16 @@ class SettingsPage {
       settings.set('uiStyle', value === 'ios27' ? 'ios27' : 'classic');
     });
 
-    this.bindSegmented('language-select', (value, button) => {
-      if (value === (i18n.currentLang || 'ru')) return;
-      const label = button.textContent.trim();
-      // Сохраняем и применяем язык, затем перерисовываем страницу
-      i18n.setLanguage(value);
-      this.render();
-      this.setupEventListeners();
-      this.loadAppVersion();
-      window.utils.showToast(`${i18n.t('settings.language')}: ${label}`, 'success');
+    // Язык только сохраняется: строки переводятся в момент отрисовки, и
+    // смена на лету оставила бы половину экранов на прежнем языке.
+    // Перезапуск предлагаем сразу, а отказавшемуся напоминает подпись
+    this.bindSegmented('language-select', (value) => {
+      if (!i18n?.setLanguage?.(value)) return;
+      const note = document.getElementById('language-note');
+      if (note) note.textContent = this.languageNote(value);
+      // Вернули действующий язык — перезапускать незачем
+      if (value === i18n.currentLang) return;
+      this.askRestartForLanguage(value);
     });
 
     // Прозрачность стекла. Пока ползунок тянут, меняется только переменная
@@ -1176,19 +1173,19 @@ class SettingsPage {
     if (clearStatsBtn) {
       clearStatsBtn.addEventListener('click', async () => {
         const ok = await this.confirmDanger(
-          i18n.t('settings.clearStatisticsConfirm'),
-          window.escapeHtml(i18n.t('settings.clearStatisticsConfirmDesc')),
-          i18n.t('settings.confirmClear'));
+          tr('Очистить статистику?'),
+          window.escapeHtml(tr('Вся накопленная статистика удалится. Вернуть её будет нельзя')),
+          tr('Очистить'));
         if (!ok) return;
 
         try {
           await Storage.clearStatistics();
           // Страница статистики слушает это событие и перерисуется сама
           window.dispatchEvent(new CustomEvent('statistics-updated'));
-          window.utils.showToast(i18n.t('settings.clearStatisticsDone'), 'success');
+          window.utils.showToast(tr('Статистика очищена'), 'success');
         } catch (error) {
           console.error('[Settings] Не удалось очистить статистику:', error);
-          window.utils.showToast('Не удалось очистить статистику', 'error');
+          window.utils.showToast(tr('Не удалось очистить статистику'), 'error');
         }
       }, { signal: this._abort.signal });
     }
@@ -1198,9 +1195,9 @@ class SettingsPage {
     if (resetBtn) {
       resetBtn.addEventListener('click', async () => {
         const ok = await this.confirmDanger(
-          i18n.t('settings.resetSettingsConfirm'),
-          window.escapeHtml(i18n.t('settings.resetSettingsConfirmDesc')),
-          i18n.t('settings.confirmReset'));
+          tr('Сбросить все настройки?'),
+          window.escapeHtml(tr('Категории, аккаунты и статистика не затрагиваются')),
+          tr('Сбросить'));
         if (!ok) return;
 
         settings.reset();
@@ -1220,7 +1217,7 @@ class SettingsPage {
           this.setupEventListeners();
           this.loadAppVersion();
         }
-        window.utils.showToast(i18n.t('settings.resetSettingsDone'), 'success');
+        window.utils.showToast(tr('Настройки сброшены к стандартным'), 'success');
       }, { signal: this._abort.signal });
     }
 
@@ -1257,10 +1254,10 @@ class SettingsPage {
           // Узнать, сохранил ли человек файл или закрыл окно, отсюда нельзя:
           // «Копия сохранена» в момент клика была бы неправдой
           window.utils.showToast(
-            'Выберите, куда сохранить копию. В ней ' + window.Backup.describe(data), 'info');
+            tr('Выберите, куда сохранить копию. В ней {contents}', { contents: window.Backup.describe(data) }), 'info');
         } catch (error) {
           console.error('[Копия] Не удалось сохранить:', error);
-          window.utils.showToast('Не удалось сохранить копию', 'error');
+          window.utils.showToast(tr('Не удалось сохранить копию'), 'error');
         }
       });
     }
@@ -1276,7 +1273,7 @@ class SettingsPage {
         try {
           const категории = (await Storage.getCategories().catch(() => [])) || [];
           if (категории.length === 0) {
-            window.utils.showToast('Сначала добавьте категории: в календарь попадают только их кампании', 'warning');
+            window.utils.showToast(tr('Сначала добавьте категории: в календарь попадают только их кампании'), 'warning');
             return;
           }
 
@@ -1300,16 +1297,16 @@ class SettingsPage {
 
           if (календарь.events === 0) {
             window.utils.showToast(
-              'По играм из ваших категорий идущих кампаний пока нет. Откройте «Календарь», чтобы обновить сроки', 'info');
+              tr('По играм из ваших категорий идущих кампаний пока нет. Откройте «Календарь», чтобы обновить сроки'), 'info');
             return;
           }
 
           сохранитьФайл(календарь.text, 'text/calendar', `watchtwitch-drops-${местнаяДата()}.ics`);
           window.utils.showToast(
-            `Выберите, куда сохранить файл календаря. Кампаний в нём: ${календарь.events}`, 'info');
+            tr('Выберите, куда сохранить файл календаря. Кампаний в нём: {count}', { count: календарь.events }), 'info');
         } catch (error) {
           console.error('[Календарь] Не удалось сохранить сроки:', error);
-          window.utils.showToast('Не удалось сохранить сроки кампаний', 'error');
+          window.utils.showToast(tr('Не удалось сохранить сроки кампаний'), 'error');
         }
       });
     }
@@ -1319,7 +1316,7 @@ class SettingsPage {
       logsBtn.addEventListener('click', async () => {
         const result = await window.electronAPI.openLogsFolder?.();
         if (result && !result.success) {
-          window.utils.showToast('Не удалось открыть папку логов: ' + (result.error || ''), 'error');
+          window.utils.showToast(tr('Не удалось открыть папку логов: {error}', { error: result.error || '' }), 'error');
         }
       });
     }
@@ -1333,7 +1330,7 @@ class SettingsPage {
         const file = backupInput.files?.[0];
         if (!file) return;
 
-        const битыйФайл = 'Файл повреждён или это не копия WatchTwitch';
+        const битыйФайл = tr('Файл повреждён или это не копия WatchTwitch');
 
         try {
           let data;
@@ -1354,28 +1351,29 @@ class SettingsPage {
 
           // Показываем то, что реально встанет на место, а не сырой файл
           const clean = window.Backup.sanitize(data);
-          const заменится = window.Backup.describe(clean);
-          if (заменится === 'пусто') {
+          // Пустоту проверяем по данным: подпись describe() зависит от языка
+          if (window.Backup.isEmpty(clean)) {
             window.utils.showToast(битыйФайл, 'error');
             return;
           }
+          const заменится = window.Backup.describe(clean);
 
           // Без проверки битая дата превращалась в «Invalid Date»
           const создана = new Date(data.createdAt);
-          const когда = data.createdAt && Number.isFinite(создана.getTime())
-            ? ` от ${создана.toLocaleString('ru-RU')}`
-            : '';
+          const заголовок = data.createdAt && Number.isFinite(создана.getTime())
+            ? tr('Восстановить копию от {date}?', { date: создана.toLocaleString(tr.locale()) })
+            : tr('Восстановить копию?');
           const отброшено = window.Backup.describeDropped(clean.dropped);
 
           // Восстановление затирает текущий список, поэтому спрашиваем.
           // Строки экранируем по одной, а переносы ставим сами
           const сообщение = [
-            `Будет заменено: ${заменится}.`,
-            отброшено ? `Повреждённые записи пропущены — ${отброшено}.` : '',
-            'Текущие данные перезапишутся, прежние сохранятся отдельно.'
+            tr('Будет заменено: {list}.', { list: заменится }),
+            отброшено && tr('Повреждённые записи пропущены — {list}.', { list: отброшено }),
+            tr('Текущие данные перезапишутся, прежние сохранятся отдельно.')
           ].filter(Boolean).map(строка => window.escapeHtml(строка)).join('<br>');
           const ok = await this.confirmDanger(
-            `Восстановить копию${когда}?`, сообщение, i18n.t('settings.confirmRestore'));
+            заголовок, сообщение, tr('Восстановить'));
           if (!ok) return;
 
           const applied = await window.Backup.restore(data);
@@ -1389,13 +1387,15 @@ class SettingsPage {
             this.loadAppVersion();
           }
 
-          window.utils.showToast('Восстановлено: ' + applied.join(', ') + '. Перезапустите приложение', 'success');
+          window.utils.showToast(tr('Восстановлено: {list}. Перезапустите приложение', { list: applied.join(', ') }), 'success');
         } catch (error) {
           console.error('[Копия] Не удалось восстановить:', error);
-          // Свои ошибки Backup пишет по-русски для пользователя, а
-          // технический текст (сбой записи в хранилище) остаётся в журнале
+          // Свои ошибки Backup пишет для пользователя и помечает userMessage,
+          // а технический текст (сбой записи в хранилище) остаётся в журнале.
+          // По кириллице свои ошибки узнавались, пока интерфейс был только русским
           const msg = String(error?.message || '');
-          window.utils.showToast(/[а-яё]/i.test(msg) ? msg : 'Не удалось восстановить копию', 'error');
+          const своя = error?.userMessage || (tr.lang() !== 'en' && /[а-яё]/i.test(msg) ? msg : '');
+          window.utils.showToast(своя || tr('Не удалось восстановить копию'), 'error');
         } finally {
           backupInput.value = '';
         }
@@ -1409,10 +1409,10 @@ class SettingsPage {
       exportBtn.addEventListener('click', async () => {
         try {
           await navigator.clipboard.writeText(settings.export());
-          window.utils.showToast(i18n.t('settings.exportSettingsDone'), 'success');
+          window.utils.showToast(tr('Настройки скопированы в буфер обмена'), 'success');
         } catch (error) {
           console.warn('[Настройки] Не удалось записать в буфер обмена:', error?.message);
-          window.utils.showToast(i18n.t('settings.exportSettingsFailed'), 'error');
+          window.utils.showToast(tr('Не удалось скопировать настройки'), 'error');
         }
       });
     }
@@ -1422,7 +1422,7 @@ class SettingsPage {
     if (checkUpdatesBtn) {
       checkUpdatesBtn.addEventListener('click', () => {
         if (!window.electronAPI?.checkForUpdates) {
-          window.utils.showToast('В режиме разработки обновления недоступны', 'warning');
+          window.utils.showToast(tr('В режиме разработки обновления недоступны'), 'warning');
           return;
         }
 
@@ -1436,7 +1436,7 @@ class SettingsPage {
         }
 
         window.electronAPI.checkForUpdates();
-        window.utils.showToast('Проверяю обновления…', 'info');
+        window.utils.showToast(tr('Проверяю обновления…'), 'info');
       }, { signal: this._abort.signal });
     }
 
@@ -1453,11 +1453,63 @@ class SettingsPage {
     this.setupNavigation();
     this.setupSearch();
     this.setupDiagnostics();
+  }
 
-    // Тексты внутри обработчиков: для английского интерфейса
-    function en() {
-      return i18n?.currentLang === 'en';
+  /**
+   * Подпись под выбором языка: пока выбранный язык ждёт перезапуска.
+   * На выбранном языке — человек выбрал его, потому что читает на нём.
+   */
+  languageNote(pending) {
+    const current = window.i18n?.currentLang || tr.lang();
+    if (!pending || pending === current) return '';
+    return pending === 'en'
+      ? 'English will turn on after a restart'
+      : 'Русский включится после перезапуска'; // i18n-ignore — на выбранном языке, а не на текущем
+  }
+
+  /**
+   * Предложение перезапуститься после смены языка — на выбранном языке.
+   * Отказ ничего не отменяет: выбор сохранён и сработает при следующем
+   * запуске, об этом напоминает подпись под переключателем.
+   */
+  async askRestartForLanguage(target) {
+    const en = target === 'en';
+    // Фарминг при выходе сохраняет сессию (stopFarming с preserveSession),
+    // и после запуска страница фарминга продолжает её на том же канале
+    const farming = !!(window.sessionState?.isActive?.() || window.farmingPage?.sessionStartTime);
+    const text = en ? {
+      title: 'Restart WatchTwitch to switch the language',
+      farming: 'Farming will stop for a moment and continue after the restart',
+      restart: 'Restart now',
+      later: 'Later',
+      manual: 'Close WatchTwitch and open it again to switch the language'
+    } : {
+      title: 'Перезапустите WatchTwitch, чтобы сменить язык', // i18n-ignore — на выбранном языке
+      farming: 'Фарминг ненадолго остановится и продолжится после перезапуска', // i18n-ignore
+      restart: 'Перезапустить', // i18n-ignore
+      later: 'Позже', // i18n-ignore
+      manual: 'Закройте WatchTwitch и откройте снова, чтобы сменить язык' // i18n-ignore
+    };
+
+    const ok = await window.utils?.showConfirmation?.(text.title, farming ? text.farming : '', {
+      confirmText: text.restart,
+      cancelText: text.later
+    });
+    // Пока окно было открыто, выбор могли вернуть обратно
+    if (!ok || window.i18n?.pendingLang === window.i18n?.currentLang) return;
+
+    // Без relaunchApp (старый preload) перезапустить отсюда нечем —
+    // говорим, как сделать это руками
+    let restarting = false;
+    try {
+      if (typeof window.electronAPI?.relaunchApp === 'function') {
+        await window.electronAPI.relaunchApp();
+        restarting = true;
+      }
+    } catch (error) {
+      console.warn('[Язык] Перезапуск не удался:', error?.message);
     }
+    if (!restarting) window.utils?.showToast(text.manual, 'warning');
   }
 
   /** Пробный сигнал: chime.preview играет всегда, это явное действие. */
@@ -1660,7 +1712,7 @@ class SettingsPage {
     const input = document.getElementById('settings-search');
     if (!root || !input) return;
 
-    const norm = (text) => String(text || '').toLowerCase().replace(/ё/g, 'е');
+    const norm = (text) => String(text || '').toLowerCase().replace(/ё/g, 'е'); // i18n-ignore — нормализация поиска
     const query = norm(input.value.trim());
     this._searchQuery = input.value.trim();
 
@@ -1771,7 +1823,7 @@ class SettingsPage {
     `;
     return window.utils.showCustomConfirmation(html, {
       confirmText: esc(confirmText),
-      cancelText: esc(i18n.t('common.cancel')),
+      cancelText: esc(tr('Отмена')),
       confirmClass: 'btn-danger'
     });
   }
@@ -1810,27 +1862,29 @@ class SettingsPage {
       const metrics = await window.electronAPI.getProcessMetrics();
       if (!list.isConnected) return;
       if (!metrics || metrics.length === 0) {
-        list.innerHTML = '<div class="settings-note">Нет данных</div>';
+        list.innerHTML = `<div class="settings-note">${tr('Нет данных')}</div>`;
         return;
       }
 
-      // Единицы по-русски и с запятой: «118,6 МБ», как везде в приложении
+      // Единицы по-русски и с запятой: «118,6 МБ», как везде в приложении;
+      // в английском — точка: «118.6 MB»
+      const decimal = (value) => (tr.lang() === 'en' ? value.toFixed(1) : value.toFixed(1).replace('.', ','));
       const mb = (kb) => typeof kb === 'number'
-        ? `${(kb / 1024).toFixed(1).replace('.', ',')} МБ`
+        ? tr('{value} МБ', { value: decimal(kb / 1024) })
         : '—';
       const cpu = (value) => typeof value === 'number'
-        ? `${value.toFixed(1).replace('.', ',')} %`
+        ? `${decimal(value)} %`
         : '—';
 
       const totalKb = metrics.reduce((sum, m) => sum + (Number(m.memory?.workingSetSize) || 0), 0);
       const summary = document.getElementById('processes-summary');
       if (summary && totalKb > 0) {
-        summary.textContent = `Всего ${mb(totalKb)} памяти · процессов: ${metrics.length}`;
+        summary.textContent = tr('Всего {memory} памяти · процессов: {count}', { memory: mb(totalKb), count: metrics.length });
       }
 
       list.innerHTML = `
         <div class="process-row process-head" aria-hidden="true">
-          <span>Процесс</span><span>CPU</span><span>Память</span>
+          <span>${tr('Процесс')}</span><span>CPU</span><span>${tr('Память')}</span>
         </div>
         ${metrics.map(metric => `
           <div class="process-row">
@@ -1843,7 +1897,7 @@ class SettingsPage {
           </div>`).join('')}`;
     } catch (error) {
       console.error('[Diagnostics] Failed to load process metrics:', error);
-      list.innerHTML = '<div class="settings-note tone-error">Не удалось получить данные</div>';
+      list.innerHTML = `<div class="settings-note tone-error">${tr('Не удалось получить данные')}</div>`;
     }
   }
 

@@ -40,13 +40,13 @@ class PlayerManager extends SlottedWebview {
   /** Качества, которые понимает плеер Twitch. */
   static get QUALITIES() {
     return [
-      { value: '160p30', label: '160p', hint: 'минимум' },
+      { value: '160p30', label: '160p', hint: tr('минимум') },
       { value: '360p30', label: '360p', hint: '' },
       { value: '480p30', label: '480p', hint: '' },
       { value: '720p60', label: '720p', hint: '' },
       // Twitch называет исходное качество chunked. Конкретное разрешение
       // зависит от стримера, поэтому числом его не подписать.
-      { value: 'chunked', label: 'Источник', hint: 'как у стримера' }
+      { value: 'chunked', label: tr('Источник'), hint: tr('как у стримера') }
     ];
   }
 
@@ -104,7 +104,7 @@ class PlayerManager extends SlottedWebview {
       .join('');
 
     bar.innerHTML = `
-      <button class="player-bar-btn" data-role="sound" title="Включить звук">
+      <button class="player-bar-btn" data-role="sound" title="${tr('Включить звук')}">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" data-icon="muted">
           <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3a4.5 4.5 0 00-2.5-4v8a4.5 4.5 0 002.5-4z" opacity=".35"/>
           <path d="M19 5L5 19" stroke="currentColor" stroke-width="2"/>
@@ -242,7 +242,7 @@ class PlayerManager extends SlottedWebview {
     const btn = this.bar.querySelector('[data-role="sound"]');
     if (btn) {
       btn.classList.toggle('active', !muted);
-      btn.title = muted ? 'Включить звук' : 'Выключить звук';
+      btn.title = muted ? tr('Включить звук') : tr('Выключить звук');
       btn.querySelector('[data-icon="muted"]').style.display = muted ? '' : 'none';
       btn.querySelector('[data-icon="loud"]').style.display = muted ? 'none' : '';
     }
@@ -308,7 +308,7 @@ class PlayerManager extends SlottedWebview {
 
       let state = null;
       try {
-        state = await this.webview.executeJavaScript(`
+        state = await this.webview.executeJavaScript(/* i18n-ignore: текст страницы Twitch */ `
           (function () {
             var v = document.querySelector('video');
             var text = document.body ? document.body.innerText || '' : '';
@@ -387,8 +387,10 @@ class PlayerManager extends SlottedWebview {
         const channel = this.channel;
         this.channel = null;
         this.load(channel, { quality: next, keepSound: this.muted === false });
-        window.utils?.showToast('Качество ' + PlayerManager.labelOf(requestedQuality) +
-          ' недоступно, теперь ' + PlayerManager.labelOf(next), 'warning');
+        window.utils?.showToast(tr('Качество {from} недоступно, теперь {to}', {
+          from: PlayerManager.labelOf(requestedQuality),
+          to: PlayerManager.labelOf(next)
+        }), 'warning');
         return;
       }
 
@@ -482,7 +484,7 @@ class PlayerManager extends SlottedWebview {
     this.load(channel, { quality: value, keepSound });
 
     const chosen = PlayerManager.QUALITIES.find(q => q.value === value);
-    window.utils?.showToast('Качество: ' + (chosen ? chosen.label : value), 'info');
+    window.utils?.showToast(tr('Качество: {quality}', { quality: chosen ? chosen.label : value }), 'info');
   }
 
   /**
@@ -636,7 +638,7 @@ class PlayerManager extends SlottedWebview {
 
     let state;
     try {
-      state = await this.webview.executeJavaScript(`
+      state = await this.webview.executeJavaScript(/* i18n-ignore: текст страницы Twitch */ `
         (function () {
           const video = document.querySelector('video');
           const text = document.body ? document.body.innerText || '' : '';
@@ -667,7 +669,7 @@ class PlayerManager extends SlottedWebview {
       if (this.offlineStrikes >= 2) {
         this.offlineStrikes = 0;
         this.stallStrikes = 0;
-        this.reportDead('канал не в эфире');
+        this.reportDead('канал не в эфире'); // i18n-ignore: причина только для лога
       }
       return;
     }
@@ -714,10 +716,10 @@ class PlayerManager extends SlottedWebview {
       // Счётчик не сбрасываем: если и это не помогло, следующая ступень —
       // смена канала
       this.stallStrikes = 3;
-      window.utils?.showToast('Плеер перезапущен автоматически', 'info');
+      window.utils?.showToast(tr('Плеер перезапущен автоматически'), 'info');
     } else {
       this.stallStrikes = 0;
-      this.reportDead('плеер не ожил после перезапуска');
+      this.reportDead('плеер не ожил после перезапуска'); // i18n-ignore: причина только для лога
     }
   }
 
@@ -739,7 +741,7 @@ class PlayerManager extends SlottedWebview {
   /** Мягкая попытка: нажать кнопку перезагрузки Twitch или запустить видео. */
   async nudgePlayer() {
     try {
-      await this.webview.executeJavaScript(`
+      await this.webview.executeJavaScript(/* i18n-ignore: текст кнопок Twitch */ `
         (function () {
           const selectors = [
             'button[data-a-target="player-overlay-refresh-button"]',

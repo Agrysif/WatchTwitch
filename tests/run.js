@@ -52,6 +52,8 @@ function loadClass(relativePath, className, globals = {}) {
   };
   sandbox.globalThis = sandbox;
   vm.createContext(sandbox);
+  // tr() — перевод интерфейса; в песочнице язык русский, строки как есть
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'renderer/js/core/tr.js'), 'utf8'), sandbox);
   vm.runInContext(code, sandbox);
   return sandbox.window[className] || sandbox[className];
 }
@@ -800,21 +802,40 @@ function loadClass(relativePath, className, globals = {}) {
 
   const get = (lang, key) => key.split('.').reduce((o, k) => (o == null ? o : o[k]), t[lang]);
 
-  // Ключи, которые интерфейс запрашивает через i18n.t в исходниках
-  const sources = ['renderer/js/pages/settings-page.js', 'renderer/js/pages/farming-page.js'];
+  // Ключи, которые интерфейс ещё запрашивает через i18n.t. Строки
+  // переехали на tr() (их проверяет i18n-check ниже), поэтому таких ключей
+  // может и не остаться — проверяется только, что у оставшихся есть оба языка
   const used = new Set();
-  for (const file of sources) {
-    const src = fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
+  const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap(e =>
+    e.isDirectory() ? walk(path.join(dir, e.name)) : [path.join(dir, e.name)]);
+  for (const file of walk(path.join(__dirname, '..', 'renderer'))) {
+    if (!/\.(js|html)$/.test(file) || /[\\/]locales[\\/]|[\\/]i18n\.js$/.test(file)) continue;
+    const src = fs.readFileSync(file, 'utf8');
     for (const m of src.matchAll(/i18n\.t\('([a-zA-Z0-9_.]+)'\)/g)) used.add(m[1]);
+    for (const m of src.matchAll(/data-i18n(?:-placeholder|-title)?="([a-zA-Z0-9_.]+)"/g)) used.add(m[1]);
   }
-
-  checkTrue('ключи перевода вообще найдены', used.size > 10);
 
   const missingRu = [...used].filter(k => get('ru', k) === undefined);
   const missingEn = [...used].filter(k => get('en', k) === undefined);
 
   check('нет ключей без русского перевода', missingRu, []);
   check('нет ключей без английского перевода', missingEn, []);
+
+  // Строки tr(): у каждой есть английский перевод, внутри tr() нет ${…},
+  // словари не спорят, а русский текст без tr() помечен i18n-ignore
+  const { spawnSync } = require('child_process');
+  const run = spawnSync(process.execPath, [path.join(__dirname, 'i18n-check.cjs'), '--strict'], { encoding: 'utf8' });
+  const summary = (() => {
+    try { return JSON.parse(run.stdout.slice(run.stdout.indexOf('{'))); } catch (e) { return null; }
+  })();
+  checkTrue('i18n-check разобрал код', !!summary && summary.keysInCode > 1000);
+  check('i18n-check: окно', summary && {
+    missing: summary.missing, errors: summary.errors, conflicts: summary.conflicts, unwrapped: summary.unwrapped
+  }, { missing: 0, errors: 0, conflicts: 0, unwrapped: 0 });
+  check('i18n-check: главный процесс', summary && {
+    missing: summary.main.missing, errors: summary.main.errors, unwrapped: summary.main.unwrapped
+  }, { missing: 0, errors: 0, unwrapped: 0 });
+  check('i18n-check завершился успешно', run.status, 0);
 
   // Настройка выбора категории по выгоде
   checkTrue('строка настройки выгоды (ru)', !!get('ru', 'settings.smartCategorySwitch'));

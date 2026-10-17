@@ -254,11 +254,14 @@ class SettingsManager {
   reset() {
     // Служебные значения — не выбор пользователя: автозапуск отражает то,
     // что на самом деле записано в Windows, lastSeenVersion не даёт показать
-    // ложное «что нового», а отметка о починке качества — чинить его снова
+    // ложное «что нового», а отметка о починке качества — чинить его снова.
+    // Язык тоже: интерфейс до перезапуска остаётся прежним, а main-процесс
+    // (трей, уведомления) читает language отсюда и перешёл бы на русский
     const keep = {
       autostart: this.settings.autostart,
       lastSeenVersion: this.settings.lastSeenVersion,
-      qualityRepaired: this.settings.qualityRepaired
+      qualityRepaired: this.settings.qualityRepaired,
+      language: this.settings.language
     };
 
     // Сначала стираем сохранённое, потом читаем. Раньше loadSettings
@@ -437,7 +440,7 @@ class SettingsManager {
     try {
       const imported = JSON.parse(jsonString);
       if (!imported || typeof imported !== 'object' || Array.isArray(imported)) {
-        throw new Error('настройки должны быть объектом');
+        throw new Error('настройки должны быть объектом'); // i18n-ignore — уходит только в журнал
       }
       // Копия могла быть сделана до миграции — доводим её до текущей схемы
       this.settings = this.migrate({ ...this.settings, ...imported }, imported);

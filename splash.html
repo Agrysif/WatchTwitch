@@ -256,6 +256,24 @@
         if (v && /^[\w.\-]{1,32}$/.test(v)) document.getElementById('version').textContent = 'v' + v;
       } catch (e) { /* без версии */ }
 
+      // Язык передаёт main (?lang=…) — тот же, что у трея. Строк всего две,
+      // поэтому свой словарь, а не tr.js с файлами переводов. Этапы main
+      // присылает уже переведёнными
+      var en = false;
+      try {
+        en = new URLSearchParams(location.search).get('lang') === 'en';
+      } catch (e) { /* без параметра — по-русски */ }
+      var EN = {
+        'Фарминг дропсов Twitch': 'Twitch drops farming', // i18n-ignore: словарь заставки
+        'Запуск…': 'Starting…' // i18n-ignore: словарь заставки
+      };
+      var t = function (ru) { return en && EN[ru] ? EN[ru] : ru; };
+      if (en) {
+        document.documentElement.lang = 'en';
+        var tagline = document.querySelector('.app-tagline');
+        if (tagline) tagline.textContent = t(tagline.textContent.trim());
+      }
+
       window.splash = {
         // Этапы только растут: поздний ответ о раннем этапе полосу назад не двигает
         stage: function (index, text, percent) {
@@ -272,7 +290,7 @@
         }
       };
 
-      window.splash.stage(0, 'Запуск…', 12);
+      window.splash.stage(0, t('Запуск…'), 12); // i18n-ignore: переводит t() выше
 
       // Ни одного этапа от main за 1,2 с — бег, а не застывшие 12%
       setTimeout(function () {

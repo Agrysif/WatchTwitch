@@ -44,11 +44,11 @@ window.showCategoryDetailsModal = async function (page, category) {
       <div>
         <h2 class="dialog-title" id="category-dialog-title">${esc(category.name)}</h2>
         <div class="row-meta" id="category-info-blocks">
-          <span><span id="category-live-viewers">${esc(page.formatViewersCount(category.viewersCount))}</span> ${esc(typeof page.viewersWord === 'function' ? page.viewersWord(category.viewersCount) : 'зрителей')}</span>
-          ${category.hasDrops ? '<span class="tone-ok">Дропсы доступны</span>' : ''}
+          <span><span id="category-live-viewers">${esc(page.formatViewersCount(category.viewersCount))}</span> ${esc(typeof page.viewersWord === 'function' ? page.viewersWord(category.viewersCount) : tr('зрителей'))}</span>
+          ${category.hasDrops ? `<span class="tone-ok">${tr('Дропсы доступны')}</span>` : ''}
         </div>
       </div>
-      <button id="close-category-modal" class="dialog-close" type="button" aria-label="Закрыть" title="Закрыть (Esc)">
+      <button id="close-category-modal" class="dialog-close" type="button" aria-label="${tr('Закрыть')}" title="${tr('Закрыть (Esc)')}">
         ${icon('close', 16)}
       </button>
     </div>
@@ -123,14 +123,14 @@ window.showCategoryDetailsModal = async function (page, category) {
 
     // null — Twitch не ответил. Это не «стримов нет»: так и говорим
     if (!overview || overview.error) {
-      showMessage('warning', 'Twitch не ответил', 'Попробуйте открыть окно ещё раз чуть позже.');
+      showMessage('warning', tr('Twitch не ответил'), tr('Попробуйте открыть окно ещё раз чуть позже.'));
       return;
     }
 
     const streams = (overview.streams || []).filter(stream => stream.hasDrops);
 
     if (!streams || streams.length === 0) {
-      showMessage('info', 'Нет стримов с дропсами', 'Сейчас никто не стримит эту игру с включёнными дропсами.');
+      showMessage('info', tr('Нет стримов с дропсами'), tr('Сейчас никто не стримит эту игру с включёнными дропсами.'));
       return;
     }
 
@@ -157,16 +157,17 @@ window.showCategoryDetailsModal = async function (page, category) {
       const withDrops = Number(overview.streamsWithDrops) || 0;
       const checked = Number(overview.streamsChecked) || 0;
       const part = document.createElement('span');
+      const streamsWord = typeof page.plural === 'function' ? page.plural(checked, 'стрима', 'стримов', 'стримов') : tr('стримов');
       part.textContent = checked > 0
-        ? `${withDrops} из ${checked} ${typeof page.plural === 'function' ? page.plural(checked, 'стрима', 'стримов', 'стримов') : 'стримов'} с дропсами`
-        : `${withDrops} с дропсами`;
+        ? tr('{withDrops} из {checked} {streams} с дропсами', { withDrops, checked, streams: streamsWord })
+        : tr('{count} с дропсами', { count: withDrops });
       infoLine.appendChild(part);
     }
 
     const streamName = (stream) => stream.display_name || stream.displayName || stream.user_name || stream.login;
 
     contentEl.innerHTML = `
-      <div class="section-label category-dialog-label">Стримы с дропсами</div>
+      <div class="section-label category-dialog-label">${tr('Стримы с дропсами')}</div>
       <div class="list">
         ${streamsData.map((stream, index) => {
           const avatar = stream.profileImageUrl ||
@@ -174,31 +175,31 @@ window.showCategoryDetailsModal = async function (page, category) {
             DEFAULT_AVATAR;
           const meta = [
             stream.viewersCount
-              ? `<span class="num">${esc(page.formatViewersCount(stream.viewersCount))} ${esc(typeof page.viewersWord === 'function' ? page.viewersWord(stream.viewersCount) : 'зрителей')}</span>`
+              ? `<span class="num">${esc(page.formatViewersCount(stream.viewersCount))} ${esc(typeof page.viewersWord === 'function' ? page.viewersWord(stream.viewersCount) : tr('зрителей'))}</span>`
               : '',
             stream.followers
-              ? `<span class="num">${esc(page.formatFollowers(stream.followers))} ${esc(stream.followers < 10000 && typeof page.plural === 'function' ? page.plural(stream.followers, 'подписчик', 'подписчика', 'подписчиков') : 'подписчиков')}</span>`
+              ? `<span class="num">${esc(page.formatFollowers(stream.followers))} ${esc(stream.followers < 10000 && typeof page.plural === 'function' ? page.plural(stream.followers, 'подписчик', 'подписчика', 'подписчиков') : tr('подписчиков'))}</span>`
               : '',
             stream.language ? `<span>${esc(String(stream.language).toUpperCase())}</span>` : ''
           ].filter(Boolean).join('');
 
           return `
             <div class="list-row stream-card-clickable" data-stream-index="${index}" role="button" tabindex="0"
-                 title="Смотреть ${esc(streamName(stream))}">
+                 title="${tr('Смотреть {channel}', { channel: esc(streamName(stream)) })}">
               <img class="row-avatar" src="${esc(avatar)}" alt=""
                    onerror="this.onerror=null; this.src='${DEFAULT_AVATAR}';">
               <div class="row-main">
                 <div class="row-title">
                   <span class="stream-name">${esc(streamName(stream))}</span>
                   <span class="stream-login">@${esc(stream.login)}</span>
-                  ${index === 0 ? '<span class="badge badge-accent">Лучший выбор</span>' : ''}
+                  ${index === 0 ? `<span class="badge badge-accent">${tr('Лучший выбор')}</span>` : ''}
                 </div>
                 ${meta ? `<div class="row-meta">${meta}</div>` : ''}
                 ${stream.title ? `<div class="stream-row-title" title="${esc(stream.title)}">${esc(stream.title)}</div>` : ''}
               </div>
               <span class="btn btn-secondary btn-sm stream-row-watch" aria-hidden="true">
                 ${icon('play', 14)}
-                <span>Смотреть</span>
+                <span>${tr('Смотреть')}</span>
               </span>
             </div>
           `;
@@ -207,7 +208,7 @@ window.showCategoryDetailsModal = async function (page, category) {
 
       ${streamsData[0].description ? `
         <div class="category-dialog-about">
-          <div class="section-label">О канале ${esc(streamsData[0].displayName || streamName(streamsData[0]))}</div>
+          <div class="section-label">${tr('О канале {channel}', { channel: esc(streamsData[0].displayName || streamName(streamsData[0])) })}</div>
           ${esc(streamsData[0].description)}
         </div>` : ''}
     `;
@@ -238,6 +239,6 @@ window.showCategoryDetailsModal = async function (page, category) {
 
   } catch (error) {
     console.error('Error loading category details:', error);
-    showMessage('warning', 'Не удалось загрузить стримы', 'Проверьте соединение и откройте окно ещё раз.');
+    showMessage('warning', tr('Не удалось загрузить стримы'), tr('Проверьте соединение и откройте окно ещё раз.'));
   }
 };

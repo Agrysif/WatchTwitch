@@ -69,14 +69,15 @@ class CampaignCalendar {
     return ['today', 'tomorrow', 'week', 'later', 'upcoming', 'ended'];
   }
 
+  /** Заголовки групп для показа; ключи — коды групп, их не переводим. */
   static get TITLES() {
     return {
-      today: 'Заканчивается сегодня',
-      tomorrow: 'Заканчивается завтра',
-      week: 'На этой неделе',
-      later: 'Ещё не скоро',
-      upcoming: 'Скоро начнётся',
-      ended: 'Уже завершились'
+      today: tr('Заканчивается сегодня'),
+      tomorrow: tr('Заканчивается завтра'),
+      week: tr('На этой неделе'),
+      later: tr('Ещё не скоро'),
+      upcoming: tr('Скоро начнётся'),
+      ended: tr('Уже завершились')
     };
   }
 
@@ -140,7 +141,7 @@ class CampaignCalendar {
       ticks.push({
         at: (i / days) * 100,
         date: day,
-        label: new Date(day).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }),
+        label: new Date(day).toLocaleDateString(tr.locale(), { day: 'numeric', month: 'short' }),
         weekend: [0, 6].includes(new Date(day).getDay())
       });
     }
@@ -181,18 +182,18 @@ class CampaignCalendar {
 
   /** Человеческий остаток времени: «11 дней», «4ч 20м», «17 мин». */
   static formatLeft(minutes) {
-    if (!Number.isFinite(minutes) || minutes <= 0) return 'завершена';
+    if (!Number.isFinite(minutes) || minutes <= 0) return tr('завершена');
 
     const days = Math.floor(minutes / 1440);
     if (days >= 1) {
       const hours = Math.floor((minutes - days * 1440) / 60);
-      return hours > 0 ? `${days} д ${hours} ч` : `${days} д`;
+      return hours > 0 ? tr('{d} д {h} ч', { d: days, h: hours }) : tr('{d} д', { d: days });
     }
 
     const hours = Math.floor(minutes / 60);
     const rest = Math.round(minutes % 60);
-    if (hours > 0) return rest > 0 ? `${hours}ч ${rest}м` : `${hours}ч`;
-    return `${Math.max(1, rest)} мин`;
+    if (hours > 0) return rest > 0 ? tr('{h}ч {m}м', { h: hours, m: rest }) : tr('{h}ч', { h: hours });
+    return tr('{m} мин', { m: Math.max(1, rest) });
   }
 }
 

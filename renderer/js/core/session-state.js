@@ -273,19 +273,23 @@ class SessionState {
       const el = document.getElementById(id);
       if (el) el.textContent = value;
     };
+    // Разряды — по языку приложения: в английском режиме на русской Windows
+    // было «59 311». В русском — как раньше, по языку системы
+    const locale = window.tr?.lang?.() === 'en' ? 'en-US' : undefined;
+    const num = (n) => n.toLocaleString(locale);
 
     // Колонка 1 — нафармлено за сессию, ниже текущий баланс канала
-    set('channel-points-total', p.sessionEarned > 0 ? `+${p.sessionEarned.toLocaleString()}` : '0');
+    set('channel-points-total', p.sessionEarned > 0 ? `+${num(p.sessionEarned)}` : '0');
     set('channel-points-earned', p.initialized
-      ? `Баланс: ${p.currentTotal.toLocaleString()}`
-      : 'Ожидание данных...');
+      ? tr('Баланс: {balance}', { balance: num(p.currentTotal) })
+      : tr('Ожидание данных...'));
 
     // Колонка 2 — сундуки: количество и суммарные бонусные баллы
-    set('bonus-chests-count', p.chestsCollected.toLocaleString());
-    set('bonus-chests-points', p.chestsPoints > 0 ? `+${p.chestsPoints.toLocaleString()} баллов` : '-');
+    set('bonus-chests-count', num(p.chestsCollected));
+    set('bonus-chests-points', p.chestsPoints > 0 ? tr('+{points} баллов', { points: num(p.chestsPoints) }) : '-');
 
     // Колонка 3 — начислено на текущем стриме
-    set('passive-points-earned', p.earnedThisStream > 0 ? `+${p.earnedThisStream.toLocaleString()}` : '0');
+    set('passive-points-earned', p.earnedThisStream > 0 ? `+${num(p.earnedThisStream)}` : '0');
   }
 
   getDurationMs() {
@@ -306,8 +310,8 @@ class SessionState {
   }
 
   _formatBytes(bytes) {
-    if (!bytes || bytes <= 0) return '0 Б';
-    const units = ['Б', 'КБ', 'МБ', 'ГБ', 'ТБ'];
+    if (!bytes || bytes <= 0) return tr('0 Б');
+    const units = [tr('Б'), tr('КБ'), tr('МБ'), tr('ГБ'), tr('ТБ')];
     const i = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
     return `${(bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
   }
@@ -334,9 +338,9 @@ class SessionState {
         console.warn('[SessionState] Стрима нет', idleSeconds, 'секунд — останавливаю сессию');
         this.idleSince = null;
         this._stopIdleSession();
-        window.utils?.showToast('Сессия остановлена: стрим не запущен', 'warning');
-        window.notifyFarmingEvent?.('Фарминг остановлен', 'Стрим не запустился, сессия завершена');
-        window.eventLog?.add({ type: 'error', title: 'Фарминг остановлен', detail: 'Стрим не запустился' });
+        window.utils?.showToast(tr('Сессия остановлена: стрим не запущен'), 'warning');
+        window.notifyFarmingEvent?.(tr('Фарминг остановлен'), tr('Стрим не запустился, сессия завершена'));
+        window.eventLog?.add({ type: 'error', title: tr('Фарминг остановлен'), detail: tr('Стрим не запустился') });
         return;
       }
     } else {
@@ -398,7 +402,9 @@ class SessionState {
       const rateEl = document.getElementById('session-traffic-rate');
       if (rateEl) {
         const rate = Math.round(stats.currentRateKBs || 0);
-        rateEl.textContent = rate > 1024 ? `${(rate / 1024).toFixed(1)} МБ/с` : `${rate} КБ/с`;
+        rateEl.textContent = rate > 1024
+          ? tr('{rate} МБ/с', { rate: (rate / 1024).toFixed(1) })
+          : tr('{rate} КБ/с', { rate });
       }
     } catch (error) {
       // молча: отсутствие статистики не должно ломать таймер

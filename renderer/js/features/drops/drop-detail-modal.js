@@ -35,10 +35,10 @@
   // «2 ч», «45 мин», «1 ч 30 мин» — единицы через пробел
   const formatMinutes = (minutes) => {
     const m = Math.max(0, Math.round(Number(minutes) || 0));
-    if (m < 60) return `${m} мин`;
+    if (m < 60) return tr('{m} мин', { m });
     const h = Math.floor(m / 60);
     const rest = m % 60;
-    return rest ? `${h} ч ${rest} мин` : `${h} ч`;
+    return rest ? tr('{h} ч {m} мин', { h, m: rest }) : tr('{h} ч', { h });
   };
 
   const validDate = (raw) => {
@@ -52,17 +52,29 @@
     const start = validDate(startRaw);
     const end = validDate(endRaw);
     const thisYear = new Date().getFullYear();
-    const fmt = (date) => date.toLocaleDateString('ru-RU', date.getFullYear() === thisYear
+    const fmt = (date) => date.toLocaleDateString(tr.locale(), date.getFullYear() === thisYear
       ? { day: 'numeric', month: 'long' }
       : { day: 'numeric', month: 'long', year: 'numeric' });
     if (start && end) {
+      // В английском месяц стоит перед числом («October 9–18»): общий
+      // месяц выносит сам Intl
+      if (tr.lang() === 'en') {
+        const withYear = start.getFullYear() !== thisYear || end.getFullYear() !== thisYear;
+        try {
+          return new Intl.DateTimeFormat(tr.locale(), withYear
+            ? { day: 'numeric', month: 'long', year: 'numeric' }
+            : { day: 'numeric', month: 'long' }).formatRange(start, end);
+        } catch (error) {
+          return `${fmt(start)} – ${fmt(end)}`;
+        }
+      }
       if (start.getFullYear() === end.getFullYear() && start.getMonth() === end.getMonth()) {
         return `${start.getDate()}–${fmt(end)}`;
       }
       return `${fmt(start)} – ${fmt(end)}`;
     }
-    if (end) return `до ${fmt(end)}`;
-    if (start) return `с ${fmt(start)}`;
+    if (end) return tr('до {date}', { date: fmt(end) });
+    if (start) return tr('с {date}', { date: fmt(start) });
     return '';
   };
 
@@ -82,13 +94,15 @@
     // Редкость считает вызывающая страница. Если её не передали — окно
     // не должно падать: раньше обращение к отсутствующему объекту роняло
     // отрисовку целиком, и вместо карточки не появлялось ничего.
+    // Подпись редкости переводится при показе: таблицу редкостей держит
+    // каждая страница своя, и готового перевода в ней может не быть.
     const rarity = (typeof dropsPageInstance?.calculateDropRarity === 'function')
       ? dropsPageInstance.calculateDropRarity(drop, campaign)
-      : { color: 'var(--text-tertiary)', label: 'Награда' };
+      : { color: 'var(--text-tertiary)', label: tr('Награда') };
     // Без картинки — пустая рамка со значком подарка цвета темы
     // (.is-empty в page-drops.css), а не тёмная заглушка на светлой теме
     const imageUrl = safeImageUrl(drop.imageURL || drop.image || drop.imageUrl);
-    const dropName = drop.benefitName || drop.name || 'Награда';
+    const dropName = drop.benefitName || drop.name || tr('Награда');
     const gameName = campaign?.game?.name || drop.game || '';
 
     // Дата получения.
@@ -99,7 +113,7 @@
       : null;
     const claimedDateParsed = validDate(drop.claimedAt || drop.lastAwardedAt || drop.claimedDate || awarded?.lastAwardedAt);
     const claimedDate = claimedDateParsed
-      ? claimedDateParsed.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })
+      ? claimedDateParsed.toLocaleDateString(tr.locale(), { day: 'numeric', month: 'long', year: 'numeric' })
       : null;
 
     // main отдаёт начало кампании как startsAt; читали только startAt,
@@ -131,16 +145,16 @@
     // забрать, остальное нейтральное
     const isClaimed = !!(drop.claimed || drop.isClaimed);
     const isClaimable = !!(drop.canClaim || drop.isClaimable || drop.claimable || drop.isUnlocked);
-    let statusText = 'В процессе';
+    let statusText = tr('В процессе');
     let statusClass = 'badge';
     if (isClaimed) {
-      statusText = 'Получено';
+      statusText = tr('Получено');
       statusClass = 'badge badge-success';
     } else if (progressPercent >= 100 || isClaimable) {
-      statusText = 'Можно забрать';
+      statusText = tr('Можно забрать');
       statusClass = 'badge badge-success';
     } else if (progressPercent === 0) {
-      statusText = 'Не начато';
+      statusText = tr('Не начато');
     }
 
     // Получение прямо из приложения. Механика claim-drop была реализована
@@ -156,24 +170,26 @@
     // Строки сведений: подпись слева, значение справа
     const fact = (label, value) => `<div class="drop-fact"><dt>${label}</dt><dd>${value}</dd></div>`;
     const facts = [];
-    if (requiredMinutes > 0) facts.push(fact('Нужно смотреть', esc(formatMinutes(requiredMinutes))));
+    if (requiredMinutes > 0) facts.push(fact(tr('Нужно смотреть'), esc(formatMinutes(requiredMinutes))));
     if (isClaimed) {
       // Дата получения: только у полученных и только с известной датой.
       // Раньше «Получено —» стояло и у наград, которые ещё в процессе.
-      if (claimedDate) facts.push(fact('Получено', esc(claimedDate)));
+      if (claimedDate) facts.push(fact(tr('Получено'), esc(claimedDate)));
     } else if (requiredMinutes > 0) {
+      const minutesText = tr('{done} / {total} мин', { done: progressMinutes, total: requiredMinutes });
+      const leftText = minutesLeft > 0 ? ` · ${esc(tr('ещё {time}', { time: formatMinutes(minutesLeft) }))}` : '';
       facts.push(`
         <div class="drop-fact drop-fact-progress">
-          <dt>Прогресс</dt>
+          <dt>${tr('Прогресс')}</dt>
           <dd class="num">${progressPercent}%</dd>
-          <div class="progress${progressPercent >= 100 ? ' is-complete' : ''}" role="progressbar" aria-label="Прогресс награды" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${progressPercent}">
+          <div class="progress${progressPercent >= 100 ? ' is-complete' : ''}" role="progressbar" aria-label="${tr('Прогресс награды')}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${progressPercent}">
             <div class="progress-fill" style="width: ${progressPercent}%"></div>
           </div>
-          <div class="drop-fact-sub num">${progressMinutes} / ${requiredMinutes} мин${minutesLeft > 0 ? ` · ещё ${esc(formatMinutes(minutesLeft))}` : ''}</div>
+          <div class="drop-fact-sub num">${minutesText}${leftText}</div>
         </div>`);
     }
-    if (campaignRange) facts.push(fact('Кампания', esc(campaignRange)));
-    if (rarity.viewersCount > 0) facts.push(fact('Зрителей категории', esc(formatViewersCount(rarity.viewersCount))));
+    if (campaignRange) facts.push(fact(tr('Кампания'), esc(campaignRange)));
+    if (rarity.viewersCount > 0) facts.push(fact(tr('Зрителей категории'), esc(formatViewersCount(rarity.viewersCount))));
 
     // Создаем модальное окно
     const modal = document.createElement('div');
@@ -181,7 +197,7 @@
     modal.className = 'dialog-backdrop drop-dialog-backdrop';
     modal.innerHTML = `
       <div class="dialog drop-dialog" role="dialog" aria-modal="true" aria-labelledby="drop-dialog-title">
-        <button type="button" id="close-drop-modal" class="dialog-close drop-dialog-close" title="Закрыть" aria-label="Закрыть">${icon('close', 16)}</button>
+        <button type="button" id="close-drop-modal" class="dialog-close drop-dialog-close" title="${tr('Закрыть')}" aria-label="${tr('Закрыть')}">${icon('close', 16)}</button>
         <div class="drop-dialog-body">
           <div class="drop-dialog-art${imageUrl ? '' : ' is-empty'}">
             ${imageUrl ? `<img src="${esc(imageUrl)}" alt="" decoding="async">` : ''}
@@ -190,15 +206,15 @@
             <h2 class="dialog-title drop-dialog-title" id="drop-dialog-title">${esc(dropName)}</h2>
             ${gameName ? `<div class="drop-dialog-game">${esc(gameName)}</div>` : ''}
             <div class="drop-dialog-badges">
-              <span class="badge drop-rarity" title="Редкость по времени просмотра и числу зрителей"><span class="drop-rarity-dot" style="background: ${esc(rarity.color)}"></span>${esc(rarity.label)}</span>
+              <span class="badge drop-rarity" title="${tr('Редкость по времени просмотра и числу зрителей')}"><span class="drop-rarity-dot" style="background: ${esc(rarity.color)}"></span>${esc(tr(rarity.label))}</span>
               <span class="${statusClass}" id="drop-dialog-status">${statusText}</span>
             </div>
             ${facts.length ? `<dl class="drop-dialog-facts">${facts.join('')}</dl>` : ''}
           </div>
         </div>
         <div class="dialog-foot">
-          ${canClaimHere ? `<button type="button" id="claim-drop-btn" class="btn btn-primary">${icon('gift', 16)}<span>Забрать</span></button>` : ''}
-          <button type="button" class="btn btn-secondary" data-drop-dialog-close>Закрыть</button>
+          ${canClaimHere ? `<button type="button" id="claim-drop-btn" class="btn btn-primary">${icon('gift', 16)}<span>${tr('Забрать')}</span></button>` : ''}
+          <button type="button" class="btn btn-secondary" data-drop-dialog-close>${tr('Закрыть')}</button>
         </div>
       </div>
     `;
@@ -253,26 +269,27 @@
               key: dropInstanceID
             });
             claimBtn.disabled = true;
-            claimBtn.innerHTML = `${icon('check', 16)}<span>Получено</span>`;
+            claimBtn.innerHTML = `${icon('check', 16)}<span>${tr('Получено')}</span>`;
             const status = modal.querySelector('#drop-dialog-status');
             if (status) {
-              status.textContent = 'Получено';
+              status.textContent = tr('Получено');
               status.className = 'badge badge-success';
             }
-            window.utils?.showToast('Награда получена', 'success');
+            window.utils?.showToast(tr('Награда получена'), 'success');
             // Обновляем список, чтобы состояние совпало с Twitch
             window.dropsPage?.loadDrops?.();
           } else {
             window.chime?.failed();
+            // Текст ошибки main уже переводит сам (i18n-main.js)
             window.utils?.showToast(
-              'Не удалось получить: ' + (result?.error || 'неизвестная ошибка'),
+              tr('Не удалось получить: {error}', { error: result?.error || tr('неизвестная ошибка') }),
               'error'
             );
           }
         } catch (error) {
           claimBtn.classList.remove('is-loading');
           claimBtn.removeAttribute('aria-busy');
-          window.utils?.showToast('Ошибка при получении награды', 'error');
+          window.utils?.showToast(tr('Ошибка при получении награды'), 'error');
         }
       });
     }

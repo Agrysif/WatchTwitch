@@ -49,21 +49,24 @@
   // «45 мин», «2 ч 15 мин». Прежние «2д 23ч» и «Осталось: …» читались хуже.
   const formatMinutes = (minutes) => {
     const m = Math.max(0, Math.round(Number(minutes) || 0));
-    if (m < 60) return `${m} мин`;
+    if (m < 60) return tr('{m} мин', { m });
     const h = Math.floor(m / 60);
     const rest = m % 60;
-    return rest ? `${h} ч ${rest} мин` : `${h} ч`;
+    return rest ? tr('{h} ч {m} мин', { h, m: rest }) : tr('{h} ч', { h });
   };
+
+  // Дробная часть: в русском запятая, в английском точка
+  const decimal = (value) => (tr.lang() === 'en' ? value : value.replace('.', ','));
 
   // То же коротко — для плитки шириной 72px: «25 мин», «2,4 ч», «10 ч».
   // Точное «2 ч 25 мин» остаётся в подсказке плитки.
   const formatMinutesShort = (minutes) => {
     const m = Math.max(0, Math.round(Number(minutes) || 0));
-    if (m < 60) return `${m} мин`;
+    if (m < 60) return tr('{m} мин', { m });
     const hours = m / 60;
     return hours >= 10 || Number.isInteger(hours)
-      ? `${Math.round(hours)} ч`
-      : `${hours.toFixed(1).replace('.', ',')} ч`;
+      ? tr('{h} ч', { h: Math.round(hours) })
+      : tr('{h} ч', { h: decimal(hours.toFixed(1)) });
   };
 
   const formatSpan = (ms) => {
@@ -71,9 +74,9 @@
     const d = Math.floor(total / 1440);
     const h = Math.floor((total % 1440) / 60);
     const m = total % 60;
-    if (d > 0) return h ? `${d} д ${h} ч` : `${d} д`;
-    if (h > 0) return m ? `${h} ч ${m} мин` : `${h} ч`;
-    return `${Math.max(1, m)} мин`;
+    if (d > 0) return h ? tr('{d} д {h} ч', { d, h }) : tr('{d} д', { d });
+    if (h > 0) return m ? tr('{h} ч {m} мин', { h, m }) : tr('{h} ч', { h });
+    return tr('{m} мин', { m: Math.max(1, m) });
   };
 
   const validDate = (raw) => {
@@ -87,15 +90,25 @@
   const formatDateRange = (startRaw, endRaw) => {
     const start = validDate(startRaw);
     const end = validDate(endRaw);
-    const fmt = (date) => date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+    const options = { day: 'numeric', month: 'short' };
+    const fmt = (date) => date.toLocaleDateString(tr.locale(), options);
     if (start && end) {
+      // В английском месяц стоит перед числом («Oct 9–18»): общий месяц
+      // выносит сам Intl, склейка «9–Oct 18» была бы неверной
+      if (tr.lang() === 'en') {
+        try {
+          return new Intl.DateTimeFormat(tr.locale(), options).formatRange(start, end);
+        } catch (error) {
+          return `${fmt(start)} – ${fmt(end)}`;
+        }
+      }
       if (start.getFullYear() === end.getFullYear() && start.getMonth() === end.getMonth()) {
         return `${start.getDate()}–${fmt(end)}`;
       }
       return `${fmt(start)} – ${fmt(end)}`;
     }
-    if (end) return `до ${fmt(end)}`;
-    if (start) return `с ${fmt(start)}`;
+    if (end) return tr('до {date}', { date: fmt(end) });
+    if (start) return tr('с {date}', { date: fmt(start) });
     return '';
   };
 
@@ -128,12 +141,12 @@
       // награды: рамки и свечения цвета редкости спорили с содержимым.
       // Значения — токены темы, чтобы точка читалась и на светлой.
       this.rarityTiers = [
-        { name: 'common', label: 'Обычный', minMinutes: 0, maxMinutes: 60, minViewers: 50000, color: 'var(--text-tertiary)' },
-        { name: 'uncommon', label: 'Необычный', minMinutes: 61, maxMinutes: 120, minViewers: 30000, color: 'var(--success)' },
-        { name: 'rare', label: 'Редкий', minMinutes: 121, maxMinutes: 240, minViewers: 15000, color: '#4aa3ff' },
-        { name: 'epic', label: 'Эпический', minMinutes: 241, maxMinutes: 480, minViewers: 8000, color: 'var(--accent)' },
-        { name: 'legendary', label: 'Легендарный', minMinutes: 481, maxMinutes: 720, minViewers: 3000, color: 'var(--warning)' },
-        { name: 'mythic', label: 'Мифический', minMinutes: 721, maxMinutes: 99999, minViewers: 0, color: 'var(--danger)' }
+        { name: 'common', label: tr('Обычный'), minMinutes: 0, maxMinutes: 60, minViewers: 50000, color: 'var(--text-tertiary)' },
+        { name: 'uncommon', label: tr('Необычный'), minMinutes: 61, maxMinutes: 120, minViewers: 30000, color: 'var(--success)' },
+        { name: 'rare', label: tr('Редкий'), minMinutes: 121, maxMinutes: 240, minViewers: 15000, color: '#4aa3ff' },
+        { name: 'epic', label: tr('Эпический'), minMinutes: 241, maxMinutes: 480, minViewers: 8000, color: 'var(--accent)' },
+        { name: 'legendary', label: tr('Легендарный'), minMinutes: 481, maxMinutes: 720, minViewers: 3000, color: 'var(--warning)' },
+        { name: 'mythic', label: tr('Мифический'), minMinutes: 721, maxMinutes: 99999, minViewers: 0, color: 'var(--danger)' }
       ];
 
       this.init();
@@ -200,12 +213,12 @@
                   // что и страница аккаунтов
                   const text = typeof window.friendlyLoginError === 'function'
                     ? window.friendlyLoginError(result?.error)
-                    : 'Не удалось войти в Twitch — попробуйте ещё раз';
+                    : tr('Не удалось войти в Twitch — попробуйте ещё раз');
                   window.utils?.showToast(text, 'error');
                 }
               } catch (error) {
                 console.error('Auth error:', error);
-                window.utils?.showToast('Не удалось войти через Twitch', 'error');
+                window.utils?.showToast(tr('Не удалось войти через Twitch'), 'error');
               } finally {
                 clearTimeout(unlock);
                 authButton.disabled = false;
@@ -321,25 +334,29 @@
             // и когда забирать было нечего, и когда ни одна награда не
             // далась. Пользователь думал, что всё в порядке, а награды
             // оставались незабранными и могли сгореть с концом кампании.
+            // Тексты error и message main уже переводит сам (i18n-main.js)
             if (!result?.success) {
-              window.utils?.showToast(result?.error || 'Не удалось получить награды', 'error');
+              window.utils?.showToast(result?.error || tr('Не удалось получить награды'), 'error');
             } else if (claimed === 0 && total > 0) {
-              window.utils?.showToast('Не удалось получить награды — заберите их вручную', 'error');
+              window.utils?.showToast(tr('Не удалось получить награды — заберите их вручную'), 'error');
             } else if (claimed === 0) {
-              window.utils?.showToast(result.message || 'Забирать пока нечего', 'info');
+              window.utils?.showToast(result.message || tr('Забирать пока нечего'), 'info');
             } else if (total > claimed) {
-              window.utils?.showToast(`Получено ${claimed} из ${total}, остальные заберите вручную`, 'warning');
+              window.utils?.showToast(tr('Получено {claimed} из {total}, остальные заберите вручную', { claimed, total }), 'warning');
             } else {
-              window.utils?.showToast(`Получено наград: ${claimed}`, 'success');
+              window.utils?.showToast(tr('Получено наград: {count}', { count: claimed }), 'success');
             }
             if (claimed > 0) {
               // Журнал событий: утром видно, что награды забраны вручную
-              window.eventLog?.add({ type: 'drop', title: `Забрано вручную: ${claimed} ${plural(claimed, 'награда', 'награды', 'наград')}` });
+              window.eventLog?.add({
+                type: 'drop',
+                title: tr('Забрано вручную: {rewards}', { rewards: `${claimed} ${plural(claimed, 'награда', 'награды', 'наград')}` })
+              });
               setTimeout(() => this.loadDrops(), 2000);
             }
           } catch (error) {
             console.error('Error claiming all drops:', error);
-            window.utils?.showToast('Ошибка получения наград', 'error');
+            window.utils?.showToast(tr('Ошибка получения наград'), 'error');
           } finally {
             this._claimingAll = false;
             claimAllBtn.classList.remove('is-loading');
@@ -429,10 +446,10 @@
      * пользователь думал, что кампаний нет, хотя данные просто не получены.
      */
     describeUnavailable(data) {
-      if (!data || !Array.isArray(data.campaigns)) return 'Ошибка запроса к Twitch, обновлю позже';
-      if (data.needsStream) return 'Запустите стрим — Twitch отдаёт инвентарь только после этого';
-      if (data.rateLimited) return 'Twitch просит паузу, обновлю позже';
-      if (data.error) return 'Ошибка запроса к Twitch, обновлю позже';
+      if (!data || !Array.isArray(data.campaigns)) return tr('Ошибка запроса к Twitch, обновлю позже');
+      if (data.needsStream) return tr('Запустите стрим — Twitch отдаёт инвентарь только после этого');
+      if (data.rateLimited) return tr('Twitch просит паузу, обновлю позже');
+      if (data.error) return tr('Ошибка запроса к Twitch, обновлю позже');
       return null;
     }
 
@@ -443,7 +460,7 @@
     showEmptyState(el, title, text = '', iconName = 'gift', withRetry = false) {
       if (!el) return;
       const actionHtml = withRetry
-        ? `<button type="button" class="btn btn-secondary btn-sm" data-drops-retry>${icon('refresh', 14)}<span>Повторить</span></button>`
+        ? `<button type="button" class="btn btn-secondary btn-sm" data-drops-retry>${icon('refresh', 14)}<span>${tr('Повторить')}</span></button>`
         : '';
       el.innerHTML = window.DOMHelpers?.emptyState
         ? window.DOMHelpers.emptyState({ icon: iconName, title, text, actionHtml })
@@ -484,7 +501,7 @@
             if (!quiet) this.renderCampaigns();
             if (options.force) window.utils?.showToast(unavailable, 'warning');
           } else {
-            this.showEmptyState(emptyEl, 'Дропсы пока недоступны', unavailable, 'info');
+            this.showEmptyState(emptyEl, tr('Дропсы пока недоступны'), unavailable, 'info');
           }
           return;
         }
@@ -497,8 +514,8 @@
         } else {
           if (containerEl) containerEl.innerHTML = '';
           document.getElementById('completedDropsBlock')?.remove();
-          this.showEmptyState(emptyEl, 'Сейчас кампаний нет',
-            'Они появятся здесь, когда фарминг начнёт смотреть стрим с дропсами.', 'gift');
+          this.showEmptyState(emptyEl, tr('Сейчас кампаний нет'),
+            tr('Они появятся здесь, когда фарминг начнёт смотреть стрим с дропсами.'), 'gift');
         }
       } catch (error) {
         console.error('Error loading drops:', error);
@@ -507,10 +524,10 @@
           if (!quiet) this.renderCampaigns();
           // Ручное обновление без ответа: прежний список вернулся молча,
           // и казалось, что данные свежие
-          if (options.force) window.utils?.showToast('Ошибка загрузки дропсов', 'warning');
+          if (options.force) window.utils?.showToast(tr('Ошибка загрузки дропсов'), 'warning');
         } else {
-          this.showEmptyState(emptyEl, 'Не удалось загрузить дропсы',
-            'Проверьте подключение к интернету и попробуйте ещё раз.', 'warning', true);
+          this.showEmptyState(emptyEl, tr('Не удалось загрузить дропсы'),
+            tr('Проверьте подключение к интернету и попробуйте ещё раз.'), 'warning', true);
         }
       } finally {
         if (loadingEl) loadingEl.style.display = 'none';
@@ -565,8 +582,8 @@
       btn.classList.toggle('btn-primary', n > 0);
       btn.classList.toggle('btn-secondary', n === 0);
       btn.title = n > 0
-        ? `Забрать ${n} ${plural(n, 'награду', 'награды', 'наград')}`
-        : 'Забирать пока нечего';
+        ? tr('Забрать {rewards}', { rewards: `${n} ${plural(n, 'награду', 'награды', 'наград')}` })
+        : tr('Забирать пока нечего');
     }
 
     updateStats() {
@@ -659,8 +676,8 @@
         note.innerHTML = window.DOMHelpers?.emptyState
           ? window.DOMHelpers.emptyState({
               icon: 'check-circle',
-              title: 'Всё собрано',
-              text: 'Новые кампании появятся здесь, когда фарминг начнёт смотреть стрим с дропсами.'
+              title: tr('Всё собрано'),
+              text: tr('Новые кампании появятся здесь, когда фарминг начнёт смотреть стрим с дропсами.')
             })
           : '';
         container.appendChild(note);
@@ -678,7 +695,7 @@
           block.innerHTML = `
             <button type="button" id="completedDropsHeader" class="section-label camp-completed-toggle" aria-expanded="${expanded}" aria-controls="completedCampaignsContainer">
               <span id="completedDropsArrow" class="camp-completed-arrow">${icon('chevron-right', 14)}</span>
-              <span>Завершённые</span>
+              <span>${tr('Завершённые')}</span>
               <span class="count num">${completedCampaigns.length}</span>
             </button>
             <div id="completedCampaignsContainer" class="drops-campaigns-grid"${expanded ? '' : ' hidden'}></div>
@@ -716,12 +733,12 @@
         if (diff < 0) {
           const ago = Math.abs(diff);
           timeHtml = ago >= 3600000
-            ? `<span>закончилась ${formatSpan(ago)} назад</span>`
-            : '<span>закончилась</span>';
+            ? `<span>${tr('закончилась {time} назад', { time: formatSpan(ago) })}</span>`
+            : `<span>${tr('закончилась')}</span>`;
         } else if (!isCompleted) {
           // Меньше суток — янтарным: это повод проверить, успеет ли
           const soon = diff < 24 * 3600000;
-          timeHtml = `<span class="${soon ? 'tone-warn' : ''}">осталось ${formatSpan(diff)}</span>`;
+          timeHtml = `<span class="${soon ? 'tone-warn' : ''}">${tr('осталось {time}', { time: formatSpan(diff) })}</span>`;
         }
       }
 
@@ -755,9 +772,9 @@
       // Справа от названия — процент; у завершённых — итог словом
       let status;
       if (isExpired && progressPercent < 100) {
-        status = '<span class="badge">Срок вышел</span>';
+        status = `<span class="badge">${tr('Срок вышел')}</span>`;
       } else if (isCompleted) {
-        status = `<span class="badge badge-success">${icon('check', 12)}Собрано</span>`;
+        status = `<span class="badge badge-success">${icon('check', 12)}${tr('Собрано')}</span>`;
       } else {
         status = `<span class="campaign-pct num">${progressPercent}%</span>`;
       }
@@ -768,7 +785,7 @@
         timeHtml
       ].filter(Boolean).join('');
 
-      const name = campaign.name || 'Кампания';
+      const name = campaign.name || tr('Кампания');
       card.innerHTML = `
         <header class="campaign-head">
           ${coverHtml}
@@ -779,16 +796,16 @@
             </div>
             <div class="campaign-meta row-meta">${meta}</div>
             <div class="campaign-progress-row">
-              <div class="progress campaign-progress-bar${progressPercent === 100 ? ' is-complete' : ''}" role="progressbar" aria-label="Прогресс кампании" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${progressPercent}">
+              <div class="progress campaign-progress-bar${progressPercent === 100 ? ' is-complete' : ''}" role="progressbar" aria-label="${tr('Прогресс кампании')}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${progressPercent}">
                 <div class="progress-fill" style="width: ${progressPercent}%"></div>
               </div>
-              <span class="campaign-count num">${completedDrops} из ${totalDrops} получено</span>
+              <span class="campaign-count num">${tr('{done} из {total} получено', { done: completedDrops, total: totalDrops })}</span>
             </div>
           </div>
         </header>
         ${totalDrops > 0
           ? `<div class="camp-tiles">${drops.map(drop => this.createDropElement(drop, campaign)).join('')}</div>`
-          : '<div class="campaign-no-drops">В кампании нет наград</div>'}
+          : `<div class="campaign-no-drops">${tr('В кампании нет наград')}</div>`}
       `;
 
       return card;
@@ -801,7 +818,7 @@
       const artHtml = imageUrl
         ? `<img class="drops-img" src="${esc(imageUrl)}" alt="" loading="lazy" decoding="async">`
         : '';
-      const benefitName = esc(drop.benefitName || drop.name || 'Награда');
+      const benefitName = esc(drop.benefitName || drop.name || tr('Награда'));
       const isClaimed = !!drop.claimed;
       const canClaim = this.canClaimDrop(drop);
       const progress = Number(drop.progress) || 0;
@@ -833,29 +850,29 @@
       let bottom;
       if (isClaimed) {
         state = ' is-claimed';
-        stateLabel = 'получено';
-        bottom = '<div class="camp-tile-meta">Получено</div>';
+        stateLabel = tr('получено');
+        bottom = `<div class="camp-tile-meta">${tr('Получено')}</div>`;
       } else if (canClaim) {
         // Готово к получению.
         // Без инлайн-onclick: id дропа от Twitch подставлялся прямо в код
         // обработчика. Клик разбирает делегат в setupDropCardClickHandlers.
         state = ' is-ready';
-        stateLabel = 'можно забрать';
-        bottom = `<button type="button" class="btn btn-primary btn-sm camp-tile-claim" data-claim-drop="${esc(drop.dropInstanceID)}">Забрать</button>`;
+        stateLabel = tr('можно забрать');
+        bottom = `<button type="button" class="btn btn-primary btn-sm camp-tile-claim" data-claim-drop="${esc(drop.dropInstanceID)}">${tr('Забрать')}</button>`;
       } else if (this.isDropEarned(drop)) {
         // Минуты набраны, но забрать пока нельзя (Twitch ещё не выдал
         // экземпляр награды) — полная зелёная полоса и «Готово»
         state = ' is-earned';
-        stateLabel = 'готово, ждёт выдачи от Twitch';
+        stateLabel = tr('готово, ждёт выдачи от Twitch');
         bottom = `
           <div class="progress camp-tile-progress is-complete"><div class="progress-fill" style="width: 100%"></div></div>
-          <div class="camp-tile-meta">Готово</div>`;
+          <div class="camp-tile-meta">${tr('Готово')}</div>`;
       } else {
         const left = remaining > 0 && !ended;
-        stateLabel = left ? `${percentage}%, ещё ${formatMinutes(remaining)}` : `${percentage}%`;
+        stateLabel = left ? tr('{percent}%, ещё {time}', { percent: percentage, time: formatMinutes(remaining) }) : `${percentage}%`;
         bottom = `
           <div class="progress camp-tile-progress"><div class="progress-fill" style="width: ${percentage}%"></div></div>
-          <div class="camp-tile-meta num">${left ? `ещё ${formatMinutesShort(remaining)}` : `${percentage}%`}</div>`;
+          <div class="camp-tile-meta num">${left ? tr('ещё {time}', { time: formatMinutesShort(remaining) }) : `${percentage}%`}</div>`;
       }
 
       return `
@@ -890,7 +907,7 @@
           // данных нет, и не затираем то, что уже было известно
           const unavailable = this.describeUnavailable(data);
           if (unavailable) {
-            this.showEmptyState(emptyEl, 'Инвентарь пока недоступен', unavailable, 'info');
+            this.showEmptyState(emptyEl, tr('Инвентарь пока недоступен'), unavailable, 'info');
             return;
           }
           claimedDrops = data.claimedDrops || [];
@@ -899,12 +916,12 @@
 
         // Пусто — когда нет ни полученных, ни готовых к получению наград
         if (!this.renderInventory(claimedDrops)) {
-          this.showEmptyState(emptyEl, 'Инвентарь пуст', 'Здесь будут все полученные награды.', 'gift');
+          this.showEmptyState(emptyEl, tr('Инвентарь пуст'), tr('Здесь будут все полученные награды.'), 'gift');
         }
       } catch (error) {
         console.error('Error loading inventory:', error);
-        this.showEmptyState(emptyEl, 'Не удалось загрузить инвентарь',
-          'Проверьте подключение к интернету и попробуйте ещё раз.', 'warning', true);
+        this.showEmptyState(emptyEl, tr('Не удалось загрузить инвентарь'),
+          tr('Проверьте подключение к интернету и попробуйте ещё раз.'), 'warning', true);
       } finally {
         if (loadingEl) loadingEl.style.display = 'none';
       }
@@ -933,7 +950,9 @@
         if (c?.id) awardedAt.set(c.id, c.lastAwardedAt || null);
       });
 
-      // Дропсы из активных кампаний
+      // Дропсы из активных кампаний.
+      // Подписи-заглушки переводятся сразу: игра служит ключом фильтра, но
+      // язык до перезапуска не меняется, и ключ у всех плиток один
       this.campaigns.forEach(campaign => {
         campaign.drops?.forEach(drop => {
           // Добавляем полученные дропсы
@@ -941,9 +960,9 @@
             allDrops.push({
               id: drop.benefitId || drop.id,
               dropInstanceID: drop.dropInstanceID,
-              name: drop.benefitName || drop.name || 'Награда',
+              name: drop.benefitName || drop.name || tr('Награда'),
               image: drop.imageURL,
-              game: campaign.game?.name || 'Неизвестно',
+              game: campaign.game?.name || tr('Неизвестно'),
               claimedAt: awardedAt.get(drop.benefitId) || null,
               claimed: true,
               canClaim: false
@@ -955,9 +974,9 @@
             allDrops.push({
               id: drop.benefitId || drop.id,
               dropInstanceID: drop.dropInstanceID,
-              name: drop.benefitName || drop.name || 'Награда',
+              name: drop.benefitName || drop.name || tr('Награда'),
               image: drop.imageURL,
-              game: campaign.game?.name || 'Неизвестно',
+              game: campaign.game?.name || tr('Неизвестно'),
               claimedAt: null,
               claimed: false,
               canClaim: true
@@ -976,9 +995,9 @@
             // прислал; заглушки — только когда о награде не известно ничего
             allDrops.push({
               id: claimed.id,
-              name: claimed.name || claimed.benefitName || 'Полученная награда',
+              name: claimed.name || claimed.benefitName || tr('Полученная награда'),
               image: claimed.imageURL || claimed.imageAssetURL || null,
-              game: claimed.game?.displayName || claimed.game?.name || 'Различные игры',
+              game: claimed.game?.displayName || claimed.game?.name || tr('Различные игры'),
               claimedAt: claimed.lastAwardedAt || null,
               claimed: true
             });
@@ -1004,7 +1023,7 @@
       // Игры для фильтра — с числом наград у каждой
       const perGame = new Map();
       allDrops.forEach(d => perGame.set(d.game, (perGame.get(d.game) || 0) + 1));
-      const uniqueGames = [...perGame.keys()].sort((a, b) => a.localeCompare(b, 'ru'));
+      const uniqueGames = [...perGame.keys()].sort((a, b) => a.localeCompare(b, tr.locale()));
 
       // Фильтр мог остаться от прежних данных, где эта игра ещё была
       if (this.inventoryFilter === 'game' && !perGame.has(this.inventoryGameFilter)) {
@@ -1021,7 +1040,7 @@
         const seg = document.createElement('div');
         seg.className = 'segmented';
         seg.setAttribute('role', 'group');
-        seg.setAttribute('aria-label', 'Фильтр по игре');
+        seg.setAttribute('aria-label', tr('Фильтр по игре'));
 
         const addFilter = (label, count, active, onClick) => {
           const btn = document.createElement('button');
@@ -1033,7 +1052,7 @@
           seg.appendChild(btn);
         };
 
-        addFilter('Все', allDrops.length, this.inventoryFilter !== 'game', () => {
+        addFilter(tr('Все'), allDrops.length, this.inventoryFilter !== 'game', () => {
           this.inventoryFilter = 'all';
           this.inventoryGameFilter = null;
           this.inventoryPage = 1;
@@ -1078,7 +1097,7 @@
         const loadMoreBtn = document.createElement('button');
         loadMoreBtn.type = 'button';
         loadMoreBtn.className = 'btn btn-secondary btn-sm';
-        loadMoreBtn.innerHTML = `${icon('chevron-down', 14)}<span>Показать ещё</span><span class="drops-more-count num">${hiddenCount}</span>`;
+        loadMoreBtn.innerHTML = `${icon('chevron-down', 14)}<span>${tr('Показать ещё')}</span><span class="drops-more-count num">${hiddenCount}</span>`;
         loadMoreBtn.addEventListener('click', () => {
           this.inventoryPage++;
           this.renderInventory(this.claimedDrops);
@@ -1120,7 +1139,7 @@
         <div class="inv-tile-meta">${esc(drop.game)}</div>
         ${timeAgo ? `<div class="inv-tile-meta">${esc(timeAgo)}</div>` : ''}
         ${(drop.canClaim && drop.dropInstanceID)
-          ? `<button type="button" class="btn btn-primary btn-sm btn-block inv-tile-claim" data-claim-drop="${esc(drop.dropInstanceID)}">Забрать</button>`
+          ? `<button type="button" class="btn btn-primary btn-sm btn-block inv-tile-claim" data-claim-drop="${esc(drop.dropInstanceID)}">${tr('Забрать')}</button>`
           : ''}
       `;
 
@@ -1140,27 +1159,27 @@
 
       // До 2 часов - показываем как "Недавно"
       if (diffMinutes < 120) {
-        return 'Недавно';
+        return tr('Недавно');
       }
       // До 48 часов - показываем часы
       else if (diffHours < 48) {
-        return `${diffHours} ${this.getPluralForm(diffHours, 'час', 'часа', 'часов')} назад`;
+        return tr('{time} назад', { time: `${diffHours} ${plural(diffHours, 'час', 'часа', 'часов')}` });
       }
       // До недели - показываем дни
       else if (diffDays < 7) {
-        return `${diffDays} ${this.getPluralForm(diffDays, 'день', 'дня', 'дней')} назад`;
+        return tr('{time} назад', { time: `${diffDays} ${plural(diffDays, 'день', 'дня', 'дней')}` });
       }
       // До месяца - показываем недели
       else if (diffWeeks < 4) {
-        return `${diffWeeks} ${this.getPluralForm(diffWeeks, 'неделю', 'недели', 'недель')} назад`;
+        return tr('{time} назад', { time: `${diffWeeks} ${plural(diffWeeks, 'неделю', 'недели', 'недель')}` });
       }
       // До года - показываем месяцы
       else if (diffMonths < 12) {
-        return `${diffMonths} ${this.getPluralForm(diffMonths, 'месяц', 'месяца', 'месяцев')} назад`;
+        return tr('{time} назад', { time: `${diffMonths} ${plural(diffMonths, 'месяц', 'месяца', 'месяцев')}` });
       }
       // Больше года - показываем годы
       else {
-        return `${diffYears} ${this.getPluralForm(diffYears, 'год', 'года', 'лет')} назад`;
+        return tr('{time} назад', { time: `${diffYears} ${plural(diffYears, 'год', 'года', 'лет')}` });
       }
     }
 
@@ -1205,9 +1224,9 @@
     // «12,4 тыс.», «1,2 млн» — так же, как числа зрителей на других экранах
     formatViewersCount(count) {
       if (!count || count === 0) return '—';
-      const short = (value) => value.toFixed(1).replace(/\.0$/, '').replace('.', ',');
-      if (count >= 1000000) return `${short(count / 1000000)} млн`;
-      if (count >= 1000) return `${short(count / 1000)} тыс.`;
+      const short = (value) => decimal(value.toFixed(1).replace(/\.0$/, ''));
+      if (count >= 1000000) return tr('{n} млн', { n: short(count / 1000000) });
+      if (count >= 1000) return tr('{n} тыс.', { n: short(count / 1000) });
       return count.toString();
     }
 
@@ -1273,10 +1292,10 @@
         button.disabled = true;
         button.classList.remove('btn-primary');
         button.classList.add('btn-ghost', 'is-claimed-mark');
-        button.innerHTML = `${icon('check', 14)}<span>Получено</span>`;
+        button.innerHTML = `${icon('check', 14)}<span>${tr('Получено')}</span>`;
         button.closest('.drops-page-drop-card')?.classList.add('is-claimed');
         window.chime?.dropClaimed?.();
-        window.utils?.showToast('Награда получена', 'success');
+        window.utils?.showToast(tr('Награда получена'), 'success');
 
         // Журнал событий: название и игра — из данных плитки
         try {
@@ -1285,7 +1304,7 @@
           const campaign = tile?.dataset.campaign ? JSON.parse(decodeURIComponent(tile.dataset.campaign)) : null;
           window.eventLog?.add({
             type: 'drop',
-            title: drop?.benefitName || drop?.name || 'Награда',
+            title: drop?.benefitName || drop?.name || tr('Награда'),
             game: campaign?.game?.name || drop?.game || undefined,
             icon: drop?.imageURL || drop?.image || undefined,
             // id награды: если её уже забрал автосбор, вторая запись не нужна
@@ -1301,12 +1320,12 @@
         }, 2000);
       } else {
         done();
-        window.utils?.showToast(result?.error || 'Не удалось получить награду', 'error');
+        window.utils?.showToast(result?.error || tr('Не удалось получить награду'), 'error');
       }
     } catch (error) {
       console.error('Error claiming drop:', error);
       done();
-      window.utils?.showToast('Ошибка получения награды', 'error');
+      window.utils?.showToast(tr('Ошибка получения награды'), 'error');
     }
   };
 

@@ -55,14 +55,17 @@ class DropCredit {
    *   'waiting' — рано судить: прогрев или мало выборок;
    *   'none'    — за прогревом подряд нет зачёта — канал не подходит;
    *   'idle'    — наград за просмотр не осталось, ждать зачёт не от чего.
+   *
+   * reason всегда по-русски: его сверяют describe() и тесты, он же идёт в
+   * лог. Для подсказки в интерфейсе — explain(), на языке приложения.
    */
   static evaluate({ startedAt, login, samples = [], now = Date.now(), progressGrew = false, progressStale = true, staleForMs = 0, hasWatchable = true }) {
     // Минуты в инвентаре растут — зачёт есть, что бы ни ответил запрос о
     // сессии. Это страховка от ложного «не засчитывает».
-    if (progressGrew) return { state: 'ok', reason: 'минуты просмотра растут', minutes: 0, required: 0 };
+    if (progressGrew) return { state: 'ok', reason: 'минуты просмотра растут', minutes: 0, required: 0 }; // i18n-ignore
 
     // Наград за просмотр у игры не осталось — зачёт ждать не от чего
-    if (!hasWatchable) return { state: 'idle', reason: 'награды за просмотр собраны' };
+    if (!hasWatchable) return { state: 'idle', reason: 'награды за просмотр собраны' }; // i18n-ignore
 
     const warmedUp = now - (startedAt || now) >= DropCredit.WARMUP_MS;
 
@@ -75,24 +78,25 @@ class DropCredit {
       const latestSession = samples[samples.length - 1];
       const fresh = !!latestSession && now - latestSession.at <= DropCredit.WARMUP_MS + 60000;
       if (!fresh || !DropCredit.matchesChannel(latestSession.session, login)) {
-        return { state: 'none', reason: 'минуты не растут ' + Math.round(staleForMs / 60000) + ' мин' };
+        const staleMinutes = Math.round(staleForMs / 60000);
+        return { state: 'none', reason: 'минуты не растут ' + staleMinutes + ' мин', staleMinutes }; // i18n-ignore
       }
     }
 
     const latest = samples[samples.length - 1];
-    if (!latest) return { state: 'waiting', reason: 'жду первого ответа Twitch' };
+    if (!latest) return { state: 'waiting', reason: 'жду первого ответа Twitch' }; // i18n-ignore
 
     if (DropCredit.matchesChannel(latest.session, login)) {
       return {
         state: 'ok',
-        reason: 'зачёт идёт',
+        reason: 'зачёт идёт', // i18n-ignore
         minutes: Number(latest.session.currentMinutesWatched) || 0,
         required: Number(latest.session.requiredMinutesWatched) || 0
       };
     }
 
     if (now - (startedAt || now) < DropCredit.WARMUP_MS) {
-      return { state: 'waiting', reason: 'Twitch ещё не отчитался о зачёте' };
+      return { state: 'waiting', reason: 'Twitch ещё не отчитался о зачёте' }; // i18n-ignore
     }
 
     // После прогрева считаем только свежие выборки: старые могли относиться
@@ -108,16 +112,36 @@ class DropCredit {
       return {
         state: 'none',
         reason: elsewhere
-          ? 'зачёт идёт на другом канале: ' + elsewhere
-          : 'канал не засчитывает дропсы'
+          ? 'зачёт идёт на другом канале: ' + elsewhere // i18n-ignore
+          : 'канал не засчитывает дропсы', // i18n-ignore
+        elsewhere: elsewhere || ''
       };
     }
 
     if (misses >= DropCredit.STRIKES_TO_LEAVE) {
-      return { state: 'waiting', reason: 'сессия пуста, но минуты ещё могут идти — жду инвентарь' };
+      return { state: 'waiting', reason: 'сессия пуста, но минуты ещё могут идти — жду инвентарь' }; // i18n-ignore
     }
 
-    return { state: 'waiting', reason: 'жду подтверждения зачёта' };
+    return { state: 'waiting', reason: 'жду подтверждения зачёта' }; // i18n-ignore
+  }
+
+  /** Пояснение вердикта (reason) на языке интерфейса — для подсказки индикатора. */
+  static explain(verdict) {
+    const reason = verdict?.reason || '';
+    if (!reason) return '';
+    if (verdict.staleMinutes != null) return tr('минуты не растут {minutes} мин', { minutes: verdict.staleMinutes });
+    if (verdict.elsewhere) return tr('зачёт идёт на другом канале: {channel}', { channel: verdict.elsewhere });
+    const texts = {
+      'минуты просмотра растут': tr('минуты просмотра растут'), // i18n-ignore
+      'награды за просмотр собраны': tr('награды за просмотр собраны'), // i18n-ignore
+      'жду первого ответа Twitch': tr('жду первого ответа Twitch'), // i18n-ignore
+      'зачёт идёт': tr('зачёт идёт'), // i18n-ignore
+      'Twitch ещё не отчитался о зачёте': tr('Twitch ещё не отчитался о зачёте'), // i18n-ignore
+      'канал не засчитывает дропсы': tr('канал не засчитывает дропсы'), // i18n-ignore
+      'сессия пуста, но минуты ещё могут идти — жду инвентарь': tr('сессия пуста, но минуты ещё могут идти — жду инвентарь'), // i18n-ignore
+      'жду подтверждения зачёта': tr('жду подтверждения зачёта') // i18n-ignore
+    };
+    return Object.prototype.hasOwnProperty.call(texts, reason) ? texts[reason] : reason;
   }
 
   /**
@@ -154,16 +178,16 @@ class DropCredit {
 
   /** Короткая подпись для индикатора в сайдбаре. */
   static describe(verdict) {
-    if (!verdict) return 'Жду зачёт от Twitch';
+    if (!verdict) return tr('Жду зачёт от Twitch');
     if (verdict.state === 'ok') {
-      if (!verdict.required && verdict.reason === 'минуты просмотра растут') return 'Зачёт идёт: минуты растут';
+      if (!verdict.required && verdict.reason === 'минуты просмотра растут') return tr('Зачёт идёт: минуты растут'); // i18n-ignore
       return verdict.required > 0
-        ? `Зачёт идёт: ${verdict.minutes} из ${verdict.required} мин`
-        : 'Зачёт идёт';
+        ? tr('Зачёт идёт: {minutes} из {required} мин', { minutes: verdict.minutes, required: verdict.required })
+        : tr('Зачёт идёт');
     }
-    if (verdict.state === 'none') return 'Не засчитывается';
-    if (verdict.state === 'idle') return 'Награды за просмотр собраны';
-    return 'Жду зачёт от Twitch';
+    if (verdict.state === 'none') return tr('Не засчитывается');
+    if (verdict.state === 'idle') return tr('Награды за просмотр собраны');
+    return tr('Жду зачёт от Twitch');
   }
 }
 

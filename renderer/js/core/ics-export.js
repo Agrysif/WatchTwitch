@@ -11,8 +11,9 @@
  * Ошибка в любом из этих мест — и календарь молча не откроет файл.
  */
 class IcsExport {
+  /** Последнее поле — язык текста событий: он тот же, что у интерфейса. */
   static get PRODID() {
-    return '-//WatchTwitch//Drops Calendar//RU';
+    return `-//WatchTwitch//Drops Calendar//${tr.lang() === 'en' ? 'EN' : 'RU'}`;
   }
 
   /** За сколько минут до конца кампании напомнить. */
@@ -83,15 +84,15 @@ class IcsExport {
     const ends = IcsExport.stamp(campaign?.endsAt || campaign?.endAt);
     if (!ends) return null;
 
-    const game = campaign?.game?.displayName || campaign?.game?.name || campaign?.name || 'Кампания';
+    const game = campaign?.game?.displayName || campaign?.game?.name || campaign?.name || tr('Кампания');
     const drops = Array.isArray(campaign?.drops) ? campaign.drops : [];
     const unclaimed = drops.filter(d => !d?.claimed).length;
 
     const uid = `${campaign?.id || game}@watchtwitch`.replace(/\s+/g, '-');
 
     const description = unclaimed > 0
-      ? `Не забрано наград: ${unclaimed} из ${drops.length}`
-      : 'Все награды получены';
+      ? tr('Не забрано наград: {left} из {total}', { left: unclaimed, total: drops.length })
+      : tr('Все награды получены');
 
     return [
       'BEGIN:VEVENT',
@@ -99,12 +100,12 @@ class IcsExport {
       `DTSTAMP:${stampNow}`,
       `DTSTART:${ends}`,
       `DTEND:${ends}`,
-      `SUMMARY:${IcsExport.escapeText(game + ' — конец кампании дропсов')}`,
+      `SUMMARY:${IcsExport.escapeText(tr('{game} — конец кампании дропсов', { game }))}`,
       `DESCRIPTION:${IcsExport.escapeText(description)}`,
       'BEGIN:VALARM',
       `TRIGGER:-PT${IcsExport.REMIND_BEFORE_MINUTES}M`,
       'ACTION:DISPLAY',
-      `DESCRIPTION:${IcsExport.escapeText(game + ': кампания скоро закончится')}`,
+      `DESCRIPTION:${IcsExport.escapeText(tr('{game}: кампания скоро закончится', { game }))}`,
       'END:VALARM',
       'END:VEVENT'
     ];
@@ -129,7 +130,7 @@ class IcsExport {
       `PRODID:${IcsExport.PRODID}`,
       'CALSCALE:GREGORIAN',
       'METHOD:PUBLISH',
-      'X-WR-CALNAME:WatchTwitch — дропсы'
+      `X-WR-CALNAME:${IcsExport.escapeText(tr('WatchTwitch — дропсы'))}`
     ];
 
     let added = 0;

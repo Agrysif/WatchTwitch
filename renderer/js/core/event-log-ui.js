@@ -64,44 +64,50 @@
     return many;
   };
   // «12 400», а не «12400»: тысячи читаются с разделителем
-  const num = (n) => Number(n || 0).toLocaleString('ru-RU');
+  const num = (n) => Number(n || 0).toLocaleString(tr.locale());
 
   function formatDuration(ms) {
     const minutes = Math.max(1, Math.round(ms / 60000));
-    if (minutes < 60) return minutes + ' мин';
+    if (minutes < 60) return tr('{minutes} мин', { minutes });
     const hours = Math.floor(minutes / 60);
     if (hours < 24) {
       const rest = minutes % 60;
-      return hours + ' ч' + (rest ? ' ' + rest + ' мин' : '');
+      return rest ? tr('{hours} ч {minutes} мин', { hours, minutes: rest }) : tr('{hours} ч', { hours });
     }
     const days = Math.floor(hours / 24);
     const restHours = hours % 24;
-    return days + ' д' + (restHours ? ' ' + restHours + ' ч' : '');
+    return restHours ? tr('{days} д {hours} ч', { days, hours: restHours }) : tr('{days} д', { days });
   }
 
   function dayLabel(at, now = new Date()) {
     const d = new Date(at);
     const start = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-    if (at >= start) return 'Сегодня';
-    if (at >= start - 24 * 60 * 60 * 1000) return 'Вчера';
-    return d.toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'long' });
+    if (at >= start) return tr('Сегодня');
+    if (at >= start - 24 * 60 * 60 * 1000) return tr('Вчера');
+    return d.toLocaleDateString(tr.locale(), { weekday: 'short', day: 'numeric', month: 'long' });
   }
 
+  // 24-часовой формат и в английском: колонка времени в журнале узкая (40px),
+  // и «03:52 PM» переносился на две строки
   function timeLabel(at) {
-    return new Date(at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+    return new Date(at).toLocaleTimeString(tr.locale(), { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
   }
 
-  /** Заголовок и подпись строки журнала. */
+  /**
+   * Заголовок и подпись строки журнала. Запись хранится на том языке, на
+   * котором её сделали: старую русскую с известной строкой переводим при
+   * показе, остальное (английское, имена наград) tr() отдаёт как есть
+   */
   function describe(entry) {
-    let title = entry.title;
+    let title = tr(entry.title);
     const meta = [];
     if (entry.type === 'chest' && entry.count > 1) {
-      title = 'Собрано ' + entry.count + ' ' + plural(entry.count, 'сундук', 'сундука', 'сундуков');
+      title = tr('Собрано {count} {chests}', { count: entry.count, chests: plural(entry.count, 'сундук', 'сундука', 'сундуков') });
     }
     if (entry.type === 'chest' && entry.points) {
       meta.push('+' + num(entry.points) + ' ' + plural(entry.points, 'балл', 'балла', 'баллов'));
     }
-    if (entry.detail) meta.push(entry.detail);
+    if (entry.detail) meta.push(tr(entry.detail));
     if (entry.game && entry.game !== entry.detail) meta.push(entry.game);
     const repeat = entry.type !== 'chest' && entry.count > 1 ? entry.count : 0;
     return { title, meta: meta.join(' · '), repeat };
@@ -114,7 +120,7 @@
       const count = e.count || 1;
       if (e.type === 'drop') {
         t.drops += count;
-        if (e.icon && t.icons.length < 5) t.icons.push({ src: e.icon, title: e.title });
+        if (e.icon && t.icons.length < 5) t.icons.push({ src: e.icon, title: tr(e.title) });
       } else if (e.type === 'chest') t.chests += count;
       else if (e.type === 'switch') t.switches += count;
       else if (e.type === 'error' || e.type === 'login') t.problems += count;
@@ -128,7 +134,7 @@
     if (t.drops) parts.push({ text: t.drops + ' ' + plural(t.drops, 'награда', 'награды', 'наград'), tone: 'success' });
     if (t.chests) parts.push({ text: t.chests + ' ' + plural(t.chests, 'сундук', 'сундука', 'сундуков') });
     if (t.switches) parts.push({ text: t.switches + ' ' + plural(t.switches, 'смена категории', 'смены категорий', 'смен категорий') });
-    if (t.allDone) parts.push({ text: 'всё собрано', tone: 'success' });
+    if (t.allDone) parts.push({ text: tr('всё собрано'), tone: 'success' });
     if (t.problems) parts.push({ text: t.problems + ' ' + plural(t.problems, 'проблема', 'проблемы', 'проблем'), tone: 'error' });
     return parts;
   }
@@ -200,8 +206,8 @@
       badge.textContent = count > 9 ? '9+' : (count ? String(count) : '');
       if (button) {
         const label = count
-          ? 'Журнал событий — ' + count + ' ' + plural(count, 'новое', 'новых', 'новых')
-          : 'Журнал событий';
+          ? tr('Журнал событий — {count} {word}', { count, word: plural(count, 'новое', 'новых', 'новых') })
+          : tr('Журнал событий');
         button.title = label;
         button.setAttribute('aria-label', label);
       }
@@ -215,23 +221,23 @@
       drawer.className = 'journal-drawer';
       drawer.id = 'journal-drawer';
       drawer.setAttribute('role', 'dialog');
-      drawer.setAttribute('aria-label', 'Журнал событий');
+      drawer.setAttribute('aria-label', tr('Журнал событий'));
       drawer.setAttribute('aria-hidden', 'true');
       drawer.tabIndex = -1;
       drawer.innerHTML = `
         <div class="journal-head">
-          <h2 class="journal-heading">Журнал</h2>
-          <div class="segmented journal-filter" role="tablist" aria-label="Что показывать">
-            <button type="button" role="tab" data-filter="all">Все</button>
-            <button type="button" role="tab" data-filter="drops">Награды</button>
-            <button type="button" role="tab" data-filter="problems">Проблемы</button>
+          <h2 class="journal-heading">${tr('Журнал')}</h2>
+          <div class="segmented journal-filter" role="tablist" aria-label="${tr('Что показывать')}">
+            <button type="button" role="tab" data-filter="all">${tr('Все')}</button>
+            <button type="button" role="tab" data-filter="drops">${tr('Награды')}</button>
+            <button type="button" role="tab" data-filter="problems">${tr('Проблемы')}</button>
           </div>
-          <button type="button" class="btn btn-ghost btn-icon btn-sm journal-close" title="Закрыть" aria-label="Закрыть">${icon('close', 16)}</button>
+          <button type="button" class="btn btn-ghost btn-icon btn-sm journal-close" title="${tr('Закрыть')}" aria-label="${tr('Закрыть')}">${icon('close', 16)}</button>
         </div>
         <div class="journal-list" id="journal-list" aria-live="polite"></div>
         <div class="journal-foot">
-          <span class="journal-foot-note">Хранится 14 дней</span>
-          <button type="button" class="btn btn-danger-ghost btn-sm" id="journal-clear">Очистить журнал</button>
+          <span class="journal-foot-note">${tr('Хранится 14 дней')}</span>
+          <button type="button" class="btn btn-danger-ghost btn-sm" id="journal-clear">${tr('Очистить журнал')}</button>
         </div>
       `;
       document.body.appendChild(drawer);
@@ -327,9 +333,9 @@
 
       if (!entries.length) {
         const empty = {
-          all: ['Пока пусто', 'Здесь появятся награды, сундуки и смены категорий'],
-          drops: ['Наград пока нет', 'Полученные награды появятся здесь сразу после зачёта'],
-          problems: ['Проблем не было', 'Сюда попадут остановки фарминга и пропавший вход в Twitch']
+          all: [tr('Пока пусто'), tr('Здесь появятся награды, сундуки и смены категорий')],
+          drops: [tr('Наград пока нет'), tr('Полученные награды появятся здесь сразу после зачёта')],
+          problems: [tr('Проблем не было'), tr('Сюда попадут остановки фарминга и пропавший вход в Twitch')]
         }[this.filter];
         list.innerHTML = window.DOMHelpers?.emptyState
           ? window.DOMHelpers.emptyState({ icon: this.filter === 'problems' ? 'check-circle' : 'journal', title: empty[0], text: empty[1] })
@@ -371,9 +377,9 @@
 
     async confirmClear() {
       const ok = await window.utils?.showConfirmation?.(
-        'Очистить журнал?',
-        'Записи удалятся из приложения. Награды в инвентаре Twitch это не затронет.',
-        { confirmText: 'Очистить', confirmClass: 'btn-danger' }
+        tr('Очистить журнал?'),
+        tr('Записи удалятся из приложения. Награды в инвентаре Twitch это не затронет.'),
+        { confirmText: tr('Очистить'), confirmClass: 'btn-danger' }
       );
       if (!ok) return;
       window.eventLog?.clear?.();
@@ -427,8 +433,8 @@
         return;
       }
       window.utils?.showToast?.(parts.map(p => p.text).join(' · '), t.problems ? 'warning' : 'success', {
-        title: 'Пока вас не было' + (duration ? ' · ' + duration : ''),
-        action: { label: 'Подробнее', onClick: () => this.open(t.problems && !t.drops ? 'problems' : 'all') },
+        title: duration ? tr('Пока вас не было · {time}', { time: duration }) : tr('Пока вас не было'),
+        action: { label: tr('Подробнее'), onClick: () => this.open(t.problems && !t.drops ? 'problems' : 'all') },
         duration: 12000
       });
     }
@@ -437,15 +443,15 @@
       const chips = parts.map(p => `<span class="badge${p.tone ? ' badge-' + p.tone : ''}">${esc(p.text)}</span>`).join('');
       const thumbs = t.icons.map(i => `<img src="${esc(i.src)}" alt="" title="${esc(i.title)}" referrerpolicy="no-referrer">`).join('');
       slot.innerHTML = `
-        <section class="card away-card" role="status" aria-label="Пока вас не было">
+        <section class="card away-card" role="status" aria-label="${tr('Пока вас не было')}">
           <div class="away-head">
-            <h3 class="away-title">Пока вас не было${duration ? `<span class="away-duration"> · ${esc(duration)}</span>` : ''}</h3>
-            <button type="button" class="btn btn-ghost btn-icon btn-sm away-close" title="Скрыть" aria-label="Скрыть">${icon('close', 16)}</button>
+            <h3 class="away-title">${tr('Пока вас не было')}${duration ? `<span class="away-duration"> · ${esc(duration)}</span>` : ''}</h3>
+            <button type="button" class="btn btn-ghost btn-icon btn-sm away-close" title="${tr('Скрыть')}" aria-label="${tr('Скрыть')}">${icon('close', 16)}</button>
           </div>
           <div class="away-chips">${chips}</div>
           <div class="away-foot">
-            ${thumbs ? `<div class="away-thumbs">${thumbs}</div><span class="away-thumbs-label">последние награды</span>` : ''}
-            <button type="button" class="btn btn-secondary btn-sm away-open">${icon('journal', 14)}<span>Открыть журнал</span></button>
+            ${thumbs ? `<div class="away-thumbs">${thumbs}</div><span class="away-thumbs-label">${tr('последние награды')}</span>` : ''}
+            <button type="button" class="btn btn-secondary btn-sm away-open">${icon('journal', 14)}<span>${tr('Открыть журнал')}</span></button>
           </div>
         </section>
       `;

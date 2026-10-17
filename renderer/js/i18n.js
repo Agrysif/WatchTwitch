@@ -706,27 +706,51 @@ const translations = {
 
 class I18n {
   constructor() {
-    this.currentLang = 'ru';
+    // Язык выбран в js/core/tr.js при запуске и до перезапуска не меняется
+    this.currentLang = window.WT_LANG === 'en' ? 'en' : 'ru';
     this.init();
   }
 
   async init() {
-    // Загружаем сохраненный язык из localStorage
-    const savedLang = localStorage.getItem('appLanguage');
-    if (savedLang && translations[savedLang]) {
-      this.currentLang = savedLang;
+    // Язык нужен и main-процессу (трей, уведомления, заставка): он читает
+    // его из настроек, которые settings-manager передаёт в electron-store
+    const settings = window.settings;
+    // Без set(): тот заново применяет все настройки, а здесь ещё идёт
+    // загрузка скриптов
+    if (settings?.settings && settings.settings.language !== this.currentLang) {
+      settings.settings.language = this.currentLang;
+      settings.saveSettings?.();
+      settings.mirrorToMainProcess?.();
     }
     this.updatePage();
   }
 
+  /**
+   * Сохраняет выбранный язык. Применяется после перезапуска: строки
+   * интерфейса переводятся в момент отрисовки, и смена на лету оставила бы
+   * половину экранов на прежнем языке.
+   */
   setLanguage(lang) {
     if (!translations[lang]) {
       console.error(`Language ${lang} not found`);
-      return;
+      return false;
     }
-    this.currentLang = lang;
-    localStorage.setItem('appLanguage', lang);
-    this.updatePage();
+    try {
+      localStorage.setItem('appLanguage', lang);
+    } catch (error) {
+      console.warn('[i18n] Не удалось сохранить язык:', error?.message);
+    }
+    window.settings?.set?.('language', lang);
+    return true;
+  }
+
+  /** Язык, выбранный для следующего запуска. */
+  get pendingLang() {
+    try {
+      return localStorage.getItem('appLanguage') || this.currentLang;
+    } catch (error) {
+      return this.currentLang;
+    }
   }
 
   t(key) {
@@ -745,6 +769,16 @@ class I18n {
   }
 
   updatePage() {
+    // Готовая разметка index.html написана по-русски; в английском режиме
+    // её текст переводится по словарю — один раз, при запуске. Страницы
+    // (pages/*.html) router переводит сам, до вставки. Проход по всему body
+    // после каждого перехода задевал и то, что уже нарисовал JS: открытое
+    // окно, тосты, русские названия стримов — и писал их в tr.missing()
+    if (!this._shellTranslated) {
+      this._shellTranslated = true;
+      window.tr?.dom?.(document.body);
+    }
+
     document.querySelectorAll('[data-i18n]').forEach(element => {
       const key = element.getAttribute('data-i18n');
       element.textContent = this.t(key);

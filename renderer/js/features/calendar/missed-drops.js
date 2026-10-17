@@ -47,7 +47,7 @@ class MissedDrops {
         const short = (Number(drop.required) || 0) - (Number(drop.progress) || 0);
         missed.push({
           game,
-          name: drop.name || 'Награда',
+          name: drop.name || tr('Награда'),
           shortBy: short,
           endsAt: campaign.endsAt
         });
@@ -97,19 +97,21 @@ class MissedDrops {
 
   /** Короткий вывод для интерфейса. */
   static describe(result) {
-    if (!result || result.total === 0) return 'Ничего не упущено';
+    if (!result || result.total === 0) return tr('Ничего не упущено');
 
     const наград = result.total;
-    const хвост = MissedDrops.plural(наград, 'награда', 'награды', 'наград');
 
     // Глагол согласуется с числом так же, как существительное:
-    // «Упущена 1 награда», «Упущены 3 награды», «Упущено 5 наград»
-    const глагол = MissedDrops.plural(наград, 'Упущена', 'Упущены', 'Упущено');
+    // «Упущена 1 награда», «Упущены 3 награды», «Упущено 5 наград».
+    // Поэтому каждая форма — целая фраза: в английском порядок слов другой
+    const упущено = tr(MissedDrops.plural(наград,
+      'Упущена {n} награда', 'Упущены {n} награды', 'Упущено {n} наград'), { n: наград });
 
-    if (result.close === 0) return `${глагол} ${наград} ${хвост}`;
+    if (result.close === 0) return упущено;
 
-    const почти = MissedDrops.plural(result.close, 'почти собрана', 'почти собраны', 'почти собраны');
-    return `${глагол} ${наград} ${хвост}, из них ${result.close} ${почти}`;
+    const почти = tr(MissedDrops.plural(result.close,
+      '{n} почти собрана', '{n} почти собраны', '{n} почти собраны'), { n: result.close });
+    return tr('{missed}, из них {close}', { missed: упущено, close: почти });
   }
 }
 

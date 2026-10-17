@@ -58,18 +58,18 @@ class WhatsNew {
     overlay.id = 'whats-new-overlay';
     overlay.className = 'whats-new-overlay';
     overlay.innerHTML = `
-      <div class="whats-new" role="dialog" aria-label="Что нового">
+      <div class="whats-new" role="dialog" aria-label="${tr('Что нового')}">
         <div class="whats-new-head">
           <div>
-            <div class="whats-new-eyebrow">${options.since ? 'Приложение обновлено' : 'Сведения об обновлениях'}</div>
-            <h2 class="whats-new-title">Что нового</h2>
+            <div class="whats-new-eyebrow">${tr(options.since ? 'Приложение обновлено' : 'Сведения об обновлениях')}</div>
+            <h2 class="whats-new-title">${tr('Что нового')}</h2>
           </div>
-          <button class="whats-new-close" id="whats-new-close" title="Закрыть" aria-label="Закрыть">
+          <button class="whats-new-close" id="whats-new-close" title="${tr('Закрыть')}" aria-label="${tr('Закрыть')}">
             ${window.Icons?.get?.('close', 16) || '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>'}
           </button>
         </div>
         <div class="whats-new-body" id="whats-new-body">
-          <div class="loading-state"><div class="spinner" aria-hidden="true"></div><span>Загружаю сведения с GitHub…</span></div>
+          <div class="loading-state"><div class="spinner" aria-hidden="true"></div><span>${tr('Загружаю сведения с GitHub…')}</span></div>
         </div>
       </div>
     `;
@@ -108,10 +108,14 @@ class WhatsNew {
       const result = await window.electronAPI?.fetchReleaseNotes?.(null);
 
       if (!result?.success || !result.releases?.length) {
+        // Причина приходит из main и может быть любой — только как текст
+        const failed = tr(result?.error ? 'Не удалось загрузить сведения: {error}.' : 'Не удалось загрузить сведения.',
+          { error: this.escape(result?.error || '') });
+        const later = tr('Попробуйте позже — список берётся с GitHub.');
         body.innerHTML = `
           <div class="whats-new-empty">
-            Не удалось загрузить сведения${result?.error ? ': ' + this.escape(result.error) : ''}.
-            <br>Попробуйте позже — список берётся с GitHub.
+            ${failed}
+            <br>${later}
           </div>
         `;
         return;
@@ -129,7 +133,7 @@ class WhatsNew {
       : this.releases;
 
     if (installed.length === 0) {
-      body.innerHTML = '<div class="whats-new-empty">Описание установленной версии не найдено.</div>';
+      body.innerHTML = `<div class="whats-new-empty">${tr('Описание установленной версии не найдено.')}</div>`;
       return;
     }
 
@@ -160,11 +164,13 @@ class WhatsNew {
   }
 
   renderRelease(release, expanded) {
-    const isRussian = (window.i18n?.currentLang || 'ru') === 'ru';
+    // Раздел заметок — под язык интерфейса: в английском «## 🇬🇧 …»,
+    // а если его нет, parseSections покажет всё, что есть
+    const isRussian = (window.tr?.lang?.() || window.i18n?.currentLang || 'ru') !== 'en';
     const sections = this.parseSections(release.body, isRussian);
 
     const date = release.publishedAt
-      ? new Date(release.publishedAt).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })
+      ? new Date(release.publishedAt).toLocaleDateString(tr.locale(), { day: 'numeric', month: 'long', year: 'numeric' })
       : '';
 
     const blocks = sections.map(section => `
@@ -178,14 +184,14 @@ class WhatsNew {
       <div class="whats-new-release ${expanded ? 'open' : ''}">
         <div class="whats-new-release-head">
           <span class="whats-new-version badge">${this.escape(release.version)}</span>
-          ${release.version === this.currentVersion ? '<span class="badge badge-success">установлена</span>' : ''}
+          ${release.version === this.currentVersion ? `<span class="badge badge-success">${tr('установлена')}</span>` : ''}
           ${date ? `<span class="whats-new-date">${date}</span>` : ''}
           <svg class="whats-new-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="m6 9 6 6 6-6"/>
           </svg>
         </div>
         <div class="whats-new-release-body">
-          ${blocks || '<div class="whats-new-empty">Описание не заполнено</div>'}
+          ${blocks || `<div class="whats-new-empty">${tr('Описание не заполнено')}</div>`}
         </div>
       </div>
     `;

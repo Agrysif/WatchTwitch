@@ -67,16 +67,18 @@ class UpdateManager {
     const overlay = document.createElement('div');
     overlay.id = 'update-overlay';
     overlay.className = 'dialog-backdrop';
+    // Подписи кнопок обязаны лежать в span: смена подписи ищет именно его
+    // и не трогает значок рядом
     overlay.innerHTML = `
       <div class="dialog update-window" role="dialog" aria-modal="true" aria-labelledby="update-dialog-title">
         <div class="dialog-head update-head">
           <img class="update-logo" src="../assets/logo.svg" alt="" width="40" height="40">
           <div class="update-titles">
-            <div class="dialog-eyebrow is-success">Доступно обновление</div>
+            <div class="dialog-eyebrow is-success">${tr('Доступно обновление')}</div>
             <h2 class="dialog-title" id="update-dialog-title">WatchTwitch <span id="update-version-text" class="num"></span></h2>
             <div class="update-subtitle" id="update-subtitle"></div>
           </div>
-          <button type="button" class="dialog-close" id="update-close-btn" title="Закрыть" aria-label="Закрыть">${icon('close', 16)}</button>
+          <button type="button" class="dialog-close" id="update-close-btn" title="${tr('Закрыть')}" aria-label="${tr('Закрыть')}">${icon('close', 16)}</button>
         </div>
 
         <div class="dialog-body">
@@ -84,10 +86,10 @@ class UpdateManager {
 
           <div class="update-progress-section" id="progress-section" style="display: none;">
             <div class="update-progress-label">
-              <span>Загрузка обновления</span>
+              <span>${tr('Загрузка обновления')}</span>
               <span class="num" id="progress-percent">0%</span>
             </div>
-            <div class="progress progress-lg" role="progressbar" aria-label="Загрузка обновления">
+            <div class="progress progress-lg" role="progressbar" aria-label="${tr('Загрузка обновления')}">
               <div class="progress-fill" id="update-progress-fill" style="width: 0%;"></div>
             </div>
           </div>
@@ -97,12 +99,10 @@ class UpdateManager {
 
         <div class="dialog-foot update-actions">
           <button type="button" class="btn btn-secondary" id="update-later-btn">
-            <span>Позже</span>
+            <span>${tr('Позже')}</span>
           </button>
-          <!-- Подпись обязана лежать в span: смена подписи ищет именно его
-               и не трогает значок рядом -->
           <button type="button" class="btn btn-primary" id="update-download-btn">
-            ${icon('download', 16)}<span>Скачать обновление</span>
+            ${icon('download', 16)}<span>${tr('Скачать обновление')}</span>
           </button>
         </div>
       </div>
@@ -122,7 +122,7 @@ class UpdateManager {
     // обновление большое (1.0.25 → 1.0.26 или → 1.2.0)
     window.electronAPI?.getAppVersion?.().then((version) => {
       const subtitle = document.getElementById('update-subtitle');
-      if (subtitle && version) subtitle.textContent = 'Сейчас установлена ' + version;
+      if (subtitle && version) subtitle.textContent = tr('Сейчас установлена {version}', { version });
     }).catch(() => {});
 
     // Закрытие по Escape и щелчку по фону. Без них оборвавшаяся загрузка
@@ -207,7 +207,7 @@ class UpdateManager {
       // Окно могли закрыть во время загрузки — тогда без тоста
       // пользователь так и не узнал бы, что обновление готово
       if (!this.isOpen()) {
-        window.utils?.showToast('Обновление скачано — установится при выходе из приложения', 'success');
+        window.utils?.showToast(tr('Обновление скачано — установится при выходе из приложения'), 'success');
       }
     });
 
@@ -218,7 +218,8 @@ class UpdateManager {
       // Версию не экранируем: showToast кладёт текст через textContent,
       // и экранированная строка вывелась бы с &amp; и &lt; как есть
       window.utils?.showToast(
-        'Установлена последняя версия' + (info?.version ? ' — ' + info.version : ''),
+        tr(info?.version ? 'Установлена последняя версия — {version}' : 'Установлена последняя версия',
+          { version: info?.version }),
         'success'
       );
     });
@@ -232,10 +233,10 @@ class UpdateManager {
       // Загрузка оборвалась: показываем ошибку в окне с повтором загрузки
       if (this.downloading) {
         console.error('[UpdateManager] Ошибка загрузки обновления:', message);
-        this.showError(network ? 'Нет связи с GitHub — проверьте интернет' : 'Не удалось скачать обновление');
+        this.showError(tr(network ? 'Нет связи с GitHub — проверьте интернет' : 'Не удалось скачать обновление'));
         if (!this.isOpen()) {
           window.utils?.showToast(
-            network ? 'Не удалось скачать обновление — нет связи с GitHub' : 'Не удалось скачать обновление',
+            tr(network ? 'Не удалось скачать обновление — нет связи с GitHub' : 'Не удалось скачать обновление'),
             'error'
           );
         }
@@ -248,7 +249,7 @@ class UpdateManager {
       if (manual) {
         console.error('[UpdateManager] Ошибка проверки обновлений:', message);
         window.utils?.showToast(
-          network ? 'Не удалось проверить обновления — нет связи с GitHub' : 'Не удалось проверить обновления',
+          tr(network ? 'Не удалось проверить обновления — нет связи с GitHub' : 'Не удалось проверить обновления'),
           'error'
         );
       } else {
@@ -325,12 +326,12 @@ class UpdateManager {
     // Пустое значение, а не 'block': кнопка — inline-flex, и block
     // ломал выравнивание подписи
     later.style.display = '';
-    this.setButtonLabel(later, 'Позже');
+    this.setButtonLabel(later, tr('Позже'));
 
     // Надзаголовок говорит, на каком шаге обновление: найдено или уже
     // скачано и ждёт перезапуска
     const eyebrow = this.overlay?.querySelector('.dialog-eyebrow');
-    if (eyebrow) eyebrow.textContent = this.downloaded ? 'Обновление скачано' : 'Доступно обновление';
+    if (eyebrow) eyebrow.textContent = tr(this.downloaded ? 'Обновление скачано' : 'Доступно обновление');
     // Значок кнопки — по действию: скачать или перезапустить
     const iconSvg = window.Icons?.get?.(this.downloaded ? 'refresh' : 'download', 16);
     const oldIcon = btn.querySelector('svg');
@@ -340,8 +341,8 @@ class UpdateManager {
 
     if (this.downloaded) {
       progress.style.display = 'none';
-      this.setStatus(status, 'success', 'Обновление готово к установке');
-      this.setButtonLabel(btn, 'Установить и перезагрузить');
+      this.setStatus(status, 'success', tr('Обновление готово к установке'));
+      this.setButtonLabel(btn, tr('Установить и перезагрузить'));
       btn.onclick = () => this.installUpdate();
       return;
     }
@@ -353,16 +354,16 @@ class UpdateManager {
       document.getElementById('progress-percent').textContent = Math.round(percent) + '%';
 
       btn.disabled = true;
-      this.setButtonLabel(btn, 'Загрузка…');
+      this.setButtonLabel(btn, tr('Загрузка…'));
       btn.onclick = () => this.downloadUpdate();
       // Загрузка идёт в main, окно ей не нужно — его можно убрать
-      this.setButtonLabel(later, 'Скрыть');
+      this.setButtonLabel(later, tr('Скрыть'));
       return;
     }
 
     progress.style.display = 'none';
     if (error) this.setStatus(status, 'error', error);
-    this.setButtonLabel(btn, error ? 'Попробовать ещё' : 'Скачать обновление');
+    this.setButtonLabel(btn, tr(error ? 'Попробовать ещё' : 'Скачать обновление'));
     btn.onclick = () => this.downloadUpdate();
   }
 
@@ -397,7 +398,8 @@ class UpdateManager {
       return;
     }
 
-    const isRussian = (window.i18n?.currentLang || 'ru') === 'ru';
+    // Язык интерфейса выбран при запуске (js/core/tr.js)
+    const isRussian = (window.tr?.lang?.() || window.i18n?.currentLang || 'ru') !== 'en';
     const sections = raw.split(/^##\s+/m).filter(Boolean);
 
     let chosen = sections.find(part => isRussian
@@ -484,7 +486,7 @@ class UpdateManager {
       // пропускается) — тогда признак не должен достаться следующей
       // автопроверке
       this.manualTimer = setTimeout(() => { this.manualCheck = false; }, 2 * 60 * 1000);
-      window.utils?.showToast('Проверяю обновления…', 'info');
+      window.utils?.showToast(tr('Проверяю обновления…'), 'info');
     }
 
     if (this.checking || this.downloading) return;

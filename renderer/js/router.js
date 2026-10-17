@@ -54,7 +54,7 @@ class Router {
         const relPath = 'renderer/' + this.pages[page].replace(/^\.\//, '');
         const result = await window.electronAPI.readFile(relPath);
         const html = result?.success ? result.content : await (await fetch(this.pages[page])).text();
-        if (!html) throw new Error('Страница пуста: ' + page);
+        if (!html) throw new Error('Страница пуста: ' + page); // i18n-ignore — только в лог
         doc = new DOMParser().parseFromString(html, 'text/html');
         doc.querySelectorAll('script').forEach(script => {
           if (script.src) externalScripts.push(script.src);
@@ -89,6 +89,9 @@ class Router {
         this._farmingContent.remove();
         this._farmingContent = null;
       } else {
+        // Разметку страницы переводим до вставки: после неё в контейнер
+        // сразу рисует JS, и проход tr.dom задевал бы уже живые данные
+        window.tr?.dom?.(doc.body);
         container.innerHTML = doc.body.innerHTML;
       }
       // До manageMiniPlayer: наблюдатель за видимостью плеера должен сразу
@@ -117,7 +120,7 @@ class Router {
       container.classList.add('fade-in');
     } catch (error) {
       console.error('Error loading page:', error);
-      window.utils?.showToast('Ошибка загрузки страницы: ' + page, 'error');
+      window.utils?.showToast(tr('Ошибка загрузки страницы: {page}', { page }), 'error');
     } finally {
       if (navigation === this._navigationId) container.classList.remove('fade-out');
     }

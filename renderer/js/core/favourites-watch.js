@@ -117,14 +117,15 @@ class FavouritesWatch {
     }
 
     const body = withDrops
-      ? `${channel.game} — по этой игре идут дропсы`
+      ? tr('{game} — по этой игре идут дропсы', { game: channel.game })
       : channel.game;
 
     console.log('[Избранное] В эфире:', channel.displayName, '|', body);
 
-    window.notifyFarmingEvent?.(`${channel.displayName} в эфире`, body);
-    window.eventLog?.add({ type: 'favourite-live', title: `${channel.displayName} в эфире`, detail: body }); window.chime?.play('favourite');
-    window.utils?.showToast(`${channel.displayName} в эфире: ${body}`, withDrops ? 'success' : 'info');
+    const title = tr('{channel} в эфире', { channel: channel.displayName });
+    window.notifyFarmingEvent?.(title, body);
+    window.eventLog?.add({ type: 'favourite-live', title, detail: body }); window.chime?.play('favourite');
+    window.utils?.showToast(tr('{channel} в эфире: {details}', { channel: channel.displayName, details: body }), withDrops ? 'success' : 'info');
   }
 }
 

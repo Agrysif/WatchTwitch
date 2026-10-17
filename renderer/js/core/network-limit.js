@@ -82,12 +82,16 @@ class NetworkLimit {
     };
   }
 
-  /** Понятное описание для настроек. */
+  /**
+   * Понятное описание для настроек. Зовёт его только окно (tr есть лишь
+   * там): главный процесс берёт из этого файла одни числа.
+   */
   static describe(quality, headroom) {
     const kbps = NetworkLimit.forQuality(quality, headroom);
-    const mbps = (kbps / 1000).toFixed(1).replace('.', ',');
+    const fixed = (kbps / 1000).toFixed(1);
+    const mbps = tr.lang() === 'en' ? fixed : fixed.replace('.', ',');
 
-    return `Потолок примерно ${mbps} Мбит/с при качестве ${quality || 'неизвестном'}`;
+    return tr('Потолок примерно {mbps} Мбит/с при качестве {quality}', { mbps, quality: quality || tr('неизвестном') });
   }
 }
 

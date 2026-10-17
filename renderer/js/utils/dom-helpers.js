@@ -212,7 +212,7 @@ const DOMHelpers = {
 
     return this.createElement('div', {
       classes: 'spinner',
-      attributes: { role: 'status', 'aria-label': 'Загрузка' },
+      attributes: { role: 'status', 'aria-label': tr('Загрузка') },
       style: {
         width: sizes[size] || sizes.medium,
         height: sizes[size] || sizes.medium,
@@ -248,7 +248,7 @@ const DOMHelpers = {
    */
   skeletonRows(n = 5) {
     const count = Math.max(1, Math.min(20, Math.round(Number(n) || 5)));
-    return '<div class="skeleton-list" aria-busy="true" aria-label="Загрузка">'
+    return `<div class="skeleton-list" aria-busy="true" aria-label="${tr('Загрузка')}">`
       + '<div class="skeleton skeleton-row" aria-hidden="true"></div>'.repeat(count)
       + '</div>';
   },
@@ -318,6 +318,8 @@ const DOMHelpers = {
    * формы, и решают последние две цифры: 11–14 всегда «много».
    */
   plural(n, one, few, many) {
+    // В английском режиме — английское правило и переводы форм
+    if (typeof window.tr?.plural === 'function') return window.tr.plural(n, one, few, many);
     const число = Number(n) || 0;
     // Дробное число всегда во второй форме: «1,5 часа», «2,5 категории»
     if (!Number.isInteger(число)) return few;

@@ -5,10 +5,23 @@ const path = require('path');
 const vm = require('vm');
 const root = path.join(__dirname, '..');
 let failures = 0;
-function check(name, ok, detail) {
-  console.log(`${ok ? 'PASS' : 'FAIL'} ${name}: ${detail}`);
+// Аудит проходит дважды: по-русски и по-английски. В английском tr() берёт
+// строки из словарей, а логика — переключения, вердикты зачёта, причины —
+// должна остаться той же: коды причин и сравнения на перевод не опираются
+let LANG = 'ru';
+const results = { ru: new Map(), en: new Map() };
+// facts — то, что сравнивается между языками; по умолчанию detail. Свой
+// facts нужен там, где в detail попадает переведённый текст
+function check(name, ok, detail, facts = detail) {
+  console.log(`${ok ? 'PASS' : 'FAIL'} ${LANG === 'en' ? '[en] ' : ''}${name}: ${detail}`);
   if (!ok) failures++;
+  if (results[LANG]) results[LANG].set(name, { ok, facts: JSON.stringify(facts) });
 }
+const CYRILLIC = /[А-Яа-яЁё]/;
+// Словари — те же и в том же порядке, что подключает index.html
+const EN_DICTIONARIES = [...fs.readFileSync(path.join(root, 'renderer/index.html'), 'utf8')
+  .matchAll(/<script src="(js\/locales\/en\/[\w-]+\.js)"><\/script>/g)].map(m => m[1]);
+const englishSandboxes = [];
 function environment() {
   const timers = new Map();
   let id = 0;
@@ -20,8 +33,15 @@ function environment() {
     clearInterval(key) { timers.delete(key); },
     setTimeout() { return ++id; }, clearTimeout() {},
     Storage: {},
+    // Язык tr.js берёт отсюда; в обоих прогонах заглушка одна и та же
+    localStorage: { length: 1, getItem: key => (key === 'appLanguage' ? LANG : null), setItem() {}, removeItem() {} },
   };
   vm.createContext(sandbox);
+  vm.runInContext(fs.readFileSync(path.join(root, 'renderer/js/core/tr.js'), 'utf8'), sandbox);
+  if (LANG === 'en') {
+    for (const file of EN_DICTIONARIES) vm.runInContext(fs.readFileSync(path.join(root, 'renderer', file), 'utf8'), sandbox);
+    englishSandboxes.push(sandbox);
+  }
   for (const file of ['features/farming/stream-picker.js', 'features/farming/campaign-value.js', 'features/farming/drop-credit.js', 'pages/farming-page.js']) {
     vm.runInContext(fs.readFileSync(path.join(root, 'renderer/js', file), 'utf8'), sandbox);
   }
@@ -30,7 +50,13 @@ function environment() {
   return { sandbox, page, timers, elements };
 }
 const flush = () => new Promise(resolve => setImmediate(resolve));
-(async () => {
+async function scenarios() {
+  if (LANG === 'en') {
+    const { sandbox: s } = environment();
+    const shown = s.window.DropCredit.describe({ state: 'none' });
+    check('English dictionaries are active in the sandbox', s.window.WT_LANG === 'en' && EN_DICTIONARIES.length > 0 && !CYRILLIC.test(shown),
+      `WT_LANG=${s.window.WT_LANG}, dictionaries=${EN_DICTIONARIES.length}, none → ${shown}`);
+  }
   {
     const { sandbox: s, page: p } = environment();
     s.window.electronAPI = { getStreamsWithDrops: async () => [{ login: 'next', displayName: 'Next' }] };
@@ -228,15 +254,69 @@ const flush = () => new Promise(resolve => setImmediate(resolve));
       p.switchToNextEnabledCategory = async () => { calls.category++; return true; };
       p.showSwitchOffer = () => { calls.offer++; };
       for (let i = 0; i < 3; i++) await p.onNoCredit({ reason: 'test' });
-      return { ...calls, paused: p._noStreamsUntil.has('a'), journal: journal.join(',') };
+      const result = { ...calls, paused: p._noStreamsUntil.has('a'), journal: journal.join(',') };
+      // Для сравнения языков: текст записей журнала свой у каждого языка,
+      // а их число — нет. Свойство скрытое, чтобы detail остался прежним
+      Object.defineProperty(result, 'facts', { value: { ...calls, paused: result.paused, entries: journal.length } });
+      return result;
     };
     const away = await run();
-    check('Three no-credit channels move to another category', away.category === 1 && away.stream === 2 && away.paused, JSON.stringify(away));
+    check('Three no-credit channels move to another category', away.category === 1 && away.stream === 2 && away.paused, JSON.stringify(away), away.facts);
+    if (LANG === 'en') check('Journal entry about leaving the category is in English', !!away.journal && !CYRILLIC.test(away.journal), away.journal);
     const alone = await run({ others: false });
-    check('With nowhere to go the app keeps trying channels instead of stopping', alone.category === 0 && alone.stream === 3 && !alone.paused && !alone.journal, JSON.stringify(alone));
+    check('With nowhere to go the app keeps trying channels instead of stopping', alone.category === 0 && alone.stream === 3 && !alone.paused && !alone.journal, JSON.stringify(alone), alone.facts);
     const manual = await run({ manual: true });
-    check('Play-started category is not paused or announced as left', manual.category === 0 && manual.stream === 3 && manual.offer === 1 && !manual.paused && !manual.journal, JSON.stringify(manual));
+    check('Play-started category is not paused or announced as left', manual.category === 0 && manual.stream === 3 && manual.offer === 1 && !manual.paused && !manual.journal, JSON.stringify(manual), manual.facts);
   }
+  {
+    // Вердикты зачёта на всех ветках: состояние и reason (русский код
+    // причины, его сверяют describe() и farming-page) от языка не зависят.
+    // Подпись для человека — на языке интерфейса; в русском explain() даёт
+    // ровно прежнюю подсказку — сам reason
+    const { sandbox: s } = environment();
+    const DC = s.window.DropCredit;
+    const now = Date.now();
+    const warm = now - 12 * 60 * 1000;
+    const mine = { channel: { name: 'chan' }, currentMinutesWatched: 5, requiredMinutesWatched: 60 };
+    const cases = [
+      { progressGrew: true },
+      { hasWatchable: false },
+      { startedAt: warm, staleForMs: 11 * 60 * 1000, samples: [] },
+      { startedAt: now, samples: [] },
+      { startedAt: warm, samples: [{ at: now, session: mine }] },
+      { startedAt: now - 60000, samples: [{ at: now, session: null }] },
+      { startedAt: warm, samples: [{ at: now - 1000, session: null }, { at: now, session: { channel: { name: 'other' } } }] },
+      { startedAt: warm, samples: [{ at: now - 1000, session: null }, { at: now, session: null }] },
+      { startedAt: warm, progressStale: false, samples: [{ at: now - 1000, session: null }, { at: now, session: null }] },
+      { startedAt: warm, samples: [{ at: now, session: null }] }
+    ];
+    const verdicts = cases.map(c => DC.evaluate({ login: 'chan', now, ...c }));
+    const facts = verdicts.map(v => `${v.state}:${v.reason}`);
+    const labels = verdicts.map(v => [DC.describe(v), DC.explain(v)]);
+    const labelsOk = LANG === 'en'
+      ? labels.every(([short, long]) => short && long && !CYRILLIC.test(short + long))
+      : labels.every(([, long], i) => long === verdicts[i].reason);
+    check('Credit verdicts keep states and reason codes on every branch',
+      new Set(verdicts.map(v => v.state)).size === 4 && verdicts.every(v => CYRILLIC.test(v.reason)) && labelsOk,
+      facts.join(' | ') + (LANG === 'en' ? ' → ' + labels.map(l => l.join(' / ')).join(' | ') : ''), facts);
+  }
+}
+(async () => {
+  await scenarios();
+  LANG = 'en';
+  await scenarios();
+  LANG = 'compare';
+  const differ = [];
+  for (const [name, ru] of results.ru) {
+    const en = results.en.get(name);
+    if (!en) differ.push(`${name}: no English run`);
+    else if (en.ok !== ru.ok || en.facts !== ru.facts) differ.push(`${name}: ru=${ru.facts} en=${en.facts}`);
+  }
+  check('English run behaves exactly like the Russian one', differ.length === 0,
+    differ.length ? differ.join('; ') : `${results.ru.size} scenarios identical`);
+  // Строка без перевода в английском прогоне осталась бы на экране русской
+  const missing = [...new Set(englishSandboxes.flatMap(s => s.window.tr.missing()))];
+  check('English run shows no untranslated strings', missing.length === 0, missing.length ? missing.join(' | ') : 'tr.missing() is empty');
   console.log(`\nAudit: ${failures} reproduced failures.`);
   process.exitCode = failures ? 1 : 0;
 })().catch(e => { console.error(e); process.exitCode = 2; });

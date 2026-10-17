@@ -32,7 +32,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   // This ensures preload is applied BEFORE webview loads any content
   
   // Initialize title bar controls
-  document.getElementById('minimize-btn').addEventListener('click', () => {
+  const minimizeBtn = document.getElementById('minimize-btn');
+  // В словаре «Свернуть» — кнопка списков («Show less»), а у одной русской
+  // строки двух переводов не бывает. Подпись кнопки окна ставим здесь
+  // (в index.html она с data-no-tr)
+  if (window.tr?.lang?.() === 'en') {
+    minimizeBtn.title = 'Minimize';
+    minimizeBtn.setAttribute('aria-label', 'Minimize');
+  }
+  minimizeBtn.addEventListener('click', () => {
     window.electronAPI.minimizeWindow();
   });
 
@@ -99,7 +107,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const now = Date.now();
     if (now - lastMainErrorToastAt < 60 * 1000) return;
     lastMainErrorToastAt = now;
-    window.utils?.showToast('Внутренняя ошибка, подробности в логе', 'error');
+    window.utils?.showToast(tr('Внутренняя ошибка, подробности в логе'), 'error');
   });
 
   // Игровой режим: main следит за процессами, здесь — плеер и значок
@@ -117,26 +125,38 @@ document.addEventListener('DOMContentLoaded', async () => {
     const text = document.getElementById('game-mode-text');
     if (badge && text) {
       badge.hidden = !state.active;
-      text.textContent = state.active ? 'Игровой режим: ' + (state.game?.title || 'игра запущена') : '';
+      text.textContent = state.active
+        ? tr('Игровой режим: {game}', { game: state.game?.title || tr('игра запущена') })
+        : '';
     }
 
     // Тост говорит о качестве стрима, поэтому без стрима он лишний: игру
     // запускали и закрывали, пока ничего не фармилось, а тост всё равно
     // всплывал. Значок выше обновляется всегда
     if (announce && streaming) {
-      window.utils?.showToast(state.active
-        ? 'Запущена ' + (state.game?.title || 'игра') + ': стрим на минимуме, чтобы не мешать'
-        : 'Игра закрыта: качество и скорость стрима возвращены', 'info');
+      const game = state.game?.title;
+      let message = tr('Игра закрыта: качество и скорость стрима возвращены');
+      if (state.active) {
+        message = game
+          ? tr('Запущена {game}: стрим на минимуме, чтобы не мешать', { game })
+          : tr('Запущена игра: стрим на минимуме, чтобы не мешать');
+      }
+      window.utils?.showToast(message, 'info');
     }
     // В журнал — каждое переключение: утром по нему видно, почему ночью
     // стрим шёл на минимальном качестве
     if (announce) {
+      const game = state.game?.title;
+      let detail = tr('Качество стрима возвращено');
+      if (state.active) {
+        detail = game
+          ? tr('{game} — стрим на минимальном качестве', { game })
+          : tr('Запущена игра — стрим на минимальном качестве');
+      }
       window.eventLog?.add({
         type: 'game-mode',
-        title: state.active ? 'Игровой режим включён' : 'Игровой режим выключен',
-        detail: state.active
-          ? (state.game?.title || 'Запущена игра') + ' — стрим на минимальном качестве'
-          : 'Качество стрима возвращено'
+        title: state.active ? tr('Игровой режим включён') : tr('Игровой режим выключен'),
+        detail
       });
     }
   };
@@ -146,9 +166,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Сундук забран запросом из main-процесса: показываем и отмечаем
   window.electronAPI?.onChestClaimed?.((data) => {
     const points = Number(data?.points) || 0;
-    window.utils?.showToast(points > 0 ? 'Сундук собран: +' + points + ' баллов' : 'Сундук собран', 'success');
+    window.utils?.showToast(points > 0 ? tr('Сундук собран: +{points} баллов', { points }) : tr('Сундук собран'), 'success');
     window.sessionState?.noteChest?.(points);
-    window.eventLog?.add({ type: 'chest', title: 'Сундук собран', detail: data?.channel || '', points });
+    window.eventLog?.add({ type: 'chest', title: tr('Сундук собран'), detail: data?.channel || '', points });
     window.chime?.play('chest');
   });
 
@@ -164,7 +184,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     // показывает и свой тост — тогда второй, о том же, не нужен
     setTimeout(() => {
       if (window.utils.hasRecentToast(noticeAt - 2000, [title, body])) return;
-      const problem = /остановлен|не получен|не удалось|ошибк|нет входа|не засчит/i.test(title + ' ' + body);
+      // Тексты уведомлений приходят на языке интерфейса — в английском ищем
+      // и английские слова тех же событий. Только в нём: в русском имя
+      // канала вроде «ErrorGaming» иначе красило бы обычную новость в тревогу
+      const said = title + ' ' + body;
+      const problem = /остановлен|не получен|не удалось|ошибк|нет входа|не засчит/i.test(said) ||
+        (window.tr?.lang?.() === 'en' && /stopped|not received|not claimed|couldn['’]t|could not|failed|error|not signed in|not counting|n['’]t count/i.test(said));
       window.utils.showToast(body || title, problem ? 'warning' : 'info', {
         title: body ? title : undefined,
         // Пользователь включил уведомления об этих событиях; выключенные
@@ -196,7 +221,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     if (action === 'next-stream') {
       if (!window.farmingPage?.sessionStartTime) {
-        window.utils?.showToast('Фарминг не запущен', 'info');
+        window.utils?.showToast(tr('Фарминг не запущен'), 'info');
         return;
       }
       window.farmingPage.switchToNextStream?.();
@@ -284,7 +309,7 @@ window.utils = {
 
   formatDate(timestamp) {
     const date = new Date(timestamp);
-    return date.toLocaleDateString('ru-RU', {
+    return date.toLocaleDateString(tr.locale(), {
       year: 'numeric',
       month: 'long',
       day: 'numeric'
@@ -381,7 +406,7 @@ window.utils = {
       toastContainer.id = 'toast-container';
       toastContainer.className = 'toast-container';
       toastContainer.setAttribute('role', 'region');
-      toastContainer.setAttribute('aria-label', 'Уведомления');
+      toastContainer.setAttribute('aria-label', tr('Уведомления'));
       document.body.appendChild(toastContainer);
     }
 
@@ -540,7 +565,7 @@ window.utils = {
         ${action ? '<button type="button" class="btn btn-ghost btn-sm toast-action"></button>' : ''}
       </div>
       <span class="badge toast-count" hidden></span>
-      <button type="button" class="btn btn-ghost btn-icon btn-sm toast-close" title="Закрыть" aria-label="Закрыть">${closeSvg}</button>
+      <button type="button" class="btn btn-ghost btn-icon btn-sm toast-close" title="${tr('Закрыть')}" aria-label="${tr('Закрыть')}">${closeSvg}</button>
       ${sticky ? '' : '<div class="toast-progress" aria-hidden="true"></div>'}
     `;
     // Текст — только как текст. В сообщения попадают названия категорий,
@@ -696,8 +721,8 @@ window.utils = {
   showConfirmation(title, message = '', options = {}) {
     const esc = window.escapeHtml;
     const {
-      confirmText = 'Подтвердить',
-      cancelText = 'Отмена',
+      confirmText = tr('Подтвердить'),
+      cancelText = tr('Отмена'),
       confirmClass = 'btn-primary'
     } = options || {};
     return window.utils.openConfirmDialog({
@@ -715,8 +740,8 @@ window.utils = {
    */
   showCustomConfirmation(contentHtml, options = {}) {
     const {
-      confirmText = 'Подтвердить',
-      cancelText = 'Отмена',
+      confirmText = tr('Подтвердить'),
+      cancelText = tr('Отмена'),
       confirmClass = 'btn-primary'
     } = options || {};
     return window.utils.openConfirmDialog({
@@ -736,19 +761,19 @@ window.utils = {
   testDropNotification() {
     const api = window.electronAPI;
     if (!api?.showDropNotification) {
-      window.utils.showToast('Окно уведомлений недоступно', 'error');
+      window.utils.showToast(tr('Окно уведомлений недоступно'), 'error');
       return false;
     }
-    api.showDropNotification('Так будет выглядеть награда', 'WatchTwitch', null, { kind: 'test' });
+    api.showDropNotification(tr('Так будет выглядеть награда'), 'WatchTwitch', null, { kind: 'test' });
 
     const s = window.settings;
     let note = '';
     if (s && (s.get('systemNotifications') === false || s.get('notifications') === false)) {
-      note = 'Уведомления Windows сейчас выключены — окно показано только для проверки';
+      note = tr('Уведомления Windows сейчас выключены — окно показано только для проверки');
     } else if (s && s.get('notifyOnDropClaimed') === false) {
-      note = 'Окна о полученных наградах сейчас выключены — это только проверка';
+      note = tr('Окна о полученных наградах сейчас выключены — это только проверка');
     } else if (window.QuietHours?.active?.()) {
-      note = 'Сейчас тихие часы: до их конца окна о наградах не всплывают';
+      note = tr('Сейчас тихие часы: до их конца окна о наградах не всплывают');
     }
     if (note) window.utils.showToast(note, 'info', { userAction: true });
     return true;

@@ -1,120 +1,89 @@
-# WatchTwitch - Twitch Drops Farming Application
+<p align="center">
+  <img src="assets/icon-128.png" width="96" height="96" alt="WatchTwitch">
+</p>
 
-An automatic application for collecting drops on the Twitch platform.
+<h1 align="center">WatchTwitch</h1>
 
-<img width="1916" height="1033" alt="image" src="https://github.com/user-attachments/assets/5b882f2c-4ecc-4bc9-8f63-eb75d86279ac" /> <img width="1917" height="1028" alt="image" src="https://github.com/user-attachments/assets/bf8944b0-8b06-43d7-8b0f-2c3cb0e51227" />
+<p align="center">
+  Collects Twitch Drops for you — leave it running overnight and wake up to claimed rewards.
+</p>
 
+<p align="center">
+  <a href="https://github.com/Agrysif/WatchTwitch/releases/latest"><b>Download for Windows</b></a>
+  ·
+  <a href="README.ru.md">Русская версия</a>
+</p>
 
+![Farming page](docs/screenshots/farming.png)
 
+## What it does
 
-## Features
+You pick the games. WatchTwitch finds a live stream where the drop campaign actually counts, watches it in the background at 160p, claims rewards as soon as Twitch hands them out, and moves on to the next game when the current one is done.
 
-- 🎮 Automatic farming of drops from Twitch
-- 🔐 Two authorization methods (OAuth and Cookies)
-- 📊 Detailed statistics of views and drops received
-- 🎯 Category priority management with drag-and-drop
-- 🌙 Dark and light theme in Twitch style
-- 🔔 Notifications about receiving drops
-- 🌍 Automatic computer shutdown after completion
+- **Hands-free farming.** A queue of categories that you can sort by drag and drop, or let the app order by value: it skips campaigns you can't finish in time and goes where an hour of watching earns the most.
+- **Checks that watch time really counts.** If Twitch doesn't credit a channel, the app switches to another one. If no channel in a game counts, it puts the game on hold and moves on.
+- **Switches streams by itself** when a broadcast ends, the streamer changes games, or every reward is collected.
+- **Claims rewards and bonus chests automatically**, so channel points add up too.
+- **Drops page** with every campaign, progress per reward and a “Claim all” button.
+- **Calendar** of campaigns: what ends today, what starts this week, and rewards you missed.
+- **Following page** with live status and favorites. Favorite channels go first when they stream a game from your queue.
+- **Statistics**: watch time, rewards, points, chests, rewards per hour, CSV export.
+- **Stays out of the way.** Game mode drops the stream to a lower speed while you play so your ping stays steady. You also get quiet hours, a light graphics mode and a mini player in the sidebar.
+- **Runs unattended.** It minimizes to the tray, starts with Windows and picks the session back up after a restart. It can also shut down or sleep the PC when farming is done.
+- **Notifications** for claimed rewards, favorite streamers going live and anything that needs your attention.
+- **English and Russian**, dark and light themes, iOS 27 glass style or Classic.
+- **Automatic updates.**
 
+## Screenshots
 
-## Install the application simply by downloading and installing the file Setup.exe the latest version
+| Drops | Calendar |
+| --- | --- |
+| ![Drops](docs/screenshots/drops.png) | ![Calendar](docs/screenshots/calendar.png) |
+| **Following** | **Statistics** |
+| ![Following](docs/screenshots/following.png) | ![Statistics](docs/screenshots/statistics.png) |
+| **Light theme** | **Classic style** |
+| ![Light theme](docs/screenshots/farming-light.png) | ![Classic style](docs/screenshots/farming-classic.png) |
 
-------
+![Settings](docs/screenshots/settings.png)
 
-## Usage
+<sub>Screenshots use demo data: the account and channel names are made up.</sub>
 
-###1. Adding an account
+## Getting started
 
-- Go to the "Accounts" section
-- Select the login method:
-- **OAuth**: Log in via Twitch directly
-  - Next, log in to your account using your username and password
-(the application works locally and does not transmit your data)
+1. Download `WatchTwitch-Setup-x.y.z.exe` from the [latest release](https://github.com/Agrysif/WatchTwitch/releases/latest) and run it. Windows 10 or 11, 64-bit.
+2. Open **Accounts** and sign in with your Twitch account.
+3. On **Farming**, add the games you want drops for, or turn on **Auto-farm all drops**.
+4. Press **Start farming**. That's it — the app keeps going on its own.
 
-### 2. Choosing categories
+Linking your game account on the campaign's page on Twitch is still up to you: rewards for unlinked games can't be claimed.
 
-- Go to the "Farming" section
-- Click "Add Category"
-- Choose games with active drops or with your favorite
-- Drag and drop categories to change the priority
+## Privacy
 
-### 3. Start farming
+- Your sign-in stays on your computer, encrypted with Windows' built-in protection.
+- The app talks only to Twitch and to GitHub for updates. No analytics, no third-party servers.
+- Streams play through the official Twitch player.
 
-- Click "Start Farming"
-- The app automatically:
-- Selects a streamer with drops
-  - Opens the stream in the background
-  - Tracks the progress of drops
-  - Switches between categories
+## FAQ
 
-###4. Settings
+**Will it use a lot of traffic?** At 160p a stream takes roughly 100–200 MB per hour, depending on the channel. The statistics page shows how much was actually used.
 
-- **Stream quality**: Minimal to save traffic
-- **Verification interval**: How often to check the progress (default is 1 minute)
-- **Stream language**: Priority for Russian or English streamers
+**Can I play while it farms?** Yes. Game mode recognizes Overwatch, CS2, VALORANT, Dota 2 and dozens of other games, and you can add your own `.exe`.
 
-## Technology
+**How do I switch the language?** Settings → Appearance → Language. The new language applies after a restart. A new install picks English or Russian from your Windows language.
 
-- **Electron** - A cross-platform framework
-- **electron-store** - Storing data locally
-- **HTML/CSS/JavaScript** - Interface
-- **Native APIs** - System Integration
+## Building from source
 
-## Project structure
-
-```
-WatchTwitch/
-├── main.js                 # Главный процесс Electron
-├── preload.js             # Preload скрипт
-├── package.json           # Зависимости
-├── renderer/              # Интерфейс приложения
-│   ├── index.html        # Главная страница
-│   ├── styles/           # CSS стили
-│   │   ├── main.css
-│   │   ├── themes.css
-│   │   └── animations.css
-│   ├── js/               # JavaScript модули
-│   │   ├── app.js
-│   │   ├── auth.js
-│   │   ├── drops.js
-│   │   ├── streaming.js
-│   │   ├── storage.js
-│   │   ├── router.js
-│   │   └── i18n.js
-│   └── pages/            # HTML страницы
-│       ├── farming.html
-│       ├── accounts.html
-│       ├── statistics.html
-│       └── settings.html
-└── assets/               # Ресурсы
-    └── logo.svg
+```bash
+npm install
+npm start          # run the app
+npm test           # unit and regression tests
+npm run build:win  # installer in dist/
 ```
 
-## Security
-
-- Account data is stored locally
-- There is no data transfer to third-party servers
-- Cookies are encrypted with built-in Electron tools
-
-## Support
-
-When problems arise:
-
-1. Enable logging in the settings
-2. Check the DevTools console (Ctrl+Shift+I)
-3. Create an issue on GitHub
+Built with Electron. The release process (in Russian) is described in [RELEASE.md](RELEASE.md).
 
 ## License
 
-MIT License
+MIT · Made by Agrysif (Egor Balashov) for the Twitch community.
 
-## Author
-
-Agrysif - Egor Balashov
-Created with ❤️ for Twitch community
-
-## Выпуск обновлений
-
-Процесс релиза и правила, без которых ломается автообновление, описаны
-в [RELEASE.md](RELEASE.md).
+WatchTwitch is not affiliated with Twitch Interactive, Inc.

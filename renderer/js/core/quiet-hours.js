@@ -68,11 +68,12 @@ class QuietHours {
   static describe(from, to) {
     const start = QuietHours.toMinutes(from);
     const end = QuietHours.toMinutes(to);
-    if (start === null || end === null) return 'Промежуток задан неверно';
-    if (start === end) return 'Приложение будет молчать круглые сутки';
+    if (start === null || end === null) return tr('Промежуток задан неверно');
+    if (start === end) return tr('Приложение будет молчать круглые сутки');
 
-    const через = start > end ? ' (через полночь)' : '';
-    return `Молчит с ${from} до ${to}${через}`;
+    return start > end
+      ? tr('Молчит с {from} до {to} (через полночь)', { from, to })
+      : tr('Молчит с {from} до {to}', { from, to });
   }
 }
 

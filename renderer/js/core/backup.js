@@ -26,10 +26,12 @@ class Backup {
    * lastSeenVersion из старой копии показывал ложное «Приложение обновлено»,
    * qualityRepaired повторно запускал разовую починку качества, а autostart
    * отражает то, что записано в Windows на этом компьютере, а не выбор из
-   * копии.
+   * копии. language — тоже: язык интерфейса выбирается при запуске и
+   * хранится отдельно (js/core/tr.js), а язык из копии разошёлся бы с ним
+   * до перезапуска — трей и уведомления говорили бы на другом языке.
    */
   static get SERVICE_SETTINGS() {
-    return ['lastSeenVersion', 'qualityRepaired', 'autostart'];
+    return ['lastSeenVersion', 'qualityRepaired', 'autostart', 'language'];
   }
 
   /** Настройки без служебных полей или null, если это не объект. */
@@ -74,16 +76,16 @@ class Backup {
    */
   static validate(data) {
     if (!data || typeof data !== 'object') {
-      return { ok: false, error: 'Файл не похож на копию' };
+      return { ok: false, error: tr('Файл не похож на копию') };
     }
     if (data.app !== 'WatchTwitch') {
-      return { ok: false, error: 'Это копия не от WatchTwitch' };
+      return { ok: false, error: tr('Это копия не от WatchTwitch') };
     }
     if (!Number.isFinite(data.version) || data.version > Backup.VERSION) {
-      return { ok: false, error: 'Копия от более новой версии приложения' };
+      return { ok: false, error: tr('Копия от более новой версии приложения') };
     }
     if (!Array.isArray(data.categories) && !Array.isArray(data.subscriptions)) {
-      return { ok: false, error: 'В копии нет ни категорий, ни подписок' };
+      return { ok: false, error: tr('В копии нет ни категорий, ни подписок') };
     }
 
     return { ok: true };
@@ -159,20 +161,26 @@ class Backup {
   static describeDropped(dropped) {
     if (!dropped) return '';
     const parts = [];
-    if (dropped.categories > 0) parts.push(`категорий: ${dropped.categories}`);
-    if (dropped.subscriptions > 0) parts.push(`подписок: ${dropped.subscriptions}`);
-    if (dropped.sessions > 0) parts.push(`сессий статистики: ${dropped.sessions}`);
+    if (dropped.categories > 0) parts.push(tr('категорий: {n}', { n: dropped.categories }));
+    if (dropped.subscriptions > 0) parts.push(tr('подписок: {n}', { n: dropped.subscriptions }));
+    if (dropped.sessions > 0) parts.push(tr('сессий статистики: {n}', { n: dropped.sessions }));
     return parts.join(', ');
+  }
+
+  /** Нет ни одного раздела, который можно восстановить. */
+  static isEmpty(data) {
+    return !Array.isArray(data?.categories) && !Array.isArray(data?.subscriptions) &&
+      !data?.statistics && !data?.settings;
   }
 
   /** Краткое описание копии — показать перед восстановлением. */
   static describe(data) {
     const parts = [];
-    if (Array.isArray(data.categories)) parts.push(`категорий: ${data.categories.length}`);
-    if (Array.isArray(data.subscriptions)) parts.push(`подписок: ${data.subscriptions.length}`);
-    if (data.statistics) parts.push('статистика');
-    if (data.settings) parts.push('настройки');
-    return parts.join(', ') || 'пусто';
+    if (Array.isArray(data.categories)) parts.push(tr('категорий: {n}', { n: data.categories.length }));
+    if (Array.isArray(data.subscriptions)) parts.push(tr('подписок: {n}', { n: data.subscriptions.length }));
+    if (data.statistics) parts.push(tr('статистика'));
+    if (data.settings) parts.push(tr('настройки'));
+    return parts.join(', ') || tr('пусто');
   }
 
   /**
@@ -183,7 +191,7 @@ class Backup {
    */
   static async restore(data) {
     const check = Backup.validate(data);
-    if (!check.ok) throw new Error(check.error);
+    if (!check.ok) throw Backup.userError(check.error);
 
     const clean = Backup.sanitize(data);
 
@@ -195,14 +203,14 @@ class Backup {
       await Storage.set('backupBeforeRestore', before);
     } catch (error) {
       console.error('[Копия] Не удалось отложить текущие данные:', error);
-      throw new Error('Не удалось сохранить текущие данные перед восстановлением');
+      throw Backup.userError(tr('Не удалось сохранить текущие данные перед восстановлением'));
     }
 
     const applied = [];
 
     if (clean.categories) {
       await Storage.saveCategories(clean.categories);
-      applied.push('категории');
+      applied.push(tr('категории'));
 
       // Фарминг держит список категорий в памяти и при следующем сохранении
       // затёр бы восстановленные своим — просим его перечитать хранилище
@@ -210,20 +218,30 @@ class Backup {
     }
     if (clean.subscriptions) {
       await Storage.saveSubscriptions(clean.subscriptions);
-      applied.push('подписки');
+      applied.push(tr('подписки'));
     }
     if (clean.statistics) {
       await Storage.set('statistics', clean.statistics);
       window.dispatchEvent(new CustomEvent('statistics-updated'));
-      applied.push('статистика');
+      applied.push(tr('статистика'));
     }
     if (clean.settings && window.settings?.import) {
       if (window.settings.import(JSON.stringify(clean.settings))) {
-        applied.push('настройки');
+        applied.push(tr('настройки'));
       }
     }
 
     return applied;
+  }
+
+  /**
+   * Ошибка с текстом для пользователя. Раньше такие ошибки узнавались по
+   * кириллице, но в английском интерфейсе их текст английский.
+   */
+  static userError(message) {
+    const error = new Error(message);
+    error.userMessage = message;
+    return error;
   }
 }
 
