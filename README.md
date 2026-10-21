@@ -14,11 +14,21 @@
   <a href="README.ru.md">Русская версия</a>
 </p>
 
-![Farming page](docs/screenshots/farming.png)
+<p align="center">
+  <a href="https://github.com/Agrysif/WatchTwitch/releases/download/v1.2.0/WatchTwitch-trailer.mp4"><img src="docs/media/hero.webp" width="100%" alt="WatchTwitch trailer"></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/Agrysif/WatchTwitch/releases/download/v1.2.0/WatchTwitch-trailer.mp4"><b>▶ Watch the trailer</b></a> · 32 seconds, 1080p
+</p>
 
 ## What it does
 
 You pick the games. WatchTwitch finds a live stream where the drop campaign actually counts, watches it in the background at 160p, claims rewards as soon as Twitch hands them out, and moves on to the next game when the current one is done.
+
+<p align="center">
+  <img src="docs/media/features.webp" width="100%" alt="Checks credit, claims every drop, grabs bonus chests, never stops">
+</p>
 
 - **Hands-free farming.** A queue of categories that you can sort by drag and drop, or let the app order by value: it skips campaigns you can't finish in time and goes where an hour of watching earns the most.
 - **Checks that watch time really counts.** If Twitch doesn't credit a channel, the app switches to another one. If no channel in a game counts, it puts the game on hold and moves on.
@@ -34,7 +44,25 @@ You pick the games. WatchTwitch finds a live stream where the drop campaign actu
 - **English and Russian**, dark and light themes, iOS 27 glass style or Classic.
 - **Automatic updates.**
 
+## How it works
+
+<p align="center">
+  <img src="docs/media/loop.webp" width="100%" alt="Scan, verify, watch, claim, next">
+</p>
+
+1. **Scan.** Takes the next game from your queue that has a running campaign and finds a live channel where it counts.
+2. **Verify.** Makes sure Twitch actually credits the watch time. If it doesn't, the app tries another channel.
+3. **Watch.** Plays the stream in the background at 160p, quietly and with little traffic.
+4. **Claim.** Claims every reward and bonus chest the moment it's ready.
+5. **Next.** When the stream ends or the game is done, it moves on to the next one — all night long.
+
 ## Screenshots
+
+<p align="center">
+  <img src="docs/media/screens.webp" width="100%" alt="Farming, drops, calendar and statistics">
+</p>
+
+![Farming page](docs/screenshots/farming.png)
 
 | Drops | Calendar |
 | --- | --- |

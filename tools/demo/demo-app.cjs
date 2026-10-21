@@ -461,8 +461,9 @@ function start(overrides = {}) {
   app.setAppPath(ROOT);
   // Язык «Windows» для окна (navigator.language) и main (app.getLocale)
   if (opts.locale) app.commandLine.appendSwitch('lang', opts.locale);
-  // Снимки ровно 1440×900 при любом масштабе Windows
-  app.commandLine.appendSwitch('force-device-scale-factor', '1');
+  // Снимки ровно 1440×900 при любом масштабе Windows. WT_DEMO_SCALE=2 —
+  // вдвое чётче (2880×1800) для крупных планов в трейлере
+  app.commandLine.appendSwitch('force-device-scale-factor', String(Number(process.env.WT_DEMO_SCALE) || 1));
   // Окно за краем экрана Windows считает закрытым и перестаёт рисовать
   app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
 
