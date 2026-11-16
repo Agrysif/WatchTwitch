@@ -4038,11 +4038,14 @@ class FarmingPage {
     const attempts = enabledCategories.slice(0, MAX_ATTEMPTS);
 
     let category = null;
-    let streams = [];
+    let stream = null;
     const skipped = [];
     // Отдельно — категории, по которым Twitch не ответил: это не «стримов
     // нет», и пользователю надо видеть разницу
     const unanswered = [];
+    // И категории, где стримы с тегом Drops есть, но кампания засчитывается
+    // только у своих каналов, а их нет в эфире
+    const noAllowed = [];
 
     // Каждый запрос со своим сроком: одна залипшая категория не должна
     // останавливать перебор остальных
@@ -4073,12 +4076,25 @@ class FarmingPage {
         unanswered.push(candidate.name);
         continue;
       }
-      if (found.length > 0) {
+      if (found.length === 0) {
+        skipped.push(candidate.name);
+        continue;
+      }
+      // Стрим выбираем здесь же, а не после перебора. Раньше перебор
+      // останавливался на первой категории, где Twitch показал стримы с
+      // тегом Drops, а выбор канала шёл уже потом. У закреплённого Overwatch
+      // кампания засчитывалась только у своих каналов, они были не в эфире —
+      // выбор возвращал «никого», и «Начать фарминг» заканчивался подсказкой,
+      // не пробуя остальные категории
+      const picked = await this.pickPreferredStream(found, candidate.name, { quiet: true });
+      if (!this.isStreamOperationCurrent(revision)) return;
+      if (picked?.login) {
         category = candidate;
-        streams = found;
+        stream = picked;
         break;
       }
-      skipped.push(candidate.name);
+      console.warn('[Фарминг] Разрешённые каналы кампании не в эфире, пробую следующую категорию:', candidate.name);
+      noAllowed.push(candidate.name);
     }
 
     if (skipped.length > 0) {
@@ -4092,22 +4108,27 @@ class FarmingPage {
       const list = (names) => `${names.slice(0, 3).join(', ')}${names.length > 3 ? ' ' + tr('и др.') : ''}`;
       const parts = [];
       if (skipped.length > 0) parts.push(tr('Нет стримов с дропсами: {list}', { list: list(skipped) }));
+      if (noAllowed.length > 0) parts.push(tr('Каналы кампании не в эфире: {list}', { list: list(noAllowed) }));
       if (unanswered.length > 0) parts.push(tr('Twitch не ответил по категориям: {list}', { list: list(unanswered) }));
       window.utils.showToast(parts.join('. ') || tr('Не нашлось стрима с дропсами'), 'warning');
       return;
     }
-    
-    // Выбираем первый стрим
-    const stream = await this.pickPreferredStream(streams, category.name);
-    if (!this.isStreamOperationCurrent(revision)) return;
-    if (!stream?.login) {
-      window.utils.showToast(tr('В категории {name} нет подходящего стрима', { name: category.name }), 'warning');
-      return;
+
+    if (noAllowed.length > 0) {
+      console.log('[Фарминг] Каналы кампании не в эфире, пропущено:', noAllowed.join(', '));
     }
     const streamUrl = `https://www.twitch.tv/${stream.login}`;
     
     console.log('Starting stream:', stream.displayName, streamUrl);
-    window.utils.showToast(tr('Запуск стрима: {name}', { name: stream.displayName }), 'success');
+    // Если первые в очереди пропущены, говорим об этом: иначе непонятно,
+    // почему закреплённая категория не запустилась
+    const passedOver = [...noAllowed, ...skipped];
+    window.utils.showToast(passedOver.length > 0
+      ? tr('Запуск стрима: {name} ({category}). Пропущено: {list} — подходящих стримов сейчас нет', {
+        name: stream.displayName, category: category.name,
+        list: `${passedOver.slice(0, 3).join(', ')}${passedOver.length > 3 ? ' ' + tr('и др.') : ''}`
+      })
+      : tr('Запуск стрима: {name}', { name: stream.displayName }), 'success');
     
     // Сохраняем текущую категорию и стрим
     this.currentCategory = category;

@@ -58,6 +58,40 @@ async function scenarios() {
       `WT_LANG=${s.window.WT_LANG}, dictionaries=${EN_DICTIONARIES.length}, none → ${shown}`);
   }
   {
+    // «Начать фарминг»: у закреплённого Overwatch стримы с тегом Drops есть,
+    // но кампания засчитывается только у своих каналов, а их нет в эфире.
+    // Раньше запуск на этом заканчивался, не пробуя остальные категории
+    const { sandbox: s, page: p } = environment();
+    const opened = [];
+    const toasts = [];
+    s.Storage.getAccounts = async () => [{ loginMethod: 'oauth', twitchLoggedIn: true }];
+    s.Storage.getItem = async () => false;
+    s.window.utils = { showToast: (text, type) => toasts.push(type + ': ' + text) };
+    s.window.electronAPI = {
+      getStreamsWithDrops: async name => (name === 'Overwatch' ? [{ login: 'random_ow', displayName: 'RandomOW' }] : [{ login: 'rustguy', displayName: 'RustGuy' }]),
+      openStream: async url => { opened.push(url); },
+    };
+    p.categories = [
+      { id: 'rust', name: 'Rust', enabled: true, hasDrops: true, priority: 1 },
+      { id: 'ow', name: 'Overwatch', enabled: true, hasDrops: true, pinned: true, priority: 0 },
+    ];
+    p.refreshCategoryValues = async () => {};
+    p.allowedChannelsFor = async name => (name === 'Overwatch' ? ['ow_official', 'ow_league'] : []);
+    p.findLiveAllowedChannel = async () => null;
+    for (const name of ['setStartButtonBusy', 'resetCategoryCounters', 'updateCurrentStreamUI', 'updateSessionInfo', 'updateLiveStatistics', 'loadAndDisplayDrops', 'startBackgroundBonusCollector']) p[name] = () => {};
+    p.saveActiveSession = async () => {};
+    // кнопкам и блокам сессии нужен style
+    const getElement = s.document.getElementById;
+    s.document.getElementById = key => { const e = getElement(key); e.style = e.style || {}; return e; };
+    await p.startFarming();
+    const errors = toasts.filter(text => text.startsWith('error')).length;
+    check('Start skips a pinned category whose campaign channels are offline',
+      opened[0] === 'https://www.twitch.tv/rustguy' && p.currentCategory?.id === 'rust' && errors === 0,
+      JSON.stringify({ opened, category: p.currentCategory?.name, errors }));
+    const explained = toasts.some(text => text.startsWith('success') && text.includes('Overwatch'));
+    check('Start explains why the pinned category was skipped', explained, `success toast names Overwatch: ${explained}`);
+  }
+  {
     const { sandbox: s, page: p } = environment();
     s.window.electronAPI = { getStreamsWithDrops: async () => [{ login: 'next', displayName: 'Next' }] };
     p.currentCategory = { name: 'Game' };
