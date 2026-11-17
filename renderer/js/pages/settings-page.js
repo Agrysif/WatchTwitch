@@ -579,6 +579,15 @@ class SettingsPage {
           <button type="button" class="btn btn-ghost btn-sm" id="boosty-link-btn" title="Boosty">${tr('Поддержать')} ${I('external', 14)}</button>`,
         keywords: tr('github telegram boosty донат поддержать')
       }),
+      // Окно отчёта открывает main (bug-report): там же видно всё, что уйдёт.
+      // Неразрывный пробел после «в» — чтобы предлог не повис в конце строки
+      item({
+        labelId: 'report-bug-label',
+        label: tr('Сообщить об ошибке'),
+        desc: tr('Отчёт уйдёт разработчику. Перед отправкой видно всё, что в\u00a0нём будет'),
+        control: `<button type="button" class="btn btn-secondary btn-sm" id="report-bug-btn">${I('bug', 14)}<span>${tr('Написать')}</span></button>`,
+        keywords: tr('ошибка баг проблема отчёт не работает')
+      }),
       // Процессы свёрнуты: список нужен раз в сто лет, а опрашивать его при
       // каждом открытии настроек незачем
       `<div class="settings-block settings-details-wrap" data-keywords="${tr('процессы диагностика память cpu диспетчер')}">
@@ -1448,6 +1457,7 @@ class SettingsPage {
     document.getElementById('github-link-btn')?.addEventListener('click', () => openLink('https://github.com/Agrysif/WatchTwitch'));
     document.getElementById('telegram-link-btn')?.addEventListener('click', () => openLink('https://t.me/ebalashovv'));
     document.getElementById('boosty-link-btn')?.addEventListener('click', () => openLink('https://boosty.to/agrysif'));
+    document.getElementById('report-bug-btn')?.addEventListener('click', () => window.electronAPI?.reportBug?.());
 
     this.setupDependents();
     this.setupNavigation();

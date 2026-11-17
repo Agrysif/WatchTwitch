@@ -781,6 +781,8 @@ function showAccountDetailsModal(account, returnFocusTo = null) {
 
   const modal = document.createElement('div');
   modal.className = 'dialog-backdrop account-details-backdrop';
+  // aria-label у кнопки с @логином: журнал «Сообщить об ошибке» записывает
+  // нажатия по подписи кнопки, а логин в отчёт попадать не должен
   modal.innerHTML = `
     <div class="dialog dialog-sm account-details-modal" role="dialog" aria-modal="true" aria-labelledby="account-details-title">
       <div class="dialog-head">
@@ -797,7 +799,7 @@ function showAccountDetailsModal(account, returnFocusTo = null) {
         <div class="account-hero">
           <div class="account-avatar account-avatar-lg">${accountAvatarHtml(account, 56)}</div>
           <div class="account-hero-text">
-            <button type="button" class="account-copy account-handle" data-copy="@${username}" title="${tr('Скопировать')}">@${username}${accountIcon('copy', 14)}</button>
+            <button type="button" class="account-copy account-handle" data-copy="@${username}" title="${tr('Скопировать')}" aria-label="${tr('Скопировать имя пользователя')}">@${username}${accountIcon('copy', 14)}</button>
             <span class="badge ${state.tone === 'success' ? 'badge-success' : 'badge-warning'}">${esc(state.badge)}</span>
           </div>
         </div>

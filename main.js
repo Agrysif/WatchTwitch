@@ -10,6 +10,8 @@ const { pathToFileURL } = require('url');
 const { autoUpdater } = require('electron-updater');
 const i18nMain = require('./i18n-main');
 const { trMain } = i18nMain;
+// «Сообщить об ошибке» — см. bugReport.init ниже
+const bugReport = require('./bug-report');
 
 // Общие модули из renderer/js/core (network-limit, game-mode, rate-limit)
 // подключаются и здесь. В окне у них есть tr() из tr.js, а в main его нет:
@@ -229,6 +231,107 @@ function setupFileLog() {
 
 setupFileLog();
 
+// console.error до перехвата модулем отчёта (ниже) — только консоль и app.log.
+// Им пишутся ошибки главного окна: журнал отчёта берёт их из окна сам
+// (bugReport.attach), и через общий console.error каждая попала бы туда дважды
+const logErrorToFileOnly = console.error;
+
+/**
+ * «Сообщить об ошибке» (папка bug-report, общий модуль с KeyShow и Enterload).
+ *
+ * Модуль ведёт журнал последних действий и ошибок, показывает окно отчёта
+ * со всем, что уйдёт разработчику, и сам предлагает отчёт после сбоя.
+ * Подключаем сразу после лога: с этого места в журнал попадает каждый
+ * console.error главного процесса, в том числе о порче файла настроек.
+ * Необработанные ошибки ловят наши обработчики ниже (catchErrors: false),
+ * отчёт после них предлагают они же.
+ *
+ * Логины, имена аккаунтов, токены и адреса в журнал и сведения не пишем:
+ * только числа, режимы и названия разделов.
+ */
+bugReport.init({
+  app: 'watchtwitch',
+  name: 'WatchTwitch',
+  // Язык этого запуска — тот же, что у трея и уведомлений
+  lang: () => trMain.lang(),
+  accent: '#6a4cf0',
+  // Тема своя, а не Windows: окно отчёта — в той же, что и приложение
+  theme: () => {
+    try { return store.get('settings.theme') === 'light' ? 'light' : 'dark'; } catch (e) { return 'dark'; }
+  },
+  icon: path.join(__dirname, 'assets', 'icon.png'),
+  parent: () => mainWindow,
+  catchErrors: false,
+  screen: bugReportScreen,
+  extra: bugReportExtra
+});
+
+/**
+ * Что сейчас в окне — для отчёта об ошибке. Ответа ждём недолго: отчёт
+ * нужнее всего как раз тогда, когда окно зависло. Раздел и сведения
+ * спрашивают подряд — второй раз берём тот же ответ.
+ */
+let bugReportProbe = null;
+
+function probeMainWindow() {
+  if (!mainWindow || mainWindow.isDestroyed() || mainWindow.webContents.isCrashed()) return Promise.resolve(null);
+  if (bugReportProbe && Date.now() - bugReportProbe.at < 2000) return bugReportProbe.promise;
+  const script = `(() => {
+    const session = window.sessionState || {};
+    const nav = document.querySelector('.settings-nav a.active');
+    const player = window.playerManager;
+    return {
+      page: (window.router && window.router.currentPage) || '',
+      section: nav ? nav.getAttribute('data-section') || '' : '',
+      farmingSince: session.startTime || 0,
+      category: session.categoryName || '',
+      stream: !!(player && typeof player.hasStream === 'function' && player.hasStream())
+    };
+  })()`;
+  const promise = Promise.race([
+    mainWindow.webContents.executeJavaScript(script).catch(() => null),
+    new Promise(resolve => setTimeout(() => resolve(null), 800))
+  ]);
+  bugReportProbe = { at: Date.now(), promise };
+  return promise;
+}
+
+/** Раздел для отчёта: страница окна и раздел настроек. */
+async function bugReportScreen() {
+  if (!mainWindow || mainWindow.isDestroyed()) return 'окно закрыто'; // i18n-ignore: отчёт об ошибке
+  const info = await probeMainWindow();
+  const place = info ? (info.page || '?') + (info.section ? ' / ' + info.section : '') : 'окно не ответило'; // i18n-ignore: отчёт об ошибке
+  if (!mainWindow.isVisible()) return place + ' (окно в трее)'; // i18n-ignore: отчёт об ошибке
+  return place + (mainWindow.isMinimized() ? ' (окно свёрнуто)' : ''); // i18n-ignore: отчёт об ошибке
+}
+
+/** Короткие технические сведения для отчёта: числа и режимы, без имён. */
+async function bugReportExtra() {
+  const info = await probeMainWindow();
+  const settings = store.get('settings') || {};
+  const accounts = store.get('accounts');
+  const inventory = twitchCache.get('inventory');
+  const campaigns = inventory?.settled && Array.isArray(inventory.result?.campaigns) ? inventory.result : null;
+  const farmingSince = info ? info.farmingSince : 0;
+  return {
+    accounts: String(Array.isArray(accounts) ? accounts.length : 0),
+    twitchSession: knownTwitchAuthToken === undefined ? 'unknown' : (knownTwitchAuthToken ? 'yes' : 'no'),
+    farming: farmingSince
+      ? 'on, ' + Math.round((Date.now() - farmingSince) / 60000) + ' min'
+      : (info ? 'off' : (lastTrayStatus?.active ? 'on (tray status)' : 'unknown')),
+    category: (info && info.category) || (lastTrayStatus?.active ? lastTrayStatus.category : ''),
+    campaigns: campaigns
+      ? campaigns.campaigns.length + (campaigns.dashboardComplete ? '' : ', partial') +
+        ', ' + Math.round((Date.now() - inventory.settledAt) / 1000) + ' s ago'
+      : 'not loaded',
+    player: info ? (info.stream ? 'playing' : 'no stream') : 'unknown',
+    quality: String(settings.preferredStreamQuality || '160p30'),
+    gameMode: settings.gameMode === false ? 'off' : (gameModeState.active ? 'game running' : 'on, no game'),
+    autostart: (settings.autostart === true ? 'on' : 'off') + (launchedByAutostart ? ', this launch' : ''),
+    look: (settings.theme || 'dark') + ', ' + (settings.uiStyle || 'ios27') + (settings.lowGraphics !== false ? ', low graphics' : '')
+  };
+}
+
 /**
  * Сеть безопасности главного процесса.
  *
@@ -248,9 +351,14 @@ process.on('uncaughtException', (error) => {
   } catch (e) {
     // окна может не быть — это не повод падать ещё раз
   }
+  // Предложить отчёт разработчику. Саму ошибку журнал отчёта уже взял из
+  // console.error выше (модуль его перехватывает): bugReport.error здесь
+  // записал бы её второй раз
+  bugReport.offer(String(error?.stack || error));
 });
 
 process.on('unhandledRejection', (reason) => {
+  // В журнал отчёта об ошибке попадает через этот же console.error
   console.error('[Главный процесс] Необработанный отказ промиса:', reason);
 });
 
@@ -582,6 +690,19 @@ let trafficData = {
 
 const monitoredWebContents = new Set();
 
+// Журнал отчёта об ошибке: когда Twitch перестал отвечать и когда ответил
+// снова (запросы twitchPost). Только смены состояния — час без связи иначе
+// забил бы журнал. Ответы 4xx — про конкретный запрос, а не про связь
+let twitchUnreachable = false;
+
+function noteTwitchHealth(result) {
+  const down = !result.ok && (result.statusCode === 0 || result.statusCode >= 500 || result.statusCode === 429);
+  if (result.ok && twitchUnreachable) bugReport.crumb('Twitch снова отвечает'); // i18n-ignore: отчёт об ошибке
+  if (down && !twitchUnreachable) bugReport.crumb('Twitch не отвечает: ' + (result.statusCode ? 'код ' + result.statusCode : result.error)); // i18n-ignore: отчёт об ошибке
+  if (result.ok || down) twitchUnreachable = down;
+  return result;
+}
+
 /**
  * POST-запрос к Twitch с повтором при сетевых сбоях.
  *
@@ -639,7 +760,7 @@ function twitchPost(postData, headers, options = {}) {
       const remaining = twitchRateLimit.remainingMs();
       if (remaining > 0) {
         if (remaining > 30000 || attempt === attempts) {
-          return { ok: false, statusCode: 429, error: twitchRateLimit.describe() };
+          return noteTwitchHealth({ ok: false, statusCode: 429, error: twitchRateLimit.describe() });
         }
         await new Promise(r => setTimeout(r, remaining));
       }
@@ -649,10 +770,10 @@ function twitchPost(postData, headers, options = {}) {
       // 401 с токеном — возможно, Twitch отозвал вход (см. noteTwitchUnauthorized)
       if (last.statusCode === 401) noteTwitchUnauthorized(tokenFromAuthHeader(headers));
 
-      if (last.ok) return last;
+      if (last.ok) return noteTwitchHealth(last);
 
       const worthRetry = last.statusCode === 0 || last.statusCode >= 500 || last.statusCode === 429;
-      if (!worthRetry || attempt === attempts) return last;
+      if (!worthRetry || attempt === attempts) return noteTwitchHealth(last);
 
       // Пауза растёт: при длительном обрыве нет смысла долбить сеть
       const wait = last.statusCode === 429 ? 0 : baseDelay * attempt;
@@ -888,6 +1009,7 @@ function setGameModeState(game, offReason = null) {
     : (offReason
       ? '[Игра] Игровой режим снят: ' + offReason + ', до старта стрима игры не проверяю'
       : '[Игра] Игра закрыта — возвращаю обычные настройки'));
+  bugReport.crumb(active ? 'игровой режим: ' + game.title : 'игровой режим снят' + (offReason ? ': ' + offReason : '')); // i18n-ignore: отчёт об ошибке
 
   refreshStreamLimits();
   sendToMain('game-mode', gameModeState);
@@ -1161,6 +1283,7 @@ autoUpdater.on('checking-for-update', () => {
 
 autoUpdater.on('update-available', (info) => {
   console.log('[Updater] Доступно обновление:', info.version);
+  bugReport.crumb('обновление: доступна версия ' + info.version); // i18n-ignore: отчёт об ошибке
   console.log('[Updater] Current app version:', app.getVersion());
   console.log('[Updater] Files:', info.files);
   updateInfo = info;
@@ -1183,6 +1306,8 @@ autoUpdater.on('update-not-available', () => {
 });
 
 autoUpdater.on('error', (error) => {
+  // Текст ошибки журнал отчёта берёт из console.error ниже
+  bugReport.crumb('обновление: ошибка'); // i18n-ignore: отчёт об ошибке
   console.error('[Updater] ===== UPDATE CHECK ERROR =====');
   console.error('[Updater] Error type:', error.name);
   console.error('[Updater] Error message:', error.message);
@@ -1205,6 +1330,7 @@ autoUpdater.on('download-progress', (progressObj) => {
 
 autoUpdater.on('update-downloaded', () => {
   console.log('[Updater] Обновление загружено');
+  bugReport.crumb('обновление скачано'); // i18n-ignore: отчёт об ошибке
   if (mainWindow) {
     sendToMain('update-downloaded', {
       version: updateInfo?.version || 'unknown'
@@ -1848,9 +1974,13 @@ function createMainWindow() {
     rendererLogSeen.set(text, { at: now, repeats: 0 });
 
     const repeats = seen?.repeats ? ' (за минуту повторов: ' + seen.repeats + ')' : ''; // i18n-ignore: лог
-    if (level === 'error') console.error(text + repeats);
+    // Мимо журнала отчёта: ошибки окна он берёт сам (bugReport.attach ниже)
+    if (level === 'error') logErrorToFileOnly(text + repeats);
     else console.warn(text + repeats);
   });
+  // Журнал отчёта об ошибке: нажатия, ошибки и падение этого окна. Плееры
+  // Twitch (webview) не подключаем — их консоль шумит чужими ошибками
+  bugReport.attach(mainWindow.webContents, 'главное окно'); // i18n-ignore: отчёт об ошибке
 
   // Трафик считаем только у webview с видео: само окно приложения
   // почти ничего не качает, а отладчик на нём — лишняя нагрузка
@@ -2008,6 +2138,10 @@ function buildTrayMenu() {
         sendToMain('navigate-to-page', 'settings');
       }
     },
+    {
+      label: trMain('Сообщить об ошибке'),
+      click: () => bugReport.open().catch(error => console.warn('[Отчёт] Окно не открылось:', error.message))
+    },
     { type: 'separator' },
     {
       label: trMain('Выход'),
@@ -2094,6 +2228,10 @@ function createTray() {
 ipcMain.on('tray-status', (event, status) => {
   try {
     const active = !!status?.active;
+    // Журнал отчёта об ошибке: начало и конец фарминга, смена категории
+    if (active !== !!lastTrayStatus?.active || (active && status.category !== lastTrayStatus.category)) {
+      bugReport.crumb(active ? 'фарминг: ' + (status.category || 'категория не указана') : 'фарминг остановлен'); // i18n-ignore: отчёт об ошибке
+    }
     lastTrayStatus = status || null;
 
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -2899,6 +3037,8 @@ function watchTwitchAccountChange() {
     claimedChests.clear();
     console.log('[Вход] ' + (token ? (hadToken ? 'Сменился аккаунт Twitch' : 'Вход в Twitch выполнен') : 'Выход из Twitch') +
       ' — кэш ответов Twitch сброшен');
+    // Без имени аккаунта: только что произошло
+    bugReport.crumb(token ? (hadToken ? 'сменился аккаунт Twitch' : 'вход в Twitch') : 'выход из Twitch'); // i18n-ignore: отчёт об ошибке
   };
 
   check().catch(() => {});
@@ -3230,6 +3370,13 @@ ipcMain.handle('store-set', (event, key, value) => {
     denyStoreKey('запись', key); // i18n-ignore: лог
     throw new Error('Ключ недоступен окну'); // i18n-ignore: ошибка для кода окна, не для человека
   }
+  if (key === 'accounts') {
+    // Журнал отчёта об ошибке: только число аккаунтов, без имён
+    const saved = store.get('accounts');
+    const before = Array.isArray(saved) ? saved.length : 0;
+    const after = Array.isArray(value) ? value.length : 0;
+    if (before !== after) bugReport.crumb('аккаунтов: ' + before + ' → ' + after); // i18n-ignore: отчёт об ошибке
+  }
   store.set(key, key === 'accounts' ? mapAccountSecrets(value, sealSecret) : value);
 });
 
@@ -3520,6 +3667,9 @@ function createDropNotification(dropName, gameName, dropIcon, extra = {}) {
   // следующего запуска
   const lang = typeof trMain === 'function' ? trMain.lang() : 'ru';
   notificationWindow.loadFile('renderer/notification.html', { query: { lang } });
+  // Ошибки и падение окна — в журнал отчёта об ошибке. typeof — по той же
+  // причине, что и у trMain: проверка запускает этот кусок файла отдельно
+  if (typeof bugReport !== 'undefined') bugReport.attach(notificationWindow.webContents, 'уведомление о награде'); // i18n-ignore: отчёт об ошибке
 
   // Часы окна. Ссылку держим свою, а не глобальную: окно живёт несколько
   // секунд и закрывается само, обработчик 'closed' обнуляет
@@ -4932,7 +5082,9 @@ ipcMain.handle('claim-drop', async (event, dropInstanceID) => {
   }
 
   console.log('[Награда] Получаю', dropInstanceID, '| токен:', cookieToken ? 'cookie' : 'OAuth');
-  return claimDropById(dropInstanceID, token);
+  const outcome = await claimDropById(dropInstanceID, token);
+  bugReport.crumb(outcome.success ? 'награда забрана' : 'награда не забрана: ' + outcome.error); // i18n-ignore: отчёт об ошибке
+  return outcome;
 });
 
 /**
@@ -5149,6 +5301,7 @@ ipcMain.handle('claim-all-drops', async () => {
   }
 
   if (claimed > 0) invalidateTwitchCache('inventory');
+  bugReport.crumb('«Забрать все»: забрано ' + claimed + ' из ' + drops.length); // i18n-ignore: отчёт об ошибке
 
   if (claimed === 0) {
     return { success: false, claimed: 0, total: drops.length, error: trMain('Twitch не выдал ни одной награды — заберите их вручную') };

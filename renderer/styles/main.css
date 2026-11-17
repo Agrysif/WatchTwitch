@@ -218,6 +218,21 @@ textarea {
   height: 16px;
 }
 
+/* «Сообщить об ошибке» нужна редко: значок тише соседнего журнала и
+   проявляется при наведении */
+.titlebar-tools .titlebar-bug {
+  color: var(--text-tertiary, var(--text-secondary));
+}
+
+.titlebar-tools .titlebar-bug svg {
+  width: 15px;
+  height: 15px;
+}
+
+.titlebar-tools .titlebar-bug:hover {
+  color: var(--text-primary);
+}
+
 /* Есть непросмотренное важное: точка в углу значка. Если внутри число —
    капсула с ним */
 .titlebar-badge {

@@ -2888,6 +2888,7 @@ class FarmingPage {
     this.currentCategory = category;
     this.currentStream = stream;
     this.resetCategoryCounters(category);
+    this._pinnedCheckAt = Date.now();
 
     // Новую сессию начинает SessionState.start(): он заводит таймер
     // автовыключения и сбрасывает качество плеера. Раньше здесь стояло
@@ -4134,6 +4135,9 @@ class FarmingPage {
     this.currentCategory = category;
     this.currentStream = stream;
     this.resetCategoryCounters(category);
+    // Закреплённые только что проверены перебором — следующая проверка
+    // возврата к ним через обычный срок (maybeReturnToPinned)
+    this._pinnedCheckAt = Date.now();
 
     // Новую сессию начинает SessionState.start(): только он заводит таймер
     // автовыключения и сбрасывает качество плеера. Раньше здесь стояло
@@ -5044,6 +5048,78 @@ class FarmingPage {
     }
   }
 
+  /** Как часто проверять, не пора ли вернуться к закреплённой категории. */
+  static get PINNED_RETURN_MS() {
+    return 10 * 60 * 1000;
+  }
+
+  /**
+   * Возврат к закреплённой категории.
+   *
+   * Закреплённая идёт первой, но её могли пропустить: кампания засчитывается
+   * только у своих каналов, а их не было в эфире, — и фарм ушёл в другую
+   * игру. Раньше он там и оставался, хотя каналы закреплённой давно вышли в
+   * эфир. Теперь раз в 10 минут проверяем закреплённые, что стоят в очереди
+   * выше текущей, и переходим, как только там есть подходящий стрим.
+   * Категорию, запущенную кнопкой Play, не трогаем; отложенные (никто не
+   * стримит, канал не засчитывает) ждут своего срока.
+   */
+  async maybeReturnToPinned(now = Date.now()) {
+    if (!this.sessionStartTime || !this.currentStream || !this.currentCategory) return false;
+    if (this.isManualCategoryActive() || this.isSingleManualPlayLocked()) return false;
+    if (window._farmingStarting || this._pinnedCheckBusy) return false;
+    if (now - (this._pinnedCheckAt || 0) < FarmingPage.PINNED_RETURN_MS) return false;
+    this._pinnedCheckAt = now;
+
+    const current = this.currentCategory;
+    const pinned = this.categories.filter(cat => cat.pinned);
+    // Выше текущей: все закреплённые, если текущая не закреплена, иначе —
+    // стоящие перед ней. Между закреплёнными в обратную сторону не прыгаем
+    const rank = current.pinned ? pinned.findIndex(cat => cat.id === current.id) : pinned.length;
+    const paused = this._noStreamsUntil || new Map();
+    const candidates = pinned.slice(0, Math.max(0, rank)).filter(cat =>
+      cat.enabled !== false && !cat.dropsCompleted && cat.hasDrops && !((paused.get(cat.id) || 0) > now));
+    if (candidates.length === 0) return false;
+
+    this._pinnedCheckBusy = true;
+    const snapshot = this.streamSnapshot();
+    try {
+      for (const category of candidates) {
+        let streams = null;
+        try {
+          streams = await Promise.race([
+            window.electronAPI.getStreamsWithDrops(category.name),
+            new Promise(resolve => setTimeout(() => resolve(null), 15000))
+          ]);
+        } catch (error) {
+          streams = null;
+        }
+        // Пока ждали Twitch, стрим сменили (пользователь или автоматика)
+        if (!this.isCurrentStream(snapshot)) return false;
+        if (!Array.isArray(streams) || streams.length === 0) continue;
+
+        const stream = await this.pickPreferredStream(streams, category.name, { quiet: true });
+        if (!this.isCurrentStream(snapshot)) return false;
+        if (!stream?.login) continue;
+
+        const name = stream.displayName || stream.login;
+        console.log('[Закреплённые] Возвращаюсь к', category.name, '—', stream.login);
+        window.eventLog?.add({
+          type: 'switch',
+          title: tr('Переход к {name}', { name: category.name }),
+          detail: tr('закреплённая категория снова доступна — {stream}', { stream: name }),
+          game: category.name
+        });
+        window.utils?.showToast(tr('Возвращаюсь к закреплённой категории: {category} — {stream}', { category: category.name, stream: name }), 'info');
+        await this.startFarmingForCategory(category, { stream });
+        return true;
+      }
+      return false;
+    } finally {
+      this._pinnedCheckBusy = false;
+    }
+  }
+
   /** Идёт ли сейчас категория, которую пользователь запустил вручную. */
   isManualCategoryActive() {
     return !!(this.manualCategoryId && this.currentCategory?.id === this.manualCategoryId);
@@ -5431,6 +5507,11 @@ class FarmingPage {
     
     // Отправляем событие об обновлении статистики
     window.dispatchEvent(new CustomEvent('statistics-updated'));
+
+    // Раз в минуту этот цикл идёт только во время фарма — здесь же
+    // проверяем, не вернуться ли к закреплённой категории (сама проверка
+    // ходит в Twitch не чаще раза в 10 минут)
+    this.maybeReturnToPinned().catch(error => console.warn('[Закреплённые] Проверка не удалась:', error?.message));
   }
 
 

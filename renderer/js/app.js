@@ -52,6 +52,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.electronAPI.closeWindow();
   });
 
+  // «Сообщить об ошибке» в заголовке — то же окно, что в настройках и трее
+  document.getElementById('titlebar-bug-btn')?.addEventListener('click', () => {
+    window.electronAPI.reportBug?.();
+  });
+
   // Закрытие приложения обрабатывает только страница фарминга (её
   // подписка на app-closing — одна на всё приложение). Здесь раньше был
   // второй обработчик: он срабатывал первым и останавливал фарминг сам,

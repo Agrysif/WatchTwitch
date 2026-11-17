@@ -92,6 +92,54 @@ async function scenarios() {
     check('Start explains why the pinned category was skipped', explained, `success toast names Overwatch: ${explained}`);
   }
   {
+    // Возврат к закреплённой: фарм ушёл в Rust, потому что каналы кампании
+    // Overwatch были не в эфире. Через 10 минут они вышли — переходим обратно
+    const setup = ({ owLive, manual = false, currentPinned = false } = {}) => {
+      const { sandbox: s, page: p } = environment();
+      const asked = [];
+      let switched = null;
+      s.Storage.getItem = async () => false;
+      s.window.electronAPI = {
+        getStreamsWithDrops: async name => { asked.push(name); return [{ login: 'random_' + name.toLowerCase(), displayName: 'Random' }]; },
+      };
+      const ow = { id: 'ow', name: 'Overwatch', enabled: true, hasDrops: true, pinned: true };
+      const rust = { id: 'rust', name: 'Rust', enabled: true, hasDrops: true, pinned: currentPinned };
+      p.categories = currentPinned ? [rust, ow] : [ow, rust];
+      // sessionStartTime страницы берётся из sessionState
+      s.window.sessionState = { startTime: 1, isActive: () => true };
+      p.currentCategory = rust;
+      p.currentStream = { login: 'rustguy' };
+      if (manual) p.manualCategoryId = 'rust';
+      p.allowedChannelsFor = async name => (name === 'Overwatch' ? ['ow_official'] : []);
+      p.findLiveAllowedChannel = async () => (owLive ? { login: 'ow_official', displayName: 'OW Official' } : null);
+      p.startFarmingForCategory = async (cat, opts) => { switched = cat.id + ':' + opts.stream.login; };
+      return { p, asked, get switched() { return switched; } };
+    };
+    const t0 = 1_800_000_000_000;
+    const live = setup({ owLive: true });
+    live.p._pinnedCheckAt = t0;
+    await live.p.maybeReturnToPinned(t0 + 5 * 60 * 1000);
+    const tooEarly = live.asked.length;
+    await live.p.maybeReturnToPinned(t0 + 11 * 60 * 1000);
+    check('Farming returns to a pinned category once its campaign channels go live',
+      tooEarly === 0 && live.switched === 'ow:ow_official', JSON.stringify({ tooEarly, asked: live.asked, switched: live.switched }));
+
+    const offline = setup({ owLive: false });
+    await offline.p.maybeReturnToPinned(t0);
+    check('Farming stays put while the pinned campaign channels are offline', offline.switched === null && offline.asked.length === 1,
+      JSON.stringify({ asked: offline.asked, switched: offline.switched }));
+
+    const manual = setup({ owLive: true, manual: true });
+    await manual.p.maybeReturnToPinned(t0);
+    check('A Play-started category is not left for a pinned one', manual.switched === null && manual.asked.length === 0,
+      JSON.stringify({ asked: manual.asked, switched: manual.switched }));
+
+    const order = setup({ owLive: true, currentPinned: true });
+    await order.p.maybeReturnToPinned(t0);
+    check('A lower pinned category does not take over a higher one', order.switched === null && order.asked.length === 0,
+      JSON.stringify({ asked: order.asked, switched: order.switched }));
+  }
+  {
     const { sandbox: s, page: p } = environment();
     s.window.electronAPI = { getStreamsWithDrops: async () => [{ login: 'next', displayName: 'Next' }] };
     p.currentCategory = { name: 'Game' };

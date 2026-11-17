@@ -90,6 +90,7 @@ Object.assign(window.I18N_EN = window.I18N_EN || {}, {
 
   // Окно «Об аккаунте»
   'Скопировать': 'Copy',
+  'Скопировать имя пользователя': 'Copy username',
   'Метод авторизации': 'Sign-in method',
   'Дата добавления': 'Date added',
   'Последняя активность': 'Last activity',

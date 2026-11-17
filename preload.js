@@ -48,6 +48,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Открыть в браузере
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
   openLogsFolder: () => ipcRenderer.invoke('open-logs-folder'),
+  // Окно «Сообщить об ошибке» (bug-report в main)
+  reportBug: () => ipcRenderer.send('bug-report:open'),
   // Не давать системе уснуть, пока плеер играет (и отпустить, когда стих)
   keepAwake: (on) => ipcRenderer.send('keep-awake', !!on),
   

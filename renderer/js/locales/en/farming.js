@@ -166,6 +166,8 @@ Object.assign(window.I18N_EN = window.I18N_EN || {}, {
   'и др.': 'and others',
   'Нет стримов с дропсами: {list}': 'No streams with drops: {list}',
   'Каналы кампании не в эфире: {list}': 'Campaign channels are offline: {list}',
+  'закреплённая категория снова доступна — {stream}': 'pinned category is available again — {stream}',
+  'Возвращаюсь к закреплённой категории: {category} — {stream}': 'Back to the pinned category: {category} — {stream}',
   'Twitch не ответил по категориям: {list}': 'Twitch didn\'t respond for: {list}',
   'Не нашлось стрима с дропсами': 'Couldn\'t find a stream with drops',
   'В категории {name} нет подходящего стрима': 'No suitable stream in {name}',

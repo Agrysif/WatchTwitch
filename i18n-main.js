@@ -52,6 +52,7 @@ const EN = {
   'Приложение работает в фоне. Нажмите на значок в трее, чтобы открыть окно.': 'The app keeps running in the background. Click the tray icon to open the window.',
   'Показать/Скрыть': 'Show/Hide',
   'Открыть настройки': 'Open settings',
+  'Сообщить об ошибке': 'Report a problem',
   'Выход': 'Quit',
   'WatchTwitch — фарминг остановлен': 'WatchTwitch — farming stopped',
   'дропсы {percent}%': 'Drops {percent}%',

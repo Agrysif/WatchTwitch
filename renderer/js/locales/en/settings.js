@@ -216,6 +216,9 @@ Object.assign(window.I18N_EN = window.I18N_EN || {}, {
   'Исходный код и документация': 'Source code and docs',
   'Новости и поддержка': 'News and support',
   'Поддержать': 'Support',
+  'Сообщить об ошибке': 'Report a problem',
+  'Отчёт уйдёт разработчику. Перед отправкой видно всё, что в\u00a0нём будет': "The report goes to the developer. You'll see everything it contains before sending",
+  'Написать': 'Report',
   'Процессы приложения': 'App processes',
   'Сколько памяти и процессора занимает каждая часть': 'How much memory and CPU each part uses',
   'Процесс': 'Process',
@@ -250,6 +253,7 @@ Object.assign(window.I18N_EN = window.I18N_EN || {}, {
   'журнал работы log': 'logs log files debug',
   'обновление update': 'update version',
   'github telegram boosty донат поддержать': 'github telegram boosty donate support',
+  'ошибка баг проблема отчёт не работает': 'bug error problem issue report broken not working',
   'процессы диагностика память cpu диспетчер': 'processes diagnostics memory cpu task manager',
 
   // ─── Что нового (core/whats-new.js) ──────────────────────────────────

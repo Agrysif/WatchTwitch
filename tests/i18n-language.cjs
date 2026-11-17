@@ -55,7 +55,7 @@ async function runAll() {
     say(`  ${ok ? 'ok  ' : 'FAIL'} ${label}: ${JSON.stringify(actual)}${ok ? '' : ' (ожидалось ' + JSON.stringify(wanted) + ')'}`);
     if (!ok) failures.push(label);
   };
-  const MENU = { en: ['Show/Hide', 'Open settings', 'Quit'], ru: ['Показать/Скрыть', 'Открыть настройки', 'Выход'] };
+  const MENU = { en: ['Show/Hide', 'Open settings', 'Report a problem', 'Quit'], ru: ['Показать/Скрыть', 'Открыть настройки', 'Сообщить об ошибке', 'Выход'] };
   const NAV = { en: 'Farming', ru: 'Фарминг' };
 
   const phase = async (name, profile) => {
