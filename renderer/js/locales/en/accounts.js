@@ -94,9 +94,10 @@ Object.assign(window.I18N_EN = window.I18N_EN || {}, {
 
   // Перенос входа из браузера (окно входа в Twitch)
   "Не получается войти? Перенесите вход из браузера": "Can't log in? Bring your login over from your browser",
-  "Откройте twitch.tv в обычном браузере, где вы уже вошли": "Open twitch.tv in your regular browser where you're already logged in",
-  "Нажмите F12 → «Application» (в Firefox — «Хранилище») → Cookies → https://www.twitch.tv": "Press F12 → “Application” (in Firefox — “Storage”) → Cookies → https://www.twitch.tv",
-  "Найдите строку auth-token и скопируйте её значение": "Find the auth-token row and copy its value",
+  "Откройте twitch.tv в обычном браузере (Chrome, Яндекс, Edge, Firefox), где вы уже вошли в свой аккаунт": "Open twitch.tv in your regular browser (Chrome, Edge, Firefox…) where you're already logged in to your account",
+  "Нажмите F12 и выберите вверху вкладку «Application» или «Приложение» (в Firefox — «Хранилище»). Если её не видно, она за значком »": "Press F12 and pick the “Application” tab at the top (in Firefox — “Storage”). If you don’t see it, it’s behind the » icon",
+  "Слева откройте Cookies («Файлы cookie») → https://www.twitch.tv. В поле поиска над списком введите auth-token": "On the left, open Cookies → https://www.twitch.tv. Type auth-token in the filter box above the list",
+  "Дважды щёлкните по значению в строке auth-token, скопируйте его (Ctrl+C), вставьте в поле ниже и нажмите «Подключить»": "Double-click the value in the auth-token row, copy it (Ctrl+C), paste it below and press “Connect”",
   "Значение auth-token": "auth-token value",
   "Это ключ от вашего аккаунта: он останется только на этом компьютере. Никому его не передавайте": "This is the key to your account: it stays on this computer only. Don't share it with anyone",
   "Не похоже на auth-token: нужно значение строки целиком, около 30 латинских букв и цифр": "That doesn't look like an auth-token: paste the whole value, about 30 letters and digits",

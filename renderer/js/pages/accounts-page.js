@@ -573,9 +573,10 @@ async function handleTwitchWebLogin(username) {
           <summary>${tr('Не получается войти? Перенесите вход из браузера')}</summary>
           <div class="twitch-login-import-body">
             <ol>
-              <li>${tr('Откройте twitch.tv в обычном браузере, где вы уже вошли')}</li>
-              <li>${tr('Нажмите F12 → «Application» (в Firefox — «Хранилище») → Cookies → https://www.twitch.tv')}</li>
-              <li>${tr('Найдите строку auth-token и скопируйте её значение')}</li>
+              <li>${tr('Откройте twitch.tv в обычном браузере (Chrome, Яндекс, Edge, Firefox), где вы уже вошли в свой аккаунт')}</li>
+              <li>${tr('Нажмите F12 и выберите вверху вкладку «Application» или «Приложение» (в Firefox — «Хранилище»). Если её не видно, она за значком »')}</li>
+              <li>${tr('Слева откройте Cookies («Файлы cookie») → https://www.twitch.tv. В поле поиска над списком введите auth-token')}</li>
+              <li>${tr('Дважды щёлкните по значению в строке auth-token, скопируйте его (Ctrl+C), вставьте в поле ниже и нажмите «Подключить»')}</li>
             </ol>
             <div class="twitch-login-import-row">
               <input type="password" id="import-token-input" class="input-field" autocomplete="off" spellcheck="false"
