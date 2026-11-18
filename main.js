@@ -1097,6 +1097,82 @@ ipcMain.handle('has-twitch-session', async () => {
   return { loggedIn: true };
 });
 
+/**
+ * Перенос входа из обычного браузера.
+ *
+ * Twitch иногда не пускает вход во встроенном окне: его проверка браузера
+ * (Integrity) бракует браузер приложения, и страница входа отвечает
+ * «браузер не поддерживается». Повторный вход не помогал, удаление
+ * аккаунта тоже — плеер так и шёл без входа. В обычном браузере человек
+ * обычно уже вошёл: оттуда берётся cookie auth-token и вставляется сюда.
+ *
+ * Принимаем только токен сайта Twitch (его client_id): токен другого
+ * приложения плеер не примет. Сам токен не логируем и никуда, кроме
+ * cookie сессии Twitch, не пишем — дальше он живёт как после обычного входа.
+ */
+const TWITCH_WEB_CLIENT_ID = 'kimne78kx3ncx6brgo4mv6wki5h1ko';
+
+function describeTwitchToken(token) {
+  return new Promise((resolve) => {
+    const req = httpsRequestWithTimeout({
+      hostname: 'id.twitch.tv',
+      path: '/oauth2/validate',
+      method: 'GET',
+      headers: { 'Authorization': 'OAuth ' + token }
+    }, (res) => {
+      let data = '';
+      res.setEncoding('utf8');
+      res.on('data', (chunk) => { data += chunk; });
+      res.on('end', () => {
+        let body = null;
+        try { body = JSON.parse(data); } catch (e) { body = null; }
+        resolve({ status: res.statusCode, body });
+      });
+    });
+    req.on('error', () => resolve({ status: 0, body: null }));
+    req.end();
+  });
+}
+
+ipcMain.handle('twitch-import-token', async (_event, input) => {
+  // Вставляют по-разному: само значение, «auth-token=…; …», в кавычках
+  const text = String(input || '').trim().slice(0, 4000);
+  const match = /auth-token\s*=\s*"?([a-z0-9]{20,64})/i.exec(text) || /^["']?([a-z0-9]{20,64})["']?$/i.exec(text);
+  if (!match) return { ok: false, error: 'format' };
+  const token = match[1];
+
+  const { status, body } = await describeTwitchToken(token);
+  if (status === 401) return { ok: false, error: 'invalid' };
+  if (status !== 200 || !body) return { ok: false, error: 'network' };
+  if (body.client_id !== TWITCH_WEB_CLIENT_ID) return { ok: false, error: 'client' };
+  const login = String(body.login || '').toLowerCase();
+
+  try {
+    const { session } = require('electron');
+    const cookies = session.fromPartition('persist:twitch').cookies;
+    // Как у cookie, которую ставит сам сайт: на весь .twitch.tv, на год
+    const base = {
+      url: 'https://www.twitch.tv', domain: '.twitch.tv', path: '/',
+      secure: true, sameSite: 'no_restriction',
+      expirationDate: Math.floor(Date.now() / 1000) + 365 * 24 * 3600
+    };
+    await cookies.set({ ...base, name: 'auth-token', value: token });
+    if (login) await cookies.set({ ...base, name: 'login', value: login });
+    await cookies.flushStore().catch(() => {});
+  } catch (e) {
+    console.warn('[Вход] Не удалось сохранить перенесённый вход:', e.message);
+    return { ok: false, error: 'save' };
+  }
+
+  // Прежняя отметка «вход отозван» к этому токену не относится
+  if (twitchAuthCheck.revokedToken === token) twitchAuthCheck.revokedToken = null;
+  twitchAuthCheck.checkedToken = token;
+  twitchAuthCheck.checkedAt = Date.now();
+  console.log('[Вход] Вход в Twitch перенесён из браузера');
+  bugReport.crumb('вход в Twitch перенесён из браузера'); // i18n-ignore: отчёт об ошибке
+  return { ok: true, login };
+});
+
 // Плееры, за которыми следит отладчик: к ним же применяется потолок скорости
 const playerWebContents = new Map();
 

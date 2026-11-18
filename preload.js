@@ -50,6 +50,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openLogsFolder: () => ipcRenderer.invoke('open-logs-folder'),
   // Окно «Сообщить об ошибке» (bug-report в main)
   reportBug: () => ipcRenderer.send('bug-report:open'),
+  // Перенос входа в Twitch из обычного браузера (cookie auth-token)
+  importTwitchToken: (token) => ipcRenderer.invoke('twitch-import-token', token),
   // Не давать системе уснуть, пока плеер играет (и отпустить, когда стих)
   keepAwake: (on) => ipcRenderer.send('keep-awake', !!on),
   

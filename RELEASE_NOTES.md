@@ -1,17 +1,9 @@
-## 🇷🇺 Что нового
-
-- Кнопка «Сообщить об ошибке»: значок жука в заголовке окна, пункт в настройках («О программе») и в меню трея. Перед отправкой видно всё, что уйдёт разработчику; имена, ключи и пути к файлам вырезаются. После сбоя приложение само предложит отправить отчёт
-- Возврат к закреплённой категории: если её пропустили, потому что каналы кампании были не в эфире, приложение раз в 10 минут проверяет её и возвращается, как только там появится подходящий стрим
-
 ## 🇷🇺 Исправления
 
-- «Начать фарминг» больше не стоит на месте, если у закреплённой категории кампания засчитывается только у своих каналов, а их сейчас нет в эфире. Приложение пропускает такую категорию, запускает следующую и пишет в уведомлении, что пропущено и почему
-
-## 🇬🇧 What's new
-
-- "Report a problem" button: a bug icon in the window title bar, an item in Settings (About) and in the tray menu. You see everything that goes to the developer before sending; names, keys and file paths are removed. After a crash the app offers to send a report itself
-- Back to the pinned category: if it was skipped because the campaign's channels were offline, the app checks it every 10 minutes and returns as soon as a suitable stream is live
+- Если Twitch не пускает вход в окне приложения и пишет «браузер не поддерживается», вход теперь можно перенести из обычного браузера, где вы уже вошли. В окне входа появился раздел «Не получается войти?» с короткой инструкцией. Когда Twitch отказывает, он раскрывается сам
+- Окно входа представляется Twitch обычным браузером Chrome, а не встроенным браузером приложения — у Twitch меньше поводов отказать во входе
 
 ## 🇬🇧 Fixes
 
-- "Start farming" no longer does nothing when a pinned category's campaign only counts on its own channels and none of them are live. The app skips that category, starts the next one and tells you what was skipped and why
+- If Twitch won't let you log in inside the app and says "browser not supported", you can now bring your login over from your regular browser where you're already logged in. The login window has a new "Can't log in?" section with short steps, and it opens by itself when Twitch refuses
+- The login window now presents itself to Twitch as regular Chrome rather than the app's built-in browser, giving Twitch fewer reasons to refuse the login

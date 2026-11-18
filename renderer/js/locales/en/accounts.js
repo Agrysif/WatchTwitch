@@ -91,6 +91,21 @@ Object.assign(window.I18N_EN = window.I18N_EN || {}, {
   // Окно «Об аккаунте»
   'Скопировать': 'Copy',
   'Скопировать имя пользователя': 'Copy username',
+
+  // Перенос входа из браузера (окно входа в Twitch)
+  "Не получается войти? Перенесите вход из браузера": "Can't log in? Bring your login over from your browser",
+  "Откройте twitch.tv в обычном браузере, где вы уже вошли": "Open twitch.tv in your regular browser where you're already logged in",
+  "Нажмите F12 → «Application» (в Firefox — «Хранилище») → Cookies → https://www.twitch.tv": "Press F12 → “Application” (in Firefox — “Storage”) → Cookies → https://www.twitch.tv",
+  "Найдите строку auth-token и скопируйте её значение": "Find the auth-token row and copy its value",
+  "Значение auth-token": "auth-token value",
+  "Это ключ от вашего аккаунта: он останется только на этом компьютере. Никому его не передавайте": "This is the key to your account: it stays on this computer only. Don't share it with anyone",
+  "Не похоже на auth-token: нужно значение строки целиком, около 30 латинских букв и цифр": "That doesn't look like an auth-token: paste the whole value, about 30 letters and digits",
+  "Twitch не принял этот ключ — похоже, в браузере вы уже вышли. Обновите страницу Twitch и скопируйте значение заново": "Twitch didn't accept this key — you may have logged out in the browser. Reload the Twitch page and copy the value again",
+  "Это ключ другого приложения. Нужна cookie auth-token с сайта twitch.tv": "This key belongs to another app. You need the auth-token cookie from twitch.tv",
+  "Не удалось проверить ключ — проверьте интернет и попробуйте ещё раз": "Couldn't check the key — check your connection and try again",
+  "Не удалось сохранить вход — попробуйте ещё раз": "Couldn't save the login — try again",
+  "Проверяю ключ в Twitch…": "Checking the key with Twitch…",
+  "Twitch не пускает вход в этом окне. Перенесите вход из обычного браузера — как это сделать, написано ниже": "Twitch won't let you log in here. Bring your login over from your regular browser — see how below",
   'Метод авторизации': 'Sign-in method',
   'Дата добавления': 'Date added',
   'Последняя активность': 'Last activity',

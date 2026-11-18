@@ -519,12 +519,32 @@ function friendlyLoginError(raw) {
   return tr('Не удалось войти в Twitch — попробуйте ещё раз');
 }
 
+/**
+ * Строка браузера для окна входа: обычный Chrome, без «Electron/…» и имени
+ * приложения. Нестандартная строка — явный признак для проверки браузера
+ * Twitch, из-за которой вход отвечал «браузер не поддерживается». Версия
+ * остаётся настоящей (в сокращённом виде, как у Chrome): подменённая
+ * расходилась бы с тем, что умеет движок, и выглядела бы ещё подозрительнее
+ */
+function loginUserAgent() {
+  return String(navigator.userAgent || '')
+    .replace(/\s(?:Electron|watchtwitch)\/\S+/gi, '')
+    .replace(/Chrome\/(\d+)\.[\d.]+/, 'Chrome/$1.0.0.0');
+}
+
+/** Похоже ли, что страница Twitch не пускает вход из-за браузера. */
+const LOGIN_BLOCKED_CHECK = // i18n-ignore: код для страницы Twitch, сверка с её текстом
+  `/(браузер[^.]{0,40}не поддерживается|browser[^.]{0,30}(not|isn.t) supported|unsupported browser|update your browser)/i.test(document.body ? document.body.innerText : '')`; // i18n-ignore
+
 async function handleTwitchWebLogin(username) {
   // У webview входа нет allowpopups: атрибут булев, и прежний
   // allowpopups="false" как раз разрешал всплывающие окна в сессии Twitch.
   // Класс .auth-modal сохранён: по нему фарминг понимает, что открыто окно
   // входа, и не перезапускается поверх него
   const returnFocus = document.activeElement;
+  // Под окном Twitch — запасной путь (#twitch-login-import): Twitch не
+  // пускает вход в окне приложения, а в обычном браузере человек уже вошёл.
+  // data-br-private — журнал «Сообщить об ошибке» не пишет ничего из блока
   const modal = document.createElement('div');
   modal.className = 'auth-modal';
   modal.innerHTML = `
@@ -545,8 +565,26 @@ async function handleTwitchWebLogin(username) {
         <div class="twitch-login-frame">
           <webview id="twitch-login-webview"
                    src="https://www.twitch.tv/login"
+                   useragent="${window.escapeHtml(loginUserAgent())}"
                    partition="persist:twitch"></webview>
         </div>
+
+        <details class="twitch-login-import" id="twitch-login-import" data-br-private>
+          <summary>${tr('Не получается войти? Перенесите вход из браузера')}</summary>
+          <div class="twitch-login-import-body">
+            <ol>
+              <li>${tr('Откройте twitch.tv в обычном браузере, где вы уже вошли')}</li>
+              <li>${tr('Нажмите F12 → «Application» (в Firefox — «Хранилище») → Cookies → https://www.twitch.tv')}</li>
+              <li>${tr('Найдите строку auth-token и скопируйте её значение')}</li>
+            </ol>
+            <div class="twitch-login-import-row">
+              <input type="password" id="import-token-input" class="input-field" autocomplete="off" spellcheck="false"
+                     placeholder="${tr('Значение auth-token')}" aria-label="${tr('Значение auth-token')}">
+              <button type="button" class="btn btn-primary btn-sm" id="import-token-btn">${tr('Подключить')}</button>
+            </div>
+            <p class="twitch-login-import-note">${tr('Это ключ от вашего аккаунта: он останется только на этом компьютере. Никому его не передавайте')}</p>
+          </div>
+        </details>
 
         <div class="twitch-login-foot">
           <div id="login-status" class="twitch-login-status" role="status">${tr('Жду вход в Twitch… После входа окно закроется само')}</div>
@@ -587,6 +625,105 @@ async function handleTwitchWebLogin(username) {
   // Проверки идут по таймеру и по кнопке одновременно: вход засчитываем один раз
   let loginDone = false;
 
+  // Перенос входа из браузера: пока блок раскрыт, окно Twitch ниже —
+  // иначе всё вместе не помещается в окно приложения
+  const importBox = modal.querySelector('#twitch-login-import');
+  const importInput = modal.querySelector('#import-token-input');
+  const importBtn = modal.querySelector('#import-token-btn');
+  importBox.addEventListener('toggle', () => {
+    modal.querySelector('.twitch-login-modal').classList.toggle('import-open', importBox.open);
+    if (importBox.open) importInput.focus();
+  });
+  const revealImport = () => {
+    if (!importBox.open) importBox.open = true;
+  };
+
+  /**
+   * Засчитать вход аккаунту. login — имя из перенесённого входа: по нему
+   * аккаунт находится точнее, чем по тому, из какой строки открыли окно.
+   * true — засчитан, null — привязать не к чему (статус уже написан).
+   */
+  const markLoggedIn = async ({ login = '', cookies = null } = {}) => {
+    const accounts = await Storage.getAccounts();
+    if (loginDone) return true;
+    let accountIndex = login ? accounts.findIndex(a => String(a.username || '').toLowerCase() === login) : -1;
+    if (accountIndex < 0 && username) accountIndex = accounts.findIndex(a => a.username === username);
+    // Окно открыто без имени — из значка «Нет входа в Twitch». Раньше
+    // тогда аккаунт не находился, вход не засчитывался и окно не
+    // закрывалось. Привязываем вход к первому аккаунту: под ним фарминг
+    if (accountIndex < 0 && (!username || login) && accounts.length > 0) accountIndex = 0;
+
+    if (accountIndex < 0) {
+      setStatus(tr('Вход есть, но аккаунт не найден. Добавьте его кнопкой «Добавить аккаунт»'), 'warn');
+      return null;
+    }
+
+    loginDone = true;
+    const account = accounts[accountIndex];
+    account.twitchLoggedIn = true;
+    account.lastLogin = Date.now();
+    if (cookies !== null) account.webviewCookies = cookies; // Сохраняем куки
+    // Вход восстановлен вручную — метка «сняла проверка» больше не нужна
+    delete account.twitchSessionLost;
+
+    await Storage.set('accounts', accounts);
+
+    setStatus(tr('Вход выполнен — закрываю окно'), 'ok');
+    window.utils.showToast(tr('Аккаунт {name} активирован!', { name: account.username }), 'success');
+    // Красный значок и экран повторного входа обновляем сразу, а не
+    // при следующей плановой проверке через пять минут
+    window.loginGuard?.check?.();
+
+    // Очищаем интервал и закрываем
+    clearInterval(autoCheckInterval);
+    setTimeout(() => {
+      closeModal();
+      loadAndRenderAccounts();
+    }, 1000);
+    return true;
+  };
+
+  const IMPORT_ERRORS = {
+    format: () => tr('Не похоже на auth-token: нужно значение строки целиком, около 30 латинских букв и цифр'),
+    invalid: () => tr('Twitch не принял этот ключ — похоже, в браузере вы уже вышли. Обновите страницу Twitch и скопируйте значение заново'),
+    client: () => tr('Это ключ другого приложения. Нужна cookie auth-token с сайта twitch.tv'),
+    network: () => tr('Не удалось проверить ключ — проверьте интернет и попробуйте ещё раз'),
+    save: () => tr('Не удалось сохранить вход — попробуйте ещё раз'),
+  };
+
+  const importLogin = async () => {
+    const value = importInput.value.trim();
+    if (!value) {
+      importInput.focus();
+      return;
+    }
+    importBtn.disabled = true;
+    setStatus(tr('Проверяю ключ в Twitch…'));
+    let result = null;
+    try {
+      result = await window.electronAPI.importTwitchToken(value);
+    } catch (error) {
+      result = { ok: false, error: 'network' };
+    }
+    if (result?.ok) {
+      // Значение больше не нужно на экране
+      importInput.value = '';
+      const done = await markLoggedIn({ login: result.login || '' });
+      if (done !== true) importBtn.disabled = false;
+      return;
+    }
+    importBtn.disabled = false;
+    setStatus((IMPORT_ERRORS[result?.error] || IMPORT_ERRORS.network)(), 'warn');
+    importInput.select();
+  };
+  importBtn.addEventListener('click', importLogin);
+  importInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      importLogin();
+    }
+  });
+
   // Функция проверки авторизации.
   // true — вход есть и сохранён, false — входа пока нет,
   // null — вход есть, но привязать его не к чему (статус уже написан)
@@ -600,6 +737,14 @@ async function handleTwitchWebLogin(username) {
       // НЕ проверяем если всё ещё на странице входа
       if (currentUrl.includes('/login') || currentUrl.includes('/passport')) {
         console.log('Still on login page, skipping check');
+        // Twitch отказал в входе из-за браузера — сразу показываем запасной
+        // путь: повторять вход здесь бесполезно, а сам человек его не найдёт
+        const blocked = await webview.executeJavaScript(LOGIN_BLOCKED_CHECK).catch(() => false);
+        if (blocked) {
+          revealImport();
+          setStatus(tr('Twitch не пускает вход в этом окне. Перенесите вход из обычного браузера — как это сделать, написано ниже'), 'warn');
+          return false;
+        }
         setStatus(tr('Жду вход в Twitch…'));
         return false;
       }
@@ -641,45 +786,7 @@ async function handleTwitchWebLogin(username) {
           console.log('Extracted cookies from webview');
 
           // Обновляем аккаунт
-          const accounts = await Storage.getAccounts();
-          if (loginDone) return true;
-          let accountIndex = username ? accounts.findIndex(a => a.username === username) : -1;
-          // Окно открыто без имени — из значка «Нет входа в Twitch». Раньше
-          // тогда аккаунт не находился, вход не засчитывался и окно не
-          // закрывалось. Привязываем вход к первому аккаунту: под ним фарминг
-          if (accountIndex < 0 && !username && accounts.length > 0) accountIndex = 0;
-
-          if (accountIndex < 0) {
-            setStatus(tr('Вход есть, но аккаунт не найден. Добавьте его кнопкой «Добавить аккаунт»'), 'warn');
-            return null;
-          }
-
-          if (accountIndex >= 0) {
-            loginDone = true;
-            const account = accounts[accountIndex];
-            account.twitchLoggedIn = true;
-            account.lastLogin = Date.now();
-            account.webviewCookies = cookies; // Сохраняем куки
-            // Вход восстановлен вручную — метка «сняла проверка» больше не нужна
-            delete account.twitchSessionLost;
-
-            await Storage.set('accounts', accounts);
-
-            setStatus(tr('Вход выполнен — закрываю окно'), 'ok');
-            window.utils.showToast(tr('Аккаунт {name} активирован!', { name: account.username }), 'success');
-            // Красный значок и экран повторного входа обновляем сразу, а не
-            // при следующей плановой проверке через пять минут
-            window.loginGuard?.check?.();
-
-            // Очищаем интервал и закрываем
-            clearInterval(autoCheckInterval);
-            setTimeout(() => {
-              closeModal();
-              loadAndRenderAccounts();
-            }, 1000);
-
-            return true;
-          }
+          return await markLoggedIn({ cookies });
         } catch (error) {
           console.error('Error extracting cookies:', error);
         }

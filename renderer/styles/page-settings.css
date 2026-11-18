@@ -1087,3 +1087,79 @@ body.compact-mode .accounts-list .account-card {
 .twitch-login-status .tone-warn {
   color: var(--warning);
 }
+
+/* Перенос входа из браузера — раскрывается под окном Twitch */
+.twitch-login-import {
+  margin-top: 10px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+}
+
+.twitch-login-import > summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: var(--fw-semibold);
+  color: var(--text-secondary);
+  cursor: pointer;
+  list-style: none;
+}
+
+.twitch-login-import > summary::-webkit-details-marker {
+  display: none;
+}
+
+.twitch-login-import > summary::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform var(--transition-fast);
+}
+
+.twitch-login-import[open] > summary {
+  color: var(--text-primary);
+}
+
+.twitch-login-import[open] > summary::before {
+  transform: rotate(45deg);
+}
+
+.twitch-login-import-body {
+  padding: 0 12px 12px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--text-secondary);
+}
+
+.twitch-login-import-body ol {
+  margin: 0 0 10px;
+  padding-left: 18px;
+}
+
+.twitch-login-import-row {
+  display: flex;
+  gap: 8px;
+}
+
+.twitch-login-import-row .input-field {
+  flex: 1;
+  min-width: 0;
+}
+
+.twitch-login-import-note {
+  margin: 8px 0 0;
+  color: var(--text-tertiary);
+}
+
+/* Пока раскрыт перенос входа, окно Twitch ниже: иначе всё вместе не
+   помещается, и кнопки уезжают за край */
+.twitch-login-modal.import-open .twitch-login-frame {
+  height: min(300px, calc(90vh - 440px));
+  min-height: 150px;
+}
