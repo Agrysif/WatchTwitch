@@ -167,7 +167,21 @@ app.on('second-instance', () => {
  */
 const APP_USER_MODEL_ID = 'com.watchtwitch.app';
 if (process.platform === 'win32') {
-  app.setAppUserModelId(APP_USER_MODEL_ID);
+  if (app.isPackaged) {
+    app.setAppUserModelId(APP_USER_MODEL_ID);
+  } else {
+    // Запуск из исходников (npm start, тесты). Electron 45 при первом
+    // системном уведомлении сам кладёт в «Пуск» ярлык «<имя приложения>.lnk»
+    // с этим ID и путём к своему electron.exe. С настоящими ID и именем он
+    // перезаписал бы ярлык установленной программы (watchtwitch.lnk и
+    // WatchTwitch.lnk — один файл) или добавил бы второй с тем же ID —
+    // «Пуск» и панель задач показали бы «Electron» без значка. Отдельные
+    // ID и имя дают отдельный ярлык «WatchTwitch Dev». Папка профиля по
+    // умолчанию выводится из имени — закрепляем её до переименования.
+    app.setPath('userData', app.getPath('userData'));
+    app.setName('WatchTwitch Dev');
+    app.setAppUserModelId(`${APP_USER_MODEL_ID}.dev`);
+  }
 }
 
 /**
