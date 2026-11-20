@@ -12,7 +12,7 @@
     "build:mac": "electron-builder --mac",
     "build:portable": "electron-builder --win portable",
     "release": "electron-builder --win --publish always",
-    "test:electron": "node tests/run-electron.cjs tests/audit-notifications.cjs && node tests/run-electron.cjs tests/electron-smoke.cjs"
+    "test:electron": "node tests/run-electron.cjs tests/audit-notifications.cjs && node tests/run-electron.cjs tests/electron-smoke.cjs && node tests/run-electron.cjs tests/cookie-migration.cjs"
   },
   "keywords": [
     "twitch",
@@ -23,7 +23,7 @@
   "license": "MIT",
   "devDependencies": {
     "@types/sharp": "^0.31.1",
-    "electron": "^28.3.3",
+    "electron": "^45.4.1",
     "electron-builder": "^26.15.3",
     "sharp": "^0.34.5",
     "to-ico": "^1.1.5"

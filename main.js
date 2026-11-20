@@ -231,6 +231,12 @@ function setupFileLog() {
 
 setupFileLog();
 
+// Вход в Twitch из базы cookie старого Electron (28) — прочитать до того,
+// как новый Chromium её откроет и при переводе на свой формат опустошит.
+// Возвращаем в app.whenReady, до окон и плееров (см. cookie-migration.js)
+const cookieMigration = require('./cookie-migration');
+const legacyTwitchCookies = cookieMigration.stash(app.getPath('userData'), (message) => console.log(message));
+
 // console.error до перехвата модулем отчёта (ниже) — только консоль и app.log.
 // Им пишутся ошибки главного окна: журнал отчёта берёт их из окна сам
 // (bugReport.attach), и через общий console.error каждая попала бы туда дважды
@@ -2025,15 +2031,11 @@ function createMainWindow() {
   // ошибки в окне не оставляла в app.log ни строчки. Обычные сообщения не
   // пишем, а одинаковые строки — не чаще раза в минуту, с числом повторов:
   // ошибка в таймере иначе забила бы лог за час.
-  // Electron 36 передаёт параметры в объекте события; старую форму с
-  // отдельными аргументами оставляем для совместимости
   const rendererLogSeen = new Map();
-  mainWindow.webContents.on('console-message', (event, legacyLevel, legacyMessage, legacyLine, legacySource) => {
-    const modern = event && typeof event.message === 'string';
-    const message = modern ? event.message : legacyMessage;
-    const line = modern ? event.lineNumber : legacyLine;
-    const sourceId = modern ? event.sourceId : legacySource;
-    const level = modern ? event.level : (legacyLevel === 3 ? 'error' : (legacyLevel === 2 ? 'warning' : 'info'));
+  // Параметры — в объекте события (Electron 36+). Отдельные аргументы
+  // устарели: обработчик с ними Electron 45 отмечает предупреждением
+  mainWindow.webContents.on('console-message', (event) => {
+    const { message, lineNumber: line, sourceId, level } = event;
     if (level !== 'warning' && level !== 'error') return;
 
     const source = String(sourceId || '').split('/').pop();
@@ -3172,7 +3174,16 @@ function setupAdBlock() {
   }
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  // Первым делом — вход в Twitch, перенесённый из старой базы cookie: до
+  // блокировщика рекламы, слежения за аккаунтом и первого плеера
+  try {
+    await cookieMigration.restore(app.getPath('userData'), require('electron').session.fromPartition('persist:twitch'), legacyTwitchCookies,
+      (message) => console.log(message));
+  } catch (e) {
+    console.warn('[Вход] Перенос cookie не удался:', e.message);
+  }
+
   // Шифрование доступно только после готовности приложения
   sealStoredSecrets();
   setupAdBlock();
