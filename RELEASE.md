@@ -72,6 +72,19 @@ $env:GH_TOKEN = "ваш_токен"; npm run release
 Сейчас в `package.json` задано `nsis.artifactName`, которое даёт имена через
 дефисы — пробелов нет, подменять нечего. **Это поле трогать нельзя.**
 
+## Проверка сборки перед выпуском
+
+```bash
+node tests/verify-release.cjs
+node tests/run-electron.cjs tests/update-compatibility.cjs
+node tests/run-electron.cjs tests/update-forward.cjs
+```
+
+`update-compatibility` — старая версия (1.0.22) находит и скачивает эту.
+`update-forward` — модуль обновлений самой этой сборки найдёт и скачает
+следующую: важно после смены версии Electron, иначе выпуск дойдёт до людей,
+а все следующие — уже нет.
+
 ## Проверка после выпуска
 
 ```bash
