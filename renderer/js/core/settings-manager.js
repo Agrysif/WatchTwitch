@@ -119,6 +119,13 @@ class SettingsManager {
       // Разработчик
       developerMode: false,
 
+      // Плашка «Поддержать» в заголовке окна (её можно скрыть в разделе
+      // «Поддержать проект»)
+      showSupportButton: true,
+      // Что «Очистить кэш» оставляет нетронутым: логи по умолчанию —
+      // они нужны, если ночью что-то пошло не так
+      cacheClearSkip: ['logs'],
+
       settingsVersion: SettingsManager.VERSION
     };
 
@@ -390,6 +397,9 @@ class SettingsManager {
     // но при следующем запуске он не возвращался — режим включался и
     // молча пропадал.
     document.body.classList.toggle('compact-mode', this.get('compactMode') === true);
+
+    // Плашка «Поддержать» в заголовке — скрывается переключателем
+    document.body.classList.toggle('hide-support-button', this.get('showSupportButton') === false);
 
     // Экономный режим графики: отключение ускорения требует перезапуска,
     // а вот размытие, тени и вечные анимации можно снять сразу — без

@@ -142,6 +142,7 @@ class SettingsPage {
       { id: 'set-shutdown', icon: 'power', title: tr('Автовыключение') },
       { id: 'set-look', icon: 'palette', title: tr('Оформление') },
       { id: 'set-data', icon: 'folder', title: tr('Данные') },
+      { id: 'set-support', icon: 'heart', title: tr('Поддержать проект') },
       { id: 'set-about', icon: 'info', title: tr('О программе') }
     ];
     const titleOf = (id) => sections.find(s => s.id === id).title;
@@ -507,6 +508,7 @@ class SettingsPage {
     ].join('');
 
     // ── 7. Данные ──
+    const cacheSkip = Array.isArray(get('cacheClearSkip')) ? get('cacheClearSkip') : ['logs'];
     const dataHtml = [
       item({
         labelId: 'backup-label',
@@ -541,6 +543,37 @@ class SettingsPage {
         control: `<button type="button" class="btn btn-secondary btn-sm" id="open-logs-btn">${I('folder', 14)}<span>${tr('Открыть папку')}</span></button>`,
         keywords: tr('журнал работы log')
       }),
+      // Кэш: сколько занимает каждая часть и что чистить. Размер считает
+      // main при открытии настроек; что оставить — запоминается
+      `<div class="settings-block settings-details-wrap" data-keywords="${tr('кэш место диск очистить сбросить память')}">
+        <details class="settings-details" id="cache-details">
+          <summary class="settings-details-summary">
+            <span class="settings-item-info">
+              <span class="settings-item-label">${tr('Кэш')}</span>
+              <span class="settings-item-description" id="cache-summary" data-live>${tr('Считаю, сколько занимает…')}</span>
+            </span>
+            <span class="settings-details-chevron" aria-hidden="true">${I('chevron-down', 16)}</span>
+          </summary>
+          <div class="settings-details-body">
+            <div class="cache-list" id="cache-list">
+              ${SettingsPage.CACHE_PARTS().map(part => `
+                <label class="cache-row">
+                  <input type="checkbox" data-cache-id="${part.id}" ${cacheSkip.includes(part.id) ? '' : 'checked'}>
+                  <span class="cache-row-text">
+                    <span class="cache-row-title">${part.title}</span>
+                    <span class="cache-row-desc">${part.desc}</span>
+                  </span>
+                  <span class="cache-row-size num" data-cache-size="${part.id}">…</span>
+                </label>`).join('')}
+            </div>
+            <div class="cache-actions">
+              <button type="button" class="btn btn-secondary btn-sm" id="cache-clear-btn">${I('trash', 14)}<span>${tr('Очистить выбранное')}</span></button>
+              <span class="cache-result" id="cache-result" role="status"></span>
+            </div>
+            <p class="cache-note">${tr('Вход в Twitch, настройки, статистика и журнал событий не затрагиваются')}</p>
+          </div>
+        </details>
+      </div>`,
       `<div class="settings-danger" role="group" aria-labelledby="danger-title">
         <div class="settings-danger-title" id="danger-title">${tr('Опасная зона')}</div>
         ${item({
@@ -558,7 +591,48 @@ class SettingsPage {
       </div>`
     ].join('');
 
-    // ── 8. О программе ──
+    // ── 8. Поддержать проект ──
+    // Разовый донат — DonationAlerts: без регистрации, любая сумма. Для тех,
+    // кто хочет поддерживать регулярно, остаётся подписка на Boosty. Звезда
+    // на GitHub — бесплатный способ помочь, проект проще найти
+    const supportHtml = [
+      `<div class="support-intro">
+        <span class="support-intro-icon" aria-hidden="true">${I('heart', 20)}</span>
+        <div class="support-intro-text">
+          <div class="support-intro-title">${tr('WatchTwitch бесплатный и без рекламы')}</div>
+          <div class="support-intro-desc">${tr('Его делает один человек в свободное время. Если приложение экономит вам время и приносит награды — поддержите разработку: это помогает выпускать обновления')}</div>
+        </div>
+      </div>`,
+      item({
+        labelId: 'donate-label',
+        label: tr('Разовый донат'),
+        desc: tr('Через DonationAlerts — любая сумма, без регистрации'),
+        control: `<button type="button" class="btn btn-primary btn-sm" id="donate-btn">${I('heart', 14)}<span>${tr('Поддержать')}</span></button>`,
+        keywords: tr('донат donationalerts поддержать деньги помочь')
+      }),
+      item({
+        labelId: 'boosty-label',
+        label: tr('Ежемесячная подписка'),
+        desc: tr('На Boosty — для тех, кто хочет поддерживать регулярно'),
+        control: `<button type="button" class="btn btn-secondary btn-sm" id="boosty-link-btn">Boosty ${I('external', 14)}</button>`,
+        keywords: tr('boosty подписка регулярно')
+      }),
+      item({
+        labelId: 'star-label',
+        label: tr('Звезда на GitHub'),
+        desc: tr('Бесплатно и тоже помогает: проект проще найти'),
+        control: `<button type="button" class="btn btn-secondary btn-sm" id="star-link-btn">GitHub ${I('external', 14)}</button>`,
+        keywords: tr('github звезда star')
+      }),
+      item({
+        id: 'setting-show-support',
+        label: tr('Кнопка «Поддержать» в заголовке окна'),
+        desc: tr('Небольшая плашка рядом со значком «Сообщить об ошибке»'),
+        control: toggle('setting-show-support', get('showSupportButton') !== false)
+      })
+    ].join('');
+
+    // ── 9. О программе ──
     const aboutHtml = [
       item({
         labelId: 'version-label',
@@ -576,7 +650,7 @@ class SettingsPage {
         control: `
           <button type="button" class="btn btn-ghost btn-sm" id="github-link-btn" title="${tr('Исходный код и документация')}">GitHub ${I('external', 14)}</button>
           <button type="button" class="btn btn-ghost btn-sm" id="telegram-link-btn" title="${tr('Новости и поддержка')}">Telegram ${I('external', 14)}</button>
-          <button type="button" class="btn btn-ghost btn-sm" id="boosty-link-btn" title="Boosty">${tr('Поддержать')} ${I('external', 14)}</button>`,
+          <button type="button" class="btn btn-ghost btn-sm" id="about-support-btn">${I('heart', 14)}<span>${tr('Поддержать')}</span></button>`,
         keywords: tr('github telegram boosty донат поддержать')
       }),
       // Окно отчёта открывает main (bug-report): там же видно всё, что уйдёт.
@@ -621,6 +695,7 @@ class SettingsPage {
       'set-shutdown': shutdownHtml,
       'set-look': lookHtml,
       'set-data': dataHtml,
+      'set-support': supportHtml,
       'set-about': aboutHtml
     };
 
@@ -1456,8 +1531,18 @@ class SettingsPage {
     };
     document.getElementById('github-link-btn')?.addEventListener('click', () => openLink('https://github.com/Agrysif/WatchTwitch'));
     document.getElementById('telegram-link-btn')?.addEventListener('click', () => openLink('https://t.me/ebalashovv'));
-    document.getElementById('boosty-link-btn')?.addEventListener('click', () => openLink('https://boosty.to/agrysif'));
+    document.getElementById('boosty-link-btn')?.addEventListener('click', () => openLink(SettingsPage.BOOSTY_URL));
+    document.getElementById('donate-btn')?.addEventListener('click', () => openLink(SettingsPage.DONATE_URL));
+    document.getElementById('star-link-btn')?.addEventListener('click', () => openLink('https://github.com/Agrysif/WatchTwitch'));
+    document.getElementById('about-support-btn')?.addEventListener('click', () => this.showSection('set-support'));
     document.getElementById('report-bug-btn')?.addEventListener('click', () => window.electronAPI?.reportBug?.());
+
+    // Плашка «Поддержать» в заголовке окна
+    document.getElementById('setting-show-support')?.addEventListener('change', (e) => {
+      settings.set('showSupportButton', e.target.checked);
+    });
+
+    this.setupCache();
 
     this.setupDependents();
     this.setupNavigation();
@@ -1836,6 +1921,112 @@ class SettingsPage {
       cancelText: esc(tr('Отмена')),
       confirmClass: 'btn-danger'
     });
+  }
+
+  /** Разовый донат и подписка (раздел «Поддержать проект», плашка в заголовке). */
+  static get DONATE_URL() {
+    return 'https://www.donationalerts.com/r/agrysif';
+  }
+
+  static get BOOSTY_URL() {
+    return 'https://boosty.to/agrysif';
+  }
+
+  /** Части кэша в том же порядке, что в main (CACHE_PARTS). */
+  static CACHE_PARTS() {
+    return [
+      { id: 'twitch-http', title: tr('Видео и страницы Twitch'), desc: tr('Куски стримов и страниц, которые плеер уже скачал') },
+      { id: 'twitch-code', title: tr('Скрипты Twitch'), desc: tr('Подготовленный код плеера и сайта. После очистки первая загрузка стрима чуть дольше') },
+      { id: 'app-images', title: tr('Картинки в приложении'), desc: tr('Обложки игр, аватары каналов и картинки наград') },
+      { id: 'logs', title: tr('Логи'), desc: tr('Журнал работы приложения — пригодится, если что-то пошло не так') }
+    ];
+  }
+
+  /** «634 МБ», «1,2 ГБ», «512 КБ». */
+  static formatBytes(bytes) {
+    const b = Math.max(0, Number(bytes) || 0);
+    if (b >= 1024 ** 3) return tr('{n} ГБ', { n: (b / 1024 ** 3).toLocaleString(tr.locale(), { maximumFractionDigits: 1 }) });
+    if (b >= 1024 ** 2) return tr('{n} МБ', { n: Math.round(b / 1024 ** 2).toLocaleString(tr.locale()) });
+    return tr('{n} КБ', { n: Math.max(b > 0 ? 1 : 0, Math.round(b / 1024)).toLocaleString(tr.locale()) });
+  }
+
+  /**
+   * Перейти к разделу настроек — тем же путём, что щелчок в меню слева.
+   * Зовётся и снаружи: плашка «Поддержать» в заголовке окна.
+   */
+  showSection(id) {
+    const link = document.querySelector(`.settings-nav a[data-section="${id}"]`);
+    if (!link) return false;
+    // Поиск мог спрятать раздел — сбрасываем его
+    const search = document.getElementById('settings-search');
+    if (search?.value) {
+      search.value = '';
+      search.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    link.click();
+    return true;
+  }
+
+  /**
+   * Кэш: размер по частям и очистка выбранных. Что оставлять — помнится
+   * в настройках (cacheClearSkip), по умолчанию логи.
+   */
+  async setupCache() {
+    const summary = document.getElementById('cache-summary');
+    const button = document.getElementById('cache-clear-btn');
+    const result = document.getElementById('cache-result');
+    const boxes = [...document.querySelectorAll('#cache-list input[data-cache-id]')];
+    if (!summary || !button || !result || !window.electronAPI?.getCacheSizes) return;
+    const signal = this._renderAbort.signal;
+    const fmt = SettingsPage.formatBytes;
+
+    const selected = () => boxes.filter(box => box.checked).map(box => box.dataset.cacheId);
+    const updateButton = () => { button.disabled = selected().length === 0; };
+    const show = (sizes) => {
+      let total = 0;
+      for (const [id, size] of Object.entries(sizes || {})) {
+        total += size;
+        const cell = document.querySelector(`[data-cache-size="${id}"]`);
+        if (cell) cell.textContent = fmt(size);
+      }
+      summary.textContent = tr('Занимает {size}. Можно выбрать, что очистить', { size: fmt(total) });
+    };
+
+    boxes.forEach(box => box.addEventListener('change', () => {
+      window.settings?.set('cacheClearSkip', boxes.filter(b => !b.checked).map(b => b.dataset.cacheId));
+      updateButton();
+    }, { signal }));
+
+    button.addEventListener('click', async () => {
+      const ids = selected();
+      if (!ids.length) return;
+      button.disabled = true;
+      result.textContent = tr('Очищаю…');
+      let outcome = null;
+      try {
+        outcome = await window.electronAPI.clearCaches(ids);
+      } catch (error) {
+        outcome = null;
+      }
+      if (!summary.isConnected) return;
+      if (outcome) {
+        show(outcome.sizes);
+        const freed = fmt(outcome.freed);
+        result.textContent = tr('Освобождено {size}', { size: freed });
+        window.utils?.showToast(tr('Кэш очищен: освобождено {size}', { size: freed }), 'success');
+      } else {
+        result.textContent = tr('Не удалось очистить кэш');
+      }
+      updateButton();
+    }, { signal });
+
+    updateButton();
+    try {
+      const sizes = await window.electronAPI.getCacheSizes();
+      if (summary.isConnected) show(sizes);
+    } catch (error) {
+      if (summary.isConnected) summary.textContent = tr('Не удалось посчитать размер кэша');
+    }
   }
 
   /**

@@ -4068,6 +4068,94 @@ ipcMain.on('show-notification', (event, { title, body, icon } = {}) => {
 // Только https: строка из окна уходила системе как есть, и file:, ms-settings:
 // или путь к сетевой папке открывались проводником. Все ссылки приложения —
 // https (Twitch, GitHub, Telegram, Boosty)
+/**
+ * Кэш для «Настройки → Данные → Кэш»: сколько занимает каждая часть и
+ * очистка выбранных. Вход в Twitch (cookie), настройки, статистика и
+ * журнал событий — не кэш, их это не касается.
+ *
+ * Скрипты и страницы Twitch за пару недель занимают сотни мегабайт
+ * (проверено: 296 МБ кэша кода и 258 МБ страниц). Очистка штатная —
+ * clearCache / clearCodeCaches: место на диске освобождается сразу, а
+ * плеер, которому что-то понадобится, просто скачает это заново.
+ * Кэш видеокарты не трогаем: пока приложение работает, его файлы заняты.
+ */
+function twitchSessionForCache() {
+  return require('electron').session.fromPartition('persist:twitch');
+}
+
+async function clearLogFiles() {
+  const dir = path.join(app.getPath('userData'), 'logs');
+  let names = [];
+  try { names = await fs.promises.readdir(dir); } catch (e) { return; }
+  for (const name of names) {
+    const file = path.join(dir, name);
+    // Текущий журнал пишется строками (appendFileSync) — его обнуляем,
+    // а не удаляем; прошлые части удаляем
+    if (name === 'app.log') await fs.promises.truncate(file, 0).catch(() => {});
+    else await fs.promises.unlink(file).catch(() => {});
+  }
+  console.log('[Кэш] Логи очищены по просьбе пользователя');
+}
+
+const CACHE_PARTS = {
+  'twitch-http': { dirs: [['Partitions', 'twitch', 'Cache']], clear: () => twitchSessionForCache().clearCache() },
+  'twitch-code': { dirs: [['Partitions', 'twitch', 'Code Cache']], clear: () => twitchSessionForCache().clearCodeCaches({}) },
+  'app-images': {
+    dirs: [['Cache'], ['Code Cache']],
+    clear: async () => {
+      const { session } = require('electron');
+      await session.defaultSession.clearCache();
+      await session.defaultSession.clearCodeCaches({});
+    }
+  },
+  'logs': { dirs: [['logs']], clear: clearLogFiles }
+};
+
+async function directorySize(dir) {
+  let entries;
+  try {
+    entries = await fs.promises.readdir(dir, { withFileTypes: true });
+  } catch (e) {
+    return 0;
+  }
+  let total = 0;
+  for (const entry of entries) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) total += await directorySize(full);
+    else if (entry.isFile()) total += await fs.promises.stat(full).then(s => s.size, () => 0);
+  }
+  return total;
+}
+
+async function cacheSizes() {
+  const base = app.getPath('userData');
+  const sizes = {};
+  for (const [id, part] of Object.entries(CACHE_PARTS)) {
+    let total = 0;
+    for (const dir of part.dirs) total += await directorySize(path.join(base, ...dir));
+    sizes[id] = total;
+  }
+  return sizes;
+}
+
+ipcMain.handle('cache-sizes', () => cacheSizes());
+
+ipcMain.handle('cache-clear', async (_event, ids) => {
+  const wanted = (Array.isArray(ids) ? ids : []).filter(id => Object.prototype.hasOwnProperty.call(CACHE_PARTS, id));
+  const before = await cacheSizes();
+  for (const id of wanted) {
+    try {
+      await CACHE_PARTS[id].clear();
+    } catch (e) {
+      console.warn('[Кэш] Не удалось очистить', id + ':', e.message);
+    }
+  }
+  const after = await cacheSizes();
+  const freed = wanted.reduce((sum, id) => sum + Math.max(0, before[id] - after[id]), 0);
+  console.log('[Кэш] Очищено:', wanted.join(', ') || 'ничего', '— освобождено', Math.round(freed / 1048576), 'МБ');
+  return { freed, sizes: after };
+});
+
 ipcMain.handle('open-external', async (event, target) => {
   let parsed;
   try {

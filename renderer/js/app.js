@@ -57,6 +57,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.electronAPI.reportBug?.();
   });
 
+  // «Поддержать» в заголовке — раздел настроек с донатом. Страница настроек
+  // строится после перехода, поэтому ждём её меню
+  document.getElementById('titlebar-support-btn')?.addEventListener('click', async () => {
+    if (window.router?.currentPage !== 'settings') await window.router?.navigate?.('settings');
+    for (let i = 0; i < 40 && !document.querySelector('.settings-nav a[data-section="set-support"]'); i++) {
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+    window.settingsPage?.showSection?.('set-support');
+  });
+
   // Закрытие приложения обрабатывает только страница фарминга (её
   // подписка на app-closing — одна на всё приложение). Здесь раньше был
   // второй обработчик: он срабатывал первым и останавливал фарминг сам,

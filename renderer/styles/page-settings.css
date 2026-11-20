@@ -1163,3 +1163,107 @@ body.compact-mode .accounts-list .account-card {
   height: min(300px, calc(90vh - 440px));
   min-height: 150px;
 }
+
+/* ── Кэш (раздел «Данные») ── */
+/* Тело раскрывающегося блока выравнивает содержимое по левому краю —
+   список растягиваем, чтобы размеры стояли у правого края */
+.cache-list {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 2px;
+}
+
+.cache-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 10px;
+  padding: 8px 6px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.cache-row:hover {
+  background: var(--hover-bg);
+}
+
+.cache-row input {
+  width: 16px;
+  height: 16px;
+  margin: 2px 0 0;
+  accent-color: var(--accent);
+}
+
+.cache-row-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.cache-row-title {
+  font-size: 13px;
+  font-weight: var(--fw-semibold);
+  color: var(--text-primary);
+}
+
+.cache-row-desc {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-secondary);
+}
+
+.cache-row-size {
+  font-size: 13px;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.cache-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cache-result {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.cache-note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+/* ── Поддержать проект ── */
+.support-intro {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 4px;
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.support-intro-icon {
+  display: inline-flex;
+  flex: none;
+  margin-top: 1px;
+  color: var(--accent-text, var(--accent));
+}
+
+.support-intro-title {
+  font-size: 14px;
+  font-weight: var(--fw-semibold);
+  color: var(--text-primary);
+}
+
+.support-intro-desc {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--text-secondary);
+}
