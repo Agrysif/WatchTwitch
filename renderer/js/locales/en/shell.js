@@ -213,5 +213,6 @@ Object.assign(window.I18N_EN = window.I18N_EN || {}, {
   'Сессий пока нет — экспортировать нечего': 'No sessions yet — nothing to export',
   'За выбранный период сессий нет': 'No sessions in the selected period',
   'Сессии выгружены в CSV: {count}': 'Sessions exported to CSV: {count}',
-  'Ошибка экспорта': 'Export failed'
+  'Ошибка экспорта': 'Export failed',
+  "Открыть карточку награды": "Open the reward card",
 });

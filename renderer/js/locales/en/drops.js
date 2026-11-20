@@ -215,5 +215,7 @@ Object.assign(window.I18N_EN = window.I18N_EN || {}, {
   '{game} — конец кампании дропсов': '{game} — drops campaign ends',
   '{game}: кампания скоро закончится': '{game}: campaign ends soon',
   'Не забрано наград: {left} из {total}': 'Unclaimed rewards: {left} of {total}',
-  'Все награды получены': 'All rewards claimed'
+  'Все награды получены': 'All rewards claimed',
+  "Нажмите, чтобы рассмотреть": "Click to view larger",
+  "Увеличить картинку": "Enlarge image",
 });

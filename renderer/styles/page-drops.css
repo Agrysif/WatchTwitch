@@ -649,6 +649,61 @@
   object-fit: cover;
 }
 
+/* Картинку можно рассмотреть: щелчок открывает её крупно */
+.drop-dialog-art.is-zoomable {
+  cursor: zoom-in;
+}
+
+.drop-dialog-art.is-zoomable img {
+  transition: transform var(--transition-fast);
+}
+
+.drop-dialog-art.is-zoomable:hover img {
+  transform: scale(1.05);
+}
+
+.drop-dialog-art.is-zoomable:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Крупный просмотр — поверх окна награды, внутри него: уходит вместе с ним */
+.drop-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px;
+  background: rgba(0, 0, 0, 0.82);
+  cursor: zoom-out;
+  animation: fade-in var(--dur-base) var(--ease-out);
+}
+
+.drop-lightbox img {
+  width: min(70vh, 70vw, 560px);
+  height: auto;
+  max-height: 80vh;
+  object-fit: contain;
+  border-radius: var(--radius-lg);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
+}
+
+.drop-lightbox-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  /* Фон затемнён в обеих темах — кнопка светлая всегда */
+  color: #fff;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.drop-lightbox-close:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.24);
+}
+
 .drop-dialog-info {
   min-width: 0;
 }

@@ -618,6 +618,27 @@ body.no-animations .toast-progress {
   border-radius: var(--radius-xs);
   object-fit: cover;
   background: var(--surface-2);
+  transform-origin: right center;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+/* Награда открывает свою карточку, а картинка при наведении крупнее —
+   видно, что пришло, ещё до щелчка. Растёт влево, поверх текста строки */
+.journal-row.is-clickable {
+  cursor: pointer;
+}
+
+.journal-row.is-clickable:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.journal-row.is-clickable:hover .journal-art,
+.journal-row.is-clickable:focus-visible .journal-art {
+  position: relative;
+  z-index: 2;
+  transform: scale(2.6);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
 }
 
 .journal-foot {

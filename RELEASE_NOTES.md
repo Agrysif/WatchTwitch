@@ -1,9 +1,19 @@
+## 🇷🇺 Что нового
+
+- Журнал: награда открывает свою карточку по щелчку, а её картинка при наведении увеличивается
+- Карточка награды: картинку можно рассмотреть крупно — щёлкните по ней
+- Рядом с датой получения награды теперь указано и время
+
 ## 🇷🇺 Исправления
 
-- Если Twitch не пускает вход в окне приложения и пишет «браузер не поддерживается», вход теперь можно перенести из обычного браузера, где вы уже вошли. В окне входа появился раздел «Не получается войти?» с короткой инструкцией. Когда Twitch отказывает, он раскрывается сам
-- Окно входа представляется Twitch обычным браузером Chrome, а не встроенным браузером приложения — у Twitch меньше поводов отказать во входе
+- Карточка награды на странице «Фарминг» больше не пишет «Прогресс 13%» у уже полученной награды: там «Получено» с датой и временем. Готовую награду теперь можно забрать прямо из этой карточки
+
+## 🇬🇧 What's new
+
+- Activity: a reward opens its card when you click it, and its image grows when you hover over it
+- Reward card: click the image to see it large
+- The claim date now comes with the time
 
 ## 🇬🇧 Fixes
 
-- If Twitch won't let you log in inside the app and says "browser not supported", you can now bring your login over from your regular browser where you're already logged in. The login window has a new "Can't log in?" section with short steps, and it opens by itself when Twitch refuses
-- The login window now presents itself to Twitch as regular Chrome rather than the app's built-in browser, giving Twitch fewer reasons to refuse the login
+- The reward card on the Farming page no longer shows "Progress 13%" for a reward you already have: it says "Claimed" with the date and time. A ready reward can now be claimed right from that card

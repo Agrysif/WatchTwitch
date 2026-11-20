@@ -92,6 +92,24 @@ async function scenarios() {
     check('Start explains why the pinned category was skipped', explained, `success toast names Overwatch: ${explained}`);
   }
   {
+    // Плитка награды на «Фарминге» отдаёт окну награды минуты и «получено».
+    // Раньше шёл progress в процентах: окно делило 100 на 750 минут и у
+    // полученного скина Сомбры писало «Прогресс 13%»
+    const { page: p } = environment();
+    p.esc = s => String(s);
+    p.formatMinutes = m => m + ' мин';
+    const html = p.renderDropCard(
+      { id: 'd1', name: 'Always Sombra', benefitId: 'b1', imageURL: '', required: 750, progress: 750, claimed: true, dropInstanceID: 'u#c#d1' },
+      { name: 'OWS', game: { name: 'Overwatch 2' }, startsAt: '2026-11-10', endsAt: '2026-11-30' }, 'Overwatch 2');
+    const raw = /data-drop="([^"]+)"/.exec(html)?.[1];
+    const drop = raw ? JSON.parse(decodeURIComponent(raw)) : {};
+    const campaignRaw = /data-campaign="([^"]+)"/.exec(html)?.[1];
+    const campaign = campaignRaw ? JSON.parse(decodeURIComponent(campaignRaw)) : {};
+    check('A claimed farming tile opens its card as claimed, with minutes not percent',
+      drop.claimed === true && drop.progress === 750 && drop.required === 750 && drop.percentage === 100 && drop.benefitId === 'b1' && campaign.game?.name === 'Overwatch 2' && !!campaign.endsAt,
+      JSON.stringify({ claimed: drop.claimed, progress: drop.progress, required: drop.required, percentage: drop.percentage, game: campaign.game?.name }));
+  }
+  {
     // Возврат к закреплённой: фарм ушёл в Rust, потому что каналы кампании
     // Overwatch были не в эфире. Через 10 минут они вышли — переходим обратно
     const setup = ({ owLive, manual = false, currentPinned = false } = {}) => {

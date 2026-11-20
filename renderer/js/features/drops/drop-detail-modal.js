@@ -47,6 +47,12 @@
     return Number.isFinite(date.getTime()) ? date : null;
   };
 
+  // «18 ноября 2026 г., 23:43»: со временем — по нему видно, ночью ли
+  // пришла награда. Раньше была одна дата
+  const formatClaimed = (date) => date.toLocaleString(tr.locale(), {
+    day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit'
+  });
+
   // «9–18 октября», «28 сентября – 5 октября»; год — только если не текущий
   const formatRange = (startRaw, endRaw) => {
     const start = validDate(startRaw);
@@ -112,9 +118,7 @@
       ? dropsPageInstance.claimedDrops.find(c => c?.id === drop.benefitId)
       : null;
     const claimedDateParsed = validDate(drop.claimedAt || drop.lastAwardedAt || drop.claimedDate || awarded?.lastAwardedAt);
-    const claimedDate = claimedDateParsed
-      ? claimedDateParsed.toLocaleDateString(tr.locale(), { day: 'numeric', month: 'long', year: 'numeric' })
-      : null;
+    const claimedDate = claimedDateParsed ? formatClaimed(claimedDateParsed) : null;
 
     // main отдаёт начало кампании как startsAt; читали только startAt,
     // и в окне вместо периода стояли тире
@@ -174,7 +178,9 @@
     if (isClaimed) {
       // Дата получения: только у полученных и только с известной датой.
       // Раньше «Получено —» стояло и у наград, которые ещё в процессе.
+      // Не передали (плитка «Фарминга») — строка ждёт ответа инвентаря ниже
       if (claimedDate) facts.push(fact(tr('Получено'), esc(claimedDate)));
+      else if (drop.benefitId) facts.push(`<div class="drop-fact" id="drop-fact-claimed" style="display: none"><dt>${tr('Получено')}</dt><dd></dd></div>`);
     } else if (requiredMinutes > 0) {
       const minutesText = tr('{done} / {total} мин', { done: progressMinutes, total: requiredMinutes });
       const leftText = minutesLeft > 0 ? ` · ${esc(tr('ещё {time}', { time: formatMinutes(minutesLeft) }))}` : '';
@@ -199,7 +205,7 @@
       <div class="dialog drop-dialog" role="dialog" aria-modal="true" aria-labelledby="drop-dialog-title">
         <button type="button" id="close-drop-modal" class="dialog-close drop-dialog-close" title="${tr('Закрыть')}" aria-label="${tr('Закрыть')}">${icon('close', 16)}</button>
         <div class="drop-dialog-body">
-          <div class="drop-dialog-art${imageUrl ? '' : ' is-empty'}">
+          <div class="drop-dialog-art${imageUrl ? ' is-zoomable' : ' is-empty'}"${imageUrl ? ` role="button" tabindex="0" title="${tr('Нажмите, чтобы рассмотреть')}" aria-label="${tr('Увеличить картинку')}"` : ''}>
             ${imageUrl ? `<img src="${esc(imageUrl)}" alt="" decoding="async">` : ''}
           </div>
           <div class="drop-dialog-info">
@@ -228,13 +234,64 @@
     modal._abort = modalAbort;
 
     const dialog = modal.querySelector('.drop-dialog');
+    const art = modal.querySelector('.drop-dialog-art');
     const img = modal.querySelector('.drop-dialog-art img');
     // Битая картинка — та же пустая рамка со значком подарка, а не значок
     // сломанного файла
     img?.addEventListener('error', () => {
+      art?.classList.remove('is-zoomable');
+      art?.removeAttribute('role');
+      art?.removeAttribute('tabindex');
       img.parentElement?.classList.add('is-empty');
       img.remove();
     });
+
+    // Дата получения из инвентаря Twitch, если её не передали
+    const pendingClaimed = modal.querySelector('#drop-fact-claimed');
+    if (pendingClaimed && window.electronAPI?.fetchDropsInventory) {
+      window.electronAPI.fetchDropsInventory().then((inventory) => {
+        const hit = (inventory?.claimedDrops || []).find(c => c?.id === drop.benefitId);
+        const date = validDate(hit?.lastAwardedAt);
+        if (!date || !pendingClaimed.isConnected) return;
+        pendingClaimed.querySelector('dd').textContent = formatClaimed(date);
+        pendingClaimed.style.display = '';
+      }).catch(() => {});
+    }
+
+    // Картинка крупно: в окне она 140px, а награду хочется рассмотреть.
+    // Просмотр — внутри окна награды: закрывается щелчком или Esc и
+    // уходит вместе с окном
+    let lightbox = null;
+    const closeLightbox = () => {
+      if (!lightbox) return;
+      lightbox.remove();
+      lightbox = null;
+      if (art?.isConnected) art.focus({ preventScroll: true });
+    };
+    const openLightbox = () => {
+      const src = img?.isConnected ? img.getAttribute('src') : '';
+      if (!src || lightbox) return;
+      lightbox = document.createElement('div');
+      lightbox.className = 'drop-lightbox';
+      lightbox.setAttribute('role', 'dialog');
+      lightbox.setAttribute('aria-modal', 'true');
+      lightbox.setAttribute('aria-label', dropName);
+      lightbox.innerHTML = `
+        <img src="${esc(src)}" alt="${esc(dropName)}">
+        <button type="button" class="dialog-close drop-lightbox-close" title="${tr('Закрыть')}" aria-label="${tr('Закрыть')}">${icon('close', 16)}</button>
+      `;
+      lightbox.addEventListener('click', closeLightbox);
+      modal.appendChild(lightbox);
+      lightbox.querySelector('.drop-lightbox-close').focus({ preventScroll: true });
+    };
+    if (img) {
+      art.addEventListener('click', openLightbox);
+      art.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        e.preventDefault();
+        openLightbox();
+      });
+    }
 
     // Повторный вызов (двойной клик по крестику, Esc после клика) не
     // должен ничего ломать
@@ -302,10 +359,18 @@
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
         e.preventDefault();
-        closeModal();
+        // Сначала закрывается крупная картинка, окно — следующим Esc
+        if (lightbox) closeLightbox();
+        else closeModal();
         return;
       }
       if (e.key !== 'Tab' || !dialog) return;
+      // Пока открыта картинка, фокус остаётся на её кнопке
+      if (lightbox) {
+        e.preventDefault();
+        lightbox.querySelector('.drop-lightbox-close')?.focus();
+        return;
+      }
       const focusable = [...dialog.querySelectorAll('button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])')];
       if (focusable.length === 0) return;
       const first = focusable[0];

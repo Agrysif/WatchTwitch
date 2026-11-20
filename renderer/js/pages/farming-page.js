@@ -4455,20 +4455,29 @@ class FarmingPage {
     const dropName = drop.benefitName || drop.name || tr('Награда');
     const icon = (name, size) => window.Icons?.get(name, size) ?? '';
 
+    // В окно награды — те же поля, что дал инвентарь. Раньше сюда шли
+    // название, картинка и progress в процентах, а окно читает progress как
+    // минуты: у полученного скина на 750 минут выходило «Прогресс 13%»
+    // (100 / 750), без отметки «Получено» и без даты
     const dropData = encodeURIComponent(JSON.stringify({
+      id: drop.id || null,
       name: dropName,
-      imageUrl: drop.imageURL || '',
-      requiredMinutes: drop.required || 0,
-      progress: dropPercent,
-      benefitEdges: drop.benefitEdges || []
+      benefitName: drop.benefitName || '',
+      benefitId: drop.benefitId || null,
+      imageURL: drop.imageURL || '',
+      required: Number(drop.required) || 0,
+      progress: Number(drop.progress) || 0,
+      percentage: dropPercent,
+      claimed: !!drop.claimed,
+      canClaim: isCompleted && !drop.claimed,
+      dropInstanceID: drop.dropInstanceID || null
     }));
 
     const campaignData = encodeURIComponent(JSON.stringify({
       name: campaign.name || gameName,
-      game: campaign.game?.displayName || campaign.game?.name || gameName,
-      imageUrl: campaign.game?.boxArtURL || '',
-      startDate: campaign.startAt || '',
-      endDate: campaign.endsAt || campaign.endAt || ''
+      game: { name: campaign.game?.displayName || campaign.game?.name || gameName },
+      startsAt: campaign.startsAt || campaign.startAt || '',
+      endsAt: campaign.endsAt || campaign.endAt || ''
     }));
 
     const art = drop.imageURL

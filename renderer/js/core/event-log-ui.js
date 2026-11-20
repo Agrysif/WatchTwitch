@@ -129,6 +129,28 @@
     return t;
   }
 
+  /**
+   * Награда записи журнала в инвентаре Twitch: по ключу записи (id
+   * экземпляра или 'drop:'+id награды), иначе по названию в той же игре.
+   * Нашлась — в карточке будет сколько смотреть и срок кампании
+   */
+  function findInventoryDrop(campaigns, entry) {
+    if (!Array.isArray(campaigns)) return null;
+    const key = String(entry.key || '');
+    if (key) {
+      for (const campaign of campaigns) {
+        const drop = (campaign.drops || []).find(d => (d.dropInstanceID && d.dropInstanceID === key) || (d.id && 'drop:' + d.id === key));
+        if (drop) return { drop, campaign };
+      }
+    }
+    for (const campaign of campaigns) {
+      if (entry.game && (campaign.game?.name || '') !== entry.game) continue;
+      const drop = (campaign.drops || []).find(d => (d.benefitName || d.name) === entry.title || d.name === entry.title);
+      if (drop) return { drop, campaign };
+    }
+    return null;
+  }
+
   function tallyParts(t) {
     const parts = [];
     if (t.drops) parts.push({ text: t.drops + ' ' + plural(t.drops, 'награда', 'награды', 'наград'), tone: 'success' });
@@ -250,8 +272,53 @@
         this.renderList();
       });
       drawer.querySelector('#journal-clear').addEventListener('click', () => this.confirmClear());
+
+      // Строка награды открывает её карточку — мышью и с клавиатуры
+      const list = drawer.querySelector('#journal-list');
+      const openRow = (row) => {
+        const entry = this.rows?.[Number(row.dataset.entry)];
+        if (entry) this.openDrop(entry);
+      };
+      list.addEventListener('click', (e) => {
+        const row = e.target.closest?.('.journal-row[data-entry]');
+        if (row) openRow(row);
+      });
+      list.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        const row = e.target.closest?.('.journal-row[data-entry]');
+        if (!row || row !== e.target) return;
+        e.preventDefault();
+        openRow(row);
+      });
       this.drawer = drawer;
       return drawer;
+    }
+
+    /**
+     * Карточка награды из журнала. В записи есть название, игра, картинка
+     * и время получения; остальное (сколько смотреть, срок кампании) — из
+     * инвентаря Twitch, пока награда в нём есть. Время получения — из
+     * записи: это момент, когда награда пришла
+     */
+    async openDrop(entry) {
+      if (typeof window.showDropDetailModal !== 'function') return;
+      let drop = { name: entry.title, imageURL: entry.icon || '', claimed: true, claimedAt: entry.at };
+      let campaign = entry.game ? { game: { name: entry.game } } : null;
+      try {
+        const inventory = await Promise.race([
+          window.electronAPI?.fetchDropsInventory?.(),
+          new Promise(resolve => setTimeout(() => resolve(null), 2500))
+        ]);
+        const found = findInventoryDrop(inventory?.campaigns, entry);
+        if (found) {
+          drop = { ...found.drop, imageURL: found.drop.imageURL || drop.imageURL, claimed: true, claimedAt: entry.at };
+          campaign = found.campaign;
+        }
+      } catch (e) {
+        // без инвентаря — карточка по самой записи
+      }
+      if (!this.isOpen) return;
+      window.showDropDetailModal(drop, campaign, window.farmingPage || window.dropsPage || null);
     }
 
     toggle() {
@@ -284,15 +351,16 @@
       const signal = this.abort.signal;
       document.addEventListener('keydown', (e) => {
         if (e.key !== 'Escape') return;
-        // Окно подтверждения поверх панели закрывается своим обработчиком
-        if (document.getElementById('confirmation-modal')) return;
+        // Окна поверх панели (подтверждение, карточка награды) закрываются
+        // своими обработчиками — журнал под ними остаётся
+        if (document.getElementById('confirmation-modal') || document.getElementById('drop-detail-modal')) return;
         e.preventDefault();
         this.close();
       }, { signal });
       document.addEventListener('pointerdown', (e) => {
         const t = e.target;
         if (!(t instanceof Element)) return;
-        if (t.closest('#journal-drawer, #journal-btn, #confirmation-modal, .toast-container')) return;
+        if (t.closest('#journal-drawer, #journal-btn, #confirmation-modal, #drop-detail-modal, .toast-container')) return;
         this.close(false);
       }, { capture: true, signal });
 
@@ -346,7 +414,9 @@
       const now = new Date();
       let html = '';
       let currentDay = null;
-      for (const entry of entries) {
+      // По номеру строки клик находит запись (openDrop)
+      this.rows = entries;
+      entries.forEach((entry, index) => {
         const day = dayLabel(entry.at, now);
         if (day !== currentDay) {
           if (currentDay !== null) html += '</div>';
@@ -356,8 +426,11 @@
         const view = TYPE_VIEW[entry.type] || { icon: 'info' };
         const { title, meta, repeat } = describe(entry);
         const isNew = entry.at > this.prevSeenAt;
+        // Награда открывает свою карточку
+        const opens = entry.type === 'drop';
+        const rowAttrs = opens ? ` data-entry="${index}" role="button" tabindex="0" title="${esc(tr('Открыть карточку награды'))}"` : '';
         html += `
-          <div class="journal-row${view.tone ? ' tone-' + view.tone : ''}${isNew ? ' is-new' : ''}">
+          <div class="journal-row${view.tone ? ' tone-' + view.tone : ''}${isNew ? ' is-new' : ''}${opens ? ' is-clickable' : ''}"${rowAttrs}>
             <span class="journal-time">${esc(timeLabel(entry.at))}</span>
             <span class="journal-icon" aria-hidden="true">${icon(view.icon, 16)}</span>
             <div class="journal-main">
@@ -366,7 +439,7 @@
             </div>
             ${entry.icon ? `<img class="journal-art" src="${esc(entry.icon)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : ''}
           </div>`;
-      }
+      });
       if (currentDay !== null) html += '</div>';
       list.innerHTML = html;
       // Битая картинка награды — просто без неё, а не значок «нет файла»
