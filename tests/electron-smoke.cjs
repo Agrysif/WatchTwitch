@@ -58,6 +58,18 @@ app.on('web-contents-created', (_event, contents) => {
         if (page.currentStream || page.currentCategory || window.playerManager.hasStream()) throw Error('Stopped search restarted playback');
         return { pages: results, playerDeadEvents: deadEvents, farmingInstances: 1, navigationRace: 'passed', stopDuringStart: 'passed' };
       })()`);
+      // Плеер не должен вставать, когда окно перекрыто, свёрнуто или в трее:
+      // гостю webview фоновое торможение выключается отдельно от окна
+      await contents.executeJavaScript(`(() => { const wv = window.playerManager.ensure(); if (!wv.getAttribute('src')) wv.src = 'about:blank'; return true; })()`);
+      const { webContents } = require('electron');
+      let guests = [];
+      for (let i = 0; i < 100 && !guests.length; i++) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        guests = webContents.getAllWebContents().filter(guest => guest.getType() === 'webview');
+      }
+      if (!guests.length) throw Error('Player webview not attached');
+      if (guests.some(guest => guest.getBackgroundThrottling())) throw Error('Player webview is throttled in background');
+      result.webviewBackgroundThrottling = false;
       console.log('TEST full application smoke PASS', JSON.stringify(result));
       app.exit(0);
     } catch (error) {

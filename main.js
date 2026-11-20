@@ -3227,6 +3227,12 @@ app.whenReady().then(async () => {
         webPreferences.webSecurity = true;
         webPreferences.contextIsolation = true;
         webPreferences.nodeIntegration = false;
+        // Стрим должен идти, когда окно перекрыто, свёрнуто или в трее.
+        // С Electron 45 webview в таком окне считается скрытым, и плеер
+        // Twitch ставит беззвучное видео на паузу: зачёт стоит, а при
+        // возврате к окну стрим запускается заново. У главного окна
+        // торможение выключено давно, гостю его нужно выключать отдельно.
+        webPreferences.backgroundThrottling = false;
         console.log('[WebView] Preload set before attach:', preloadPath);
       });
     }
