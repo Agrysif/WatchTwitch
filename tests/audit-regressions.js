@@ -51,6 +51,50 @@ function environment() {
 }
 const flush = () => new Promise(resolve => setImmediate(resolve));
 async function scenarios() {
+  {
+    const { sandbox: s } = environment();
+    s.SlottedWebview = class {};
+    vm.runInContext(fs.readFileSync(path.join(root, 'renderer/js/core/player-manager.js'), 'utf8'), s);
+    const player = s.window.playerManager;
+    const actions = [];
+    let time = 0;
+    player._parked = true;
+    player.channel = 'stream';
+    player.webview = {
+      src: 'about:blank',
+      executeJavaScript: async () => ({ hasVideo: true, time }),
+      reload: () => actions.push('reload')
+    };
+    player.nudgePlayer = () => actions.push('resume');
+    player.ensure = () => player.webview;
+    player.syncBar = player.ensurePlaybackStarted = player.startWatchdog = () => {};
+    player.resolveQuality = () => '160p30';
+    player.reportDead = () => actions.push('switch');
+    for (let i = 0; i < 6; i++) await player.checkPlayback();
+    check('Frozen background video reaches stream replacement after reload',
+      actions.join(',') === 'resume,reload,switch' && player.loadGeneration === 1, actions.join(','));
+
+    actions.length = 0;
+    for (let i = 0; i < 3; i++) {
+      time += 30;
+      await player.checkPlayback();
+    }
+    check('Healthy background video keeps playing', actions.length === 0, actions.join(','));
+
+    let expire;
+    s.setTimeout = fn => { expire = fn; return 1; };
+    player.webview.executeJavaScript = () => new Promise(() => {});
+    const pending = player.checkPlayback();
+    expire();
+    await pending;
+    check('Unresponsive video triggers a soft retry', actions.join(',') === 'resume', actions.join(','));
+
+    const stale = player.checkPlayback();
+    player.loadGeneration++;
+    expire();
+    await stale;
+    check('Expired probe cannot reload the replacement stream', actions.join(',') === 'resume', actions.join(','));
+  }
   if (LANG === 'en') {
     const { sandbox: s } = environment();
     const shown = s.window.DropCredit.describe({ state: 'none' });

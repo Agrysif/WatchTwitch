@@ -30,6 +30,7 @@ class PlayerManager extends SlottedWebview {
 
     this.channel = null; // текущий канал, чтобы не перезагружать плеер зря
     this.watchdog = null;
+    this.loadGeneration = 0;
     this.bar = null;
     this.muted = true;
     this.lastPlaybackTime = null;
@@ -314,7 +315,7 @@ class PlayerManager extends SlottedWebview {
             var text = document.body ? document.body.innerText || '' : '';
             return {
               started: !!v && v.currentTime > 0.3,
-              offline: /не в сети|не в эфире|офлайн|offline/i.test(text),
+              offline: /не в сети|не в эфире|офлайн|\\boffline\\b/i.test(text),
               netError: /ошибка сети|network error|(?:ошибка|error)\\s*#?\\s*2000/i.test(text)
             };
           })();
@@ -557,6 +558,7 @@ class PlayerManager extends SlottedWebview {
 
     console.log('[PlayerManager] Загружаю канал:', login);
     this.channel = login;
+    this.loadGeneration++;
 
     // Потолок скорости считается от действующего качества, а не от
     // настройки: иначе после подъёма лестницы предел оказался бы тесным
@@ -636,9 +638,11 @@ class PlayerManager extends SlottedWebview {
   async checkPlayback() {
     if (!this.webview || !this.channel || !this.webview.src) return;
 
+    const generation = this.loadGeneration;
+    let timeout;
     let state;
     try {
-      state = await this.webview.executeJavaScript(/* i18n-ignore: текст страницы Twitch */ `
+      const probe = this.webview.executeJavaScript(/* i18n-ignore: текст страницы Twitch */ `
         (function () {
           const video = document.querySelector('video');
           const text = document.body ? document.body.innerText || '' : '';
@@ -651,13 +655,18 @@ class PlayerManager extends SlottedWebview {
           };
         })();
       `);
+      state = await Promise.race([
+        probe,
+        new Promise(resolve => { timeout = setTimeout(() => resolve(null), 10000); })
+      ]);
     } catch (e) {
-      // Документ ещё не готов — не повод паниковать
-      return;
+      state = null;
+    } finally {
+      clearTimeout(timeout);
     }
-
-    if (!state) return;
-
+    if (!this.channel || generation !== this.loadGeneration) return;
+    // A single unreadable sample gets the same soft retry as a frozen frame.
+    if (!state) state = { hasVideo: false, time: 0 };
     const verdict = PlayerManager.verdict(state, this.lastPlaybackTime);
 
     // Канал не в эфире: чинить плеер бессмысленно, нужен другой стрим.
@@ -675,20 +684,14 @@ class PlayerManager extends SlottedWebview {
     }
     this.offlineStrikes = 0;
 
-    // Спрятанный плеер дальше не проверяем: пока он не показан, замирание
-    // нормально, а вмешательство обернулось бы перезагрузкой и потерей
-    // накопленного просмотра.
-    if (this._parked) {
-      this.lastPlaybackTime = null;
-      this.stallStrikes = 0;
-      return;
-    }
-
+    // A fresh document needs two samples to prove that frames are moving.
+    const baselineOnly = this.lastPlaybackTime == null;
     const stalled = verdict === 'stalled';
 
     this.lastPlaybackTime = state.time;
 
     if (!stalled) {
+      if (baselineOnly) return;
       if (this.stallStrikes > 0) {
         console.log('[PlayerManager] Воспроизведение восстановилось');
       }

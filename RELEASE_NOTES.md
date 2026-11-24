@@ -1,7 +1,9 @@
 ## 🇷🇺 Исправления
 
-- Стрим снова идёт, когда окно приложения перекрыто другим окном, свёрнуто или спрятано в трей. В 1.3.0 плеер в таком окне вставал на паузу: просмотр не засчитывался, а при возвращении к окну стрим запускался заново
+- Если видео зависло во время фонового просмотра, WatchTwitch снова пытается запустить его и перезагружает плеер. Если видео так и не пошло, приложение ищет другой эфир при включённом автопереключении.
+- Зависший или недоступный плеер больше не может бесконечно задерживать проверку. После перезагрузки приложение ждёт, пока видео действительно продолжит воспроизведение.
 
 ## 🇬🇧 Fixes
 
-- The stream keeps playing again when the app window is covered by another window, minimized or hidden in the tray. In 1.3.0 the player paused in such a window: watching wasn't credited, and the stream restarted when you came back to the window
+- When background playback freezes, WatchTwitch tries to resume the video and reloads the player if needed. If playback still fails and automatic switching is enabled, it looks for another stream.
+- An unresponsive player can no longer hold up a playback check indefinitely. After reloading, WatchTwitch waits for the video to advance before it considers playback restored.
