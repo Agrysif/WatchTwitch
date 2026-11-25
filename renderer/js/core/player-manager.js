@@ -298,7 +298,7 @@ class PlayerManager extends SlottedWebview {
    * @param {boolean} afterOffline предыдущая проверка застала сеть
    *   выключенной: видео могло не пойти из-за неё, а не из-за качества
    */
-  ensurePlaybackStarted(requestedQuality, afterOffline = false) {
+  ensurePlaybackStarted(requestedQuality, afterOffline = false, resumeAttempted = false) {
     clearTimeout(this.playbackProbe);
 
     const ladder = PlayerManager.QUALITIES.map(q => q.value);
@@ -314,7 +314,8 @@ class PlayerManager extends SlottedWebview {
             var v = document.querySelector('video');
             var text = document.body ? document.body.innerText || '' : '';
             return {
-              started: !!v && v.currentTime > 0.3,
+              started: !!v && !v.paused && !v.ended && v.currentTime > 0.3,
+              canResume: !!v && v.paused && !v.ended && !v.error && v.readyState >= 2,
               offline: /не в сети|не в эфире|офлайн|\\boffline\\b/i.test(text),
               netError: /ошибка сети|network error|(?:ошибка|error)\\s*#?\\s*2000/i.test(text)
             };
@@ -371,6 +372,13 @@ class PlayerManager extends SlottedWebview {
         const channel = this.channel;
         this.channel = null;
         this.load(channel, { quality: requestedQuality, keepSound: this.muted === false });
+        return;
+      }
+
+      // Give a paused, buffered stream time to resume before changing quality.
+      if (state?.canResume && !resumeAttempted) {
+        this.ensurePlaybackStarted(requestedQuality, false, true);
+        await this.nudgePlayer();
         return;
       }
 
@@ -744,7 +752,7 @@ class PlayerManager extends SlottedWebview {
   /** Мягкая попытка: нажать кнопку перезагрузки Twitch или запустить видео. */
   async nudgePlayer() {
     try {
-      await this.webview.executeJavaScript(/* i18n-ignore: текст кнопок Twitch */ `
+      const result = await this.webview.executeJavaScript(/* i18n-ignore: текст кнопок Twitch */ `
         (function () {
           const selectors = [
             'button[data-a-target="player-overlay-refresh-button"]',
@@ -763,10 +771,13 @@ class PlayerManager extends SlottedWebview {
             }
           }
           const video = document.querySelector('video');
-          if (video && video.paused) { video.play().catch(function () {}); return 'played'; }
+          if (video && video.paused && !video.ended) {
+            return video.play().then(() => 'playing', error => 'play-failed: ' + error.name);
+          }
           return 'nothing';
         })();
       `);
+      if (result?.startsWith('play-failed:')) console.warn('[PlayerManager]', result);
     } catch (e) {
       // ignore
     }
