@@ -2002,6 +2002,8 @@ function trackWindowState(win) {
 }
 
 function createMainWindow() {
+  // Snapshot the launch choice before the renderer synchronizes its settings.
+  const startInTray = launchedByAutostart && store.get('settings.minimizeToTray', false);
   const savedState = loadWindowState();
 
   mainWindow = new BrowserWindow({
@@ -2111,7 +2113,7 @@ function createMainWindow() {
 
         // Фоновый фарминг в скрытом окне уже работает — так же, как при
         // сворачивании в трей
-        if (tray && store.get('settings.minimizeToTray', false)) {
+        if (tray && startInTray) {
           if (savedState?.maximized) win.once('show', maximizeWhenOpened);
           console.log('[Запуск] Автозапуск: окно остаётся в трее');
           return;

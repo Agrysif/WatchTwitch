@@ -77,11 +77,16 @@ class SlottedWebview {
     });
     webview.style.cssText = 'position: absolute; left: 0; top: 0; background: #000; border: none;';
 
+    const base = SlottedWebview.BASE_SIZE;
+    webview.style.width = `${base.width}px`;
+    webview.style.height = `${base.height}px`;
+
     host.appendChild(webview);
     document.body.appendChild(host);
 
     this.host = host;
     this.webview = webview;
+    this._park();
 
     console.log(`[${this.logName}] Постоянный webview создан`);
     this.onCreated(webview);

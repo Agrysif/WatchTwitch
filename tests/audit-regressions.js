@@ -95,6 +95,41 @@ async function scenarios() {
     await stale;
     check('Expired probe cannot reload the replacement stream', actions.join(',') === 'resume', actions.join(','));
   }
+  {
+    const { sandbox: s } = environment();
+    s.SlottedWebview = class {};
+    s.navigator = { onLine: true };
+    let tick;
+    s.setTimeout = fn => { tick = fn; return 1; };
+    vm.runInContext(fs.readFileSync(path.join(root, 'renderer/js/core/player-manager.js'), 'utf8'), s);
+    const player = s.window.playerManager;
+    const video = {
+      currentTime: 0, paused: true, ended: false, readyState: 4,
+      play: async () => { video.paused = false; }
+    };
+    const guest = { document: { body: {}, querySelector: () => video, querySelectorAll: () => [] } };
+    player.channel = 'test';
+    player.webview = { executeJavaScript: async code => vm.runInNewContext(code, guest) };
+    const qualities = [];
+    player.syncBar = () => {};
+    player.load = (_channel, options) => qualities.push(options.quality);
+    for (const time of [0, 17]) {
+      video.currentTime = time;
+      video.paused = true;
+      player.ensurePlaybackStarted('160p30');
+      await tick();
+      video.currentTime += 1;
+      await tick();
+      check('Buffered pause resumes at ' + time, !video.paused && !qualities.length, JSON.stringify(qualities));
+    }
+    video.currentTime = 0;
+    video.paused = true;
+    video.play = async () => { throw Error('blocked'); };
+    player.ensurePlaybackStarted('160p30');
+    await tick();
+    await tick();
+    check('Rejected resume keeps quality fallback available', qualities.join() === '360p30', qualities.join());
+  }
   if (LANG === 'en') {
     const { sandbox: s } = environment();
     const shown = s.window.DropCredit.describe({ state: 'none' });
