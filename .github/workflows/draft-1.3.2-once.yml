@@ -1,0 +1,47 @@
+name: Prepare draft 1.3.2 once
+on:
+  push:
+    branches: [build/draft-1.3.2-once]
+permissions: {}
+jobs:
+  draft:
+    if: github.event.created && github.run_number == 1 && github.run_attempt == 1 && github.repository == 'Agrysif/WatchTwitch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      actions: read
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: Agrysif/WatchTwitch
+    steps:
+      - name: Retrieve verified build and release notes
+        run: |
+          set -euo pipefail
+          gh api repos/Agrysif/WatchTwitch/actions/artifacts/14968241052/zip > build.zip
+          echo "385a9e54bd3da9b71c7011473b96d71116271fd8c29aec6c65f672dcb0093a4e  build.zip" | sha256sum -c -
+          unzip -j build.zip 'WatchTwitch-Setup-1.3.2.exe' 'WatchTwitch-Setup-1.3.2.exe.blockmap' 'latest.yml'
+          gh api -H 'Accept: application/vnd.github.raw+json' 'repos/Agrysif/WatchTwitch/contents/RELEASE_NOTES.md?ref=bf40046bff44510960931b5f20f2c3a3aaf1aa35' > notes.md
+          grep -q 'Исправления' notes.md
+          grep -q 'Fixes' notes.md
+      - name: Create and verify draft
+        run: |
+          set -euo pipefail
+          gh release create v1.3.2 --repo "$GH_REPO" --draft --target bf40046bff44510960931b5f20f2c3a3aaf1aa35 --title 'WatchTwitch 1.3.2' --notes-file notes.md WatchTwitch-Setup-1.3.2.exe WatchTwitch-Setup-1.3.2.exe.blockmap latest.yml
+          gh release view v1.3.2 --repo "$GH_REPO" --json databaseId,isDraft,assets,body > receipt.json
+          python - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          r = json.loads(Path("receipt.json").read_text())
+          assert r["isDraft"] and r["body"].strip() == Path("notes.md").read_text().strip()
+          assert sorted(a["name"] for a in r["assets"]) == sorted(["WatchTwitch-Setup-1.3.2.exe","WatchTwitch-Setup-1.3.2.exe.blockmap","latest.yml"])
+          for a in r["assets"]:
+              p = Path(a["name"])
+              assert a["size"] == p.stat().st_size and a["state"].lower() == "uploaded"
+          PY
+          id=$(jq -r .databaseId receipt.json)
+          echo "Verified draft $id with three uploaded assets" >> "$GITHUB_STEP_SUMMARY"
+          # Record the verified result on the temporary branch and retire this one-use workflow.
+          path="repos/Agrysif/WatchTwitch/contents/.github/workflows/draft-1.3.2-once.yml"
+          blob=$(gh api "$path?ref=build/draft-1.3.2-once" --jq .sha)
+          gh api --method DELETE "$path" -f branch='build/draft-1.3.2-once' -f sha="$blob" -f message="Verified WatchTwitch 1.3.2 draft $id with three assets; retire one-use workflow" > /dev/null
