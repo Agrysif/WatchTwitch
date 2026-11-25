@@ -1,0 +1,73 @@
+name: Verify cold tray launch and stage 1.3.3
+on:
+  push:
+    branches: [build/cold-tray-1.3.3-2]
+permissions: {}
+jobs:
+  verify:
+    if: github.event.created && github.run_number == 1 && github.run_attempt == 1
+    runs-on: windows-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 47ead09a23c1ddc59bbcb48daa4c1b5ea204e6f3
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm test
+      - shell: pwsh
+        run: |
+          node tests/run-electron.cjs tests/cold-tray.cjs
+          $code = $LASTEXITCODE
+          Get-Content tests/cold-tray.cjs.log -Tail 70
+          exit $code
+      - run: npm run build:win -- --publish never
+      - shell: pwsh
+        run: |
+          @'
+          owner: Agrysif
+          repo: WatchTwitch
+          provider: github
+          releaseType: draft
+          updaterCacheDirName: watchtwitch-updater
+          '@ | Set-Content dist/audit-old-app-update.yml
+          node tests/verify-release.cjs
+      - run: node tests/run-electron.cjs tests/update-forward.cjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: WatchTwitch-1.3.3
+          path: |
+            dist/WatchTwitch-Setup-1.3.3.exe
+            dist/WatchTwitch-Setup-1.3.3.exe.blockmap
+            dist/latest.yml
+            RELEASE_NOTES.md
+  draft:
+    needs: verify
+    if: always() && github.event.created && github.run_number == 1 && github.run_attempt == 1
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: Agrysif/WatchTwitch
+    steps:
+      - if: needs.verify.result == 'success'
+        uses: actions/download-artifact@v4
+        with:
+          name: WatchTwitch-1.3.3
+      - if: needs.verify.result == 'success'
+        run: |
+          set -eu
+          gh release create v1.3.3 --draft --target 47ead09a23c1ddc59bbcb48daa4c1b5ea204e6f3 --title "WatchTwitch 1.3.3" --notes-file RELEASE_NOTES.md dist/WatchTwitch-Setup-1.3.3.exe dist/WatchTwitch-Setup-1.3.3.exe.blockmap dist/latest.yml
+          gh release view v1.3.3 --json isDraft,assets --jq 'select(.isDraft and (.assets | length == 3)) | .isDraft' | grep -x true
+      - if: always()
+        run: |
+          path='repos/Agrysif/WatchTwitch/contents/.github/workflows/cold-tray-1.3.3-2.yml'
+          blob=$(gh api "$path?ref=build/cold-tray-1.3.3-2" --jq .sha)
+          gh api -X DELETE "$path" -f branch='build/cold-tray-1.3.3-2' -f sha="$blob" -f message="Run $GITHUB_RUN_ID: tests ${{ needs.verify.result }}, draft job ${{ job.status }}; retire workflow" >/dev/null
