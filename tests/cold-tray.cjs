@@ -10,8 +10,8 @@ app.setAppPath(root);
 process.argv.push('--autostart');
 new (require('electron-store'))().set('settings.minimizeToTray', true);
 require('electron-updater').autoUpdater.checkForUpdates = async () => null;
-let shown = false;
-app.on('browser-window-created', (_event, win) => win.on('show', () => { shown = true; }));
+const shown = new WeakSet();
+app.on('browser-window-created', (_event, win) => win.on('show', () => shown.add(win)));
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function run() {
   const movie = fs.readFileSync(path.join(__dirname, 'fixtures', 'tray.webm'));
@@ -37,7 +37,7 @@ async function run() {
   let last = null;
   for (let i = 0; i < 80; i++) {
     await sleep(500);
-    assert.ok(!shown && !win.isVisible(), 'window must never be shown');
+    assert.ok(!shown.has(win) && !win.isVisible(), 'window must never be shown');
     const guest = webContents.getAllWebContents().find(w => w.getURL() === url);
     if (!guest) continue;
     const state = await guest.executeJavaScript('(() => { const v=document.querySelector("video"); return v && {paused:v.paused,t:v.currentTime}; })()');
